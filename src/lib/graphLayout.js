@@ -1,7 +1,7 @@
-export const ROW_HEIGHT = 34;
-export const LANE_WIDTH = 26;
+export const ROW_HEIGHT = 36;
+export const LANE_WIDTH = 30;
 export const GRAPH_PADDING = 10;
-export const NODE_RADIUS = 12;
+export const NODE_RADIUS = 14;
 
 // Цвета дорожек в духе GitKraken
 export const LANE_COLORS = [

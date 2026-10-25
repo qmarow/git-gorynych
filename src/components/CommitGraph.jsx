@@ -10,7 +10,7 @@ import {
   layoutGraph,
   rowY,
 } from '../lib/graphLayout.js';
-import { avatarColor, fullDate, initials, relativeTime, shortDate } from '../lib/format.js';
+import { fullDate, initials, relativeTime, shortDate } from '../lib/format.js';
 import { ResizeHandle, useStoredWidth } from './Resizer.jsx';
 import { avatarUrl, isFailed, markFailed } from '../lib/avatars.js';
 
@@ -38,7 +38,7 @@ export default function CommitGraph({
   const [refsW, setRefsW, saveRefsW] = useStoredWidth('graph.refs', 150, 60, 480);
   const [graphW, setGraphW, saveGraphW] = useStoredWidth('graph.graph', null, 40, 1400); // null = авто
   const [authorW, setAuthorW, saveAuthorW] = useStoredWidth('graph.author', 140, 60, 420);
-  const [dateW, setDateW, saveDateW] = useStoredWidth('graph.date', 126, 64, 260);
+  const [dateW, setDateW, saveDateW] = useStoredWidth('graph.date.v2', 142, 64, 260);
   // Авто-ширина графа: по числу дорожек, но не больше, чем позволяет место,
   // чтобы колонки Author и Date оставались видны без горизонтальной прокрутки
   const roomForGraph = view.width - refsW - authorW - dateW - MESSAGE_MIN_WIDTH;
@@ -105,7 +105,7 @@ export default function CommitGraph({
     );
   }
 
-  const introDelay = (row) => `${Math.min(Math.max(row - first, 0), 40) * 14}ms`;
+  const introDelay = (row) => `${Math.min(Math.max(row - first, 0), 30) * 20}ms`;
 
   return (
     <div
@@ -343,15 +343,14 @@ function Row({ node, selected, hovered, dim, intro, delay, cols, wipCount, onHov
           <div
             style={{ width: cols.author }}
             title={`${node.author.name} <${node.author.email}>`}
-            className="relative flex shrink-0 items-center gap-2 overflow-hidden px-3 text-xs text-gk-text/85"
+            className="relative flex shrink-0 items-center overflow-hidden px-3 text-[13.5px] text-gk-text/90"
           >
-            <MiniAvatar author={node.author} />
             <span className="truncate">{node.author.name}</span>
           </div>
           <div
             style={{ width: cols.date }}
             title={`${fullDate(node.date)} · ${relativeTime(node.date)}`}
-            className="relative shrink-0 truncate px-3 text-right font-mono text-[11px] tabular-nums text-gk-muted"
+            className="relative shrink-0 truncate px-3 text-right font-mono text-[12.5px] tabular-nums text-gk-muted"
           >
             {shortDate(node.date)}
           </div>
@@ -361,18 +360,6 @@ function Row({ node, selected, hovered, dim, intro, delay, cols, wipCount, onHov
   );
 }
 
-function MiniAvatar({ author }) {
-  const [url, onError] = useAvatar(author.email);
-  return (
-    <span
-      style={{ backgroundColor: avatarColor(author.name) }}
-      className="relative flex h-[18px] w-[18px] shrink-0 items-center justify-center overflow-hidden rounded-full text-[8px] font-bold text-white"
-    >
-      {initials(author.name)}
-      {url && <img src={url} alt="" onError={onError} className="absolute inset-0 h-full w-full object-cover" />}
-    </span>
-  );
-}
 
 /* ---------------- Метки веток ---------------- */
 
@@ -482,9 +469,9 @@ function Node({ node, selected, hovered, dim, intro, delay }) {
   if (node.parents.length > 1) {
     return (
       <g className={cls} style={style}>
-        {node.isHead && <HeadRing x={x} y={y} r={11} />}
-        {selected && <circle className="graph-pulse" cx={x} cy={y} r={7} fill="none" stroke={color} strokeWidth={2} />}
-        <circle cx={x} cy={y} r={6.5} fill={color} stroke="#0e1117" strokeWidth={2} />
+        {node.isHead && <HeadRing x={x} y={y} r={12.5} />}
+        {selected && <circle className="graph-pulse" cx={x} cy={y} r={8} fill="none" stroke={color} strokeWidth={2} />}
+        <circle cx={x} cy={y} r={7.5} fill={color} stroke="#0e1117" strokeWidth={2} />
       </g>
     );
   }
@@ -502,7 +489,7 @@ function AvatarNode({ node, x, y, color, selected, cls, style }) {
       {selected && <circle cx={x} cy={y} r={r + 3.5} fill="none" stroke={color} strokeWidth={2} />}
       <circle cx={x} cy={y} r={r} fill={color} />
       <circle cx={x} cy={y} r={r - 2} fill="rgb(0 0 0 / 0.18)" />
-      <text x={x} y={y} dy="0.36em" textAnchor="middle" fontSize="9.5" fontWeight="700" fill="#fff" letterSpacing="0.2">
+      <text x={x} y={y} dy="0.36em" textAnchor="middle" fontSize="11" fontWeight="700" fill="#fff" letterSpacing="0.2">
         {initials(node.author.name)}
       </text>
       {url && (
