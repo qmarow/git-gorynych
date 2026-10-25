@@ -582,6 +582,21 @@ export default function App() {
     if (res.ok) setDialog(null);
   };
 
+  // Создание ветки прямо из списка веток: от HEAD и сразу переключиться
+  const quickCreateBranch = (name) =>
+    run('createBranch', { name, checkout: true }, {
+      label: 'Branch',
+      progress: `Создаём ветку ${name}`,
+      success: (d) => `Ветка ${d.name} создана и активна`,
+    });
+
+  // Показать коммит в графе: выделить и прокрутить к нему
+  const locateCommit = (hash) => {
+    if (!hash) return;
+    setDiffTarget(null);
+    setSelectedHash(hash);
+  };
+
   const openBranchDialog = (node) => {
     const sel = node ?? allCommits.find((c) => c.hash === selectedHash);
     const startHash = sel && !sel.wip ? sel.hash : repo.headHash;
@@ -1259,6 +1274,9 @@ export default function App() {
             onFetch={fetchAll}
             onPush={() => push(false)}
             onBranch={() => openBranchDialog()}
+            onCheckout={checkout}
+            onCreateBranch={quickCreateBranch}
+            onLocate={locateCommit}
             onStash={stash}
             onPop={stashPop}
             onAccessClick={() => setDialog({ type: 'access' })}

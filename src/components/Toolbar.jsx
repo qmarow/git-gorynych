@@ -20,6 +20,7 @@ import {
   ShieldX,
   Undo2,
 } from 'lucide-react';
+import BranchPicker from './BranchPicker.jsx';
 
 export const PULL_MODES = [
   { id: 'merge', label: 'Pull (fast-forward if possible)' },
@@ -41,6 +42,9 @@ export default function Toolbar({
   onFetch,
   onPush,
   onBranch,
+  onCheckout,
+  onCreateBranch,
+  onLocate,
   onStash,
   onPop,
   onAccessClick,
@@ -77,7 +81,16 @@ export default function Toolbar({
       <div className="flex min-w-0 items-center gap-1">
         <Selector label="repository" value={repo.name} title={repo.path} icon={FolderGit2} onClick={onOpenRepository} />
         <span className="text-gk-dim">/</span>
-        <Selector label={repo.detached ? 'detached' : 'branch'} value={branchLabel} icon={GitBranch} />
+        <BranchSelector
+          repo={repo}
+          label={repo.detached ? 'detached' : 'branch'}
+          value={branchLabel}
+          disabled={busy}
+          onCheckout={onCheckout}
+          onCreate={onCreateBranch}
+          onNewBranchDialog={onBranch}
+          onLocate={onLocate}
+        />
       </div>
 
       <div className="flex flex-1 items-center justify-center gap-1">
@@ -276,16 +289,79 @@ function MenuItem({ icon: Icon, children, ...props }) {
   );
 }
 
+/* ---------- Выбор ветки ---------- */
+
+function BranchSelector({ repo, label, value, disabled, onCheckout, onCreate, onNewBranchDialog, onLocate }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef(null);
+
+  useEffect(() => {
+    if (!open) return undefined;
+    const close = (e) => !ref.current?.contains(e.target) && setOpen(false);
+    window.addEventListener('mousedown', close);
+    return () => window.removeEventListener('mousedown', close);
+  }, [open]);
+
+  // Ctrl+B — открыть список веток откуда угодно
+  useEffect(() => {
+    const onKey = (e) => {
+      if (!(e.ctrlKey && !e.shiftKey && !e.altKey && e.code === 'KeyB')) return;
+      if (document.querySelector('.fixed.inset-0')) return; // открыт диалог
+      e.preventDefault();
+      setOpen((v) => !v);
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, []);
+
+  // Во время операции (checkout и т.п.) список закрываем
+  useEffect(() => {
+    if (disabled) setOpen(false);
+  }, [disabled]);
+
+  return (
+    <div ref={ref} className="relative">
+      <Selector
+        label={label}
+        value={value}
+        icon={GitBranch}
+        title={`Переключить ветку (Ctrl+B)`}
+        disabled={disabled}
+        active={open}
+        onClick={() => setOpen((v) => !v)}
+      />
+      {open && (
+        <BranchPicker
+          repo={repo}
+          onClose={() => setOpen(false)}
+          onCheckout={onCheckout}
+          onCreate={onCreate}
+          onNewBranchDialog={onNewBranchDialog}
+          onLocate={onLocate}
+        />
+      )}
+    </div>
+  );
+}
+
 /* ---------- Общие кнопки ---------- */
 
-function Selector({ label, value, icon: Icon, ...props }) {
+function Selector({ label, value, icon: Icon, active, ...props }) {
   return (
-    <button {...props} className="group flex max-w-56 flex-col items-start rounded px-2 py-1 text-left hover:bg-gk-hover">
+    <button
+      {...props}
+      className={`group flex max-w-56 flex-col items-start rounded px-2 py-1 text-left enabled:hover:bg-gk-hover disabled:opacity-60 ${
+        active ? 'bg-gk-hover' : ''
+      }`}
+    >
       <span className="text-[10px] uppercase tracking-wider text-gk-dim">{label}</span>
       <span className="flex max-w-full items-center gap-1.5 text-[13px] font-medium">
         <Icon size={13} className="shrink-0 text-gk-muted" />
         <span className="truncate">{value}</span>
-        <ChevronDown size={12} className="shrink-0 text-gk-dim group-hover:text-gk-muted" />
+        <ChevronDown
+          size={12}
+          className={`shrink-0 text-gk-dim transition-transform group-hover:text-gk-muted ${active ? 'rotate-180' : ''}`}
+        />
       </span>
     </button>
   );

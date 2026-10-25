@@ -130,7 +130,7 @@ async function readRefs(cwd) {
   const [out, remoteOut, tagsOutP, stashOutP] = await Promise.all([
     git(cwd, [
     'for-each-ref',
-    `--format=%(refname)${FS}%(refname:short)${FS}%(objectname)${FS}%(upstream:short)${FS}%(upstream:track)${FS}%(HEAD)${FS}%(upstream:remotename)${FS}%(upstream:remoteref)`,
+    `--format=%(refname)${FS}%(refname:short)${FS}%(objectname)${FS}%(upstream:short)${FS}%(upstream:track)${FS}%(HEAD)${FS}%(upstream:remotename)${FS}%(upstream:remoteref)${FS}%(committerdate:iso-strict)`,
     'refs/heads',
     'refs/remotes',
     ]),
@@ -145,7 +145,7 @@ async function readRefs(cwd) {
 
   for (const line of out.split('\n')) {
     if (!line) continue;
-    const [full, short, hash, upstream, track, head, upstreamRemote, upstreamRef] = line.split(FS);
+    const [full, short, hash, upstream, track, head, upstreamRemote, upstreamRef, date] = line.split(FS);
     if (full.startsWith('refs/heads/')) {
       const ahead = Number(/ahead (\d+)/.exec(track)?.[1] ?? 0);
       const behind = Number(/behind (\d+)/.exec(track)?.[1] ?? 0);
@@ -158,6 +158,7 @@ async function readRefs(cwd) {
         gone: track.includes('gone'),
         ahead,
         behind,
+        date: date || null,
       });
       if (head === '*') currentBranch = short;
     } else if (full.startsWith('refs/remotes/')) {
@@ -168,7 +169,7 @@ async function readRefs(cwd) {
       const branch = rest.slice(slash + 1);
       if (branch === 'HEAD') continue;
       if (!remotesMap.has(remote)) remotesMap.set(remote, []);
-      remotesMap.get(remote).push({ name: branch, fullName: `${remote}/${branch}`, hash });
+      remotesMap.get(remote).push({ name: branch, fullName: `${remote}/${branch}`, hash, date: date || null });
     }
   }
 
