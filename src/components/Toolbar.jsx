@@ -48,6 +48,7 @@ export default function Toolbar({
   onStash,
   onPop,
   onAccessClick,
+  onSettings,
   onSearch,
   searchOpen,
 }) {
@@ -166,7 +167,7 @@ export default function Toolbar({
           iconClass={searchOpen ? 'text-gk-blue' : ''}
         />
         <IconButton icon={RefreshCw} title="Обновить" onClick={onRefresh} iconClass={loading ? 'animate-spin' : ''} />
-        <IconButton icon={Settings} title="Настройки" />
+        <IconButton icon={Settings} title="Подключения (GitLab)" onClick={onSettings} />
       </div>
     </div>
   );

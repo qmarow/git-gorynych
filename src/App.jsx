@@ -31,6 +31,9 @@ import CommitDetails from './components/CommitDetails.jsx';
 import Toasts from './components/Toasts.jsx';
 import DiffView from './components/DiffView.jsx';
 import ConflictView from './components/ConflictView.jsx';
+import CiView from './components/CiView.jsx';
+import { IntegrationsDialog } from './components/TokenSetup.jsx';
+import { ACTIVE_STATUSES } from './components/PipelineStatus.jsx';
 import StatusBar from './components/StatusBar.jsx';
 import InitRepoDialog, { plural } from './components/InitRepoDialog.jsx';
 import CloneDialog from './components/CloneDialog.jsx';
@@ -122,6 +125,8 @@ export default function App() {
   const [pullMode, setPullMode] = useState(readPullMode);
   const [menu, setMenu] = useState(null); // { x, y, node }
   const [diffTarget, setDiffTarget] = useState(null); // { kind, mode, hash, parent, file, list, index, commitHash }
+  const [ciView, setCiView] = useState(null); // { file, mode, pipelineId } — открыт просмотр CI/CD
+  const [pipelineMap, setPipelineMap] = useState(null); // статусы пайплайнов GitLab: { bySha, pipelines, error }
   const [diffData, setDiffData] = useState(null);
   const [diffView, setDiffView] = useState(() => readPref('diffView', 'unified'));
   const [ignoreWs, setIgnoreWs] = useState(() => readPref('ignoreWs', '0') === '1');
@@ -219,6 +224,7 @@ export default function App() {
   const showTab = (path) => {
     rememberActiveTab();
     setDiffTarget(null);
+    setCiView(null);
     setMenu(null);
     setAccess(null);
     setActivePath(path);
@@ -594,6 +600,7 @@ export default function App() {
   const locateCommit = (hash) => {
     if (!hash) return;
     setDiffTarget(null);
+    setCiView(null);
     setSelectedHash(hash);
   };
 
@@ -858,6 +865,9 @@ export default function App() {
   const [conflictPath, setConflictPath] = useState(null);
   const autoOpenConflict = useRef(false);
   const resolvingConflict = useRef(false); // пока сохраняем файл — не закрываем редактор между файлами
+  // Когда что-то меняется в репозитории — просмотр CI/CD тихо перечитывает файлы
+  const ciVersion = repo ? `${repo.headHash}|${JSON.stringify(repo.wipFiles)}|${JSON.stringify(repo.ci ?? null)}` : '';
+
   const conflictPaths = useMemo(
     () => (repo ? [...new Set(repo.wipFiles.filter((f) => f.status === 'U').map((f) => f.path))] : []),
     [repo],
@@ -917,6 +927,62 @@ export default function App() {
 
   /* ---------- Коммиты и выбор ---------- */
 
+  /* ---------- GitLab: статусы пайплайнов для графа ---------- */
+
+  const forge = repo?.forge ?? null;
+  const gitlabReady = forge?.kind === 'gitlab' && Boolean(forge.token?.configured);
+  const currentBranchInfo = repo?.localBranches.find((b) => b.name === repo.currentBranch) ?? null;
+  const pipelineKey = gitlabReady
+    ? `${repo.path}|${forge.base}|${forge.token.savedAt}|${repo.headHash}|${currentBranchInfo?.ahead}|${currentBranchInfo?.upstream}`
+    : null;
+
+  useEffect(() => {
+    if (!pipelineKey || !api?.gitlab) {
+      setPipelineMap(null);
+      return undefined;
+    }
+    let alive = true;
+    let timer = null;
+    const path = repoRef.current?.path;
+    const remote = currentBranchInfo?.upstreamRemote;
+    const tick = async () => {
+      let active = false;
+      if (document.visibilityState === 'visible') {
+        const res = await api.gitlab.pipelines(path, { remote });
+        if (!alive) return;
+        if (res.ok) {
+          active = res.data.pipelines.some((p) => ACTIVE_STATUSES.has(p.status));
+          setPipelineMap({ bySha: res.data.bySha, pipelines: res.data.pipelines, error: null });
+        } else {
+          setPipelineMap((m) => ({ bySha: m?.bySha ?? {}, pipelines: m?.pipelines ?? [], error: res.error }));
+        }
+      }
+      // Пока что-то выполняется — обновляем чаще
+      if (alive) timer = setTimeout(tick, active ? 10000 : 60000);
+    };
+    // Сразу после push пайплайн появляется не мгновенно — небольшая задержка
+    timer = setTimeout(tick, 400);
+    return () => {
+      alive = false;
+      clearTimeout(timer);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pipelineKey]);
+
+  const onForgeChanged = useCallback((next) => {
+    setRepo((r) => (r ? { ...r, forge: next } : r));
+  }, []);
+
+  const openPipelines = (pipelineId = null) => {
+    setDiffTarget(null);
+    setCiView({ file: null, mode: 'pipelines', pipelineId, n: Date.now() });
+  };
+
+  const branchPipeline = useMemo(
+    () => pipelineMap?.pipelines.find((p) => p.ref === repo?.currentBranch) ?? null,
+    [pipelineMap, repo?.currentBranch],
+  );
+
   const allCommits = useMemo(() => {
     if (!repo) return [];
     if (repo.wipFiles.length === 0) return repo.commits;
@@ -929,6 +995,8 @@ export default function App() {
     };
     return [wip, ...repo.commits];
   }, [repo]);
+
+  const commitsBySha = useMemo(() => new Map((repo?.commits ?? []).map((c) => [c.hash, c])), [repo?.commits]);
 
   const selectedStash =
     repo && selectedHash?.startsWith('stash:') ? repo.stashes.find((st) => `stash:${st.hash}` === selectedHash) ?? null : null;
@@ -1192,11 +1260,13 @@ export default function App() {
         if (!res.ok || repoRef.current?.path !== res.data.path) return;
         setRepo((r) => {
           if (!r || r.path !== res.data.path) return r;
+          const ci = res.data.ci ?? r.ci;
           const same =
             r.operation === res.data.operation &&
-            JSON.stringify(r.wipFiles) === JSON.stringify(res.data.wipFiles);
+            JSON.stringify(r.wipFiles) === JSON.stringify(res.data.wipFiles) &&
+            JSON.stringify(r.ci) === JSON.stringify(ci);
           if (same) return r; // ничего не поменялось — не перерисовываем
-          return { ...r, wipFiles: res.data.wipFiles, operation: res.data.operation };
+          return { ...r, wipFiles: res.data.wipFiles, operation: res.data.operation, ci };
         });
       };
       refreshTimer.current = setTimeout(tick, 30);
@@ -1280,6 +1350,7 @@ export default function App() {
             onStash={stash}
             onPop={stashPop}
             onAccessClick={() => setDialog({ type: 'access' })}
+            onSettings={() => setDialog({ type: 'integrations' })}
             onSearch={() => (searchOpen ? closeSearch() : setSearchOpen(true))}
             searchOpen={searchOpen}
           />
@@ -1317,6 +1388,16 @@ export default function App() {
                 }}
                 onCheckout={checkout}
                 onStashMenu={(st, x, y) => setMenu({ x, y, items: buildStashMenu(st) })}
+                onOpenCi={(file) => {
+                  setDiffTarget(null);
+                  setCiView({ file, mode: 'scheme', n: Date.now() });
+                }}
+                activeCiFile={ciView && ciView.mode !== 'pipelines' ? ciView.file : null}
+                forge={forge}
+                branchPipeline={branchPipeline}
+                pipelinesError={pipelineMap?.error ?? null}
+                pipelinesActive={ciView?.mode === 'pipelines'}
+                onOpenPipelines={() => openPipelines(branchPipeline?.id ?? null)}
               />
               <ResizeHandle
                 width={sidebarW}
@@ -1389,6 +1470,28 @@ export default function App() {
                   onNext={stepFile(1)}
                   onClose={closeDiff}
                 />
+              ) : ciView ? (
+                <CiView
+                  repoPath={repo.path}
+                  initialFile={ciView.file}
+                  initialMode={ciView.mode}
+                  initialPipelineId={ciView.pipelineId}
+                  version={ciVersion}
+                  forge={forge}
+                  remoteName={currentBranchInfo?.upstreamRemote}
+                  currentBranch={repo.currentBranch}
+                  commitsBySha={commitsBySha}
+                  onClose={() => setCiView(null)}
+                  onLocate={(sha) => {
+                    if (!allCommits.some((c) => c.hash === sha)) {
+                      notify({ type: 'info', title: 'Коммита нет в загруженной истории', hint: 'Сделайте fetch или pull' });
+                      return;
+                    }
+                    locateCommit(sha);
+                  }}
+                  onForgeChanged={onForgeChanged}
+                  notify={notify}
+                />
               ) : (
                 <CommitGraph
                   commits={allCommits}
@@ -1400,6 +1503,8 @@ export default function App() {
                   wipCount={repo.wipFiles.length}
                   truncated={repo.truncated}
                   matchSet={searchOpen && filterActive ? matchSet : null}
+                  pipelines={pipelineMap?.bySha ?? null}
+                  onPipelineClick={(p) => openPipelines(p.id)}
                 />
               )}
             </main>
@@ -1474,6 +1579,9 @@ export default function App() {
           onClose={() => setDialog(null)}
           onCheckAccess={repo?.remotes.length ? () => setDialog({ type: 'access' }) : null}
         />
+      )}
+      {dialog?.type === 'integrations' && (
+        <IntegrationsDialog repo={repo} onForgeChanged={onForgeChanged} onClose={() => setDialog(null)} />
       )}
       {dialog?.type === 'access' && (
         <AccessDialog access={access} onClose={() => setDialog(null)} onRecheck={checkAccess} />

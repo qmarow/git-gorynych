@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { StatusIcon, statusInfo } from './PipelineStatus.jsx';
 import {
   Archive,
   ArrowDown,
@@ -11,12 +12,40 @@ import {
   Folder,
   Laptop,
   Tag,
+  Workflow,
 } from 'lucide-react';
 
-export default function Sidebar({ repo, selectedHash, onSelect, onCheckout, onStashMenu }) {
+const CI_COLORS = {
+  gitlab: '#fc6d26',
+  github: '#8b9cff',
+  jenkins: '#d24939',
+  bitbucket: '#2684ff',
+  circleci: '#3cf0a0',
+  azure: '#0a84ff',
+  travis: '#cd3f41',
+  drone: '#7bc8ff',
+  woodpecker: '#4caf50',
+};
+
+export default function Sidebar({
+  repo,
+  selectedHash,
+  onSelect,
+  onCheckout,
+  onStashMenu,
+  onOpenCi,
+  activeCiFile,
+  forge,
+  branchPipeline,
+  pipelinesError,
+  pipelinesActive,
+  onOpenPipelines,
+}) {
   const [filter, setFilter] = useState('');
   const match = (name) => name.toLowerCase().includes(filter.toLowerCase());
   const remoteCount = repo.remotes.reduce((n, r) => n + r.branches.length, 0);
+  const ciSystems = repo.ci ?? [];
+  const ciCount = ciSystems.reduce((n, s) => n + s.files.length, 0);
 
   return (
     <aside className="glass flex w-full min-w-0 flex-col border-r border-gk-border bg-gk-panel">
@@ -110,6 +139,55 @@ export default function Sidebar({ repo, selectedHash, onSelect, onCheckout, onSt
             </Item>
           ))}
           {repo.tags.length === 0 && <Empty>Нет тегов</Empty>}
+        </Section>
+
+        <Section title="CI/CD" icon={Workflow} count={ciCount + (forge?.kind === 'gitlab' ? 1 : 0)}>
+          {ciSystems.map((sys) =>
+            sys.files.map((file) => (
+              <Item
+                key={file}
+                title={`${sys.title}: ${file}\nКлик — посмотреть настройки`}
+                selected={activeCiFile === file}
+                onClick={() => onOpenCi?.(file)}
+              >
+                <span className="h-2 w-2 shrink-0 rounded-full" style={{ backgroundColor: CI_COLORS[sys.id] ?? '#8b93a7' }} />
+                <span className="truncate">{file.split('/').pop()}</span>
+                <span className="ml-auto shrink-0 truncate text-[11px] text-gk-dim">{sys.title}</span>
+              </Item>
+            )),
+          )}
+          {forge?.kind === 'gitlab' && (
+            <Item
+              title={
+                !forge.token?.configured
+                  ? 'Подключите GitLab, чтобы видеть статусы пайплайнов'
+                  : pipelinesError
+                    ? pipelinesError.message
+                    : branchPipeline
+                      ? `Последний пайплайн ветки ${repo.currentBranch}: #${branchPipeline.id} — ${statusInfo(branchPipeline.status).label}`
+                      : 'Пайплайны GitLab'
+              }
+              selected={pipelinesActive}
+              onClick={onOpenPipelines}
+            >
+              {branchPipeline && !pipelinesError ? (
+                <StatusIcon status={branchPipeline.status} size={13} />
+              ) : (
+                <span className="flex h-[13px] w-[13px] shrink-0 items-center justify-center">
+                  <span className={`h-2 w-2 rounded-full ${pipelinesError ? 'bg-gk-red' : 'bg-[#fc6d26]'}`} />
+                </span>
+              )}
+              <span className="truncate">Пайплайны</span>
+              <span className={`ml-auto shrink-0 truncate text-[11px] ${forge.token?.configured ? 'text-gk-dim' : 'text-gk-blue'}`}>
+                {!forge.token?.configured ? 'подключить' : pipelinesError ? 'ошибка' : 'GitLab'}
+              </span>
+            </Item>
+          )}
+          {ciCount === 0 && forge?.kind !== 'gitlab' && (
+            <div title="Ищем .gitlab-ci.yml, .github/workflows, Jenkinsfile, bitbucket-pipelines.yml и другие">
+              <Empty>Не найдено</Empty>
+            </div>
+          )}
         </Section>
       </div>
     </aside>

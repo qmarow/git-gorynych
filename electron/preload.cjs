@@ -21,6 +21,20 @@ contextBridge.exposeInMainWorld('api', {
     get: () => ipcRenderer.invoke('tabs:get'),
     save: (tabs, active) => ipcRenderer.invoke('tabs:save', tabs, active),
   },
+  openExternal: (url) => ipcRenderer.invoke('shell:open-external', url),
+  // GitLab: токен не покидает main-процесс; opts = { remote, ref }
+  gitlab: {
+    status: (dir, opts) => ipcRenderer.invoke('gitlab:status', dir, opts),
+    setToken: (dir, token, opts) => ipcRenderer.invoke('gitlab:set-token', dir, token, opts),
+    clearToken: (dir, opts) => ipcRenderer.invoke('gitlab:clear-token', dir, opts),
+    pipelines: (dir, opts) => ipcRenderer.invoke('gitlab:pipelines', dir, opts),
+    pipeline: (dir, id, opts) => ipcRenderer.invoke('gitlab:pipeline', dir, id, opts),
+    jobLog: (dir, id, opts) => ipcRenderer.invoke('gitlab:job-log', dir, id, opts),
+    action: (dir, action, opts) => ipcRenderer.invoke('gitlab:action', dir, action, opts),
+    variables: (dir, opts) => ipcRenderer.invoke('gitlab:variables', dir, opts),
+    variableValue: (dir, variable, opts) => ipcRenderer.invoke('gitlab:variable-value', dir, variable, opts),
+    runners: (dir, opts) => ipcRenderer.invoke('gitlab:runners', dir, opts),
+  },
   // Методы возвращают { ok: true, data } или { ok: false, error: { code, message, hint, details } }
   repo: {
     openDialog: (title) => ipcRenderer.invoke('repo:open-dialog', title),
@@ -32,6 +46,8 @@ contextBridge.exposeInMainWorld('api', {
     // Только статус рабочих файлов — быстро, без перечитывания истории
     status: (dir) => ipcRenderer.invoke('repo:status', dir),
     openPath: (dir, rel) => ipcRenderer.invoke('repo:open-path', dir, rel),
+    // Настройки CI/CD из файлов репозитория: { systems, current }
+    ci: (dir, file) => ipcRenderer.invoke('repo:ci', dir, file),
     stashDetails: (dir, hash) => ipcRenderer.invoke('repo:stash-details', dir, hash),
     cloneProbe: (url) => ipcRenderer.invoke('repo:clone-probe', url),
     // options: { id, url, parent, name, branch, depth }

@@ -10,6 +10,7 @@ import {
   layoutGraph,
   rowY,
 } from '../lib/graphLayout.js';
+import { StatusIcon, statusInfo } from './PipelineStatus.jsx';
 import { fullDate, initials, relativeTime, shortDate } from '../lib/format.js';
 import { ResizeHandle, useStoredWidth } from './Resizer.jsx';
 import { avatarUrl, isFailed, markFailed } from '../lib/avatars.js';
@@ -30,6 +31,8 @@ export default function CommitGraph({
   wipCount,
   truncated,
   matchSet = null, // Set хэшей, подходящих под поиск; остальные приглушаются
+  pipelines = null, // { [sha]: { id, status } } — статусы пайплайнов GitLab
+  onPipelineClick,
 }) {
   const { nodes, edges, laneCount } = useMemo(() => layoutGraph(commits), [commits]);
   const [view, setView] = useState({ top: 0, height: 800, width: 1000 });
@@ -187,6 +190,8 @@ export default function CommitGraph({
           <Row
             key={node.hash}
             node={node}
+            pipeline={pipelines?.[node.hash] ?? null}
+            onPipelineClick={onPipelineClick}
             selected={node.hash === selectedHash}
             hovered={node.hash === hoverHash}
             dim={Boolean(matchSet) && !matchSet.has(node.hash)}
@@ -283,7 +288,22 @@ function HeaderCell({ width, children }) {
   );
 }
 
-function Row({ node, selected, hovered, dim, intro, delay, cols, wipCount, onHover, onSelect, onDoubleClick, onContextMenu }) {
+function Row({
+  node,
+  selected,
+  hovered,
+  dim,
+  intro,
+  delay,
+  cols,
+  wipCount,
+  pipeline,
+  onPipelineClick,
+  onHover,
+  onSelect,
+  onDoubleClick,
+  onContextMenu,
+}) {
   const color = laneColor(node.lane);
   const bandAlpha = selected ? '42' : hovered ? '2a' : '14';
 
@@ -332,6 +352,17 @@ function Row({ node, selected, hovered, dim, intro, delay, cols, wipCount, onHov
             >
               {node.message}
             </span>
+            {pipeline && (
+              <button
+                onMouseDown={(e) => e.stopPropagation()}
+                onDoubleClick={(e) => e.stopPropagation()}
+                onClick={() => onPipelineClick?.(pipeline)}
+                title={`Пайплайн #${pipeline.id}: ${statusInfo(pipeline.status).label}\nКлик — подробности`}
+                className="ml-2 flex h-5 w-5 shrink-0 items-center justify-center rounded-full transition-transform hover:scale-125"
+              >
+                <StatusIcon status={pipeline.status} size={15} title={`Пайплайн #${pipeline.id}: ${statusInfo(pipeline.status).label}`} />
+              </button>
+            )}
           </>
         )}
       </div>

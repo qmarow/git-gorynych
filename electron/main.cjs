@@ -5,6 +5,8 @@ const git = require('./git.cjs');
 const actions = require('./actions.cjs');
 const gitInit = require('./init.cjs');
 const cloner = require('./clone.cjs');
+const ci = require('./ci.cjs');
+const gitlab = require('./gitlab.cjs');
 const { watchRepository } = require('./watch.cjs');
 const { serializeError } = require('./errors.cjs');
 
@@ -141,6 +143,9 @@ ipcMain.handle(
   safe(async (dir) => {
     const data = await git.loadRepository(dir);
     data.history = actions.historySummary(data.path);
+    data.ci = ci.detectCi(data.path);
+    const current = data.localBranches.find((b) => b.name === data.currentBranch);
+    data.forge = await gitlab.detectRemote(data.path, current?.upstreamRemote).catch(() => null);
     writeSettings({ lastRepo: data.path });
     return data;
   }),
@@ -160,8 +165,45 @@ ipcMain.handle(
     return { path: full };
   }),
 );
-ipcMain.handle('repo:status', safe((dir) => git.quickStatus(dir)));
+ipcMain.handle(
+  'repo:status',
+  safe(async (dir) => {
+    const status = await git.quickStatus(dir);
+    status.ci = ci.detectCi(status.path); // мог появиться или исчезнуть файл CI
+    return status;
+  }),
+);
+// CI/CD: разбор файлов конфигурации из репозитория (только чтение)
+ipcMain.handle(
+  'repo:ci',
+  safe(async (dir, file) => ci.loadCi(await git.resolveRepoRoot(dir), typeof file === 'string' ? file : null)),
+);
 ipcMain.handle('repo:stash-details', safe((dir, hash) => git.getStashDetails(dir, hash)));
+
+// GitLab API: токен хранится и используется только здесь, в main-процессе
+const gl = (fn) => safe(async (dir, ...args) => fn(await git.resolveRepoRoot(dir), ...args));
+const remoteOpt = (opts) => ({ preferredRemote: typeof opts?.remote === 'string' ? opts.remote : undefined });
+ipcMain.handle('gitlab:status', gl((root, opts) => gitlab.detectRemote(root, remoteOpt(opts).preferredRemote)));
+ipcMain.handle('gitlab:set-token', gl((root, token, opts) => gitlab.setToken(root, token, remoteOpt(opts).preferredRemote)));
+ipcMain.handle('gitlab:clear-token', gl((root, opts) => gitlab.clearToken(root, remoteOpt(opts).preferredRemote)));
+ipcMain.handle('gitlab:pipelines', gl((root, opts) => gitlab.listPipelines(root, { ref: opts?.ref, ...remoteOpt(opts) })));
+ipcMain.handle('gitlab:pipeline', gl((root, id, opts) => gitlab.pipelineDetail(root, id, remoteOpt(opts))));
+ipcMain.handle('gitlab:job-log', gl((root, id, opts) => gitlab.jobLog(root, id, remoteOpt(opts))));
+ipcMain.handle('gitlab:action', gl((root, action, opts) => gitlab.runPipelineAction(root, action, remoteOpt(opts))));
+ipcMain.handle('gitlab:variables', gl((root, opts) => gitlab.listVariables(root, remoteOpt(opts))));
+ipcMain.handle('gitlab:variable-value', gl((root, v, opts) => gitlab.variableValue(root, v, remoteOpt(opts))));
+ipcMain.handle('gitlab:runners', gl((root, opts) => gitlab.listRunners(root, remoteOpt(opts))));
+// Открыть ссылку (пайплайн/задание в GitLab) в браузере — только http(s)
+ipcMain.handle('shell:open-external', async (_event, url) => {
+  try {
+    const u = new URL(url);
+    if (u.protocol !== 'https:' && u.protocol !== 'http:') return false;
+    await shell.openExternal(u.toString());
+    return true;
+  } catch {
+    return false;
+  }
+});
 
 // Клонирование: прогресс приходит событиями clone:progress { id, phase, percent, speed, size }
 ipcMain.handle('repo:clone-probe', safe((url) => cloner.probeClone(url)));

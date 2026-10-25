@@ -24,6 +24,7 @@
   --animate-pop-in: pop-in 0.28s cubic-bezier(0.16, 1, 0.3, 1) both;
   --animate-slide-up: slide-up 0.42s cubic-bezier(0.16, 1, 0.3, 1) both;
   --animate-slide-in-left: slide-in-left 0.45s cubic-bezier(0.16, 1, 0.3, 1) both;
+  --animate-slide-in-right: slide-in-right 0.42s cubic-bezier(0.16, 1, 0.3, 1) both;
   --animate-row-in: row-in 0.55s cubic-bezier(0.16, 1, 0.3, 1) both;
   --animate-shimmer: shimmer 1.4s linear infinite;
 }
@@ -39,6 +40,9 @@
 }
 @keyframes slide-in-left {
   from { opacity: 0; transform: translateX(-14px); }
+}
+@keyframes slide-in-right {
+  from { opacity: 0; transform: translateX(16px); }
 }
 @keyframes row-in {
   from { opacity: 0; transform: translateX(-6px); }
