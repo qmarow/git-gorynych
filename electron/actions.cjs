@@ -12,6 +12,8 @@ const {
 } = require('./git.cjs');
 const { GitError } = require('./errors.cjs');
 
+const conflicts = require('./conflicts.cjs');
+
 const NETWORK_TIMEOUT = 5 * 60 * 1000; // запас на окно входа Git Credential Manager
 
 /* =================== Сетевое окружение =================== */
@@ -862,6 +864,11 @@ const ACTIONS = {
     return res;
   },
   revertToPreview: (cwd, p) => revertToPreview(cwd, p),
+  // Конфликты: не записываются в Undo (git сам держит исходные версии в индексе до коммита)
+  getConflict: (cwd, p) => conflicts.getConflict(cwd, p.path),
+  saveResolution: (cwd, p) => conflicts.saveResolution(cwd, p),
+  resolveWhole: (cwd, p) => conflicts.resolveWhole(cwd, p),
+  markResolved: (cwd, p) => conflicts.markResolved(cwd, p),
   async revertTo(cwd, p) {
     const res = await revertTo(cwd, p);
     record(cwd, { type: 'headMove', label: `Возврат к ${p.hash.slice(0, 7)}`, from: res.from, to: res.to });

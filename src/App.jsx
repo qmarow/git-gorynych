@@ -30,6 +30,7 @@ import CommitGraph from './components/CommitGraph.jsx';
 import CommitDetails from './components/CommitDetails.jsx';
 import Toasts from './components/Toasts.jsx';
 import DiffView from './components/DiffView.jsx';
+import ConflictView from './components/ConflictView.jsx';
 import StatusBar from './components/StatusBar.jsx';
 import InitRepoDialog, { plural } from './components/InitRepoDialog.jsx';
 import CloneDialog from './components/CloneDialog.jsx';
@@ -504,6 +505,7 @@ export default function App() {
       if (text) notify({ type: 'success', title: text });
       return res;
     }
+    if (res.error.code === 'CONFLICT') autoOpenConflict.current = true;
     if (onError?.(res.error)) return res;
     if (ACCESS_CODES.has(res.error.code)) {
       setDialog({ type: 'error', action: label ?? name, error: res.error });
@@ -835,6 +837,68 @@ export default function App() {
   const openMenu = (node, x, y) => setMenu({ x, y, items: node.wip ? buildWipMenu() : buildCommitMenu(node) });
   const closeMenu = useCallback(() => setMenu(null), []);
   const closeDiff = useCallback(() => setDiffTarget(null), []);
+
+  /* ---------- Конфликты ---------- */
+
+  const [conflictPath, setConflictPath] = useState(null);
+  const autoOpenConflict = useRef(false);
+  const resolvingConflict = useRef(false); // пока сохраняем файл — не закрываем редактор между файлами
+  const conflictPaths = useMemo(
+    () => (repo ? [...new Set(repo.wipFiles.filter((f) => f.status === 'U').map((f) => f.path))] : []),
+    [repo],
+  );
+
+  const openConflict = (path) => {
+    setDiffTarget(null);
+    setConflictPath(path);
+  };
+
+  // После merge/pull/rebase/cherry-pick с конфликтом — сразу открываем первый файл
+  useEffect(() => {
+    if (autoOpenConflict.current && conflictPaths.length) {
+      autoOpenConflict.current = false;
+      setDiffTarget(null);
+      setConflictPath(conflictPaths[0]);
+      notify({
+        type: 'info',
+        title: `Конфликтов: ${conflictPaths.length} ${plural(conflictPaths.length, 'файл', 'файла', 'файлов')}`,
+        hint: 'Выберите для каждого блока нужную версию и сохраните — затем нажмите «Продолжить».',
+      });
+    }
+    // Файл больше не в конфликте (решили снаружи) — закрываем редактор
+    if (conflictPath && !conflictPaths.includes(conflictPath) && !resolvingConflict.current) setConflictPath(null);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [conflictPaths]);
+
+  const runConflictAction = async (...args) => {
+    resolvingConflict.current = true;
+    const res = await run(...args);
+    if (!res.ok) resolvingConflict.current = false;
+    return res;
+  };
+
+  const onConflictResolved = async (path) => {
+    const res = await api.repo.status(repoRef.current.path);
+    resolvingConflict.current = false;
+    const rest = res.ok ? [...new Set(res.data.wipFiles.filter((f) => f.status === 'U').map((f) => f.path))] : [];
+    if (rest.length) {
+      // Следующий файл по порядку после текущего
+      const idx = conflictPaths.indexOf(path);
+      const next = conflictPaths.slice(idx + 1).find((p) => rest.includes(p)) ?? rest[0];
+      notify({ type: 'success', title: `${path.split('/').pop()} — решено`, hint: `Осталось файлов: ${rest.length}` });
+      setConflictPath(next);
+      return;
+    }
+    setConflictPath(null);
+    const op = repoRef.current?.operation;
+    notify({
+      type: 'success',
+      title: 'Все конфликты решены',
+      hint: op
+        ? `Нажмите «Продолжить» на жёлтой панели, чтобы завершить ${OPERATION_LABELS[op] ?? op}.`
+        : 'Изменения готовы — можно делать коммит.',
+    });
+  };
 
   /* ---------- Коммиты и выбор ---------- */
 
@@ -1202,10 +1266,11 @@ export default function App() {
             searchOpen={searchOpen}
           />
 
-          {repo.operation && (
+          {(repo.operation || conflictPaths.length > 0) && (
             <OperationBanner
               operation={repo.operation}
-              conflicts={repo.wipFiles.filter((f) => f.status === 'U').length}
+              conflicts={conflictPaths.length}
+              onResolve={() => openConflict(conflictPaths[0])}
               busy={Boolean(busyAction)}
               onContinue={() =>
                 run('continueOperation', {}, {
@@ -1250,7 +1315,7 @@ export default function App() {
               {busyAction && PROGRESS_TEXT[busyAction] && (
                 <LoadingOverlay title={busyText ?? PROGRESS_TEXT[busyAction]} label={repo.name} />
               )}
-              {searchOpen && !diffTarget && (
+              {searchOpen && !diffTarget && !conflictPath && (
                 <SearchBar
                   commits={repo.commits}
                   filter={filter}
@@ -1264,7 +1329,28 @@ export default function App() {
                   truncated={repo.truncated}
                 />
               )}
-              {diffTarget ? (
+              {conflictPath ? (
+                <ConflictView
+                  key={conflictPath}
+                  repoPath={repo.path}
+                  path={conflictPath}
+                  fileIndex={Math.max(0, conflictPaths.indexOf(conflictPath))}
+                  fileCount={conflictPaths.length}
+                  onPrevFile={
+                    conflictPaths.indexOf(conflictPath) > 0
+                      ? () => setConflictPath(conflictPaths[conflictPaths.indexOf(conflictPath) - 1])
+                      : null
+                  }
+                  onNextFile={
+                    conflictPaths.indexOf(conflictPath) < conflictPaths.length - 1
+                      ? () => setConflictPath(conflictPaths[conflictPaths.indexOf(conflictPath) + 1])
+                      : null
+                  }
+                  onClose={() => setConflictPath(null)}
+                  onResolved={onConflictResolved}
+                  runAction={runConflictAction}
+                />
+              ) : diffTarget ? (
                 <DiffView
                   key={`${diffTarget.kind}:${diffTarget.file.path}`}
                   target={diffTarget}
@@ -1324,6 +1410,8 @@ export default function App() {
                 onCommit={commit}
                 onRevertTo={openRevertTo}
                 onStashAction={stashAction}
+                onOpenConflict={openConflict}
+                activeConflict={conflictPath}
               />
             </div>
           </div>
@@ -1467,22 +1555,37 @@ export default function App() {
   );
 }
 
-function OperationBanner({ operation, conflicts, busy, onContinue, onAbort }) {
+function OperationBanner({ operation, conflicts, busy, onContinue, onAbort, onResolve }) {
   return (
     <div className="glass flex shrink-0 animate-slide-up items-center gap-3 border-b border-gk-yellow/30 bg-gk-yellow/10 px-3 py-2 text-xs">
       <AlertTriangle size={14} className="shrink-0 text-gk-yellow" />
       <span className="flex-1">
-        Идёт <b>{OPERATION_LABELS[operation]}</b>
-        {conflicts > 0
-          ? ` — конфликтов: ${conflicts}. Исправьте файлы, застейджите их и нажмите «Продолжить».`
-          : ' — конфликтов нет, можно продолжить.'}
+        {operation ? (
+          <>
+            Идёт <b>{OPERATION_LABELS[operation]}</b>
+            {conflicts > 0
+              ? ` — осталось решить конфликтов: ${conflicts}. Потом нажмите «Продолжить».`
+              : ' — конфликты решены, можно продолжить.'}
+          </>
+        ) : (
+          <>Есть конфликты после применения stash: {conflicts}. Решите их — после этого можно коммитить.</>
+        )}
       </span>
-      <Button onClick={onAbort} disabled={busy} className="py-1 text-xs">
-        Прервать
-      </Button>
-      <Button variant="primary" onClick={onContinue} disabled={busy || conflicts > 0} className="py-1 text-xs">
-        Продолжить
-      </Button>
+      {conflicts > 0 && (
+        <Button variant="danger" onClick={onResolve} disabled={busy} className="py-1 text-xs">
+          Решить конфликты
+        </Button>
+      )}
+      {operation && (
+        <>
+          <Button onClick={onAbort} disabled={busy} className="py-1 text-xs" title="Вернуть всё как было до операции">
+            Прервать
+          </Button>
+          <Button variant="primary" onClick={onContinue} disabled={busy || conflicts > 0} className="py-1 text-xs">
+            Продолжить
+          </Button>
+        </>
+      )}
     </div>
   );
 }

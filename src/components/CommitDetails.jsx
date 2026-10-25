@@ -29,6 +29,8 @@ export default function CommitDetails({
   onCommit,
   onRevertTo,
   onStashAction,
+  onOpenConflict,
+  activeConflict,
 }) {
   return (
     <aside className="glass flex w-full min-w-0 flex-col border-l border-gk-border bg-gk-panel">
@@ -54,6 +56,8 @@ export default function CommitDetails({
           onStage={onStage}
           onUnstage={onUnstage}
           onCommit={onCommit}
+          onOpenConflict={onOpenConflict}
+          activeConflict={activeConflict}
         />
       ) : (
         <CommitPanel
@@ -283,11 +287,13 @@ function FilesSkeleton() {
 
 /* ---------- Строка WIP: настоящий стейджинг и коммит ---------- */
 
-function WipPanel({ repo, busy, activeFile, onOpenFile, onStage, onUnstage, onCommit }) {
+function WipPanel({ repo, busy, activeFile, onOpenFile, onStage, onUnstage, onCommit, onOpenConflict, activeConflict }) {
   const [summary, setSummary] = useState('');
   const [description, setDescription] = useState('');
 
-  const unstagedFiles = repo.wipFiles.filter((f) => !f.staged);
+  // Конфликтные файлы — отдельной группой сверху, их нельзя просто застейджить
+  const conflictFiles = repo.wipFiles.filter((f) => f.status === 'U');
+  const unstagedFiles = repo.wipFiles.filter((f) => !f.staged && f.status !== 'U');
   const stagedFiles = repo.wipFiles.filter((f) => f.staged);
   const canCommit = !busy && stagedFiles.length > 0 && summary.trim().length > 0;
 
@@ -315,6 +321,33 @@ function WipPanel({ repo, busy, activeFile, onOpenFile, onStage, onUnstage, onCo
       </div>
 
       <div className="flex min-h-0 flex-1 flex-col">
+        {conflictFiles.length > 0 && (
+          <div className="shrink-0 border-b border-gk-red/30 bg-gk-red/[0.06]">
+            <div className="flex h-9 items-center justify-between px-3">
+              <span className="text-xs font-medium text-gk-red">
+                Конфликты <span className="text-gk-red/70">({conflictFiles.length})</span>
+              </span>
+              <button
+                onClick={() => onOpenConflict?.(conflictFiles[0].path)}
+                className="rounded bg-gk-red/15 px-2 py-1 text-[11px] font-medium text-gk-red hover:bg-gk-red/25"
+              >
+                Решить конфликты
+              </button>
+            </div>
+            <div className="max-h-48 overflow-y-auto pb-1">
+              {conflictFiles.map((file) => (
+                <FileRow
+                  key={file.path}
+                  file={file}
+                  active={activeConflict === file.path}
+                  onClick={() => onOpenConflict?.(file.path)}
+                >
+                  <span className="ml-auto shrink-0 text-[11px] text-gk-red/80 group-hover:underline">решить →</span>
+                </FileRow>
+              ))}
+            </div>
+          </div>
+        )}
         <FileGroup
           title="Unstaged Files"
           kind="unstaged"

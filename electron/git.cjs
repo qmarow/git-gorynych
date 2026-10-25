@@ -678,5 +678,6 @@ module.exports = {
   unstage,
   commit,
   resolveRepoRoot,
+  safeRelative,
   HASH_RE,
 };

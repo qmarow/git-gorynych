@@ -31,6 +31,7 @@ contextBridge.exposeInMainWorld('api', {
     connect: (dir, options) => ipcRenderer.invoke('repo:connect', dir, options),
     // Только статус рабочих файлов — быстро, без перечитывания истории
     status: (dir) => ipcRenderer.invoke('repo:status', dir),
+    openPath: (dir, rel) => ipcRenderer.invoke('repo:open-path', dir, rel),
     stashDetails: (dir, hash) => ipcRenderer.invoke('repo:stash-details', dir, hash),
     cloneProbe: (url) => ipcRenderer.invoke('repo:clone-probe', url),
     // options: { id, url, parent, name, branch, depth }

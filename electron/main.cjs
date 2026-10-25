@@ -149,6 +149,17 @@ ipcMain.handle('repo:inspect', safe((dir) => gitInit.inspectFolder(dir)));
 ipcMain.handle('repo:init', safe((dir, options) => gitInit.initRepository(dir, options)));
 ipcMain.handle('repo:probe-remote', safe((dir, options) => gitInit.probeRemote(dir, options)));
 ipcMain.handle('repo:connect', safe((dir, options) => gitInit.connectRepository(dir, options)));
+// Открыть файл репозитория в программе по умолчанию (например, VS Code)
+ipcMain.handle(
+  'repo:open-path',
+  safe(async (dir, rel) => {
+    const root = await git.resolveRepoRoot(dir);
+    const full = git.safeRelative(root, rel);
+    const error = await shell.openPath(full);
+    if (error) throw new Error(error);
+    return { path: full };
+  }),
+);
 ipcMain.handle('repo:status', safe((dir) => git.quickStatus(dir)));
 ipcMain.handle('repo:stash-details', safe((dir, hash) => git.getStashDetails(dir, hash)));
 
