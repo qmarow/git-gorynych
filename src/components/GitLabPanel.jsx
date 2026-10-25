@@ -3,17 +3,14 @@ import {
   AlertTriangle,
   ArrowDownToLine,
   ArrowLeft,
+  CalendarClock,
   ChevronDown,
   ChevronRight,
   Copy,
   ExternalLink,
-  Eye,
-  EyeOff,
-  FileText,
   GitBranch,
   GitCommitHorizontal,
   Loader2,
-  Lock,
   Play,
   RefreshCw,
   RotateCcw,
@@ -26,6 +23,8 @@ import {
 import { relativeTime } from '../lib/format.js';
 import { parseLog } from '../lib/ansi.js';
 import { TokenSetup } from './TokenSetup.jsx';
+import GitLabVariables from './ci/GitLabVariables.jsx';
+import GitLabSchedules from './ci/GitLabSchedules.jsx';
 import {
   ACTIVE_STATUSES,
   FAILURE_REASONS,
@@ -41,6 +40,7 @@ const api = window.api;
 const SUBTABS = [
   { id: 'pipelines', label: 'Пайплайны', icon: Zap },
   { id: 'variables', label: 'Переменные', icon: Variable },
+  { id: 'schedules', label: 'Расписания', icon: CalendarClock },
   { id: 'runners', label: 'Раннеры', icon: Server },
 ];
 
@@ -79,8 +79,10 @@ export default function GitLabPanel({
   onLocate,
   onForgeChanged,
   notify,
+  branches = [],
 }) {
   const [tab, setTab] = useState('pipelines');
+  const [jumpPipeline, setJumpPipeline] = useState(null);
   const opts = useMemo(() => ({ remote: remoteName }), [remoteName]);
 
   if (!forge?.token?.configured) {
@@ -100,6 +102,8 @@ export default function GitLabPanel({
       </div>
     );
   }
+
+  const tokenCanWrite = !forge.token.scopes || forge.token.scopes.includes('api');
 
   return (
     <div className="flex min-w-0 flex-1 flex-col">
@@ -136,12 +140,25 @@ export default function GitLabPanel({
           opts={opts}
           currentBranch={currentBranch}
           commitsBySha={commitsBySha}
-          initialPipelineId={initialPipelineId}
+          initialPipelineId={jumpPipeline ?? initialPipelineId}
           onLocate={onLocate}
           notify={notify}
         />
       )}
-      {tab === 'variables' && <VariablesTab repoPath={repoPath} opts={opts} />}
+      {tab === 'variables' && <GitLabVariables repoPath={repoPath} opts={opts} canWrite={tokenCanWrite} notify={notify} />}
+      {tab === 'schedules' && (
+        <GitLabSchedules
+          repoPath={repoPath}
+          opts={opts}
+          branches={branches}
+          currentBranch={currentBranch}
+          notify={notify}
+          onOpenPipeline={(id) => {
+            setJumpPipeline(id);
+            setTab('pipelines');
+          }}
+        />
+      )}
       {tab === 'runners' && <RunnersTab repoPath={repoPath} opts={opts} />}
     </div>
   );
@@ -723,131 +740,6 @@ function Segs({ segs }) {
     ) : (
       <span key={i}>{s.text}</span>
     ),
-  );
-}
-
-/* =================== Переменные =================== */
-
-function VariablesTab({ repoPath, opts }) {
-  const [state, setState] = useState({ loading: true, data: null, error: null });
-  const [revealed, setRevealed] = useState({}); // key|scope -> { value, hidden } | 'loading'
-
-  useEffect(() => {
-    api.gitlab.variables(repoPath, opts).then((res) =>
-      setState(res.ok ? { loading: false, data: res.data, error: null } : { loading: false, data: null, error: res.error }),
-    );
-  }, [repoPath, opts]);
-
-  const reveal = async (v) => {
-    const id = `${v.key}|${v.scope}`;
-    if (revealed[id] && revealed[id] !== 'loading') {
-      setRevealed((r) => {
-        const next = { ...r };
-        delete next[id];
-        return next;
-      });
-      return;
-    }
-    setRevealed((r) => ({ ...r, [id]: 'loading' }));
-    const res = await api.gitlab.variableValue(repoPath, { key: v.key, scope: v.scope }, opts);
-    setRevealed((r) => ({ ...r, [id]: res.ok ? res.data : { error: res.error.message } }));
-  };
-
-  if (state.loading) return <Loading text="Загружаем переменные…" />;
-  if (state.error) {
-    return (
-      <ErrorNote
-        error={
-          state.error.code === 'FORBIDDEN'
-            ? { ...state.error, message: 'Переменные CI/CD видят только Maintainer и Owner проекта', hint: state.error.hint }
-            : state.error
-        }
-      />
-    );
-  }
-  const vars = state.data.variables;
-  return (
-    <div className="min-h-0 flex-1 overflow-y-auto p-4">
-      <p className="mb-3 text-[12px] leading-relaxed text-gk-dim">
-        Переменные из настроек проекта (Settings → CI/CD → Variables). Только просмотр. Значение запрашивается у GitLab, только когда
-        вы нажимаете на глаз, и нигде не сохраняется.
-      </p>
-      {vars.length === 0 ? (
-        <div className="rounded-lg border border-dashed border-gk-border p-6 text-center text-[13px] text-gk-dim">В проекте нет переменных</div>
-      ) : (
-        <div className="overflow-hidden rounded-lg border border-gk-border">
-          <div className="grid grid-cols-[minmax(160px,1.2fr)_minmax(200px,2fr)_110px_minmax(140px,1fr)] gap-3 border-b border-gk-border bg-white/[0.03] px-3 py-1.5 text-[10.5px] font-semibold uppercase tracking-wider text-gk-dim">
-            <span>Имя</span>
-            <span>Значение</span>
-            <span>Окружение</span>
-            <span>Флаги</span>
-          </div>
-          {vars.map((v, i) => {
-            const id = `${v.key}|${v.scope}`;
-            const r = revealed[id];
-            return (
-              <div
-                key={id}
-                className="grid animate-fade-in grid-cols-[minmax(160px,1.2fr)_minmax(200px,2fr)_110px_minmax(140px,1fr)] items-center gap-3 border-b border-gk-border/60 px-3 py-2 text-[12px] last:border-0"
-                style={{ animationDelay: `${Math.min(i, 20) * 15}ms` }}
-                title={v.description ?? undefined}
-              >
-                <span className="flex min-w-0 items-center gap-1.5">
-                  {v.type === 'file' ? <FileText size={12} className="shrink-0 text-gk-dim" /> : <Variable size={12} className="shrink-0 text-gk-dim" />}
-                  <span className="truncate font-mono text-gk-blue">{v.key}</span>
-                </span>
-                <span className="flex min-w-0 items-center gap-1.5">
-                  {v.hidden ? (
-                    <span className="italic text-gk-dim">скрыто в GitLab — значение не выдаётся</span>
-                  ) : r && r !== 'loading' ? (
-                    r.error ? (
-                      <span className="text-gk-red">{r.error}</span>
-                    ) : r.hidden ? (
-                      <span className="italic text-gk-dim">скрыто в GitLab</span>
-                    ) : (
-                      <span className="min-w-0 flex-1 break-all font-mono text-gk-text">{r.value === '' ? <i className="text-gk-dim">пусто</i> : r.value}</span>
-                    )
-                  ) : (
-                    <span className="flex-1 font-mono tracking-widest text-gk-dim">{v.empty ? '—' : '••••••••'}</span>
-                  )}
-                  {!v.hidden && !v.empty && (
-                    <button
-                      onClick={() => reveal(v)}
-                      title={r && r !== 'loading' ? 'Скрыть' : 'Показать значение'}
-                      className="shrink-0 rounded p-1 text-gk-dim hover:bg-gk-hover hover:text-gk-text"
-                    >
-                      {r === 'loading' ? <Loader2 size={12} className="animate-spin" /> : r ? <EyeOff size={12} /> : <Eye size={12} />}
-                    </button>
-                  )}
-                  {r && r !== 'loading' && !r.error && !r.hidden && (
-                    <button onClick={() => navigator.clipboard?.writeText(r.value)} title="Скопировать" className="shrink-0 rounded p-1 text-gk-dim hover:bg-gk-hover hover:text-gk-text">
-                      <Copy size={12} />
-                    </button>
-                  )}
-                </span>
-                <span className="truncate font-mono text-[11px] text-gk-muted">{v.scope}</span>
-                <span className="flex flex-wrap gap-1">
-                  {v.protected && <Flag icon={Lock} title="Только для защищённых веток и тегов">protected</Flag>}
-                  {v.masked && <Flag title="Скрывается в логах заданий">masked</Flag>}
-                  {v.hidden && <Flag title="Значение нельзя посмотреть после сохранения">hidden</Flag>}
-                  {v.raw && <Flag title="Без подстановки $ПЕРЕМЕННЫХ">raw</Flag>}
-                  {v.type === 'file' && <Flag title="Передаётся в задание как путь к файлу">file</Flag>}
-                </span>
-              </div>
-            );
-          })}
-        </div>
-      )}
-    </div>
-  );
-}
-
-function Flag({ children, title, icon: Icon }) {
-  return (
-    <span title={title} className="flex items-center gap-0.5 rounded bg-white/5 px-1.5 text-[10px] text-gk-muted">
-      {Icon && <Icon size={9} />}
-      {children}
-    </span>
   );
 }
 

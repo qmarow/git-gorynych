@@ -40,6 +40,12 @@ contextBridge.exposeInMainWorld('api', {
     variables: (dir, opts) => ipcRenderer.invoke('gitlab:variables', dir, opts),
     variableValue: (dir, variable, opts) => ipcRenderer.invoke('gitlab:variable-value', dir, variable, opts),
     runners: (dir, opts) => ipcRenderer.invoke('gitlab:runners', dir, opts),
+    lint: (dir, draft, opts) => ipcRenderer.invoke('gitlab:lint', dir, draft, opts),
+    saveVariable: (dir, data, opts) => ipcRenderer.invoke('gitlab:variable-save', dir, data, opts),
+    deleteVariable: (dir, v, opts) => ipcRenderer.invoke('gitlab:variable-delete', dir, v, opts),
+    schedules: (dir, opts) => ipcRenderer.invoke('gitlab:schedules', dir, opts),
+    saveSchedule: (dir, s, opts) => ipcRenderer.invoke('gitlab:schedule-save', dir, s, opts),
+    scheduleAction: (dir, a, opts) => ipcRenderer.invoke('gitlab:schedule-action', dir, a, opts),
   },
   // Методы возвращают { ok: true, data } или { ok: false, error: { code, message, hint, details } }
   repo: {
@@ -54,6 +60,12 @@ contextBridge.exposeInMainWorld('api', {
     openPath: (dir, rel) => ipcRenderer.invoke('repo:open-path', dir, rel),
     // Настройки CI/CD из файлов репозитория: { systems, current }
     ci: (dir, file) => ipcRenderer.invoke('repo:ci', dir, file),
+    // drafts: { 'путь': 'текст' } — разбор черновиков без сохранения
+    ciPreview: (dir, file, drafts) => ipcRenderer.invoke('repo:ci-preview', dir, file, drafts),
+    ciDiff: (dir, draft) => ipcRenderer.invoke('repo:ci-diff', dir, draft),
+    ciSave: (dir, draft) => ipcRenderer.invoke('repo:ci-save', dir, draft),
+    ciCreate: (dir, opts) => ipcRenderer.invoke('repo:ci-create', dir, opts),
+    ciEdit: (content, op) => ipcRenderer.invoke('repo:ci-edit', content, op),
     stashDetails: (dir, hash) => ipcRenderer.invoke('repo:stash-details', dir, hash),
     cloneProbe: (url) => ipcRenderer.invoke('repo:clone-probe', url),
     // options: { id, url, parent, name, branch, depth }

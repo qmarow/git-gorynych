@@ -1039,6 +1039,12 @@ export default function App() {
   const forge = repo?.forge ?? null;
   const gitlabReady = forge?.kind === 'gitlab' && Boolean(forge.token?.configured);
   const currentBranchInfo = repo?.localBranches.find((b) => b.name === repo.currentBranch) ?? null;
+  // Ветки для форм CI/CD (расписания GitLab): сначала ветки на сервере, затем локальные
+  const ciBranches = useMemo(() => {
+    if (!repo) return [];
+    const remote = repo.remotes?.find((r) => r.name === (currentBranchInfo?.upstreamRemote ?? 'origin')) ?? repo.remotes?.[0];
+    return [...new Set([...(remote?.branches ?? []).map((b) => b.name), ...repo.localBranches.map((b) => b.name)])];
+  }, [repo, currentBranchInfo?.upstreamRemote]);
   const pipelineKey = gitlabReady
     ? `${repo.path}|${forge.base}|${forge.token.savedAt}|${repo.headHash}|${currentBranchInfo?.ahead}|${currentBranchInfo?.upstream}`
     : null;
@@ -1643,6 +1649,7 @@ export default function App() {
                   remoteName={currentBranchInfo?.upstreamRemote}
                   currentBranch={repo.currentBranch}
                   commitsBySha={commitsBySha}
+                  branches={ciBranches}
                   onClose={() => setCiView(null)}
                   onLocate={(sha) => {
                     if (!allCommits.some((c) => c.hash === sha)) {

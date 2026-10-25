@@ -139,8 +139,10 @@ async function request(base, token, method, apiPath, { query, body, text = false
 
   if (!res.ok) {
     let message = '';
+    let fields = null;
     try {
       const data = await res.json();
+      if (data.message && typeof data.message === 'object') fields = data.message;
       message = data.message ? (typeof data.message === 'string' ? data.message : JSON.stringify(data.message)) : data.error ?? '';
     } catch {
       /* тело не JSON */
@@ -168,6 +170,9 @@ async function request(base, token, method, apiPath, { query, body, text = false
         details: message,
       });
     }
+    if (res.status === 400 || res.status === 422 || res.status === 409) {
+      throw new GitError(validationMessage(fields, message), { code: 'VALIDATION', hint: validationHint(fields, message), details: message });
+    }
     if (res.status === 429) throw new GitError('GitLab ограничил частоту запросов — попробуйте через минуту', { code: 'RATE_LIMIT' });
     throw new GitError(`GitLab вернул ошибку ${res.status}`, { code: 'GITLAB_ERROR', details: message });
   }
@@ -178,6 +183,34 @@ async function request(base, token, method, apiPath, { query, body, text = false
   }
   if (res.status === 204) return null;
   return res.json();
+}
+
+// Ошибки проверки от GitLab («key: has already been taken») — по-русски
+const PHRASES = [
+  [/has already been taken/i, 'уже существует'],
+  [/can't be blank|is missing/i, 'не может быть пустым'],
+  [/is invalid/i, 'недопустимое значение'],
+  [/is too long/i, 'слишком длинное'],
+  [/is too short/i, 'слишком короткое'],
+  [/cannot be masked|must be masked|unable to be masked/i, 'нельзя замаскировать'],
+];
+const FIELD_NAMES = { key: 'Имя', value: 'Значение', cron: 'Расписание (cron)', cron_timezone: 'Часовой пояс', ref: 'Ветка', description: 'Описание', environment_scope: 'Окружение' };
+const translate = (text) => PHRASES.reduce((t, [re, ru]) => t.replace(re, ru), String(text));
+
+function validationMessage(fields, message) {
+  if (fields) {
+    const parts = Object.entries(fields).map(([k, v]) => `${FIELD_NAMES[k] ?? k}: ${[].concat(v).map(translate).join(', ')}`);
+    if (parts.length) return parts.join('; ');
+  }
+  return message ? translate(message) : 'GitLab отклонил запрос';
+}
+
+function validationHint(fields, message) {
+  const all = `${JSON.stringify(fields ?? {})} ${message}`;
+  if (/mask/i.test(all)) return 'Маскированное значение: одна строка, не короче 8 символов, только буквы, цифры и символы @ : . ~ - _ + / =';
+  if (/cron/i.test(all)) return 'Формат cron: «минуты часы день месяц день_недели», например «0 3 * * *» — каждый день в 3:00';
+  if (/key/i.test(all)) return 'Имя переменной: латинские буквы, цифры и _';
+  return null;
 }
 
 async function fetchAll(ctx, apiPath, query = {}, maxPages = 3) {
@@ -487,7 +520,197 @@ async function listRunners(root, { preferredRemote } = {}) {
   };
 }
 
+/* =================== Проверка CI (CI Lint) =================== */
+
+async function lintCi(root, { content, ref }, { preferredRemote } = {}) {
+  if (typeof content !== 'string') throw new GitError('Нет содержимого', { code: 'BAD_ARGS' });
+  const ctx = await context(root, preferredRemote);
+  const res = await request(ctx.remote.base, ctx.token, 'POST', `/projects/${ctx.project.id}/ci/lint`, {
+    body: { content, dry_run: true, include_jobs: true, ...(ref ? { ref } : {}) },
+    notFound: 'Этот сервер GitLab не поддерживает проверку CI по API (нужен GitLab 13.6 или новее)',
+  });
+  return {
+    valid: Boolean(res.valid),
+    errors: res.errors ?? [],
+    warnings: res.warnings ?? [],
+    jobs: (res.jobs ?? []).map((j) => ({
+      name: j.name,
+      stage: j.stage,
+      when: j.when ?? 'on_success',
+      allowFailure: Boolean(j.allow_failure),
+      tags: j.tag_list ?? [],
+      environment: j.environment ?? null,
+    })),
+    includes: (res.includes ?? []).map((i) => ({ type: i.type, location: i.location, blob: i.blob ?? null })),
+    ref: ref ?? null,
+  };
+}
+
+/* =================== Переменные: изменение =================== */
+
+const VAR_KEY = /^[A-Za-z0-9_]+$/;
+const requireWrite = (ctx) => {
+  if (!canWrite(ctx)) {
+    throw new GitError('Токен только для чтения', {
+      code: 'FORBIDDEN',
+      hint: 'Для изменений нужен токен со scope «api» — создайте новый и сохраните его в настройках',
+    });
+  }
+};
+
+function variableBody(v) {
+  const body = {
+    key: v.key,
+    variable_type: v.type === 'file' ? 'file' : 'env_var',
+    protected: Boolean(v.protected),
+    masked: Boolean(v.masked || v.hidden),
+    raw: Boolean(v.raw),
+    environment_scope: v.scope?.trim() || '*',
+    description: v.description ?? '',
+  };
+  if (typeof v.value === 'string') body.value = v.value;
+  return body;
+}
+
+// GitLab отвечает на неподходящее для маскировки значение просто «value is invalid» — подсказываем, в чём дело
+async function saveVariable(root, args, opts) {
+  try {
+    return await saveVariableRaw(root, args, opts);
+  } catch (error) {
+    const v = args?.variable ?? {};
+    if (error.code === 'VALIDATION' && (v.masked || v.hidden) && /value/i.test(error.details ?? '') && !error.hint) {
+      error.hint = 'Маскированное значение: одна строка, не короче 8 символов, только буквы, цифры и символы @ : . ~ - _ + / =';
+    }
+    throw error;
+  }
+}
+
+async function saveVariableRaw(root, { original, variable }, { preferredRemote } = {}) {
+  const v = variable ?? {};
+  if (!VAR_KEY.test(v.key ?? '')) throw new GitError('Имя переменной: только латинские буквы, цифры и _', { code: 'INVALID_NAME' });
+  if (typeof v.value === 'string' && v.value.length > 10000) throw new GitError('Значение слишком длинное', { code: 'BAD_ARGS' });
+  const ctx = await context(root, preferredRemote);
+  requireWrite(ctx);
+  const base = `/projects/${ctx.project.id}/variables`;
+
+  if (!original) {
+    if (typeof v.value !== 'string') throw new GitError('Введите значение', { code: 'BAD_ARGS' });
+    const body = variableBody(v);
+    if (v.hidden) body.masked_and_hidden = true;
+    await request(ctx.remote.base, ctx.token, 'POST', base, { body });
+    return { key: v.key, scope: body.environment_scope, created: true };
+  }
+
+  const scopeQuery = (scope) => (scope && scope !== '*' ? { 'filter[environment_scope]': scope } : {});
+  // Значение не меняли — GitLab всё равно требует его в запросе: берём текущее
+  let value = v.value;
+  if (typeof value !== 'string') {
+    const cur = await request(ctx.remote.base, ctx.token, 'GET', `${base}/${original.key}`, { query: scopeQuery(original.scope) });
+    if (cur.hidden || cur.value == null) {
+      throw new GitError('Значение скрытой переменной нельзя прочитать — введите его заново', { code: 'BAD_ARGS' });
+    }
+    value = cur.value;
+  }
+  const body = variableBody({ ...v, value });
+  // Имя или окружение поменялись — GitLab не умеет переименовывать: создаём новую и удаляем старую
+  if (original.key !== v.key || (original.scope ?? '*') !== body.environment_scope) {
+    await request(ctx.remote.base, ctx.token, 'POST', base, { body });
+    await request(ctx.remote.base, ctx.token, 'DELETE', `${base}/${original.key}`, { query: scopeQuery(original.scope) });
+    return { key: v.key, scope: body.environment_scope, renamed: true };
+  }
+  await request(ctx.remote.base, ctx.token, 'PUT', `${base}/${original.key}`, { body, query: scopeQuery(original.scope) });
+  return { key: v.key, scope: body.environment_scope, updated: true };
+}
+
+async function deleteVariable(root, { key, scope }, { preferredRemote } = {}) {
+  if (!VAR_KEY.test(key ?? '')) throw new GitError('Некорректное имя переменной', { code: 'BAD_ARGS' });
+  const ctx = await context(root, preferredRemote);
+  requireWrite(ctx);
+  await request(ctx.remote.base, ctx.token, 'DELETE', `/projects/${ctx.project.id}/variables/${key}`, {
+    query: scope && scope !== '*' ? { 'filter[environment_scope]': scope } : {},
+    notFound: `Переменная ${key} уже удалена`,
+  });
+  return { key, scope: scope ?? '*', deleted: true };
+}
+
+/* =================== Расписания пайплайнов =================== */
+
+const scheduleSummary = (s) => ({
+  id: s.id,
+  description: s.description ?? '',
+  ref: String(s.ref ?? '').replace(/^refs\/heads\//, ''),
+  cron: s.cron,
+  timezone: s.cron_timezone ?? 'UTC',
+  nextRunAt: s.next_run_at ?? null,
+  active: Boolean(s.active),
+  owner: s.owner ? { name: s.owner.name, username: s.owner.username } : null,
+  lastPipeline: s.last_pipeline ? { id: s.last_pipeline.id, status: s.last_pipeline.status, webUrl: s.last_pipeline.web_url ?? null } : null,
+  webUrl: null,
+});
+
+async function listSchedules(root, { preferredRemote } = {}) {
+  const ctx = await context(root, preferredRemote);
+  const list = await fetchAll(ctx, `/projects/${ctx.project.id}/pipeline_schedules`, {}, 1);
+  // В списке нет последнего запуска — подгружаем детали (их обычно немного)
+  const detailed = await Promise.all(
+    list.slice(0, 30).map((s) =>
+      request(ctx.remote.base, ctx.token, 'GET', `/projects/${ctx.project.id}/pipeline_schedules/${s.id}`).catch(() => s),
+    ),
+  );
+  return {
+    project: ctx.project,
+    canWrite: canWrite(ctx),
+    me: ctx.meta.user?.username ?? null,
+    schedules: detailed.map((s) => ({ ...scheduleSummary(s), webUrl: `${ctx.project.webUrl}/-/pipeline_schedules` })),
+  };
+}
+
+const CRON_RE = /^(\S+\s+){4}\S+$/;
+
+async function saveSchedule(root, schedule, { preferredRemote } = {}) {
+  const s = schedule ?? {};
+  if (!String(s.description ?? '').trim()) throw new GitError('Введите описание расписания', { code: 'BAD_ARGS' });
+  if (!String(s.ref ?? '').trim()) throw new GitError('Выберите ветку', { code: 'BAD_ARGS' });
+  if (!CRON_RE.test(String(s.cron ?? '').trim())) {
+    throw new GitError('Неверный формат cron', { code: 'BAD_ARGS', hint: 'Пять полей через пробел: минуты часы день месяц день_недели, например «0 3 * * *»' });
+  }
+  const ctx = await context(root, preferredRemote);
+  requireWrite(ctx);
+  const body = {
+    description: String(s.description).trim(),
+    ref: String(s.ref).trim(),
+    cron: String(s.cron).trim(),
+    cron_timezone: s.timezone || 'UTC',
+    active: s.active !== false,
+  };
+  const base = `/projects/${ctx.project.id}/pipeline_schedules`;
+  const res = s.id
+    ? await request(ctx.remote.base, ctx.token, 'PUT', `${base}/${Number(s.id)}`, { body, notFound: 'Расписание не найдено — возможно, его удалили' })
+    : await request(ctx.remote.base, ctx.token, 'POST', base, { body });
+  return scheduleSummary(res);
+}
+
+async function scheduleAction(root, { id, type }, { preferredRemote } = {}) {
+  const n = Number(id);
+  if (!Number.isInteger(n) || n <= 0) throw new GitError('Некорректный номер расписания', { code: 'BAD_ARGS' });
+  const ctx = await context(root, preferredRemote);
+  requireWrite(ctx);
+  const base = `/projects/${ctx.project.id}/pipeline_schedules/${n}`;
+  const notFound = 'Расписание не найдено — возможно, его удалили';
+  if (type === 'delete') await request(ctx.remote.base, ctx.token, 'DELETE', base, { notFound });
+  else if (type === 'play') await request(ctx.remote.base, ctx.token, 'POST', `${base}/play`, { notFound });
+  else if (type === 'own') await request(ctx.remote.base, ctx.token, 'POST', `${base}/take_ownership`, { notFound });
+  else throw new GitError('Неизвестное действие', { code: 'BAD_ARGS' });
+  return { id: n, type };
+}
+
 module.exports = {
+  lintCi,
+  saveVariable,
+  deleteVariable,
+  listSchedules,
+  saveSchedule,
+  scheduleAction,
   parseRemoteUrl,
   detectRemote,
   setToken,

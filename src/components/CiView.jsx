@@ -13,6 +13,12 @@ import {
   History,
   Layers,
   Loader2,
+  Pencil,
+  Plus,
+  ShieldCheck,
+  Trash2,
+  ArrowLeft,
+  Check,
   RefreshCw,
   Rocket,
   Server,
@@ -22,7 +28,11 @@ import {
   Zap,
 } from 'lucide-react';
 import { relativeTime } from '../lib/format.js';
+import { highlight } from '../lib/syntax.jsx';
 import GitLabPanel from './GitLabPanel.jsx';
+import CiEditor from './ci/CiEditor.jsx';
+import JobForm from './ci/JobForm.jsx';
+import { ChoiceDialog, DraftBar, DraftDiff, LintPanel } from './ci/DraftTools.jsx';
 
 const api = window.api;
 
@@ -67,6 +77,7 @@ export default function CiView({
   remoteName,
   currentBranch,
   commitsBySha,
+  branches,
   onClose,
   onLocate,
   onForgeChanged,
@@ -86,6 +97,19 @@ export default function CiView({
   const [jump, setJump] = useState(null); // { path, line, n } — подсветить строку в файле
   const requested = useRef(0);
 
+  // Редактирование: черновики (путь → текст), отпечатки файлов на момент начала правки
+  const [drafts, setDrafts] = useState({});
+  const [bases, setBases] = useState({});
+  const [preview, setPreview] = useState(null);
+  const [saving, setSaving] = useState(false);
+  const [showDiff, setShowDiff] = useState(false);
+  const [lint, setLint] = useState(null); // { loading } | { result } | { error }
+  const [choice, setChoice] = useState(null); // диалог выбора
+  const [jobForm, setJobForm] = useState(null); // { mode: 'create' | 'edit', stage }
+  const [editBusy, setEditBusy] = useState(false);
+  const draftPaths = Object.keys(drafts);
+  const hasDrafts = draftPaths.length > 0;
+
   useEffect(() => setFile(initialFile ?? null), [initialFile]);
 
   // Загрузка; при изменениях в репозитории (version) — тихо перечитываем
@@ -103,7 +127,26 @@ export default function CiView({
     };
   }, [repoPath, file, reloadKey, version]);
 
-  const current = state.data?.current ?? null;
+  // Живой предпросмотр: схема и проверки строятся по черновику, пока он не сохранён
+  useEffect(() => {
+    if (!hasDrafts) {
+      setPreview(null);
+      return undefined;
+    }
+    let alive = true;
+    const t = setTimeout(async () => {
+      const res = await api.repo.ciPreview(repoPath, file ?? state.data?.current?.file ?? null, drafts);
+      if (alive && res.ok) setPreview(res.data);
+    }, 280);
+    return () => {
+      alive = false;
+      clearTimeout(t);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [drafts, repoPath, file, hasDrafts]);
+
+  const baseCurrent = state.data?.current ?? null;
+  const current = (hasDrafts && preview?.current) || baseCurrent;
   const systems = state.data?.systems ?? [];
 
   // Другой файл — сбрасываем выбор
@@ -111,11 +154,176 @@ export default function CiView({
     setJobId(null);
     setPipelineId(null);
     setFileTab(null);
-  }, [current?.file]);
+    setJobForm(null);
+    setLint(null);
+  }, [baseCurrent?.file]);
 
   const pipeline = current?.pipelines.find((p) => p.id === pipelineId) ?? current?.pipelines[0] ?? null;
   const allJobs = useMemo(() => (pipeline ? pipeline.stages.flatMap((s) => s.jobs) : []), [pipeline]);
   const job = allJobs.find((j) => j.id === jobId) ?? null;
+
+  /* ---------- Черновики ---------- */
+
+  const diskFile = (path) => baseCurrent?.files.find((x) => x.path === path) ?? null;
+  const diskText = (path) => (diskFile(path)?.text ?? '').replace(/^﻿/, '').replace(/\r\n/g, '\n');
+  const textOf = (path) => drafts[path] ?? diskText(path);
+
+  const setDraft = (path, text) => {
+    const same = text === diskText(path);
+    setDrafts((d) => {
+      const next = { ...d };
+      if (same) delete next[path];
+      else next[path] = text;
+      return next;
+    });
+    if (!same) setBases((b) => (path in b ? b : { ...b, [path]: diskFile(path)?.hash ?? null }));
+  };
+
+  const dropDrafts = (paths = Object.keys(drafts)) => {
+    setDrafts((d) => {
+      const next = { ...d };
+      for (const p of paths) delete next[p];
+      return next;
+    });
+    setBases((b) => {
+      const next = { ...b };
+      for (const p of paths) delete next[p];
+      return next;
+    });
+  };
+
+  // Сохранить все черновики. force — записать поверх изменений на диске
+  const saveAll = async ({ force = false } = {}) => {
+    if (!hasDrafts || saving) return true;
+    setSaving(true);
+    for (const path of Object.keys(drafts)) {
+      const res = await api.repo.ciSave(repoPath, {
+        path,
+        content: drafts[path],
+        baseHash: force || !(path in bases) ? undefined : bases[path],
+      });
+      if (!res.ok) {
+        setSaving(false);
+        if (res.error.code === 'CHANGED_ON_DISK') {
+          setChoice({
+            title: 'Файл изменился на диске',
+            text: `${path} поменяли в другом редакторе, пока вы его правили здесь. Что сделать?`,
+            choices: [
+              { label: 'Отмена', onClick: () => setChoice(null) },
+              {
+                label: 'Загрузить с диска (мои правки пропадут)',
+                danger: true,
+                onClick: () => {
+                  setChoice(null);
+                  dropDrafts([path]);
+                  setReloadKey((k) => k + 1);
+                },
+              },
+              {
+                label: 'Сохранить поверх',
+                primary: true,
+                onClick: () => {
+                  setChoice(null);
+                  saveAll({ force: true });
+                },
+              },
+            ],
+          });
+        } else notify?.({ type: 'error', title: `Не удалось сохранить ${path}`, hint: res.error.message });
+        return false;
+      }
+      dropDrafts([path]);
+    }
+    setSaving(false);
+    setShowDiff(false);
+    notify?.({ type: 'success', title: 'Сохранено', hint: 'Файл появится в изменениях — его можно закоммитить' });
+    setReloadKey((k) => k + 1);
+    return true;
+  };
+
+  const discard = () =>
+    setChoice({
+      title: 'Отменить правки?',
+      text: `Несохранённые изменения в ${draftPaths.join(', ')} пропадут.`,
+      choices: [
+        { label: 'Нет', onClick: () => setChoice(null) },
+        {
+          label: 'Отменить правки',
+          danger: true,
+          onClick: () => {
+            setChoice(null);
+            dropDrafts();
+          },
+        },
+      ],
+    });
+
+  const requestClose = () => {
+    if (!hasDrafts) {
+      onClose();
+      return;
+    }
+    setChoice({
+      title: 'Есть несохранённые правки',
+      text: `Изменения в ${draftPaths.join(', ')} ещё не сохранены.`,
+      choices: [
+        { label: 'Отмена', onClick: () => setChoice(null) },
+        {
+          label: 'Закрыть без сохранения',
+          danger: true,
+          onClick: () => {
+            setChoice(null);
+            onClose();
+          },
+        },
+        {
+          label: 'Сохранить и закрыть',
+          primary: true,
+          onClick: async () => {
+            setChoice(null);
+            if (await saveAll()) onClose();
+          },
+        },
+      ],
+    });
+  };
+
+  /* ---------- Визуальные правки (GitLab) ---------- */
+
+  const editable =
+    current?.system === 'gitlab' && !current.errors.some((e) => e.severity === 'error' && e.file === current.file);
+
+  // Правки применяются по очереди к тексту файла; результат — новый черновик
+  const applyOps = async (ops) => {
+    const path = current.file;
+    let text = textOf(path);
+    const notes = [];
+    setEditBusy(true);
+    for (const op of ops) {
+      const res = await api.repo.ciEdit(text, op);
+      if (!res.ok) {
+        setEditBusy(false);
+        notify?.({ type: 'error', title: res.error.message, hint: res.error.hint });
+        return false;
+      }
+      text = res.data.content;
+      notes.push(...res.data.notes);
+    }
+    setDraft(path, text);
+    setEditBusy(false);
+    if (notes.length) notify?.({ type: 'info', title: 'Заодно обновлено', hint: notes.join('\n') });
+    return true;
+  };
+
+  /* ---------- Проверка в GitLab ---------- */
+
+  const lintAvailable = isGitlab && forge?.token?.configured && current?.system === 'gitlab';
+  const runLint = async () => {
+    if (!current) return;
+    setLint({ loading: true });
+    const res = await api.gitlab.lint(repoPath, { content: textOf(current.file), ref: currentBranch ?? undefined }, { remote: remoteName });
+    setLint(res.ok ? { result: res.data } : { error: res.error });
+  };
 
   const showInFile = (path, line) => {
     setMode('file');
@@ -123,19 +331,39 @@ export default function CiView({
     setJump({ path, line, n: Date.now() });
   };
 
-  // Esc — закрыть детали задания, затем сам просмотр
+  // Esc — закрыть форму/детали задания, затем сам просмотр. Ctrl+S — сохранить
   useEffect(() => {
     const onKey = (e) => {
+      if ((e.ctrlKey || e.metaKey) && e.code === 'KeyS' && !e.defaultPrevented) {
+        if (mode === 'pipelines' || !hasDrafts) return;
+        e.preventDefault();
+        saveAll();
+        return;
+      }
       if (e.key !== 'Escape' || e.defaultPrevented || document.querySelector('.fixed.inset-0')) return;
-      if (jobId) setJobId(null);
-      else onClose();
+      if (jobForm) setJobForm(null);
+      else if (jobId) setJobId(null);
+      else requestClose();
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [jobId, onClose]);
+  });
 
-  const dirtyPaths = new Set((current?.dirty ?? []).map((d) => d.path));
-  const currentDirty = current?.files.some((f) => dirtyPaths.has(f.path));
+  const dirtyPaths = new Set((baseCurrent?.dirty ?? []).map((d) => d.path));
+  const currentDirty = baseCurrent?.files.some((f) => dirtyPaths.has(f.path));
+  const declaredStages = pipeline ? pipeline.stages.filter((s) => !s.name.startsWith('.')).map((s) => s.name) : [];
+
+  const createFromTemplate = async (system) => {
+    const res = await api.repo.ciCreate(repoPath, { system });
+    if (!res.ok) {
+      notify?.({ type: 'error', title: res.error.message, hint: res.error.hint });
+      return;
+    }
+    notify?.({ type: 'success', title: `Создан ${res.data.path}`, hint: 'Поправьте под свой проект и закоммитьте' });
+    setFile(res.data.path);
+    setMode('file');
+    setReloadKey((k) => k + 1);
+  };
 
   return (
     <div className="flex min-h-0 flex-1 animate-fade-in flex-col bg-gk-bg">
@@ -144,7 +372,7 @@ export default function CiView({
         <Workflow size={16} className="shrink-0" style={{ color: SYSTEM_COLORS[current?.system] ?? '#3cf0a0' }} />
         <div className="shrink-0 text-[13px] font-semibold text-white">CI/CD</div>
         {current && <div className="shrink-0 text-[12px] text-gk-muted">{current.title}</div>}
-        {currentDirty && (
+        {currentDirty && !hasDrafts && (
           <span
             title="Файл изменён, но изменения ещё не закоммичены — показана версия с диска"
             className="shrink-0 rounded-full bg-gk-yellow/15 px-2 py-0.5 text-[10px] font-medium text-gk-yellow"
@@ -155,6 +383,16 @@ export default function CiView({
 
         <div className="flex-1" />
 
+        {lintAvailable && mode !== 'pipelines' && (
+          <button
+            onClick={runLint}
+            disabled={lint?.loading}
+            title="Проверить конфигурацию на сервере GitLab (CI Lint) — с учётом шаблонов и include"
+            className="flex shrink-0 items-center gap-1.5 rounded-md px-2 py-1 text-[12px] text-gk-muted transition-colors enabled:hover:bg-gk-hover enabled:hover:text-gk-text disabled:opacity-50"
+          >
+            {lint?.loading ? <Loader2 size={13} className="animate-spin" /> : <ShieldCheck size={13} />} Проверить в GitLab
+          </button>
+        )}
         <div className="flex shrink-0 overflow-hidden rounded-md ring-1 ring-gk-border">
           {MODES.filter((m) => !m.gitlab || isGitlab).map((m) => (
             <button
@@ -168,8 +406,9 @@ export default function CiView({
             >
               <m.icon size={13} />
               {m.label}
-              {m.id === 'history' && current?.history.length > 0 && (
-                <span className="text-[10px] text-gk-dim">{current.history.length}</span>
+              {m.id === 'file' && hasDrafts && <span className="h-1.5 w-1.5 rounded-full bg-gk-yellow" />}
+              {m.id === 'history' && baseCurrent?.history.length > 0 && (
+                <span className="text-[10px] text-gk-dim">{baseCurrent.history.length}</span>
               )}
             </button>
           ))}
@@ -177,10 +416,10 @@ export default function CiView({
         <IconBtn title="Открыть файл во внешнем редакторе" disabled={!current || mode === 'pipelines'} onClick={() => api.repo.openPath(repoPath, fileTab ?? current.file)}>
           <ExternalLink size={14} />
         </IconBtn>
-        <IconBtn title="Перечитать" onClick={() => setReloadKey((k) => k + 1)}>
+        <IconBtn title="Перечитать с диска" onClick={() => setReloadKey((k) => k + 1)}>
           <RefreshCw size={14} className={state.loading && state.data ? 'animate-spin' : ''} />
         </IconBtn>
-        <IconBtn title="Закрыть (Esc)" onClick={onClose}>
+        <IconBtn title="Закрыть (Esc)" onClick={requestClose}>
           <X size={15} />
         </IconBtn>
       </div>
@@ -202,12 +441,37 @@ export default function CiView({
                 >
                   <span className="h-2 w-2 rounded-full" style={{ backgroundColor: SYSTEM_COLORS[sys.id] }} />
                   {f.split('/').pop()}
+                  {drafts[f] !== undefined && <span className="text-gk-yellow">●</span>}
                   {sys.files.length === 1 && <span className="text-[10px] text-gk-dim">{sys.title}</span>}
                 </button>
               );
             }),
           )}
         </div>
+      )}
+
+      {mode !== 'pipelines' && hasDrafts && (
+        <DraftBar
+          paths={draftPaths}
+          saving={saving}
+          onSave={() => saveAll()}
+          onDiscard={discard}
+          onDiff={() => setShowDiff(true)}
+          onLint={runLint}
+          linting={lint?.loading}
+          lintAvailable={lintAvailable}
+        />
+      )}
+      {mode !== 'pipelines' && lint && !lint.loading && (
+        <LintPanel
+          result={lint.result}
+          error={lint.error}
+          onClose={() => setLint(null)}
+          onShowJob={(name) => {
+            setMode('scheme');
+            setJobId(name);
+          }}
+        />
       )}
 
       <div className="relative flex min-h-0 flex-1">
@@ -222,6 +486,7 @@ export default function CiView({
             onLocate={onLocate}
             onForgeChanged={onForgeChanged}
             notify={notify}
+            branches={branches}
           />
         ) : state.loading && !state.data ? (
           <Center>
@@ -230,7 +495,7 @@ export default function CiView({
         ) : state.error ? (
           <Center className="text-gk-red">{state.error.message}</Center>
         ) : !current ? (
-          <NoCi gitlab={isGitlab} onPipelines={() => setMode('pipelines')} />
+          <NoCi gitlab={isGitlab} onPipelines={() => setMode('pipelines')} onCreate={createFromTemplate} />
         ) : mode === 'scheme' ? (
           <>
             <Scheme
@@ -242,33 +507,98 @@ export default function CiView({
                 setJobId(null);
               }}
               selectedJob={jobId}
-              onSelectJob={(id) => setJobId((cur) => (cur === id ? null : id))}
+              onSelectJob={(id) => {
+                setJobForm(null);
+                setJobId((cur) => (cur === id ? null : id));
+              }}
               onShowLine={showInFile}
+              editable={editable}
+              busy={editBusy}
+              onAddJob={(stage) => {
+                setJobId(null);
+                setJobForm({ mode: 'create', stage });
+              }}
+              onStageOp={(op) => applyOps([op])}
             />
-            {job && (
-              <JobDetails
-                key={job.id}
-                job={job}
-                allJobs={allJobs}
-                onSelectJob={setJobId}
-                onClose={() => setJobId(null)}
-                onShowLine={showInFile}
-              />
+            {jobForm ? (
+              <aside className="flex w-[460px] shrink-0 animate-slide-in-right flex-col border-l border-gk-border bg-gk-panel/85 backdrop-blur-xl">
+                <div className="flex items-center gap-2 border-b border-gk-border px-4 py-3">
+                  <div className="min-w-0 flex-1 truncate text-[14px] font-semibold text-white">
+                    {jobForm.mode === 'create' ? 'Новое задание' : `Изменить «${job?.name ?? ''}»`}
+                  </div>
+                  <IconBtn title="Закрыть (Esc)" onClick={() => setJobForm(null)}>
+                    <X size={14} />
+                  </IconBtn>
+                </div>
+                <JobForm
+                  key={`${jobForm.mode}:${job?.id ?? jobForm.stage}`}
+                  mode={jobForm.mode}
+                  job={jobForm.mode === 'edit' ? job : null}
+                  presetStage={jobForm.stage}
+                  stages={declaredStages}
+                  allJobs={allJobs}
+                  busy={editBusy}
+                  onCancel={() => setJobForm(null)}
+                  onSubmit={async (ops, newName) => {
+                    if (!ops.length) {
+                      setJobForm(null);
+                      return;
+                    }
+                    if (await applyOps(ops)) {
+                      setJobForm(null);
+                      setJobId(newName ?? ops[0].name ?? null);
+                    }
+                  }}
+                  onDelete={async () => {
+                    if (await applyOps([{ type: 'deleteJob', name: job.name }])) {
+                      setJobForm(null);
+                      setJobId(null);
+                    }
+                  }}
+                />
+              </aside>
+            ) : (
+              job && (
+                <JobDetails
+                  key={job.id}
+                  job={job}
+                  allJobs={allJobs}
+                  onSelectJob={setJobId}
+                  onClose={() => setJobId(null)}
+                  onShowLine={showInFile}
+                  editState={!editable ? null : job.source === current.file ? 'own' : 'include'}
+                  onEdit={() => setJobForm({ mode: 'edit' })}
+                />
+              )
             )}
           </>
         ) : mode === 'file' ? (
-          <FileView files={current.files} active={fileTab ?? current.file} onActive={setFileTab} jump={jump} errors={current.errors} dirty={dirtyPaths} />
+          <FileEditor
+            files={current.files}
+            active={fileTab ?? current.file}
+            onActive={setFileTab}
+            jump={jump}
+            errors={current.errors}
+            gitDirty={dirtyPaths}
+            drafts={drafts}
+            textOf={textOf}
+            onChange={setDraft}
+            onSave={() => saveAll()}
+          />
         ) : (
-          <HistoryView history={current.history} onLocate={onLocate} />
+          <HistoryView history={baseCurrent?.history ?? []} onLocate={onLocate} />
         )}
       </div>
+
+      {showDiff && <DraftDiff repoPath={repoPath} drafts={drafts} saving={saving} onClose={() => setShowDiff(false)} onSave={() => saveAll()} />}
+      {choice && <ChoiceDialog {...choice} onClose={() => setChoice(null)} />}
     </div>
   );
 }
 
 /* =================== Схема =================== */
 
-function Scheme({ data, pipeline, onPipeline, selectedJob, onSelectJob, onShowLine }) {
+function Scheme({ data, pipeline, onPipeline, selectedJob, onSelectJob, onShowLine, editable, busy, onAddJob, onStageOp }) {
   const [showVars, setShowVars] = useState(false);
   const [showTemplates, setShowTemplates] = useState(false);
   const errors = data.errors.filter((e) => e.severity === 'error');
@@ -383,11 +713,24 @@ function Scheme({ data, pipeline, onPipeline, selectedJob, onSelectJob, onShowLi
             Для {data.title} схема пока не строится — откройте вкладку «Файл».
           </div>
         ) : pipeline && pipeline.stages.length > 0 ? (
-          <StagesBoard pipeline={pipeline} selectedJob={selectedJob} onSelectJob={onSelectJob} />
+          <StagesBoard
+            pipeline={pipeline}
+            selectedJob={selectedJob}
+            onSelectJob={onSelectJob}
+            editable={editable}
+            busy={busy}
+            onAddJob={onAddJob}
+            onStageOp={onStageOp}
+          />
         ) : (
           errors.length === 0 && (
             <div className="rounded-lg border border-dashed border-gk-border p-6 text-center text-[13px] text-gk-muted">
               В файле не найдено ни одного задания
+              {editable && (
+                <button onClick={() => onAddJob('build')} className="ml-2 text-gk-blue hover:underline">
+                  Добавить задание
+                </button>
+              )}
             </div>
           )
         )}
@@ -429,43 +772,189 @@ function Scheme({ data, pipeline, onPipeline, selectedJob, onSelectJob, onShowLi
   );
 }
 
-function StagesBoard({ pipeline, selectedJob, onSelectJob }) {
+function StagesBoard({ pipeline, selectedJob, onSelectJob, editable, busy, onAddJob, onStageOp }) {
+  const [adding, setAdding] = useState(false);
+  const realStages = pipeline.stages.filter((s) => !s.name.startsWith('.'));
   return (
     <div className="overflow-x-auto pb-2">
       <div className="flex min-w-max items-stretch gap-0">
-        {pipeline.stages.map((stage, si) => (
-          <Fragment key={`${stage.name}-${si}`}>
-            {si > 0 && (
-              <div className="flex w-7 shrink-0 items-start justify-center pt-12 text-gk-dim">
-                <ArrowRight size={14} />
+        {pipeline.stages.map((stage, si) => {
+          const idx = realStages.indexOf(stage);
+          return (
+            <Fragment key={`${stage.name}-${si}`}>
+              {si > 0 && (
+                <div className="flex w-7 shrink-0 items-start justify-center pt-12 text-gk-dim">
+                  <ArrowRight size={14} />
+                </div>
+              )}
+              <div
+                className="group/stage flex w-60 shrink-0 animate-slide-up flex-col rounded-lg border border-gk-border bg-white/[0.02]"
+                style={{ animationDelay: `${si * 45}ms` }}
+              >
+                <StageHeader
+                  stage={stage}
+                  editable={editable && !stage.name.startsWith('.')}
+                  busy={busy}
+                  canLeft={idx > 0}
+                  canRight={idx !== -1 && idx < realStages.length - 1}
+                  onOp={onStageOp}
+                />
+                <div className="flex flex-1 flex-col gap-2 p-2">
+                  {stage.jobs.length === 0 && <div className="px-1 py-2 text-[11px] italic text-gk-dim">нет заданий</div>}
+                  {stage.jobs.map((job) => (
+                    <JobCard key={job.id} job={job} selected={selectedJob === job.id} onClick={() => onSelectJob(job.id)} />
+                  ))}
+                  {editable && !stage.name.startsWith('.') && (
+                    <button
+                      onClick={() => onAddJob(stage.name)}
+                      disabled={busy}
+                      className="flex items-center justify-center gap-1 rounded-md border border-dashed border-gk-border py-1.5 text-[11.5px] text-gk-dim opacity-0 transition-opacity hover:border-gk-blue/50 hover:text-gk-blue focus:opacity-100 group-hover/stage:opacity-100"
+                    >
+                      <Plus size={12} /> задание
+                    </button>
+                  )}
+                </div>
               </div>
+            </Fragment>
+          );
+        })}
+        {editable && (
+          <div className="flex w-44 shrink-0 items-start pl-4 pt-1">
+            {adding ? (
+              <InlineInput
+                placeholder="имя этапа"
+                onCancel={() => setAdding(false)}
+                onSubmit={(name) => {
+                  setAdding(false);
+                  onStageOp({ type: 'addStage', name });
+                }}
+              />
+            ) : (
+              <button
+                onClick={() => setAdding(true)}
+                disabled={busy}
+                className="flex items-center gap-1 rounded-md border border-dashed border-gk-border px-3 py-2 text-[12px] text-gk-dim transition-colors hover:border-gk-blue/50 hover:text-gk-blue"
+              >
+                <Plus size={12} /> Этап
+              </button>
             )}
-            <div
-              className="flex w-60 shrink-0 animate-slide-up flex-col rounded-lg border border-gk-border bg-white/[0.02]"
-              style={{ animationDelay: `${si * 45}ms` }}
-            >
-              <div className="flex items-center gap-2 border-b border-gk-border px-3 py-2">
-                <span className="min-w-0 flex-1 truncate text-[12px] font-semibold uppercase tracking-wider text-gk-muted" title={stage.name}>
-                  {stage.name}
-                </span>
-                {stage.undeclared && (
-                  <span title="Этап не объявлен в stages" className="text-gk-yellow">
-                    <AlertTriangle size={12} />
-                  </span>
-                )}
-                <span className="rounded bg-white/5 px-1.5 text-[10px] text-gk-dim">{stage.jobs.length}</span>
-              </div>
-              <div className="flex flex-col gap-2 p-2">
-                {stage.jobs.length === 0 && <div className="px-1 py-2 text-[11px] italic text-gk-dim">нет заданий</div>}
-                {stage.jobs.map((job) => (
-                  <JobCard key={job.id} job={job} selected={selectedJob === job.id} onClick={() => onSelectJob(job.id)} />
-                ))}
-              </div>
-            </div>
-          </Fragment>
-        ))}
+          </div>
+        )}
       </div>
     </div>
+  );
+}
+
+function StageHeader({ stage, editable, busy, canLeft, canRight, onOp }) {
+  const [renaming, setRenaming] = useState(false);
+  const [armDelete, setArmDelete] = useState(false);
+  if (renaming) {
+    return (
+      <div className="border-b border-gk-border px-2 py-1.5">
+        <InlineInput
+          initial={stage.name}
+          onCancel={() => setRenaming(false)}
+          onSubmit={(name) => {
+            setRenaming(false);
+            if (name !== stage.name) onOp({ type: 'renameStage', from: stage.name, to: name });
+          }}
+        />
+      </div>
+    );
+  }
+  return (
+    <div className="flex items-center gap-1.5 border-b border-gk-border px-3 py-2">
+      <span className="min-w-0 flex-1 truncate text-[12px] font-semibold uppercase tracking-wider text-gk-muted" title={stage.name}>
+        {stage.name}
+      </span>
+      {stage.undeclared && (
+        <span title="Этап не объявлен в stages" className="text-gk-yellow">
+          <AlertTriangle size={12} />
+        </span>
+      )}
+      {editable && stage.undeclared && (
+        <button
+          title="Добавить этап в stages"
+          disabled={busy}
+          onClick={() => onOp({ type: 'addStage', name: stage.name })}
+          className="rounded px-1 text-[10px] text-gk-yellow hover:bg-gk-yellow/15"
+        >
+          исправить
+        </button>
+      )}
+      {editable && !stage.undeclared && (
+        <span className="flex items-center opacity-0 transition-opacity group-hover/stage:opacity-100">
+          <MiniBtn title="Переименовать этап" onClick={() => setRenaming(true)} disabled={busy}>
+            <Pencil size={11} />
+          </MiniBtn>
+          <MiniBtn title="Сдвинуть раньше" onClick={() => onOp({ type: 'moveStage', name: stage.name, dir: -1 })} disabled={busy || !canLeft}>
+            <ArrowLeft size={11} />
+          </MiniBtn>
+          <MiniBtn title="Сдвинуть позже" onClick={() => onOp({ type: 'moveStage', name: stage.name, dir: 1 })} disabled={busy || !canRight}>
+            <ArrowRight size={11} />
+          </MiniBtn>
+          <MiniBtn
+            title={stage.jobs.length ? 'Сначала перенесите или удалите задания этапа' : armDelete ? 'Нажмите ещё раз, чтобы удалить' : 'Удалить этап'}
+            disabled={busy || stage.jobs.length > 0}
+            danger={armDelete}
+            onClick={() => {
+              if (!armDelete) {
+                setArmDelete(true);
+                setTimeout(() => setArmDelete(false), 3000);
+              } else onOp({ type: 'deleteStage', name: stage.name });
+            }}
+          >
+            <Trash2 size={11} />
+          </MiniBtn>
+        </span>
+      )}
+      <span className="rounded bg-white/5 px-1.5 text-[10px] text-gk-dim">{stage.jobs.length}</span>
+    </div>
+  );
+}
+
+function MiniBtn({ children, danger, ...props }) {
+  return (
+    <button
+      {...props}
+      className={`flex h-5 w-5 items-center justify-center rounded transition-colors disabled:opacity-30 ${
+        danger ? 'bg-gk-red text-white' : 'text-gk-dim enabled:hover:bg-white/10 enabled:hover:text-gk-text'
+      }`}
+    >
+      {children}
+    </button>
+  );
+}
+
+function InlineInput({ initial = '', placeholder, onSubmit, onCancel }) {
+  const [v, setV] = useState(initial);
+  return (
+    <form
+      onSubmit={(e) => {
+        e.preventDefault();
+        if (v.trim()) onSubmit(v.trim());
+      }}
+      className="flex items-center gap-1"
+    >
+      <input
+        autoFocus
+        value={v}
+        placeholder={placeholder}
+        onChange={(e) => setV(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === 'Escape') {
+            e.preventDefault();
+            e.stopPropagation();
+            onCancel();
+          }
+        }}
+        onBlur={() => (v.trim() && v.trim() !== initial ? onSubmit(v.trim()) : onCancel())}
+        className="min-w-0 flex-1 rounded bg-gk-bg px-2 py-1 text-[12px] text-gk-text outline-none ring-1 ring-gk-blue"
+      />
+      <button type="submit" className="rounded p-1 text-gk-green hover:bg-gk-green/15">
+        <Check size={12} />
+      </button>
+    </form>
   );
 }
 
@@ -522,7 +1011,7 @@ function JobCard({ job, selected, onClick }) {
 
 /* =================== Детали задания =================== */
 
-function JobDetails({ job, allJobs, onSelectJob, onClose, onShowLine }) {
+function JobDetails({ job, allJobs, onSelectJob, onClose, onShowLine, editState, onEdit }) {
   const [showRaw, setShowRaw] = useState(false);
   const scripts = [
     ['before_script', job.beforeScript],
@@ -545,10 +1034,27 @@ function JobDetails({ job, allJobs, onSelectJob, onClose, onShowLine }) {
             )}
           </div>
         </div>
+        {editState === 'own' && (
+          <button
+            onClick={onEdit}
+            className="flex shrink-0 items-center gap-1 rounded-md bg-gk-blue/15 px-2 py-1 text-[12px] text-gk-blue transition-colors hover:bg-gk-blue/25"
+          >
+            <Pencil size={12} /> Изменить
+          </button>
+        )}
         <IconBtn title="Закрыть (Esc)" onClick={onClose}>
           <X size={14} />
         </IconBtn>
       </div>
+      {editState === 'include' && (
+        <div className="border-b border-gk-border bg-white/[0.02] px-4 py-2 text-[11.5px] text-gk-muted">
+          Задание описано в подключаемом файле —{' '}
+          <button onClick={() => onShowLine(job.source, job.line)} className="font-mono text-gk-blue hover:underline">
+            откройте {job.source}
+          </button>
+          , чтобы его изменить.
+        </div>
+      )}
 
       <div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-4 py-3 text-[12px]">
         <Section title="Когда запускается">
@@ -729,61 +1235,67 @@ function JobDetails({ job, allJobs, onSelectJob, onClose, onShowLine }) {
 
 /* =================== Файл =================== */
 
-function FileView({ files, active, onActive, jump, errors, dirty }) {
+function FileEditor({ files, active, onActive, jump, errors, gitDirty, drafts, textOf, onChange, onSave }) {
   const file = files.find((f) => f.path === active) ?? files[0];
-  const ref = useRef(null);
   const lang = /\.ya?ml$/i.test(file?.path ?? '') ? 'yaml' : 'groovy';
-  const lines = useMemo(() => (file ? file.text.replace(/\r\n/g, '\n').split('\n') : []), [file]);
   const errorLines = useMemo(() => {
     const m = new Map();
     for (const e of errors) if (e.file === file?.path && e.line) m.set(e.line, e.message);
     return m;
   }, [errors, file]);
-  const target = jump && jump.path === file?.path ? jump.line : null;
-
-  useEffect(() => {
-    if (!target) return;
-    ref.current?.querySelector(`[data-line="${target}"]`)?.scrollIntoView({ block: 'center', behavior: 'smooth' });
-  }, [target, jump?.n]);
-
+  const [localJump, setLocalJump] = useState(null);
   if (!file) return <Center>Нет файла</Center>;
+  const value = textOf(file.path);
+  const fileErrors = errors.filter((e) => e.file === file.path || (!e.file && file === files[0]));
+  const effJump = [jump, localJump].filter((j) => j && j.path === file.path).sort((a, b) => b.n - a.n)[0] ?? null;
 
   return (
     <div className="flex min-w-0 flex-1 flex-col">
-      {files.length > 1 && (
-        <div className="flex shrink-0 items-center gap-1 overflow-x-auto border-b border-gk-border px-3 py-1.5">
-          {files.map((f, i) => (
+      <div className="flex shrink-0 items-center gap-1 overflow-x-auto border-b border-gk-border px-3 py-1.5">
+        {files.map((f, i) => (
+          <button
+            key={f.path}
+            onClick={() => onActive(f.path)}
+            className={`flex shrink-0 items-center gap-1 rounded px-2 py-0.5 font-mono text-[11.5px] ${
+              f.path === file.path ? 'bg-gk-hover text-white' : 'text-gk-muted hover:text-gk-text'
+            }`}
+          >
+            {i > 0 && <span className="mr-0.5 font-sans text-[10px] text-gk-dim">include</span>}
+            {f.path}
+            {drafts[f.path] !== undefined ? (
+              <span className="text-gk-yellow" title="Есть несохранённые правки">●</span>
+            ) : (
+              gitDirty.has(f.path) && <span className="text-gk-muted" title="Изменён, не закоммичен">◦</span>
+            )}
+          </button>
+        ))}
+        <div className="flex-1" />
+        <span className="shrink-0 font-sans text-[11px] text-gk-dim">Tab — отступ · Ctrl+/ — комментарий · Ctrl+S — сохранить</span>
+      </div>
+      <CiEditor
+        key={file.path}
+        value={value}
+        lang={lang}
+        errors={errorLines}
+        jump={effJump}
+        onChange={(text) => onChange(file.path, text)}
+        onSave={onSave}
+      />
+      {fileErrors.length > 0 && (
+        <div className="max-h-28 shrink-0 animate-fade-in overflow-y-auto border-t border-gk-red/30 bg-gk-red/[0.07] py-1 text-[12px]">
+          {fileErrors.map((e, i) => (
             <button
-              key={f.path}
-              onClick={() => onActive(f.path)}
-              className={`shrink-0 rounded px-2 py-0.5 font-mono text-[11.5px] ${
-                f.path === file.path ? 'bg-gk-hover text-white' : 'text-gk-muted hover:text-gk-text'
-              }`}
+              key={i}
+              onClick={() => e.line && setLocalJump({ path: file.path, line: e.line, n: Date.now() })}
+              className="flex w-full items-start gap-2 px-3 py-0.5 text-left hover:bg-gk-red/10"
             >
-              {i > 0 && <span className="mr-1 font-sans text-[10px] text-gk-dim">include</span>}
-              {f.path}
-              {dirty.has(f.path) && <span className="ml-1 text-gk-yellow">●</span>}
+              <CircleX size={13} className="mt-0.5 shrink-0 text-gk-red" />
+              {e.line && <span className="shrink-0 font-mono text-gk-red">стр. {e.line}</span>}
+              <span className="min-w-0 text-gk-text">{e.message}</span>
             </button>
           ))}
         </div>
       )}
-      <div ref={ref} className="min-h-0 flex-1 overflow-auto py-2 font-mono text-[12.5px] leading-[1.65] [tab-size:2]">
-        {lines.map((line, i) => {
-          const n = i + 1;
-          const err = errorLines.get(n);
-          return (
-            <div
-              key={i}
-              data-line={n}
-              title={err}
-              className={`flex min-w-max ${n === target ? 'animate-fade-in bg-gk-blue/15' : err ? 'bg-gk-red/10' : 'hover:bg-white/[0.02]'}`}
-            >
-              <span className={`w-12 shrink-0 select-none pr-3 text-right ${err ? 'text-gk-red' : 'text-gk-dim'}`}>{n}</span>
-              <span className="whitespace-pre pr-6 text-gk-text/90">{highlight(line, lang) || ' '}</span>
-            </div>
-          );
-        })}
-      </div>
     </div>
   );
 }
@@ -820,7 +1332,7 @@ function HistoryView({ history, onLocate }) {
 
 /* =================== Мелочи =================== */
 
-function NoCi({ gitlab, onPipelines }) {
+function NoCi({ gitlab, onPipelines, onCreate }) {
   return (
     <Center>
       <div className="max-w-md text-center">
@@ -831,11 +1343,19 @@ function NoCi({ gitlab, onPipelines }) {
           <span className="font-mono">Jenkinsfile</span>, <span className="font-mono">bitbucket-pipelines.yml</span>,{' '}
           <span className="font-mono">.circleci/config.yml</span>, <span className="font-mono">azure-pipelines.yml</span> и другие.
         </div>
-        {gitlab && (
-          <button onClick={onPipelines} className="mt-4 rounded-md bg-gk-blue/15 px-3 py-1.5 text-[12px] text-gk-blue hover:bg-gk-blue/25">
-            Посмотреть пайплайны в GitLab
+        <div className="mt-4 flex flex-wrap justify-center gap-2">
+          <button onClick={() => onCreate('gitlab')} className="flex items-center gap-1.5 rounded-md bg-gk-green/15 px-3 py-1.5 text-[12px] text-gk-green hover:bg-gk-green/25">
+            <Plus size={12} /> Создать .gitlab-ci.yml
           </button>
-        )}
+          <button onClick={() => onCreate('github')} className="flex items-center gap-1.5 rounded-md bg-white/5 px-3 py-1.5 text-[12px] text-gk-text hover:bg-white/10">
+            <Plus size={12} /> Создать GitHub Actions
+          </button>
+          {gitlab && (
+            <button onClick={onPipelines} className="rounded-md bg-gk-blue/15 px-3 py-1.5 text-[12px] text-gk-blue hover:bg-gk-blue/25">
+              Посмотреть пайплайны в GitLab
+            </button>
+          )}
+        </div>
       </div>
     </Center>
   );
@@ -953,111 +1473,4 @@ function IconBtn({ children, disabled, ...props }) {
       {children}
     </button>
   );
-}
-
-/* =================== Подсветка синтаксиса (минимальная) =================== */
-
-const T = {
-  comment: 'text-gk-dim italic',
-  key: 'text-[#7ab8ff]',
-  string: 'text-[#9be29b]',
-  number: 'text-[#f5b971]',
-  keyword: 'text-[#c792ea]',
-  variable: 'text-[#ffcb6b]',
-  anchor: 'text-[#c792ea]',
-  punct: 'text-gk-dim',
-};
-
-function tokenizeValue(text, out, keyPrefix) {
-  // Строки в кавычках, переменные $VAR / ${{ }}, якоря/теги, числа и булевы
-  const re = /("(?:[^"\\]|\\.)*"|'(?:[^']|'')*')|(\$\{\{[^}]*\}\}|\$\{?[A-Za-z_][A-Za-z0-9_]*\}?)|([&*][\w-]+|![\w-]+)|(\b(?:true|false|null|yes|no|on|off)\b|\b\d+(?:\.\d+)?\b)/g;
-  let last = 0;
-  let m;
-  let k = 0;
-  while ((m = re.exec(text))) {
-    if (m.index > last) out.push(text.slice(last, m.index));
-    const cls = m[1] ? T.string : m[2] ? T.variable : m[3] ? T.anchor : T.number;
-    out.push(
-      <span key={`${keyPrefix}-${k++}`} className={cls}>
-        {m[0]}
-      </span>,
-    );
-    last = m.index + m[0].length;
-  }
-  if (last < text.length) out.push(text.slice(last));
-}
-
-function highlight(line, lang) {
-  if (!line) return line;
-  const out = [];
-  if (lang === 'yaml') {
-    // Комментарий: # в начале или после пробела, не внутри кавычек (приблизительно)
-    let code = line;
-    let comment = '';
-    const cm = /(^|\s)#/.exec(line);
-    if (cm && !/["'][^"']*#/.test(line.slice(0, cm.index + cm[0].length))) {
-      code = line.slice(0, cm.index + cm[1].length);
-      comment = line.slice(cm.index + cm[1].length);
-    }
-    const km = /^(\s*(?:-\s+)?)([^\s#'"][^:#]*?|"[^"]*"|'[^']*')(:)(?=\s|$)/.exec(code);
-    if (km) {
-      out.push(
-        <span key="d" className={T.punct}>
-          {km[1]}
-        </span>,
-      );
-      out.push(
-        <span key="k" className={T.key}>
-          {km[2]}
-        </span>,
-      );
-      out.push(
-        <span key="c" className={T.punct}>
-          :
-        </span>,
-      );
-      tokenizeValue(code.slice(km[0].length), out, 'v');
-    } else {
-      const dm = /^(\s*-\s)/.exec(code);
-      if (dm) {
-        out.push(
-          <span key="d" className={T.punct}>
-            {dm[1]}
-          </span>,
-        );
-        tokenizeValue(code.slice(dm[1].length), out, 'v');
-      } else tokenizeValue(code, out, 'v');
-    }
-    if (comment)
-      out.push(
-        <span key="cm" className={T.comment}>
-          {comment}
-        </span>,
-      );
-    return out;
-  }
-  // Groovy / Jenkinsfile
-  const cm = line.indexOf('//');
-  const code = cm >= 0 ? line.slice(0, cm) : line;
-  const re = /("(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*')|\b(pipeline|agent|stages?|steps|parallel|post|when|environment|options|triggers|tools|parameters|script|node|def|if|else|always|success|failure|input|sh|bat|echo)\b/g;
-  let last = 0;
-  let m;
-  let k = 0;
-  while ((m = re.exec(code))) {
-    if (m.index > last) out.push(code.slice(last, m.index));
-    out.push(
-      <span key={k++} className={m[1] ? T.string : T.keyword}>
-        {m[0]}
-      </span>,
-    );
-    last = m.index + m[0].length;
-  }
-  if (last < code.length) out.push(code.slice(last));
-  if (cm >= 0)
-    out.push(
-      <span key="cm" className={T.comment}>
-        {line.slice(cm)}
-      </span>,
-    );
-  return out;
 }

@@ -5,6 +5,7 @@ const path = require('node:path');
 const YAML = require('./vendor/yaml.cjs');
 const { git, hasHead, safeRelative } = require('./git.cjs');
 const { GitError } = require('./errors.cjs');
+const ciEdit = require('./ciEdit.cjs');
 
 const MAX_FILE_SIZE = 512 * 1024;
 const MAX_INCLUDE_DEPTH = 6;
@@ -137,7 +138,12 @@ function deepMerge(base, over) {
 
 /* =================== Чтение файлов =================== */
 
+// Черновики из редактора: путь → текст. Пока задан, разбор идёт по ним, а не по файлам на диске
+let overrides = null;
+const normRel = (rel) => rel.replace(/\\/g, '/').replace(/^(\.\/|\/)+/, '');
+
 function readText(root, rel) {
+  if (overrides?.has(normRel(rel))) return overrides.get(normRel(rel)).replace(/^\uFEFF/, '');
   const full = safeRelative(root, rel);
   const stat = fs.statSync(full);
   if (stat.size > MAX_FILE_SIZE) {
@@ -513,6 +519,14 @@ function gitlabJob(name, cfg, entry, chain, globals, defaults) {
     resourceGroup: cfg.resource_group ?? null,
     coverage: cfg.coverage ?? null,
     raw: toYaml(cfg),
+    // Для визуальной правки: какие ключи заданы в самом задании (а не унаследованы) и простые ли правила
+    own: Object.keys(entry.config ?? {}),
+    rulesEditable: asArray(cfg.rules).every((r) => isPlainObject(r) && Object.keys(r).every((k) => ['if', 'when', 'allow_failure'].includes(k))),
+    rulesRaw: asArray(cfg.rules)
+      .filter(isPlainObject)
+      .map((r) => ({ if: r.if ?? '', when: r.when ?? 'on_success', allow_failure: r.allow_failure === true })),
+    scriptRaw: cfg.script === undefined ? null : scriptLines(cfg.script),
+    needsRaw: cfg.needs === undefined ? null : asArray(cfg.needs).map((n) => (typeof n === 'string' ? n : n?.job ?? '')).filter(Boolean),
   };
 }
 
@@ -1012,7 +1026,17 @@ async function dirtyFiles(root, paths) {
 }
 
 /** Полный разбор одного файла CI (и подключённых к нему локальных файлов) */
-async function loadCi(root, requestedFile) {
+/** Разбор с черновиками вместо файлов на диске — для живого предпросмотра при редактировании */
+async function previewCi(root, requestedFile, drafts) {
+  overrides = new Map(Object.entries(drafts ?? {}).filter(([, v]) => typeof v === 'string').map(([k, v]) => [normRel(k), v]));
+  try {
+    return await loadCi(root, requestedFile, { skipHistory: true });
+  } finally {
+    overrides = null;
+  }
+}
+
+async function loadCi(root, requestedFile, { skipHistory = false } = {}) {
   const systems = detectCi(root);
   if (!systems.length) return { systems, current: null };
   let system = systems.find((s) => s.files.includes(requestedFile)) ?? systems[0];
@@ -1020,6 +1044,7 @@ async function loadCi(root, requestedFile) {
 
   let result;
   try {
+    // Разбор синхронный — черновики (overrides) действуют ровно на время этого вызова
     result = (LOADERS[system.id] ?? loadGeneric)(root, file);
   } catch (error) {
     result = {
@@ -1036,7 +1061,15 @@ async function loadCi(root, requestedFile) {
   }
 
   const trackedPaths = [...new Set([...systems.flatMap((s) => s.files), ...result.files.map((f) => f.path)])];
-  const [history, dirty] = await Promise.all([ciHistory(root, trackedPaths), dirtyFiles(root, trackedPaths)]);
+  const drafts = overrides;
+  overrides = null; // дальше — асинхронно; черновики больше не нужны
+  const [history, dirty] = skipHistory ? [[], []] : await Promise.all([ciHistory(root, trackedPaths), dirtyFiles(root, trackedPaths)]);
+  // Отпечаток файла на диске — чтобы при сохранении заметить, что его поменяли снаружи
+  for (const f of result.files) {
+    const disk = ciEdit.readFile(root, f.path);
+    f.hash = disk.hash;
+    f.draft = Boolean(drafts?.has(normRel(f.path)));
+  }
   const jobCount = result.pipelines.reduce((n, p) => n + p.stages.reduce((k, s) => k + s.jobs.length, 0), 0);
 
   return {
@@ -1045,4 +1078,4 @@ async function loadCi(root, requestedFile) {
   };
 }
 
-module.exports = { detectCi, loadCi };
+module.exports = { detectCi, loadCi, previewCi };

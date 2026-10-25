@@ -7,6 +7,7 @@ const actions = require('./actions.cjs');
 const gitInit = require('./init.cjs');
 const cloner = require('./clone.cjs');
 const ci = require('./ci.cjs');
+const ciEdit = require('./ciEdit.cjs');
 const gitlab = require('./gitlab.cjs');
 const { watchRepository } = require('./watch.cjs');
 const { serializeError } = require('./errors.cjs');
@@ -246,6 +247,13 @@ ipcMain.handle(
   }),
 );
 // CI/CD: разбор файлов конфигурации из репозитория (только чтение)
+// Правка CI: живой предпросмотр по черновикам, diff, сохранение, визуальные правки, файл из шаблона
+const ciRoot = (fn) => safe(async (dir, ...args) => fn(await git.resolveRepoRoot(dir), ...args));
+ipcMain.handle('repo:ci-preview', ciRoot((root, file, drafts) => ci.previewCi(root, typeof file === 'string' ? file : null, drafts)));
+ipcMain.handle('repo:ci-diff', ciRoot((root, draft) => ciEdit.diffDraft(root, draft ?? {})));
+ipcMain.handle('repo:ci-save', ciRoot((root, draft) => ciEdit.saveFile(root, draft ?? {})));
+ipcMain.handle('repo:ci-create', ciRoot((root, opts) => ciEdit.createFromTemplate(root, opts ?? {})));
+ipcMain.handle('repo:ci-edit', safe((content, op) => ciEdit.applyEdit(content, op)));
 ipcMain.handle(
   'repo:ci',
   safe(async (dir, file) => ci.loadCi(await git.resolveRepoRoot(dir), typeof file === 'string' ? file : null)),
@@ -265,6 +273,12 @@ ipcMain.handle('gitlab:action', gl((root, action, opts) => gitlab.runPipelineAct
 ipcMain.handle('gitlab:variables', gl((root, opts) => gitlab.listVariables(root, remoteOpt(opts))));
 ipcMain.handle('gitlab:variable-value', gl((root, v, opts) => gitlab.variableValue(root, v, remoteOpt(opts))));
 ipcMain.handle('gitlab:runners', gl((root, opts) => gitlab.listRunners(root, remoteOpt(opts))));
+ipcMain.handle('gitlab:lint', gl((root, draft, opts) => gitlab.lintCi(root, draft ?? {}, remoteOpt(opts))));
+ipcMain.handle('gitlab:variable-save', gl((root, data, opts) => gitlab.saveVariable(root, data ?? {}, remoteOpt(opts))));
+ipcMain.handle('gitlab:variable-delete', gl((root, v, opts) => gitlab.deleteVariable(root, v ?? {}, remoteOpt(opts))));
+ipcMain.handle('gitlab:schedules', gl((root, opts) => gitlab.listSchedules(root, remoteOpt(opts))));
+ipcMain.handle('gitlab:schedule-save', gl((root, s, opts) => gitlab.saveSchedule(root, s ?? {}, remoteOpt(opts))));
+ipcMain.handle('gitlab:schedule-action', gl((root, a, opts) => gitlab.scheduleAction(root, a ?? {}, remoteOpt(opts))));
 // Открыть ссылку (пайплайн/задание в GitLab) в браузере — только http(s)
 ipcMain.handle('shell:open-external', async (_event, url) => {
   try {

@@ -228,7 +228,7 @@ const LINE_STYLES = {
   '\\': { row: '', num: 'text-gk-dim', sign: 'text-gk-dim' },
 };
 
-function UnifiedDiff({ hunks, highlights }) {
+export function UnifiedDiff({ hunks, highlights }) {
   return (
     <div className="min-w-max pb-6">
       {hunks.map((hunk, hi) => (
