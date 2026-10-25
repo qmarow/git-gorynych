@@ -211,7 +211,7 @@ export default function CommitGraph({
         ))}
 
         <svg
-          className="pointer-events-none absolute top-0 overflow-hidden"
+          className="pointer-events-none absolute top-0 overflow-visible"
           style={{ left: refsW }}
           width={width}
           height={height}
@@ -324,7 +324,7 @@ function Row({
         className="pointer-events-none absolute inset-y-[3px] right-0 rounded-l-full transition-colors duration-150"
       />
 
-      <div style={{ width: cols.refs }} className="relative flex shrink-0 items-center justify-end gap-1 overflow-hidden pl-2">
+      <div style={{ width: cols.refs }} className="@container relative flex shrink-0 items-center justify-end gap-1 overflow-hidden pl-2">
         {node.isHead && !node.refs.some((r) => r.head) && <HeadPill detached />}
         <RefLabels refs={node.refs} color={color} />
       </div>
@@ -427,7 +427,8 @@ function RefLabels({ refs, color }) {
       >
         {first.head && <Check size={13} strokeWidth={3} className="shrink-0 text-white" />}
         <span className="truncate">{first.name}</span>
-        <span className="flex shrink-0 items-center gap-1 opacity-80">
+        {/* В узкой колонке значки прячем — имя ветки важнее */}
+        <span className="hidden shrink-0 items-center gap-1 opacity-80 @[150px]:flex">
           {first.local && <Laptop size={12} />}
           {first.remote && <Cloud size={12} />}
           {first.tag && <Tag size={12} />}
@@ -515,9 +516,9 @@ function AvatarNode({ node, x, y, color, selected, cls, style }) {
   const r = NODE_RADIUS;
   return (
     <g className={cls} style={style}>
-      {node.isHead && <HeadRing x={x} y={y} r={r + 6} />}
+      {node.isHead && <HeadRing x={x} y={y} r={r + 4} />}
       {selected && <circle className="graph-pulse" cx={x} cy={y} r={r} fill="none" stroke={color} strokeWidth={2} />}
-      {selected && <circle cx={x} cy={y} r={r + 3.5} fill="none" stroke={color} strokeWidth={2} />}
+      {selected && <circle cx={x} cy={y} r={r + 2.5} fill="none" stroke={color} strokeWidth={1.75} />}
       <circle cx={x} cy={y} r={r} fill={color} />
       <circle cx={x} cy={y} r={r - 2} fill="rgb(0 0 0 / 0.18)" />
       <text x={x} y={y} dy="0.36em" textAnchor="middle" fontSize="11" fontWeight="700" fill="#fff" letterSpacing="0.2">
