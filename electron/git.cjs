@@ -87,7 +87,9 @@ function git(cwd, args, { env, timeout = 0 } = {}) {
         maxBuffer: 256 * 1024 * 1024,
         windowsHide: true,
         timeout,
-        env: env ? { ...process.env, ...env } : process.env,
+        // GIT_OPTIONAL_LOCKS=0: чтение (status и т.п.) не перезаписывает .git/index —
+        // иначе слежение за папкой видело бы собственные запросы как изменения
+        env: { ...process.env, GIT_OPTIONAL_LOCKS: '0', ...(env ?? {}) },
       },
       (error, stdout, stderr) => {
         if (error && error.code === 'ENOENT') {
@@ -124,11 +126,17 @@ async function hasHead(cwd) {
 /* ---------------- Ветки, теги, сташи ---------------- */
 
 async function readRefs(cwd) {
-  const out = await git(cwd, [
+  // Независимые запросы — параллельно (на Windows каждый запуск git заметно дорогой)
+  const [out, remoteOut, tagsOutP, stashOutP] = await Promise.all([
+    git(cwd, [
     'for-each-ref',
     `--format=%(refname)${FS}%(refname:short)${FS}%(objectname)${FS}%(upstream:short)${FS}%(upstream:track)${FS}%(HEAD)${FS}%(upstream:remotename)${FS}%(upstream:remoteref)`,
     'refs/heads',
     'refs/remotes',
+    ]),
+    git(cwd, ['remote']),
+    git(cwd, ['for-each-ref', '--sort=-creatordate', `--format=%(refname:short)${FS}%(objectname)${FS}%(*objectname)`, 'refs/tags']),
+    git(cwd, ['stash', 'list', `--format=%gd${FS}%H${FS}%gs${FS}%aI${FS}%P`]).catch(() => ''),
   ]);
 
   const localBranches = [];
@@ -174,15 +182,10 @@ async function readRefs(cwd) {
   }
 
   // Удалённые без веток (только что добавленные) тоже показываем
-  const remoteNames = (await git(cwd, ['remote'])).split('\n').filter(Boolean);
+  const remoteNames = remoteOut.split('\n').filter(Boolean);
   for (const name of remoteNames) if (!remotesMap.has(name)) remotesMap.set(name, []);
 
-  const tagsOut = await git(cwd, [
-    'for-each-ref',
-    '--sort=-creatordate',
-    `--format=%(refname:short)${FS}%(objectname)${FS}%(*objectname)`,
-    'refs/tags',
-  ]);
+  const tagsOut = tagsOutP;
   const tags = tagsOut
     .split('\n')
     .filter(Boolean)
@@ -193,13 +196,14 @@ async function readRefs(cwd) {
 
   let stashes = [];
   try {
-    const stashOut = await git(cwd, ['stash', 'list', `--format=%gd${FS}%H${FS}%gs`]);
+    const stashOut = stashOutP;
     stashes = stashOut
       .split('\n')
       .filter(Boolean)
       .map((line) => {
-        const [id, hash, message] = line.split(FS);
-        return { id, hash, message };
+        const [id, hash, message, date, parents] = line.split(FS);
+        const [base, , untracked] = (parents || '').split(' ');
+        return { id, hash, message, date, base: base || null, untracked: untracked || null };
       });
   } catch {
     /* нет сташей */
@@ -364,6 +368,15 @@ async function detectOperation(cwd) {
   return null;
 }
 
+/* ---------------- Быстрое обновление рабочей копии ---------------- */
+
+// Только статус файлов — для мгновенной реакции на правки, без перечитывания истории
+async function quickStatus(dir) {
+  const root = await resolveRepoRoot(dir);
+  const [wipFiles, operation] = await Promise.all([readStatus(root), detectOperation(root)]);
+  return { path: root, wipFiles, operation };
+}
+
 /* ---------------- Публичное API ---------------- */
 
 async function loadRepository(dir, { limit = DEFAULT_LIMIT } = {}) {
@@ -398,7 +411,7 @@ async function getCommitFiles(dir, hash, parentHash) {
     throw new Error('Некорректный хэш коммита');
   }
   const range = parentHash ? [parentHash, hash] : ['--root', hash];
-  const base = ['diff-tree', '--no-commit-id', '-r', '-M', '-z'];
+  const base = ['diff-tree', '--no-commit-id', '-r', '-M', '-z', '--ignore-cr-at-eol'];
 
   const [numstat, nameStatus] = await Promise.all([
     git(dir, [...base, '--numstat', ...range]),
@@ -440,6 +453,34 @@ async function getCommitFiles(dir, hash, parentHash) {
   }
 
   return files.map((f) => ({ ...f, ...(stats.get(f.path) ?? { additions: null, deletions: null }) }));
+}
+
+/* ---------------- Содержимое stash ---------------- */
+
+/**
+ * Файлы stash: изменения отслеживаемых файлов (stash против базового коммита)
+ * и неотслеживаемые файлы (третий родитель stash, если делали --include-untracked).
+ * Для каждого файла возвращаем diffHash/diffParent — по ним строится diff.
+ */
+async function getStashDetails(dir, hash) {
+  if (!HASH_RE.test(hash || '')) throw new GitError('Некорректный stash', { code: 'BAD_ARGS' });
+  const parents = (await git(dir, ['rev-list', '--parents', '-n', '1', hash])).trim().split(' ').slice(1);
+  const [base, , untracked] = parents;
+  const tracked = (await getCommitFiles(dir, hash, base)).map((f) => ({ ...f, diffHash: hash, diffParent: base }));
+  let extra = [];
+  if (untracked) {
+    extra = (await getCommitFiles(dir, untracked, null)).map((f) => ({
+      ...f,
+      status: 'A',
+      untracked: true,
+      diffHash: untracked,
+      diffParent: null,
+    }));
+  }
+  const [subject, date, author] = (await git(dir, ['log', '-1', `--format=%s%x1f%aI%x1f%an`, hash]).catch(() => ''))
+    .trim()
+    .split('\x1f');
+  return { hash, base, untracked: untracked ?? null, files: [...tracked, ...extra], date: date || null, author: author || null, subject };
 }
 
 /* ---------------- Diff одного файла ---------------- */
@@ -518,25 +559,8 @@ async function getFileDiff(dir, { mode, hash, parent, path: filePath, oldPath, i
   if (oldPath) safeRelative(root, oldPath);
   const ws = ignoreWhitespace ? ['--ignore-all-space'] : [];
   const paths = ['--', ...(oldPath && oldPath !== filePath ? [oldPath] : []), filePath];
-  const base = ['-c', 'core.autocrlf=false'];
-  let out;
 
-  if (mode === 'commit') {
-    if (!HASH_RE.test(hash || '') || (parent && !HASH_RE.test(parent))) {
-      throw new GitError('Некорректный коммит', { code: 'BAD_ARGS' });
-    }
-    const range = parent ? [parent, hash] : ['--root', hash];
-    out = await git(root, [...base, 'diff-tree', '-p', '-M', '--no-commit-id', '--no-color', ...ws, ...range, ...paths]);
-  } else if (mode === 'staged') {
-    const head = await hasHead(root);
-    out = head
-      ? await git(root, [...base, 'diff', '--cached', '-M', '--no-color', ...ws, ...paths])
-      : await git(root, [...base, 'diff', '--cached', '--no-color', ...ws, ...paths]); // в пустом репо сравнивается с пустым деревом
-  } else if (mode === 'unstaged') {
-    out = conflicted && (await hasHead(root))
-      ? await git(root, [...base, 'diff', 'HEAD', '--no-color', ...ws, ...paths])
-      : await git(root, [...base, 'diff', '--no-color', ...ws, ...paths]);
-  } else if (mode === 'untracked') {
+  if (mode === 'untracked') {
     const full = safeRelative(root, filePath);
     const stat = fs.statSync(full);
     if (stat.size > MAX_UNTRACKED_BYTES) {
@@ -563,11 +587,43 @@ async function getFileDiff(dir, { mode, hash, parent, path: filePath, oldPath, i
       additions: lines.length,
       deletions: 0,
     };
+  }
+
+  let args;
+  if (mode === 'commit') {
+    if (!HASH_RE.test(hash || '') || (parent && !HASH_RE.test(parent))) {
+      throw new GitError('Некорректный коммит', { code: 'BAD_ARGS' });
+    }
+    const range = parent ? [parent, hash] : ['--root', hash];
+    args = ['diff-tree', '-p', '-M', '--no-commit-id', '--no-color', ...ws, ...range];
+  } else if (mode === 'staged') {
+    args = ['diff', '--cached', '-M', '--no-color', ...ws];
+  } else if (mode === 'unstaged') {
+    args = conflicted && (await hasHead(root)) ? ['diff', 'HEAD', '--no-color', ...ws] : ['diff', '--no-color', ...ws];
   } else {
     throw new GitError('Неизвестный режим diff', { code: 'BAD_ARGS' });
   }
 
-  return { path: filePath, oldPath: oldPath || null, ...parseUnifiedDiff(out) };
+  // Важно: core.autocrlf НЕ переопределяем — на Windows рабочие файлы с CRLF, а в репозитории LF,
+  // и с autocrlf=false весь файл выглядел бы изменённым. Дополнительно не считаем изменением
+  // разницу только в окончаниях строк (\r в конце строки).
+  let out;
+  try {
+    out = await git(root, [...args, '--ignore-cr-at-eol', ...paths]);
+  } catch (error) {
+    if (!/ignore-cr-at-eol|unknown option/i.test(error.details || error.message)) throw error;
+    out = await git(root, [...args, ...paths]); // очень старый Git без этого флага
+  }
+  const result = parseUnifiedDiff(out);
+
+  // Пусто — но файл в списке изменённых? Значит, поменялись только окончания строк (CRLF ↔ LF)
+  let eolOnly = false;
+  if (!result.binary && result.hunks.length === 0) {
+    const raw = await git(root, [...args, '--stat', ...paths]).catch(() => '');
+    eolOnly = raw.trim().length > 0;
+  }
+
+  return { path: filePath, oldPath: oldPath || null, ...result, eolOnly };
 }
 
 /* ---------------- Стейджинг и коммит ---------------- */
@@ -615,6 +671,8 @@ module.exports = {
   loadRepository,
   getCommitFiles,
   getFileDiff,
+  getStashDetails,
+  quickStatus,
   parseUnifiedDiff,
   stage,
   unstage,

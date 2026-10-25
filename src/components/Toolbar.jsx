@@ -12,6 +12,7 @@ import {
   PackageOpen,
   Redo2,
   RefreshCw,
+  Search,
   Settings,
   Shield,
   ShieldAlert,
@@ -43,6 +44,8 @@ export default function Toolbar({
   onStash,
   onPop,
   onAccessClick,
+  onSearch,
+  searchOpen,
 }) {
   const current = repo.localBranches.find((b) => b.name === repo.currentBranch);
   const hasRemote = repo.remotes.length > 0;
@@ -143,6 +146,12 @@ export default function Toolbar({
 
       <div className="flex items-center gap-1">
         <AccessChip repo={repo} access={access} onClick={onAccessClick} />
+        <IconButton
+          icon={Search}
+          title="Поиск коммитов (Ctrl+F)"
+          onClick={onSearch}
+          iconClass={searchOpen ? 'text-gk-blue' : ''}
+        />
         <IconButton icon={RefreshCw} title="Обновить" onClick={onRefresh} iconClass={loading ? 'animate-spin' : ''} />
         <IconButton icon={Settings} title="Настройки" />
       </div>

@@ -29,6 +29,7 @@ export default function CommitGraph({
   onContextMenu,
   wipCount,
   truncated,
+  matchSet = null, // Set хэшей, подходящих под поиск; остальные приглушаются
 }) {
   const { nodes, edges, laneCount } = useMemo(() => layoutGraph(commits), [commits]);
   const [view, setView] = useState({ top: 0, height: 800, width: 1000 });
@@ -188,6 +189,7 @@ export default function CommitGraph({
             node={node}
             selected={node.hash === selectedHash}
             hovered={node.hash === hoverHash}
+            dim={Boolean(matchSet) && !matchSet.has(node.hash)}
             intro={intro}
             delay={introDelay(node.row)}
             cols={cols}
@@ -240,6 +242,7 @@ export default function CommitGraph({
               style={intro ? { animationDelay: introDelay(edge.from.row) } : undefined}
               fill="none"
               stroke={edge.color}
+              strokeOpacity={matchSet ? 0.3 : 1}
               strokeWidth={2.5}
               strokeLinecap="round"
               strokeLinejoin="round"
@@ -251,6 +254,7 @@ export default function CommitGraph({
             <Node
               key={node.hash}
               node={node}
+              dim={Boolean(matchSet) && !matchSet.has(node.hash)}
               selected={node.hash === selectedHash}
               hovered={node.hash === hoverHash}
               intro={intro}
@@ -279,7 +283,7 @@ function HeaderCell({ width, children }) {
   );
 }
 
-function Row({ node, selected, hovered, intro, delay, cols, wipCount, onHover, onSelect, onDoubleClick, onContextMenu }) {
+function Row({ node, selected, hovered, dim, intro, delay, cols, wipCount, onHover, onSelect, onDoubleClick, onContextMenu }) {
   const color = laneColor(node.lane);
   const bandAlpha = selected ? '42' : hovered ? '2a' : '14';
 
@@ -290,7 +294,9 @@ function Row({ node, selected, hovered, intro, delay, cols, wipCount, onHover, o
       onContextMenu={onContextMenu}
       onDoubleClick={onDoubleClick}
       style={{ top: node.row * ROW_HEIGHT, height: ROW_HEIGHT, animationDelay: intro ? delay : undefined }}
-      className={`absolute inset-x-0 flex min-w-max cursor-default items-center text-[13px] ${intro ? 'animate-row-in' : ''}`}
+      className={`absolute inset-x-0 flex min-w-max cursor-default items-center text-[13px] transition-opacity duration-150 ${
+        intro ? 'animate-row-in' : ''
+      } ${dim && !selected ? 'opacity-30' : ''}`}
     >
       {/* Цветная полоса от узла через всю строку, как в GitKraken */}
       <div
@@ -456,12 +462,12 @@ function HeadPill({ detached = false }) {
   );
 }
 
-function Node({ node, selected, hovered, intro, delay }) {
+function Node({ node, selected, hovered, dim, intro, delay }) {
   const x = laneX(node.lane);
   const y = rowY(node.row);
   const color = laneColor(node.lane);
   const cls = `graph-node ${intro ? 'is-intro' : ''} ${hovered ? 'is-hover' : ''}`;
-  const style = intro ? { animationDelay: delay } : undefined;
+  const style = { ...(intro ? { animationDelay: delay } : null), opacity: dim && !selected ? 0.3 : 1, transition: 'opacity 150ms' };
 
   if (node.wip) {
     return (

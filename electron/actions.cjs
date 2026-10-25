@@ -488,6 +488,123 @@ function requireBranchOrDetachedHead(state, action) {
   if (!state.headHash) throw new GitError(`Нельзя сделать ${action}: нет коммитов`, { code: 'NO_COMMITS' });
 }
 
+/* =================== Stash: применить / забрать / удалить конкретный =================== */
+
+// stash@{n} сдвигаются при каждом изменении списка — проверяем, что по индексу всё ещё нужный stash
+async function resolveStash(cwd, { id, hash }) {
+  if (!/^stash@\{\d+\}$/.test(id || '')) throw new GitError('Некорректный stash', { code: 'BAD_ARGS' });
+  const actual = (await git(cwd, ['rev-parse', '--verify', '--quiet', id]).catch(() => '')).trim();
+  if (!actual) throw new GitError('Stash не найден — список изменился', { code: 'NO_STASH' });
+  if (hash && actual !== hash) throw new GitError('Список stash изменился — обновите и повторите', { code: 'HISTORY_STALE' });
+  const message = (await git(cwd, ['log', '-1', '--format=%gs', '-g', id]).catch(() => '')).trim();
+  return { id, hash: actual, message };
+}
+
+async function stashApplyAt(cwd, p) {
+  requireNoOperation(await currentState(cwd), 'apply');
+  const s = await resolveStash(cwd, p);
+  await git(cwd, ['stash', 'apply', s.id]);
+  return s;
+}
+
+async function stashPopAt(cwd, p) {
+  requireNoOperation(await currentState(cwd), 'pop');
+  const s = await resolveStash(cwd, p);
+  await git(cwd, ['stash', 'pop', s.id]);
+  return s;
+}
+
+async function stashDropAt(cwd, p) {
+  const s = await resolveStash(cwd, p);
+  await git(cwd, ['stash', 'drop', '-q', s.id]);
+  return s;
+}
+
+/* =================== Вернуть проект к состоянию коммита =================== */
+
+// Предпросмотр: что отменится, сколько файлов изменится, можно ли выполнить
+async function revertToPreview(cwd, { hash }) {
+  requireHash(hash);
+  const state = await currentState(cwd);
+  requireBranchOrDetachedHead(state, 'revert');
+  const head = state.headHash;
+  const ancestor = await isAncestor(cwd, hash, head);
+  const range = `${hash}..${head}`;
+  const count = Number((await git(cwd, ['rev-list', '--count', range])).trim());
+  const log = (await git(cwd, ['log', '-n', '30', `--format=%H%x1f%s%x1f%an%x1f%aI`, range]))
+    .split('\n')
+    .filter(Boolean)
+    .map((l) => {
+      const [h, message, author, date] = l.split('\x1f');
+      return { hash: h, message, author, date };
+    });
+  const shortstat = (await git(cwd, ['diff', '--shortstat', head, hash])).trim();
+  const num = (re) => Number(re.exec(shortstat)?.[1] ?? 0);
+  const target = (await git(cwd, ['log', '-1', '--format=%s%x1f%an%x1f%aI', hash])).trim().split('\x1f');
+
+  const files = await readStatus(cwd);
+  const dirty = files.filter((f) => !f.untracked);
+  // Неотслеживаемые файлы, которые совпадают по пути с файлами в целевом коммите, были бы перезаписаны
+  const untracked = files.filter((f) => f.untracked).map((f) => f.path);
+  let collisions = [];
+  if (untracked.length) {
+    const targetFiles = new Set((await git(cwd, ['ls-tree', '-r', '-z', '--name-only', hash])).split('\0'));
+    collisions = untracked.filter((p) => targetFiles.has(p));
+  }
+  let pushedCount = 0;
+  if (state.branch?.upstream && ancestor) {
+    pushedCount = Number((await git(cwd, ['rev-list', '--count', `${hash}..${state.branch.upstream}`]).catch(() => '0')).trim());
+  }
+
+  return {
+    hash,
+    target: { message: target[0], author: target[1], date: target[2] },
+    branch: state.branchName,
+    ancestor,
+    count,
+    commits: log,
+    filesChanged: num(/(\d+) files? changed/),
+    insertions: num(/(\d+) insertions?/),
+    deletions: num(/(\d+) deletions?/),
+    identical: shortstat === '',
+    dirtyCount: dirty.length,
+    collisions,
+    pushedCount,
+    hasUpstream: Boolean(state.branch?.upstream),
+  };
+}
+
+// Один новый коммит, который делает файлы проекта такими, как в выбранном коммите. История не переписывается.
+async function revertTo(cwd, { hash, message }) {
+  const preview = await revertToPreview(cwd, { hash });
+  if (preview.identical) throw new GitError('Файлы уже совпадают с этим коммитом — откатывать нечего', { code: 'UP_TO_DATE' });
+  if (preview.dirtyCount) {
+    throw new GitError(`Есть незакоммиченные изменения (${preview.dirtyCount})`, {
+      code: 'DIRTY',
+      hint: 'Закоммитьте их или сделайте Stash, затем повторите.',
+    });
+  }
+  if (preview.collisions.length) {
+    throw new GitError('Неотслеживаемые файлы мешают откату', {
+      code: 'DIRTY',
+      hint: `Переместите или удалите: ${preview.collisions.slice(0, 5).join(', ')}${preview.collisions.length > 5 ? '…' : ''}`,
+    });
+  }
+  const from = (await git(cwd, ['rev-parse', 'HEAD'])).trim();
+  const short = hash.slice(0, 7);
+  const subject = (message && message.trim()) || `Revert to ${short}: ${preview.target.message}`;
+  const body = preview.ancestor
+    ? `Файлы возвращены к состоянию ${hash}.\nОтменены изменения ${preview.count} коммитов:\n${preview.commits
+        .map((c) => `- ${c.hash.slice(0, 7)} ${c.message}`)
+        .join('\n')}${preview.count > preview.commits.length ? '\n- …' : ''}`
+    : `Файлы приведены к состоянию ${hash}.`;
+  // Индекс и рабочие файлы → ровно как в целевом коммите (удалённые там файлы тоже удаляются)
+  await git(cwd, ['read-tree', '-u', '--reset', hash]);
+  await git(cwd, ['commit', '-q', '-m', subject, '-m', body]);
+  const to = (await git(cwd, ['rev-parse', 'HEAD'])).trim();
+  return { hash, from, to, subject, count: preview.count, filesChanged: preview.filesChanged, branch: preview.branch };
+}
+
 /* =================== Незавершённый merge / rebase =================== */
 
 const NO_EDITOR = { env: { GIT_EDITOR: 'true', GIT_SEQUENCE_EDITOR: 'true' } };
@@ -639,6 +756,16 @@ const HANDLERS = {
       await git(cwd, ['tag', '-d', e.name]);
     },
   },
+  stashDrop: {
+    async undo(cwd, e) {
+      await git(cwd, ['stash', 'store', '-m', e.message || 'restored stash', e.hash]);
+    },
+    async redo(cwd, e) {
+      const top = (await git(cwd, ['rev-parse', '--verify', '--quiet', 'stash@{0}']).catch(() => '')).trim();
+      if (top !== e.hash) throw stale('список сташей');
+      await git(cwd, ['stash', 'drop', '-q', 'stash@{0}']);
+    },
+  },
   deleteBranch: {
     async undo(cwd, e) {
       await git(cwd, ['branch', e.name, e.hash]);
@@ -717,6 +844,27 @@ const ACTIONS = {
   async stash(cwd, p) {
     const res = await stashPush(cwd, p);
     record(cwd, { type: 'stash', label: 'Stash', hash: res.hash });
+    return res;
+  },
+  async stashApplyAt(cwd, p) {
+    const res = await stashApplyAt(cwd, p);
+    historyFor(cwd).redo = [];
+    return res;
+  },
+  async stashPopAt(cwd, p) {
+    const res = await stashPopAt(cwd, p);
+    historyFor(cwd).redo = [];
+    return res;
+  },
+  async stashDrop(cwd, p) {
+    const res = await stashDropAt(cwd, p);
+    record(cwd, { type: 'stashDrop', label: `Удаление ${res.id}`, ...res });
+    return res;
+  },
+  revertToPreview: (cwd, p) => revertToPreview(cwd, p),
+  async revertTo(cwd, p) {
+    const res = await revertTo(cwd, p);
+    record(cwd, { type: 'headMove', label: `Возврат к ${p.hash.slice(0, 7)}`, from: res.from, to: res.to });
     return res;
   },
   async checkoutCommit(cwd, p) {

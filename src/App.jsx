@@ -12,6 +12,7 @@ import {
   GitCommitHorizontal,
   GitMerge,
   History,
+  CloudDownload,
   Link2,
   Layers,
   Loader2,
@@ -31,6 +32,9 @@ import Toasts from './components/Toasts.jsx';
 import DiffView from './components/DiffView.jsx';
 import StatusBar from './components/StatusBar.jsx';
 import InitRepoDialog, { plural } from './components/InitRepoDialog.jsx';
+import CloneDialog from './components/CloneDialog.jsx';
+import RevertToDialog from './components/RevertToDialog.jsx';
+import SearchBar, { EMPTY_FILTER, isFilterActive, matchCommit } from './components/SearchBar.jsx';
 import { GraphLoader, LoadingOverlay, Splash } from './components/Loader.jsx';
 import { ResizeHandle, useStoredWidth } from './components/Resizer.jsx';
 import {
@@ -47,6 +51,32 @@ const api = window.api;
 
 // Ошибки, которые показываем модальным окном с подсказкой, а не всплывашкой
 const ACCESS_CODES = new Set(['AUTH', 'FORBIDDEN', 'NOT_FOUND', 'PROTECTED', 'HOOK_DECLINED', 'HOST_KEY']);
+// Оверлей поверх графа для долгих операций: что показывать, пока операция идёт
+const PROGRESS_TEXT = {
+  checkout: 'Переключаем ветку…',
+  checkoutCommit: 'Переключаемся на коммит…',
+  pull: 'Получаем изменения с сервера…',
+  push: 'Отправляем на сервер…',
+  fetch: 'Загружаем данные с сервера…',
+  merge: 'Слияние веток…',
+  rebase: 'Перебазирование…',
+  cherryPick: 'Cherry-pick…',
+  revert: 'Создаём revert-коммит…',
+  revertTo: 'Возвращаем файлы проекта…',
+  reset: 'Перемещаем ветку…',
+  stash: 'Прячем изменения…',
+  stashPop: 'Применяем stash…',
+  stashApplyAt: 'Применяем stash…',
+  stashPopAt: 'Применяем stash…',
+  undo: 'Отменяем…',
+  redo: 'Повторяем…',
+  createBranch: 'Создаём ветку…',
+  continueOperation: 'Продолжаем…',
+  abortOperation: 'Прерываем…',
+};
+
+const AUTO_FETCH_MIN = 5; // как часто фоново забирать изменения с сервера
+
 const OPERATION_LABELS = { rebase: 'rebase', merge: 'merge', 'cherry-pick': 'cherry-pick', revert: 'revert' };
 
 function readPref(key, fallback) {
@@ -84,6 +114,7 @@ export default function App() {
   const [selectedHash, setSelectedHash] = useState(null);
   const [filesByHash, setFilesByHash] = useState({});
   const [busyAction, setBusyAction] = useState(null);
+  const [busyText, setBusyText] = useState(null); // текст оверлея для долгих операций (checkout, pull…)
   const [toasts, setToasts] = useState([]);
   const [dialog, setDialog] = useState(null);
   const [access, setAccess] = useState(null);
@@ -163,7 +194,9 @@ export default function App() {
       const keep =
         samePath &&
         prev &&
-        ((prev === 'WIP' && data.wipFiles.length > 0) || data.commits.some((c) => c.hash === prev));
+        ((prev === 'WIP' && data.wipFiles.length > 0) ||
+          (prev.startsWith('stash:') && data.stashes.some((st) => `stash:${st.hash}` === prev)) ||
+          data.commits.some((c) => c.hash === prev));
       if (keep) return prev;
       return data.wipFiles.length > 0 ? 'WIP' : data.headHash;
     });
@@ -379,6 +412,7 @@ export default function App() {
       items: [
         { label: 'Открыть репозиторий…', icon: FolderOpen, hint: 'Ctrl+O', onClick: openRepository },
         { label: 'Создать репозиторий…', icon: GitBranch, hint: 'Ctrl+N', onClick: () => createRepository() },
+        { label: 'Клонировать репозиторий…', icon: CloudDownload, hint: 'Ctrl+Shift+O', onClick: () => setDialog({ type: 'clone' }) },
         {
           label: 'Подключить папку к GitLab / GitHub…',
           icon: Link2,
@@ -401,7 +435,13 @@ export default function App() {
     const onKey = (e) => {
       if (!e.ctrlKey || e.altKey) return;
       const key = e.key.toLowerCase();
-      if (key === 'o' || key === 'щ') {
+      if ((key === 'o' || key === 'щ') && e.shiftKey) {
+        e.preventDefault();
+        setDialog({ type: 'clone' });
+      } else if ((key === 'f' || key === 'а') && repoRef.current) {
+        e.preventDefault();
+        setSearchOpen(true);
+      } else if (key === 'o' || key === 'щ') {
         e.preventDefault();
         openRepository();
       } else if (key === 'n' || key === 'т') {
@@ -447,14 +487,16 @@ export default function App() {
    * success — текст (или функция от data) для уведомления об успехе
    * onError — вернуть true, если ошибка обработана сама
    */
-  const run = async (name, payload = {}, { label, success, onError } = {}) => {
+  const run = async (name, payload = {}, { label, success, onError, progress } = {}) => {
     const current = repoRef.current;
     if (!current || busyRef.current) return { ok: false, error: { code: 'BUSY' } };
     busyRef.current = true;
     setBusyAction(name);
+    setBusyText(progress ?? null);
     const res = await api.repo.action(current.path, name, payload);
     busyRef.current = false;
     setBusyAction(null);
+    setBusyText(null);
     await loadRepo(current.path, { silent: true });
 
     if (res.ok) {
@@ -516,6 +558,7 @@ export default function App() {
   const checkout = (target) =>
     run('checkout', target, {
       label: 'Checkout',
+      progress: `Переключаемся на ${target.branch ?? target.remoteBranch?.fullName ?? ''}`,
       success: (d) =>
         d.created ? `Создана ветка ${d.created.name}, отслеживает ${d.created.track}` : `Checkout: ${d.to.branch}`,
     });
@@ -660,6 +703,13 @@ export default function App() {
           run('revert', { hash: node.hash }, { label: 'Revert', success: `Создан revert-коммит для ${short(node.hash)}` }),
       },
       {
+        label: 'Вернуть проект к этому коммиту…',
+        icon: History,
+        disabled: op || isHead || !repo.headHash,
+        title: 'Новый коммит, который делает все файлы как в этом коммите. История не переписывается.',
+        onClick: () => openRevertTo(node),
+      },
+      {
         label: `Reset ${curLabel} to this commit`,
         icon: History,
         disabled: op || isHead || !repo.headHash,
@@ -801,26 +851,39 @@ export default function App() {
     return [wip, ...repo.commits];
   }, [repo]);
 
-  const selected = allCommits.find((c) => c.hash === selectedHash) ?? null;
+  const selectedStash =
+    repo && selectedHash?.startsWith('stash:') ? repo.stashes.find((st) => `stash:${st.hash}` === selectedHash) ?? null : null;
+  const selected = selectedStash
+    ? { ...selectedStash, isStash: true, key: selectedHash }
+    : allCommits.find((c) => c.hash === selectedHash) ?? null;
+  const selectedKey = selected ? selected.key ?? selected.hash : null;
 
+  // Файлы выбранного коммита или stash подгружаем лениво
   useEffect(() => {
-    if (!repo || !selected || selected.wip || filesByHash[selected.hash]) return undefined;
+    if (!repo || !selected || selected.wip || filesByHash[selectedKey]) return undefined;
     let cancelled = false;
-    api.repo.commitFiles(repo.path, selected.hash, selected.parents[0]).then((res) => {
+    const request = selected.isStash
+      ? api.repo.stashDetails(repo.path, selected.hash)
+      : api.repo.commitFiles(repo.path, selected.hash, selected.parents[0]);
+    request.then((res) => {
       if (cancelled) return;
-      setFilesByHash((m) => ({ ...m, [selected.hash]: res.ok ? res.data : { error: res.error.message } }));
+      setFilesByHash((m) => ({ ...m, [selectedKey]: res.ok ? res.data : { error: res.error.message } }));
     });
     return () => {
       cancelled = true;
     };
-  }, [repo, selected, filesByHash]);
+  }, [repo, selectedKey, filesByHash]); // eslint-disable-line react-hooks/exhaustive-deps
 
 
   /* ---------- Просмотр изменений файла ---------- */
 
   // kind: 'commit' | 'staged' | 'unstaged'; list — файлы этой группы для навигации ←/→
   const openFile = (file, kind, list) => {
-    const index = Math.max(0, list.findIndex((f) => f.path === file.path));
+    const index = Math.max(0, list.findIndex((f) => f.path === file.path && Boolean(f.untracked) === Boolean(file.untracked)));
+    if (kind === 'stash') {
+      setDiffTarget({ kind, mode: 'commit', hash: file.diffHash, parent: file.diffParent, commitHash: selectedHash, file, list, index });
+      return;
+    }
     const commit = kind === 'commit' ? allCommits.find((c) => c.hash === selectedHash) : null;
     const mode = kind === 'commit' ? 'commit' : kind === 'staged' ? 'staged' : file.untracked ? 'untracked' : 'unstaged';
     setDiffTarget({
@@ -916,6 +979,188 @@ export default function App() {
     });
   };
 
+
+  /* ---------- Stash: просмотр и действия ---------- */
+
+  const stashTitle = (st) => st.message.replace(/^(WIP on|On) [^:]+:\s*/, '') || st.id;
+
+  const stashAction = (action, st) => {
+    if (action === 'drop') {
+      return confirm({
+        title: 'Удалить stash',
+        body: `Удалить «${stashTitle(st)}»? Вернуть его можно кнопкой Undo.`,
+        confirmLabel: 'Удалить',
+        danger: true,
+        onConfirm: () => run('stashDrop', { id: st.id, hash: st.hash }, { label: 'Drop', success: 'Stash удалён — Undo вернёт его' }),
+      });
+    }
+    const pop = action === 'pop';
+    return run(pop ? 'stashPopAt' : 'stashApplyAt', { id: st.id, hash: st.hash }, {
+      label: pop ? 'Pop' : 'Apply',
+      success: pop ? `Stash «${stashTitle(st)}» применён и удалён` : `Stash «${stashTitle(st)}» применён`,
+    }).then((res) => {
+      if (res.ok) setSelectedHash('WIP');
+      return res;
+    });
+  };
+
+  const buildStashMenu = (st) => [
+    { header: `${st.id} · ${stashTitle(st)}` },
+    { label: 'Применить (Apply)', icon: Archive, onClick: () => stashAction('apply', st) },
+    { label: 'Применить и удалить (Pop)', icon: Archive, onClick: () => stashAction('pop', st) },
+    { separator: true },
+    { label: 'Удалить (Drop)', icon: Trash2, danger: true, onClick: () => stashAction('drop', st) },
+  ];
+
+  /* ---------- Вернуть проект к коммиту ---------- */
+
+  const openRevertTo = (commitNode) => setDialog({ type: 'revertTo', commit: commitNode });
+
+  const confirmRevertTo = async ({ push: andPush }) => {
+    const target = dialog?.commit;
+    if (!target) return;
+    const res = await run('revertTo', { hash: target.hash }, {
+      label: 'Вернуть к коммиту',
+      progress: `Возвращаем файлы к ${target.hash.slice(0, 7)}…`,
+      success: (d) => `Файлы возвращены к ${target.hash.slice(0, 7)} — создан коммит «${d.subject}». Undo отменит.`,
+    });
+    if (!res.ok) return;
+    setDialog(null);
+    setDiffTarget(null);
+    setSelectedHash(res.data.to);
+    if (andPush) push(false);
+  };
+
+  /* ---------- Поиск коммитов ---------- */
+
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [filter, setFilter] = useState(EMPTY_FILTER);
+  const [matchIndex, setMatchIndex] = useState(0);
+  const filterActive = isFilterActive(filter);
+  const searchMatches = useMemo(
+    () => (repo && searchOpen && filterActive ? repo.commits.filter((c) => matchCommit(c, filter)).map((c) => c.hash) : []),
+    [repo, filter, searchOpen, filterActive],
+  );
+  const matchSet = useMemo(() => new Set(searchMatches), [searchMatches]);
+
+  // При изменении фильтра — к первому совпадению
+  useEffect(() => {
+    setMatchIndex(0);
+    if (searchMatches.length) {
+      setDiffTarget(null);
+      setSelectedHash(searchMatches[0]);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [filter]);
+
+  const gotoMatch = (delta) => {
+    if (!searchMatches.length) return;
+    const i = (matchIndex + delta + searchMatches.length) % searchMatches.length;
+    setMatchIndex(i);
+    setDiffTarget(null);
+    setSelectedHash(searchMatches[i]);
+  };
+  const closeSearch = () => {
+    setSearchOpen(false);
+    setFilter(EMPTY_FILTER);
+  };
+
+  /* ---------- Автообновление ---------- */
+
+  const [autoSync, setAutoSync] = useState(() => readPref('autoSync', '1') === '1');
+  const [bgFetching, setBgFetching] = useState(false);
+  const [lastFetch, setLastFetch] = useState(null);
+  const [fetchError, setFetchError] = useState(null);
+  const bgFetchingRef = useRef(false);
+  const refreshTimer = useRef(null);
+  const accessRef = useRef(null);
+  accessRef.current = access;
+
+  // 1) Следим за папкой репозитория: коммиты, ветки, stash, правки файлов — граф обновляется сам
+  useEffect(() => {
+    if (!api?.repo.watch) return undefined;
+    const dir = repo?.path;
+    if (!autoSync || !dir) {
+      api.repo.watch(null);
+      return undefined;
+    }
+    api.repo.watch(dir);
+    return () => api.repo.watch(null);
+  }, [repo?.path, autoSync]);
+
+  useEffect(() => {
+    if (!api?.repo.onChanged) return undefined;
+    let pendingFull = false;
+    return api.repo.onChanged((ev) => {
+      if (ev.path !== repoRef.current?.path) return;
+      // Изменилось что-то в .git (коммит, ветка, stash, fetch) — нужен полный перечит графа;
+      // изменились только рабочие файлы — достаточно быстрого git status
+      pendingFull = pendingFull || ev.git;
+      clearTimeout(refreshTimer.current);
+      const tick = async () => {
+        // Во время операции не мешаем — после неё граф и так перезагрузится
+        if (busyRef.current) {
+          refreshTimer.current = setTimeout(tick, 400);
+          return;
+        }
+        if (repoRef.current?.path !== ev.path) return;
+        if (pendingFull || !api.repo.status) {
+          pendingFull = false;
+          loadRepo(ev.path, { silent: true });
+          return;
+        }
+        const res = await api.repo.status(ev.path);
+        if (!res.ok || repoRef.current?.path !== res.data.path) return;
+        setRepo((r) => {
+          if (!r || r.path !== res.data.path) return r;
+          const same =
+            r.operation === res.data.operation &&
+            JSON.stringify(r.wipFiles) === JSON.stringify(res.data.wipFiles);
+          if (same) return r; // ничего не поменялось — не перерисовываем
+          return { ...r, wipFiles: res.data.wipFiles, operation: res.data.operation };
+        });
+      };
+      refreshTimer.current = setTimeout(tick, 30);
+    });
+  }, [loadRepo]);
+
+  // 2) Фоновый fetch: новые коммиты и ветки с сервера
+  const backgroundFetch = useCallback(
+    async (manual = false) => {
+      const current = repoRef.current;
+      if (!current || current.remotes.length === 0 || bgFetchingRef.current || busyRef.current) return;
+      bgFetchingRef.current = true;
+      setBgFetching(true);
+      const res = await api.repo.action(current.path, 'fetch', {});
+      bgFetchingRef.current = false;
+      setBgFetching(false);
+      if (res.ok) {
+        setLastFetch(new Date().toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' }));
+        setFetchError(null);
+        if (repoRef.current?.path === current.path) loadRepo(current.path, { silent: true });
+      } else {
+        setFetchError(res.error.message);
+        if (manual) notify({ type: 'error', title: `Fetch: ${res.error.message}`, hint: res.error.hint });
+      }
+    },
+    [loadRepo, notify],
+  );
+
+  useEffect(() => {
+    setLastFetch(null);
+    setFetchError(null);
+    if (!autoSync || !repo?.path || repo.remotes.length === 0) return undefined;
+    // Только если доступ на чтение подтверждён — чтобы фоновая проверка не открывала окно входа
+    const canFetch = () => accessRef.current?.data?.canRead && document.hasFocus();
+    const first = setTimeout(() => canFetch() && backgroundFetch(), 15000);
+    const timer = setInterval(() => canFetch() && backgroundFetch(), AUTO_FETCH_MIN * 60000);
+    return () => {
+      clearTimeout(first);
+      clearInterval(timer);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [repo?.path, autoSync, backgroundFetch]);
+
   /* ---------- Разметка ---------- */
 
   return (
@@ -953,6 +1198,8 @@ export default function App() {
             onStash={stash}
             onPop={stashPop}
             onAccessClick={() => setDialog({ type: 'access' })}
+            onSearch={() => (searchOpen ? closeSearch() : setSearchOpen(true))}
+            searchOpen={searchOpen}
           />
 
           {repo.operation && (
@@ -978,7 +1225,16 @@ export default function App() {
           <div className="relative flex min-h-0 flex-1 animate-fade-in">
             {loading && !booting && <LoadingOverlay label={loadingLabel} />}
             <div style={{ width: sidebarW }} className="relative flex shrink-0">
-              <Sidebar repo={repo} selectedHash={selectedHash} onSelect={setSelectedHash} onCheckout={checkout} />
+              <Sidebar
+                repo={repo}
+                selectedHash={selectedHash}
+                onSelect={(h) => {
+                  setDiffTarget(null);
+                  setSelectedHash(h);
+                }}
+                onCheckout={checkout}
+                onStashMenu={(st, x, y) => setMenu({ x, y, items: buildStashMenu(st) })}
+              />
               <ResizeHandle
                 width={sidebarW}
                 onResize={setSidebarW}
@@ -990,7 +1246,24 @@ export default function App() {
                 className="-right-1"
               />
             </div>
-            <main className="flex min-w-0 flex-1 flex-col">
+            <main className="relative flex min-w-0 flex-1 flex-col">
+              {busyAction && PROGRESS_TEXT[busyAction] && (
+                <LoadingOverlay title={busyText ?? PROGRESS_TEXT[busyAction]} label={repo.name} />
+              )}
+              {searchOpen && !diffTarget && (
+                <SearchBar
+                  commits={repo.commits}
+                  filter={filter}
+                  onChange={setFilter}
+                  matches={searchMatches}
+                  current={matchIndex}
+                  onPrev={() => gotoMatch(-1)}
+                  onNext={() => gotoMatch(1)}
+                  onClose={closeSearch}
+                  totalLoaded={repo.commits.length}
+                  truncated={repo.truncated}
+                />
+              )}
               {diffTarget ? (
                 <DiffView
                   key={`${diffTarget.kind}:${diffTarget.file.path}`}
@@ -1022,6 +1295,7 @@ export default function App() {
                   onContextMenu={openMenu}
                   wipCount={repo.wipFiles.length}
                   truncated={repo.truncated}
+                  matchSet={searchOpen && filterActive ? matchSet : null}
                 />
               )}
             </main>
@@ -1039,7 +1313,7 @@ export default function App() {
               />
               <CommitDetails
                 commit={selected}
-                files={selected && !selected.wip ? filesByHash[selected.hash] : null}
+                files={selected && !selected.wip ? filesByHash[selectedKey] : null}
                 repo={repo}
                 busy={Boolean(busyAction)}
                 activeFile={diffTarget ? { kind: diffTarget.kind, path: diffTarget.file.path } : null}
@@ -1048,6 +1322,8 @@ export default function App() {
                 onStage={stageFiles}
                 onUnstage={unstageFiles}
                 onCommit={commit}
+                onRevertTo={openRevertTo}
+                onStashAction={stashAction}
               />
             </div>
           </div>
@@ -1058,12 +1334,26 @@ export default function App() {
           onOpen={openRepository}
           onCreate={() => createRepository()}
           onConnect={() => createRepository(undefined, 'connect')}
+          onClone={() => setDialog({ type: 'clone' })}
         />
       )}
 
       {repo && (
         <StatusBar
           repo={repo}
+          sync={{
+            enabled: autoSync,
+            intervalMin: AUTO_FETCH_MIN,
+            fetching: bgFetching,
+            lastFetch: lastFetch,
+            error: fetchError,
+            onToggle: () =>
+              setAutoSync((v) => {
+                writePref('autoSync', v ? '0' : '1');
+                return !v;
+              }),
+            onFetchNow: () => backgroundFetch(true),
+          }}
           onJumpToHead={() => {
             setDiffTarget(null);
             setSelectedHash(repo.headHash);
@@ -1128,6 +1418,26 @@ export default function App() {
           }}
         />
       )}
+      {dialog?.type === 'clone' && (
+        <CloneDialog
+          onClose={() => setDialog(null)}
+          onCloned={(r) => {
+            setDialog(null);
+            notify({ type: 'success', title: `Репозиторий ${r.name} склонирован`, hint: r.path });
+            openTab(r.path);
+          }}
+        />
+      )}
+      {dialog?.type === 'revertTo' && repo && (
+        <RevertToDialog
+          repoPath={repo.path}
+          commit={dialog.commit}
+          busy={busyAction === 'revertTo' || busyAction === 'stash'}
+          onClose={() => setDialog(null)}
+          onConfirm={confirmRevertTo}
+          onStashFirst={async () => (await run('stash', {}, { label: 'Stash', success: 'Изменения спрятаны в Stash' })).ok}
+        />
+      )}
       {dialog?.type === 'tag' && (
         <TagDialog
           hash={dialog.hash}
@@ -1177,7 +1487,7 @@ function OperationBanner({ operation, conflicts, busy, onContinue, onAbort }) {
   );
 }
 
-function Welcome({ loading, onOpen, onCreate, onConnect }) {
+function Welcome({ loading, onOpen, onCreate, onConnect, onClone }) {
   return (
     <div className="flex flex-1 flex-col items-center justify-center gap-5">
       <div className="glass-strong flex h-24 w-24 animate-pop-in items-center justify-center rounded-3xl border border-gk-border bg-gk-panel">
@@ -1210,6 +1520,14 @@ function Welcome({ loading, onOpen, onCreate, onConnect }) {
       >
         <Link2 size={15} />
         Подключить папку проекта к GitLab / GitHub
+      </button>
+      <button
+        onClick={onClone}
+        disabled={loading}
+        className="-mt-3 flex animate-slide-up items-center gap-2 rounded-lg px-4 py-2 text-[13px] text-gk-muted ring-1 ring-gk-border transition hover:bg-gk-hover hover:text-gk-text disabled:opacity-60"
+      >
+        <CloudDownload size={15} />
+        Клонировать репозиторий по ссылке
       </button>
       <p className="max-w-sm animate-fade-in text-center text-xs text-gk-dim">
         Ctrl+O — открыть · Ctrl+N — создать. Если в выбранной папке нет Git, приложение предложит его инициализировать.

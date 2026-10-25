@@ -1,8 +1,8 @@
-import { AlertTriangle, ArrowDown, ArrowUp, Crosshair, FolderGit2, GitBranch, Pencil } from 'lucide-react';
+import { AlertTriangle, ArrowDown, ArrowUp, Crosshair, FolderGit2, GitBranch, Loader2, Pencil, RefreshCw } from 'lucide-react';
 import { fullDate, relativeTime } from '../lib/format.js';
 
 // Строка состояния: текущая ветка и активный коммит (HEAD). Клик — перейти к HEAD в графе.
-export default function StatusBar({ repo, onJumpToHead }) {
+export default function StatusBar({ repo, onJumpToHead, sync }) {
   const head = repo.commits.find((c) => c.hash === repo.headHash) ?? null;
   const branch = repo.localBranches.find((b) => b.name === repo.currentBranch) ?? null;
 
@@ -68,6 +68,43 @@ export default function StatusBar({ repo, onJumpToHead }) {
       )}
 
       <span className="flex-1" />
+
+      {/* Автообновление: слежение за папкой + фоновый fetch */}
+      {sync && (
+        <span className="flex shrink-0 items-center gap-1">
+          <button
+            onClick={sync.onToggle}
+            title={
+              sync.enabled
+                ? `Автообновление включено: граф обновляется при любых изменениях в папке${
+                    repo.remotes.length ? `, данные с сервера — каждые ${sync.intervalMin} мин` : ''
+                  }. Нажмите, чтобы выключить.`
+                : 'Автообновление выключено. Нажмите, чтобы включить.'
+            }
+            className="flex items-center gap-1.5 rounded px-1.5 py-0.5 hover:bg-gk-hover hover:text-gk-text"
+          >
+            <span className={`h-1.5 w-1.5 rounded-full ${sync.enabled ? 'bg-gk-green' : 'bg-gk-dim'}`} />
+            {sync.enabled ? 'авто' : 'авто выкл'}
+          </button>
+          {repo.remotes.length > 0 && (
+            <button
+              onClick={sync.onFetchNow}
+              disabled={sync.fetching}
+              title={
+                sync.error
+                  ? `Последний fetch не удался: ${sync.error}`
+                  : sync.lastFetch
+                    ? `Данные с сервера получены в ${sync.lastFetch}. Нажмите, чтобы обновить сейчас.`
+                    : 'Получить изменения с сервера (fetch)'
+              }
+              className={`flex items-center gap-1 rounded px-1.5 py-0.5 hover:bg-gk-hover hover:text-gk-text ${sync.error ? 'text-gk-yellow' : ''}`}
+            >
+              {sync.fetching ? <Loader2 size={11} className="animate-spin" /> : <RefreshCw size={11} />}
+              {sync.fetching ? 'fetch…' : sync.lastFetch ?? 'fetch'}
+            </button>
+          )}
+        </span>
+      )}
 
       {repo.operation && (
         <span className="shrink-0 rounded bg-gk-yellow/15 px-1.5 text-gk-yellow">{repo.operation} в процессе</span>

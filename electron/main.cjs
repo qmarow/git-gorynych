@@ -4,6 +4,8 @@ const path = require('node:path');
 const git = require('./git.cjs');
 const actions = require('./actions.cjs');
 const gitInit = require('./init.cjs');
+const cloner = require('./clone.cjs');
+const { watchRepository } = require('./watch.cjs');
 const { serializeError } = require('./errors.cjs');
 
 const DEV_SERVER_URL = process.env.VITE_DEV_SERVER_URL;
@@ -147,6 +149,43 @@ ipcMain.handle('repo:inspect', safe((dir) => gitInit.inspectFolder(dir)));
 ipcMain.handle('repo:init', safe((dir, options) => gitInit.initRepository(dir, options)));
 ipcMain.handle('repo:probe-remote', safe((dir, options) => gitInit.probeRemote(dir, options)));
 ipcMain.handle('repo:connect', safe((dir, options) => gitInit.connectRepository(dir, options)));
+ipcMain.handle('repo:status', safe((dir) => git.quickStatus(dir)));
+ipcMain.handle('repo:stash-details', safe((dir, hash) => git.getStashDetails(dir, hash)));
+
+// Клонирование: прогресс приходит событиями clone:progress { id, phase, percent, speed, size }
+ipcMain.handle('repo:clone-probe', safe((url) => cloner.probeClone(url)));
+ipcMain.handle('repo:clone', (event, options) =>
+  safe(() =>
+    cloner.cloneRepository(options, (progress) => {
+      if (!event.sender.isDestroyed()) event.sender.send('clone:progress', { id: options?.id, ...progress });
+    }),
+  )(event),
+);
+ipcMain.handle('repo:clone-cancel', (_event, id) => cloner.cancelClone(id));
+
+// Автообновление: следим за активным репозиторием и сообщаем об изменениях
+const watchers = new Map(); // webContents.id -> stop()
+ipcMain.handle('repo:watch', (event, dir) => {
+  const key = event.sender.id;
+  watchers.get(key)?.();
+  watchers.delete(key);
+  if (typeof dir !== 'string' || !dir || !fs.existsSync(dir)) return false;
+  // Короткая задержка: правки файлов видны почти сразу, но пачка событий при сохранении склеивается
+  const stop = watchRepository(
+    dir,
+    (what) => {
+      if (!event.sender.isDestroyed()) event.sender.send('repo:changed', { path: dir, ...what });
+    },
+    { delay: 120 },
+  );
+  watchers.set(key, stop);
+  event.sender.once('destroyed', () => {
+    watchers.get(key)?.();
+    watchers.delete(key);
+  });
+  return true;
+});
+
 ipcMain.handle('repo:commit-files', safe((dir, hash, parent) => git.getCommitFiles(dir, hash, parent)));
 ipcMain.handle('repo:file-diff', safe((dir, params) => git.getFileDiff(dir, params)));
 

@@ -13,7 +13,7 @@ import {
   Tag,
 } from 'lucide-react';
 
-export default function Sidebar({ repo, selectedHash, onSelect, onCheckout }) {
+export default function Sidebar({ repo, selectedHash, onSelect, onCheckout, onStashMenu }) {
   const [filter, setFilter] = useState('');
   const match = (name) => name.toLowerCase().includes(filter.toLowerCase());
   const remoteCount = repo.remotes.reduce((n, r) => n + r.branches.length, 0);
@@ -84,9 +84,19 @@ export default function Sidebar({ repo, selectedHash, onSelect, onCheckout }) {
 
         <Section title="Stashes" icon={Archive} count={repo.stashes.length}>
           {repo.stashes.filter((s) => match(s.message)).map((stash) => (
-            <Item key={stash.id} title={`${stash.id}: ${stash.message}`}>
-              <Archive size={13} className="shrink-0 text-gk-muted" />
-              <span className="truncate">{stash.message}</span>
+            <Item
+              key={stash.hash}
+              title={`${stash.id}: ${stash.message}\nКлик — посмотреть изменения, правый клик — действия`}
+              selected={selectedHash === `stash:${stash.hash}`}
+              onClick={() => onSelect(`stash:${stash.hash}`)}
+              onContextMenu={(e) => {
+                e.preventDefault();
+                onSelect(`stash:${stash.hash}`);
+                onStashMenu?.(stash, e.clientX, e.clientY);
+              }}
+            >
+              <Archive size={13} className="shrink-0 text-gk-yellow/80" />
+              <span className="truncate">{stash.message.replace(/^(WIP on|On) [^:]+:\s*/, '')}</span>
             </Item>
           ))}
           {repo.stashes.length === 0 && <Empty>Нет сташей</Empty>}

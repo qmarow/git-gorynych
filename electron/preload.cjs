@@ -29,6 +29,17 @@ contextBridge.exposeInMainWorld('api', {
     // options: { url, branch } → проверка удалённого репозитория без изменений
     probeRemote: (dir, options) => ipcRenderer.invoke('repo:probe-remote', dir, options),
     connect: (dir, options) => ipcRenderer.invoke('repo:connect', dir, options),
+    // Только статус рабочих файлов — быстро, без перечитывания истории
+    status: (dir) => ipcRenderer.invoke('repo:status', dir),
+    stashDetails: (dir, hash) => ipcRenderer.invoke('repo:stash-details', dir, hash),
+    cloneProbe: (url) => ipcRenderer.invoke('repo:clone-probe', url),
+    // options: { id, url, parent, name, branch, depth }
+    clone: (options) => ipcRenderer.invoke('repo:clone', options),
+    cloneCancel: (id) => ipcRenderer.invoke('repo:clone-cancel', id),
+    onCloneProgress: (callback) => subscribe('clone:progress', callback),
+    // Автообновление: следить за папкой репозитория (null — перестать)
+    watch: (dir) => ipcRenderer.invoke('repo:watch', dir),
+    onChanged: (callback) => subscribe('repo:changed', callback),
     getLast: () => ipcRenderer.invoke('repo:get-last'),
     load: (dir) => ipcRenderer.invoke('repo:load', dir),
     commitFiles: (dir, hash, parent) => ipcRenderer.invoke('repo:commit-files', dir, hash, parent),

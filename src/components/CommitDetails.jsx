@@ -1,6 +1,20 @@
 import { useState } from 'react';
-import { Copy, FileText, GitCommitHorizontal, List, ListTree, Loader2, Minus, Plus } from 'lucide-react';
-import { FILE_STATUS, avatarColor, fullDate, initials } from '../lib/format.js';
+import {
+  Archive,
+  ArrowDownToLine,
+  Copy,
+  FileText,
+  GitCommitHorizontal,
+  History,
+  List,
+  ListTree,
+  Loader2,
+  Minus,
+  PackageOpen,
+  Plus,
+  Trash2,
+} from 'lucide-react';
+import { FILE_STATUS, avatarColor, fullDate, initials, relativeTime } from '../lib/format.js';
 
 export default function CommitDetails({
   commit,
@@ -13,11 +27,23 @@ export default function CommitDetails({
   onStage,
   onUnstage,
   onCommit,
+  onRevertTo,
+  onStashAction,
 }) {
   return (
     <aside className="glass flex w-full min-w-0 flex-col border-l border-gk-border bg-gk-panel">
       {!commit ? (
         <div className="flex flex-1 items-center justify-center text-xs text-gk-dim">Выберите коммит</div>
+      ) : commit.isStash ? (
+        <StashPanel
+          key={commit.hash}
+          stash={commit}
+          details={files}
+          busy={busy}
+          activeFile={activeFile}
+          onOpenFile={onOpenFile}
+          onAction={onStashAction}
+        />
       ) : commit.wip ? (
         <WipPanel
           key={repo.path}
@@ -37,6 +63,8 @@ export default function CommitDetails({
           activeFile={activeFile}
           onOpenFile={onOpenFile}
           onSelectCommit={onSelectCommit}
+          onRevertTo={onRevertTo}
+          busy={busy}
         />
       )}
     </aside>
@@ -45,7 +73,7 @@ export default function CommitDetails({
 
 /* ---------- Выбран обычный коммит ---------- */
 
-function CommitPanel({ commit, files, activeFile, onOpenFile, onSelectCommit }) {
+function CommitPanel({ commit, files, activeFile, onOpenFile, onSelectCommit, onRevertTo, busy }) {
   const [treeView, setTreeView] = useState(false);
   const list = Array.isArray(files) ? files : [];
   const counts = list.reduce((acc, f) => ({ ...acc, [f.status]: (acc[f.status] ?? 0) + 1 }), {});
@@ -95,6 +123,22 @@ function CommitPanel({ commit, files, activeFile, onOpenFile, onSelectCommit }) 
             ))}
           </div>
         )}
+
+        {onRevertTo && (
+          <button
+            onClick={() => onRevertTo(commit)}
+            disabled={busy || commit.isHead}
+            title={
+              commit.isHead
+                ? 'Это текущий коммит'
+                : 'Создать новый коммит, который вернёт все файлы к состоянию этого коммита. История не переписывается.'
+            }
+            className="flex w-full items-center justify-center gap-2 rounded-md bg-white/[0.05] py-1.5 text-xs text-gk-text ring-1 ring-gk-border transition hover:bg-gk-yellow/10 hover:text-gk-yellow hover:ring-gk-yellow/40 disabled:opacity-40 disabled:hover:bg-white/[0.05] disabled:hover:text-gk-text disabled:hover:ring-gk-border"
+          >
+            <History size={13} />
+            Вернуть проект к этому коммиту…
+          </button>
+        )}
       </div>
 
       <div className="flex h-9 shrink-0 items-center gap-2 border-b border-gk-border px-3 text-xs">
@@ -112,11 +156,7 @@ function CommitPanel({ commit, files, activeFile, onOpenFile, onSelectCommit }) 
       </div>
 
       <div className="flex-1 overflow-y-auto py-1">
-        {files === undefined && (
-          <div className="flex items-center gap-2 px-3 py-2 text-xs text-gk-muted">
-            <Loader2 size={13} className="animate-spin" /> Загрузка файлов…
-          </div>
-        )}
+        {files === undefined && <FilesSkeleton />}
         {files?.error && <div className="px-3 py-2 text-xs text-gk-red">{files.error}</div>}
         {Array.isArray(files) && files.length === 0 && (
           <div className="px-3 py-2 text-xs italic text-gk-dim">Нет изменённых файлов</div>
@@ -141,6 +181,103 @@ function CommitPanel({ commit, files, activeFile, onOpenFile, onSelectCommit }) 
         ))}
       </div>
     </>
+  );
+}
+
+/* ---------- Выбран stash ---------- */
+
+function StashPanel({ stash, details, busy, activeFile, onOpenFile, onAction }) {
+  const files = Array.isArray(details?.files) ? details.files : [];
+  const message = stash.message.replace(/^(WIP on|On) [^:]+:\s*/, '');
+  const branch = /^(?:WIP on|On) ([^:]+):/.exec(stash.message)?.[1];
+  return (
+    <>
+      <div className="flex h-9 shrink-0 items-center gap-2 border-b border-gk-border px-3 text-xs text-gk-muted">
+        <Archive size={14} className="text-gk-yellow" />
+        <span className="font-mono text-gk-text">{stash.id}</span>
+        {branch && <span className="truncate">на ветке {branch}</span>}
+      </div>
+
+      <div className="shrink-0 space-y-3 border-b border-gk-border p-3">
+        <div>
+          <h2 className="select-text text-[14px] font-semibold leading-snug text-white">{message || 'Без названия'}</h2>
+          {stash.date && (
+            <div className="mt-1 text-xs text-gk-muted" title={fullDate(stash.date)}>
+              спрятано {relativeTime(stash.date)} · {fullDate(stash.date)}
+            </div>
+          )}
+        </div>
+        <div className="grid grid-cols-3 gap-1.5">
+          <StashButton icon={ArrowDownToLine} disabled={busy} onClick={() => onAction('apply', stash)} title="Применить изменения, stash остаётся в списке">
+            Apply
+          </StashButton>
+          <StashButton icon={PackageOpen} disabled={busy} onClick={() => onAction('pop', stash)} title="Применить и удалить из списка">
+            Pop
+          </StashButton>
+          <StashButton icon={Trash2} danger disabled={busy} onClick={() => onAction('drop', stash)} title="Удалить stash (можно вернуть через Undo)">
+            Drop
+          </StashButton>
+        </div>
+      </div>
+
+      <div className="flex h-9 shrink-0 items-center gap-2 border-b border-gk-border px-3 text-xs text-gk-muted">
+        {Array.isArray(details?.files) && (
+          <>
+            {files.length} {files.length === 1 ? 'файл' : 'файлов'}
+            {files.some((f) => f.untracked) && <span className="text-gk-dim">· включая новые файлы</span>}
+          </>
+        )}
+      </div>
+
+      <div className="flex-1 overflow-y-auto py-1">
+        {details === undefined && <FilesSkeleton />}
+        {details?.error && <div className="px-3 py-2 text-xs text-gk-red">{details.error}</div>}
+        {files.map((file) => (
+          <FileRow
+            key={`${file.untracked ? 'u' : 't'}:${file.path}`}
+            file={file}
+            active={activeFile?.kind === 'stash' && activeFile.path === file.path}
+            onClick={() => onOpenFile(file, 'stash', files)}
+          >
+            {file.untracked && <span className="ml-auto shrink-0 rounded bg-gk-green/10 px-1 text-[10px] text-gk-green">новый</span>}
+            {file.additions !== null && (
+              <span className={`${file.untracked ? '' : 'ml-auto'} shrink-0 font-mono text-[11px]`}>
+                <span className="text-gk-green">+{file.additions}</span>{' '}
+                <span className="text-gk-red">-{file.deletions}</span>
+              </span>
+            )}
+          </FileRow>
+        ))}
+      </div>
+    </>
+  );
+}
+
+function StashButton({ icon: Icon, danger, children, ...props }) {
+  return (
+    <button
+      {...props}
+      className={`flex items-center justify-center gap-1.5 rounded-md py-1.5 text-xs ring-1 ring-gk-border transition disabled:opacity-40 ${
+        danger ? 'text-gk-red hover:bg-gk-red/10' : 'text-gk-text hover:bg-white/10'
+      }`}
+    >
+      <Icon size={13} />
+      {children}
+    </button>
+  );
+}
+
+// Мерцающая заглушка вместо «Загрузка…»
+function FilesSkeleton() {
+  return (
+    <div className="space-y-2 px-3 py-2">
+      {[70, 55, 82, 46, 64].map((w, i) => (
+        <div key={i} className="flex items-center gap-2">
+          <span className="skeleton h-4 w-4 rounded-sm" />
+          <span className="skeleton h-3 rounded" style={{ width: `${w}%` }} />
+        </div>
+      ))}
+    </div>
   );
 }
 

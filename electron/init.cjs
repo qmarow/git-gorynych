@@ -514,4 +514,7 @@ async function connectRepository(dir, opts = {}) {
 }
 
 module.exports.probeRemote = probeRemote;
+module.exports.remoteHeads = remoteHeads;
+module.exports.validateUrl = validateUrl;
+module.exports.hostHint = hostHint;
 module.exports.connectRepository = connectRepository;

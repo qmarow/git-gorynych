@@ -116,7 +116,9 @@ export default function DiffView({
           <Placeholder>Файл слишком большой ({Math.round(data.size / 1024)} КБ) для просмотра</Placeholder>
         ) : data.hunks.length === 0 ? (
           <Placeholder>
-            {file.oldPath && file.oldPath !== file.path
+            {data.eolOnly
+              ? 'Изменились только окончания строк (CRLF ↔ LF) — текст файла тот же'
+              : file.oldPath && file.oldPath !== file.path
               ? 'Файл переименован без изменения содержимого'
               : ignoreWhitespace
                 ? 'Изменения только в пробелах'
