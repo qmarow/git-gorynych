@@ -3,7 +3,7 @@
 export const THEMES = [
   {
     id: 'kraken',
-    name: 'GitKraken',
+    name: 'GitIdea',
     base: '#0e1117',
     surface: [20, 23, 31],
     panel: [24, 27, 36],

@@ -1,8 +1,8 @@
 {
-  "name": "gitkraken-clone",
-  "productName": "GitKraken Clone",
+  "name": "gitidea",
+  "productName": "GitIdea",
   "version": "0.1.0",
-  "description": "Desktop Git client inspired by GitKraken (Electron + React + Tailwind)",
+  "description": "GitIdea — desktop Git client (Electron + React + Tailwind)",
   "author": "ironxenot",
   "private": true,
   "type": "module",
@@ -30,8 +30,8 @@
     "wait-on": "^8.0.3"
   },
   "build": {
-    "appId": "com.ironxenot.gitkrakenclone",
-    "productName": "GitKraken Clone",
+    "appId": "com.ironxenot.gitidea",
+    "productName": "GitIdea",
     "directories": {
       "output": "release",
       "buildResources": "build"
@@ -61,7 +61,7 @@
       "allowToChangeInstallationDirectory": true,
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
-      "shortcutName": "GitKraken Clone"
+      "shortcutName": "GitIdea"
     }
   }
 }

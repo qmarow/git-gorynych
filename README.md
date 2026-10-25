@@ -1,4 +1,4 @@
-# GitKraken Clone
+# GitIdea
 
 Десктопный Git-клиент в стиле GitKraken: Electron + React (Vite) + Tailwind CSS v4 + Lucide Icons.
 
@@ -19,7 +19,7 @@ npm run electron:dev
 ## Сборка .exe
 
 ```powershell
-npm run electron:build            # установщик NSIS -> release/GitKraken Clone-Setup-0.1.0.exe
+npm run electron:build            # установщик NSIS -> release/GitIdea-Setup-0.1.0.exe
 npm run electron:build:portable   # один portable .exe без установки
 npm run electron:preview          # собрать фронт и открыть как в проде, без упаковки
 ```

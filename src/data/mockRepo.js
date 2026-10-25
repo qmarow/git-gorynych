@@ -11,7 +11,7 @@ const people = {
 };
 
 export const repo = {
-  name: 'gitkraken-clone',
+  name: 'gitidea',
   currentBranch: 'feature/commit-graph',
   localBranches: [
     { name: 'feature/commit-graph', ahead: 2, behind: 0 },

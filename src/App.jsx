@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   AlertTriangle,
   Archive,
+  BookOpen,
   Cherry,
   Cloud,
   Copy,
@@ -47,6 +48,7 @@ import ConflictView from './components/ConflictView.jsx';
 import CiView from './components/CiView.jsx';
 import RebaseView from './components/RebaseView.jsx';
 import CompareView from './components/CompareView.jsx';
+import GuideDialog from './components/GuideDialog.jsx';
 import SettingsDialog from './components/SettingsDialog.jsx';
 import {
   DEFAULT_APPEARANCE,
@@ -638,7 +640,7 @@ export default function App() {
     const onKey = (e) => {
       if (e.key === 'F1') {
         e.preventDefault();
-        setDialog((d) => d ?? { type: 'shortcuts' });
+        setDialog((d) => d ?? { type: 'guide' });
         return;
       }
       if (!e.ctrlKey || e.altKey) return;
@@ -1716,7 +1718,8 @@ export default function App() {
             x,
             y,
             items: [
-              { label: 'Горячие клавиши', icon: Keyboard, hint: 'F1', onClick: () => setDialog({ type: 'shortcuts' }) },
+              { label: 'Руководство', icon: BookOpen, hint: 'F1', onClick: () => setDialog({ type: 'guide' }) },
+              { label: 'Горячие клавиши', icon: Keyboard, onClick: () => setDialog({ type: 'guide', section: 'keys' }) },
               { label: 'О программе', icon: Info, onClick: () => setDialog({ type: 'about' }) },
             ],
           })
@@ -2027,6 +2030,7 @@ export default function App() {
           onCreate={() => createRepository()}
           onConnect={() => createRepository(undefined, 'connect')}
           onClone={() => setDialog({ type: 'clone' })}
+          onGuide={() => setDialog({ type: 'guide' })}
         />
       )}
 
@@ -2061,11 +2065,11 @@ export default function App() {
           onCheckAccess={repo?.remotes.length ? () => setDialog({ type: 'access' }) : null}
         />
       )}
-      {dialog?.type === 'shortcuts' && <ShortcutsDialog onClose={() => setDialog(null)} />}
+      {dialog?.type === 'guide' && <GuideDialog initialSection={dialog.section} onClose={() => setDialog(null)} />}
       {dialog?.type === 'about' && (
         <Modal title="О программе" icon={Info} onClose={() => setDialog(null)} width={400}>
           <div className="space-y-2 text-[13px]">
-            <div className="text-[15px] font-semibold text-white">GitKraken Clone</div>
+            <div className="text-[15px] font-semibold text-white">GitIdea</div>
             <div className="text-gk-muted">Версия 0.1.0 · Electron + React + Tailwind CSS</div>
             <div className="text-[12px] leading-relaxed text-gk-dim">
               Граф коммитов, ветки, stash, конфликты, CI/CD и пайплайны GitLab — в одном окне.
@@ -2220,7 +2224,7 @@ function OperationBanner({ operation, conflicts, busy, onContinue, onAbort, onRe
   );
 }
 
-function Welcome({ loading, onOpen, onCreate, onConnect, onClone }) {
+function Welcome({ loading, onOpen, onCreate, onConnect, onClone, onGuide }) {
   return (
     <div className="flex flex-1 flex-col items-center justify-center gap-5">
       <div className="glass-strong flex h-24 w-24 animate-pop-in items-center justify-center rounded-3xl border border-gk-border bg-gk-panel">
@@ -2265,6 +2269,9 @@ function Welcome({ loading, onOpen, onCreate, onConnect, onClone }) {
       <p className="max-w-sm animate-fade-in text-center text-xs text-gk-dim">
         Ctrl+O — открыть · Ctrl+N — создать. Если в выбранной папке нет Git, приложение предложит его инициализировать.
       </p>
+      <button onClick={onGuide} className="-mt-2 flex animate-fade-in items-center gap-1.5 text-[12.5px] text-gk-blue hover:underline">
+        <BookOpen size={13} /> Как пользоваться программой (F1)
+      </button>
     </div>
   );
 }
@@ -2286,62 +2293,3 @@ function ErrorBanner({ error, onClose }) {
 
 /* ---------- Горячие клавиши ---------- */
 
-const SHORTCUTS = [
-  ['Репозитории', [
-    ['Ctrl+O', 'Открыть репозиторий'],
-    ['Ctrl+Shift+O', 'Клонировать'],
-    ['Ctrl+N', 'Создать репозиторий'],
-    ['Ctrl+Tab / Ctrl+Shift+Tab', 'Следующая / предыдущая вкладка'],
-    ['Ctrl+W', 'Закрыть вкладку'],
-  ]],
-  ['Работа', [
-    ['Ctrl+Z / Ctrl+Y', 'Отменить / повторить действие'],
-    ['Ctrl+F', 'Поиск коммитов'],
-    ['Ctrl+B', 'Переключить ветку'],
-    ['Двойной клик по коммиту', 'Checkout'],
-    ['Правый клик по коммиту', 'Меню действий'],
-    ['Ctrl+клик по коммиту', 'Сравнить с выбранным'],
-    ['Правый клик по файлу', 'Вернуть файл / отменить правки'],
-  ]],
-  ['Интерактивный rebase', [
-    ['↑ / ↓', 'Выбрать коммит'],
-    ['Alt+↑ / Alt+↓', 'Переместить коммит'],
-    ['P R S F D', 'Оставить / сообщение / squash / fixup / удалить'],
-  ]],
-  ['Просмотр изменений', [
-    ['F7 / Shift+F7', 'Следующее / предыдущее изменение'],
-    ['Alt+↑ / Alt+↓', 'Предыдущий / следующий файл'],
-    ['Esc', 'Закрыть'],
-  ]],
-  ['Конфликты', [
-    ['Ctrl+S', 'Сохранить решение и перейти дальше'],
-    ['Alt+↑ / Alt+↓', 'К предыдущему / следующему конфликту'],
-  ]],
-  ['Окно', [
-    ['Ctrl+,', 'Настройки и оформление'],
-    ['F1', 'Эта справка'],
-    ['F12', 'Инструменты разработчика'],
-  ]],
-];
-
-function ShortcutsDialog({ onClose }) {
-  return (
-    <Modal title="Горячие клавиши" icon={Keyboard} onClose={onClose} width={560}>
-      <div className="grid max-h-[60vh] grid-cols-2 gap-x-6 gap-y-4 overflow-y-auto pr-1">
-        {SHORTCUTS.map(([group, items]) => (
-          <section key={group}>
-            <h3 className="mb-1.5 text-[11px] font-semibold uppercase tracking-wider text-gk-dim">{group}</h3>
-            <ul className="space-y-1">
-              {items.map(([keys, label]) => (
-                <li key={keys + label} className="flex items-start justify-between gap-3 text-[12.5px]">
-                  <span className="text-gk-text">{label}</span>
-                  <kbd className="shrink-0 rounded border border-gk-border bg-white/5 px-1.5 py-px font-mono text-[11px] text-gk-muted">{keys}</kbd>
-                </li>
-              ))}
-            </ul>
-          </section>
-        ))}
-      </div>
-    </Modal>
-  );
-}

@@ -10,7 +10,7 @@ const SCOPE_LABELS = {
 };
 
 const createTokenUrl = (base, scope) =>
-  `${base}/-/user_settings/personal_access_tokens?name=${encodeURIComponent('GitKraken Clone')}&scopes=${scope}`;
+  `${base}/-/user_settings/personal_access_tokens?name=${encodeURIComponent('GitIdea')}&scopes=${scope}`;
 
 /**
  * Подключение GitLab по личному токену доступа. Токен уходит в main-процесс,

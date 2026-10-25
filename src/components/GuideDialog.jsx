@@ -1,0 +1,749 @@
+import { useEffect, useMemo, useRef, useState } from 'react';
+import {
+  Archive,
+  BookOpen,
+  GitBranch,
+  GitCommitHorizontal,
+  GitCompareArrows,
+  GitMerge,
+  Keyboard,
+  Layers,
+  LayoutPanelLeft,
+  LifeBuoy,
+  Palette,
+  RefreshCw,
+  Rocket,
+  Search,
+  ShieldCheck,
+  SquareSplitHorizontal,
+  Workflow,
+  X,
+} from 'lucide-react';
+
+/* ---------------- Горячие клавиши (используются и в разделе руководства) ---------------- */
+
+export const SHORTCUTS = [
+  ['Репозитории', [
+    ['Ctrl+O', 'Открыть репозиторий'],
+    ['Ctrl+Shift+O', 'Клонировать'],
+    ['Ctrl+N', 'Создать репозиторий'],
+    ['Ctrl+Tab / Ctrl+Shift+Tab', 'Следующая / предыдущая вкладка'],
+    ['Ctrl+W', 'Закрыть вкладку'],
+  ]],
+  ['Работа', [
+    ['Ctrl+Z / Ctrl+Y', 'Отменить / повторить действие'],
+    ['Ctrl+F', 'Поиск коммитов'],
+    ['Ctrl+Alt+F', 'Фильтр веток и тегов слева'],
+    ['Ctrl+B', 'Переключить ветку'],
+    ['Ctrl+Enter', 'Сделать коммит (в поле сообщения)'],
+    ['Двойной клик по коммиту', 'Checkout'],
+    ['Правый клик по коммиту', 'Меню действий'],
+    ['Ctrl+клик по коммиту', 'Сравнить с выбранным'],
+    ['Правый клик по файлу', 'Вернуть файл / отменить правки'],
+  ]],
+  ['Просмотр изменений', [
+    ['F7 / Shift+F7', 'Следующее / предыдущее изменение'],
+    ['Alt+↑ / Alt+↓', 'Предыдущий / следующий файл'],
+    ['Esc', 'Закрыть'],
+  ]],
+  ['Интерактивный rebase', [
+    ['↑ / ↓', 'Выбрать коммит'],
+    ['Alt+↑ / Alt+↓', 'Переместить коммит'],
+    ['P R S F D', 'Оставить / сообщение / squash / fixup / удалить'],
+  ]],
+  ['Конфликты', [
+    ['Ctrl+S', 'Сохранить решение и перейти дальше'],
+    ['Alt+↑ / Alt+↓', 'К предыдущему / следующему конфликту'],
+  ]],
+  ['CI/CD', [
+    ['Ctrl+S', 'Сохранить файл CI'],
+    ['Ctrl+/', 'Закомментировать строку'],
+    ['Tab / Shift+Tab', 'Отступ'],
+  ]],
+  ['Окно', [
+    ['Ctrl+,', 'Настройки и оформление'],
+    ['F1', 'Руководство'],
+    ['F12', 'Инструменты разработчика'],
+  ]],
+];
+
+/* ---------------- Кирпичики текста ---------------- */
+
+const K = ({ children }) => (
+  <kbd className="mx-0.5 inline-block whitespace-nowrap rounded border border-gk-border bg-white/[0.06] px-1.5 py-px font-mono text-[11px] text-gk-text shadow-[inset_0_-1px_0_rgb(255_255_255/0.06)]">
+    {children}
+  </kbd>
+);
+const B = ({ children }) => <b className="font-medium text-white">{children}</b>;
+const H = ({ children }) => <h3 className="mb-2 mt-6 text-[14px] font-semibold text-white first:mt-0">{children}</h3>;
+const P = ({ children }) => <p className="mb-2.5 leading-relaxed">{children}</p>;
+const Steps = ({ items }) => (
+  <ol className="mb-3 space-y-1.5">
+    {items.map((it, i) => (
+      <li key={i} className="flex gap-2.5 leading-relaxed">
+        <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-gk-blue/15 text-[11px] font-semibold text-gk-blue">{i + 1}</span>
+        <span>{it}</span>
+      </li>
+    ))}
+  </ol>
+);
+const List = ({ items }) => (
+  <ul className="mb-3 space-y-1">
+    {items.map((it, i) => (
+      <li key={i} className="flex gap-2 leading-relaxed">
+        <span className="mt-[9px] h-1 w-1 shrink-0 rounded-full bg-gk-dim" />
+        <span>{it}</span>
+      </li>
+    ))}
+  </ul>
+);
+const Tip = ({ children, tone = 'blue' }) => (
+  <div
+    className={`mb-3 rounded-lg border px-3 py-2 leading-relaxed ${
+      tone === 'yellow' ? 'border-gk-yellow/30 bg-gk-yellow/[0.06]' : tone === 'green' ? 'border-gk-green/30 bg-gk-green/[0.06]' : 'border-gk-blue/30 bg-gk-blue/[0.06]'
+    }`}
+  >
+    {children}
+  </div>
+);
+
+/* ---------------- Разделы ---------------- */
+
+const SECTIONS = [
+  {
+    id: 'start',
+    title: 'Начало работы',
+    icon: Rocket,
+    keywords: 'открыть создать клонировать подключить вкладки репозиторий папка gitlab github',
+    body: () => (
+      <>
+        <P>
+          <B>GitIdea</B> — программа для работы с Git-репозиториями: история в виде графа, коммиты, ветки, синхронизация с сервером,
+          безопасная отмена любых действий и работа с CI/CD GitLab.
+        </P>
+        <H>Открыть проект</H>
+        <List
+          items={[
+            <>
+              <B>Открыть репозиторий</B> <K>Ctrl+O</K> — выберите папку, где уже есть Git.
+            </>,
+            <>
+              <B>Клонировать</B> <K>Ctrl+Shift+O</K> — вставьте ссылку на репозиторий (GitLab, GitHub и т. п.). Программа сама проверит доступ,
+              покажет ветки и предложит папку.
+            </>,
+            <>
+              <B>Создать репозиторий</B> <K>Ctrl+N</K> — сделать Git-репозиторий из обычной папки, с первым коммитом и .gitignore.
+            </>,
+            <>
+              <B>Подключить папку к GitLab / GitHub</B> — у вас есть файлы и пустой (или не пустой) репозиторий на сервере: программа свяжет
+              их и отправит изменения.
+            </>,
+          ]}
+        />
+        <P>Всё это есть на стартовом экране и в меню <B>File</B>.</P>
+        <H>Вкладки</H>
+        <P>
+          Каждый репозиторий открывается в своей вкладке сверху. <K>Ctrl+Tab</K> — следующая вкладка, <K>Ctrl+W</K> — закрыть. Открытые
+          вкладки запоминаются и восстанавливаются при следующем запуске.
+        </P>
+        <Tip tone="green">
+          Почти любое действие можно отменить: <K>Ctrl+Z</K> или кнопка <B>Undo</B> на панели сверху. Подробнее — в разделе «Отмена и
+          безопасность».
+        </Tip>
+      </>
+    ),
+  },
+  {
+    id: 'ui',
+    title: 'Как устроено окно',
+    icon: LayoutPanelLeft,
+    keywords: 'интерфейс панель граф слева справа тулбар статус ветки remote stash теги',
+    body: () => (
+      <>
+        <H>Панель сверху</H>
+        <List
+          items={[
+            <>
+              Слева — текущий <B>репозиторий</B> и <B>ветка</B> (клик по ветке — быстрое переключение, <K>Ctrl+B</K>).
+            </>,
+            <>
+              Кнопки <B>Undo / Redo</B>, <B>Pull</B> (стрелка рядом — выбор режима), <B>Push</B>, <B>Branch</B> (новая ветка), <B>Stash / Pop</B>.
+            </>,
+            <>Справа — состояние доступа к серверу, поиск коммитов, обновление и настройки.</>,
+          ]}
+        />
+        <H>Слева — ветки и всё остальное</H>
+        <P>
+          Разделы <B>Local</B> (ваши ветки), <B>Remote</B> (ветки на сервере), <B>Stashes</B>, <B>Tags</B> и <B>CI/CD</B>. Двойной клик по ветке —
+          переключиться на неё; по remote-ветке — создать локальную копию и переключиться. Поле фильтра сверху (<K>Ctrl+Alt+F</K>) ищет
+          по названиям.
+        </P>
+        <H>В центре — граф коммитов</H>
+        <P>
+          Каждая строка — коммит: ветки и теги слева, линии графа, сообщение, автор, дата. Самая верхняя строка <B>// WIP</B> — ваши
+          незакоммиченные изменения. Клик — показать коммит справа, двойной клик — checkout, правый клик — меню действий.
+        </P>
+        <H>Справа — детали</H>
+        <P>
+          Для коммита — сообщение, автор, родители и список изменённых файлов (клик по файлу открывает diff). Для строки WIP — списки
+          Unstaged / Staged и форма коммита.
+        </P>
+        <H>Снизу — строка состояния</H>
+        <P>
+          Текущая ветка и насколько она впереди/позади сервера, HEAD, переключатель <B>авто</B> (фоновый fetch каждые несколько минут) и
+          кнопка fetch.
+        </P>
+        <Tip>Границы панелей можно перетаскивать мышью; двойной клик по границе возвращает исходную ширину.</Tip>
+      </>
+    ),
+  },
+  {
+    id: 'commit',
+    title: 'Изменения и коммиты',
+    icon: GitCommitHorizontal,
+    keywords: 'stage unstage коммит commit wip фрагмент hunk сообщение',
+    body: () => (
+      <>
+        <Steps
+          items={[
+            <>
+              Выберите строку <B>// WIP</B> в графе — справа появятся изменённые файлы.
+            </>,
+            <>
+              Нажмите на файл, чтобы посмотреть изменения. Добавьте нужное в коммит: кнопка <B>+</B> у файла, двойной клик по файлу или{' '}
+              <B>Stage all changes</B>.
+            </>,
+            <>
+              Можно добавить <B>только часть файла</B>: в diff у каждого фрагмента есть кнопка <B>Stage</B>.
+            </>,
+            <>
+              Напишите сообщение (Summary и при желании Description) и нажмите <B>Commit</B> или <K>Ctrl+Enter</K>.
+            </>,
+          ]}
+        />
+        <P>
+          Ошиблись — <K>Ctrl+Z</K> отменит коммит, изменения снова окажутся в Staged. Если коммит уже отправлен на сервер, Undo его не
+          тронет (иначе переписалась бы общая история) — используйте <B>Revert commit</B> из меню коммита.
+        </P>
+      </>
+    ),
+  },
+  {
+    id: 'branches',
+    title: 'Ветки',
+    icon: GitBranch,
+    keywords: 'ветка branch checkout merge слить удалить переключить создать detached тег tag',
+    body: () => (
+      <>
+        <H>Создать и переключить</H>
+        <List
+          items={[
+            <>
+              <B>Branch</B> на панели — новая ветка от текущего коммита (или от выбранного в графе).
+            </>,
+            <>
+              Правый клик по коммиту → <B>Create branch here…</B> — ветка от любого коммита.
+            </>,
+            <>
+              Переключиться: двойной клик по ветке слева, клик по названию ветки вверху или <K>Ctrl+B</K>.
+            </>,
+          ]}
+        />
+        <H>Слить и удалить</H>
+        <P>
+          Правый клик по коммиту, на котором стоит ветка: <B>Merge … into …</B> (слить в текущую), <B>Rebase … onto …</B> (перенести текущую
+          ветку поверх неё — с предпросмотром), <B>Delete</B>. Удалённую ветку возвращает <K>Ctrl+Z</K>.
+        </P>
+        <H>Detached HEAD</H>
+        <P>
+          Если переключиться на коммит, а не на ветку, программа предупредит в строке состояния: новые коммиты не попадут ни в одну
+          ветку. Вернуться — <K>Ctrl+Z</K> или двойной клик по нужной ветке.
+        </P>
+        <H>Теги</H>
+        <P>
+          Правый клик по коммиту → <B>Create tag here…</B>. Можно добавить описание — тогда будет аннотированный тег.
+        </P>
+      </>
+    ),
+  },
+  {
+    id: 'sync',
+    title: 'Синхронизация с сервером',
+    icon: RefreshCw,
+    keywords: 'pull push fetch сервер remote force upstream автообновление доступ логин пароль',
+    body: () => (
+      <>
+        <List
+          items={[
+            <>
+              <B>Fetch</B> — узнать, что нового на сервере, ничего не меняя у вас. Включите <B>авто</B> в строке состояния — программа будет
+              делать это сама в фоне.
+            </>,
+            <>
+              <B>Pull</B> — забрать изменения в текущую ветку. Стрелка рядом выбирает режим: обычный (fast-forward, если возможно), только
+              fast-forward или rebase.
+            </>,
+            <>
+              <B>Push</B> — отправить ваши коммиты. Для новой ветки upstream настроится автоматически.
+            </>,
+          ]}
+        />
+        <P>
+          Если сервер отклонил push, потому что там появились чужие коммиты, программа предложит сначала сделать Pull (rebase) и
+          отправить снова. <B>Force Push</B> нужен только после переписывания истории (rebase уже отправленных коммитов) — он заменяет ветку
+          на сервере.
+        </P>
+        <Tip>
+          Если нет доступа, программа объяснит причину (неверный логин, нет прав, неизвестный ключ SSH и т. п.) и что сделать. Логин и
+          пароль запрашивает стандартное окно Git Credential Manager.
+        </Tip>
+      </>
+    ),
+  },
+  {
+    id: 'diff',
+    title: 'Просмотр изменений',
+    icon: SquareSplitHorizontal,
+    keywords: 'diff split unified пробелы подсветка f7 файл изменения',
+    body: () => (
+      <>
+        <P>Клик по файлу в правой панели открывает его изменения в центре.</P>
+        <List
+          items={[
+            <>
+              Переключатели сверху: <B>Unified</B> (одной колонкой) / <B>Split</B> (было | стало), игнорировать пробелы, подсветка того, что
+              именно изменилось внутри строки.
+            </>,
+            <>
+              <K>F7</K> / <K>Shift+F7</K> — к следующему / предыдущему изменению, <K>Alt+↑</K> / <K>Alt+↓</K> — к соседнему файлу, <K>Esc</K> —
+              закрыть.
+            </>,
+            <>
+              У каждого фрагмента есть кнопки действий: для незакоммиченных — <B>Stage</B> и <B>Отменить</B>, для staged — <B>Unstage</B>,
+              для коммита — <B>Отменить в рабочей папке</B>. Когда включено «игнорировать пробелы», кнопки скрываются: фрагменты считаются
+              по точному тексту.
+            </>,
+          ]}
+        />
+      </>
+    ),
+  },
+  {
+    id: 'safety',
+    title: 'Отмена и безопасность',
+    icon: ShieldCheck,
+    keywords: 'undo redo отменить вернуть откат файл фрагмент reset revert вернуть проект к коммиту',
+    body: () => (
+      <>
+        <H>Undo / Redo</H>
+        <P>
+          <K>Ctrl+Z</K> / <K>Ctrl+Y</K> отменяют и повторяют: коммит, checkout, создание и удаление веток и тегов, merge, rebase,
+          cherry-pick, revert, reset, stash, откат файлов и фрагментов. Если после действия что-то поменялось снаружи, программа не
+          будет ничего затирать, а объяснит, почему отменить нельзя.
+        </P>
+        <H>Вернуть файл или его часть — без коммита</H>
+        <P>Правый клик по файлу в списке файлов коммита:</P>
+        <List
+          items={[
+            <>
+              <B>Вернуть файл к версии из этого коммита</B> — файл в рабочей папке станет как в коммите.
+            </>,
+            <>
+              <B>Вернуть файл к версии до этого коммита</B> — как было до него (если файла тогда не было — он удалится).
+            </>,
+            <>
+              <B>Отменить изменения этого коммита в файле</B> — убрать только то, что сделал этот коммит; более поздние правки останутся.
+            </>,
+          ]}
+        />
+        <P>
+          То же для отдельного фрагмента — кнопка <B>Отменить в рабочей папке</B> в diff коммита. Меняется только рабочая папка: проверьте
+          результат и закоммитьте, когда будете готовы. Для незакоммиченных правок: правый клик по файлу → <B>Отменить изменения в файле</B>.
+        </P>
+        <H>Весь проект</H>
+        <List
+          items={[
+            <>
+              <B>Вернуть проект к этому коммиту…</B> — новый коммит, который делает все файлы как в выбранном. История не переписывается,
+              безопасно даже для отправленных веток.
+            </>,
+            <>
+              <B>Revert commit</B> — новый коммит, отменяющий один конкретный коммит.
+            </>,
+            <>
+              <B>Reset … to this commit</B> — переносит ветку назад (Soft / Mixed / Hard). Hard удаляет незакоммиченные правки — программа
+              спросит подтверждение.
+            </>,
+          ]}
+        />
+      </>
+    ),
+  },
+  {
+    id: 'rebase',
+    title: 'Интерактивный rebase',
+    icon: Layers,
+    keywords: 'rebase squash fixup reword drop порядок история сообщение объединить удалить коммит предпросмотр',
+    body: () => (
+      <>
+        <P>Позволяет навести порядок в истории ветки: поменять порядок коммитов, исправить сообщения, объединить или удалить коммиты.</P>
+        <Steps
+          items={[
+            <>
+              Правый клик по коммиту ветки → <B>Интерактивный rebase …</B> → «Коммиты после …» или «Начиная с … (включительно)». Чтобы
+              перенести ветку на другую — правый клик по той ветке → <B>Rebase … onto …</B>.
+            </>,
+            <>
+              Слева — план (новые коммиты сверху). Перетаскивайте коммиты мышью или <K>Alt+↑</K>/<K>Alt+↓</K>. Для каждого выберите действие:{' '}
+              <K>P</K> оставить, <K>R</K> изменить сообщение, <K>S</K> объединить с коммитом ниже, <K>F</K> влить в коммит ниже без его
+              сообщения, <K>D</K> удалить.
+            </>,
+            <>
+              Справа сразу виден <B>предпросмотр</B>: граф «Сейчас → После», какие файлы ветки изменятся, будут ли конфликты, нужен ли будет
+              Force Push.
+            </>,
+            <>
+              Нажмите <B>Применить rebase</B>. Ветка перейдёт ровно на то, что было в предпросмотре. <K>Ctrl+Z</K> вернёт всё как было.
+            </>,
+          ]}
+        />
+        <Tip tone="green">Пока вы не нажали «Применить», ничего не меняется: ни ветка, ни файлы.</Tip>
+        <P>
+          Если предпросмотр показывает конфликт — поменяйте план или нажмите <B>Начать и решить конфликты вручную</B>: rebase остановится на
+          конфликте, вы решите его (раздел «Конфликты») и нажмёте <B>Продолжить</B> в жёлтой панели. <B>Прервать</B> вернёт всё как было.
+        </P>
+        <Tip tone="yellow">Для предпросмотра нужен Git 2.40 или новее. Если Git старее, программа об этом скажет.</Tip>
+      </>
+    ),
+  },
+  {
+    id: 'compare',
+    title: 'Сравнение коммитов',
+    icon: GitCompareArrows,
+    keywords: 'сравнить сравнение diff двух коммитов ветки разница',
+    body: () => (
+      <>
+        <P>Показывает, чем отличаются любые два коммита (или ветки — выберите коммиты, на которых они стоят).</P>
+        <List
+          items={[
+            <>
+              Выберите коммит и <B>Ctrl+клик</B> по второму.
+            </>,
+            <>
+              Или правый клик → <B>Сравнить с HEAD</B>.
+            </>,
+            <>
+              Или правый клик → <B>Отметить для сравнения</B> (у коммита появится метка «A»), затем на другом коммите → <B>Сравнить с
+              отмеченным</B>.
+            </>,
+          ]}
+        />
+        <P>
+          Вверху — сводка: сколько файлов и строк изменено и сколько коммитов между ними (клик — список коммитов). Ниже — где больше всего
+          изменений по папкам (клик по папке фильтрует таблицу) и таблица файлов с полосками объёма. Клик по файлу — его diff, <K>Esc</K> —
+          назад к сравнению. Кнопка ⇄ меняет «было» и «стало» местами.
+        </P>
+      </>
+    ),
+  },
+  {
+    id: 'conflicts',
+    title: 'Конфликты',
+    icon: GitMerge,
+    keywords: 'конфликт merge rebase pull моё их решить продолжить прервать',
+    body: () => (
+      <>
+        <P>
+          Если при merge, rebase, pull или cherry-pick изменения пересеклись, сверху появится жёлтая панель, а файлы с конфликтами — в
+          отдельном списке справа.
+        </P>
+        <Steps
+          items={[
+            <>
+              Нажмите <B>Решить конфликты</B> — откроется редактор: слева «Моё», справа «Их», внизу результат.
+            </>,
+            <>
+              Для каждого конфликтного блока выберите версию или <B>Оба</B>; результат можно поправить вручную. Для всего файла есть «Взять …
+              везде».
+            </>,
+            <>
+              <B>Сохранить и дальше</B> (<K>Ctrl+S</K>) — к следующему файлу.
+            </>,
+            <>
+              Когда всё решено — <B>Продолжить</B> в жёлтой панели. Передумали — <B>Прервать</B>, всё вернётся как было.
+            </>,
+          ]}
+        />
+      </>
+    ),
+  },
+  {
+    id: 'stash',
+    title: 'Stash',
+    icon: Archive,
+    keywords: 'stash спрятать pop apply drop',
+    body: () => (
+      <>
+        <P>Stash временно прячет незакоммиченные изменения — например, чтобы переключиться на другую ветку.</P>
+        <List
+          items={[
+            <>
+              <B>Stash</B> на панели — спрятать всё; <B>Pop</B> — вернуть последнее спрятанное.
+            </>,
+            <>
+              Раздел <B>Stashes</B> слева: клик — посмотреть содержимое, правый клик — Apply (применить и оставить), Pop (применить и
+              удалить), Drop (удалить; <K>Ctrl+Z</K> вернёт).
+            </>,
+          ]}
+        />
+      </>
+    ),
+  },
+  {
+    id: 'search',
+    title: 'Поиск',
+    icon: Search,
+    keywords: 'поиск найти коммит фильтр автор хэш',
+    body: () => (
+      <>
+        <P>
+          <K>Ctrl+F</K> — поиск по коммитам: сообщение, автор, хэш. Подходящие коммиты подсвечиваются, остальные приглушаются; стрелки
+          переходят между найденными. Фильтр веток и тегов слева — <K>Ctrl+Alt+F</K>.
+        </P>
+      </>
+    ),
+  },
+  {
+    id: 'ci',
+    title: 'CI/CD и GitLab',
+    icon: Workflow,
+    keywords: 'ci cd gitlab pipeline пайплайн токен переменные расписание раннер lint yml github actions jenkins',
+    body: () => (
+      <>
+        <H>Настройки CI/CD в репозитории</H>
+        <P>
+          Раздел <B>CI/CD</B> слева находит файлы GitLab CI, GitHub Actions, Jenkins, Bitbucket и других систем. Клик по файлу открывает:
+        </P>
+        <List
+          items={[
+            <>
+              <B>Схема</B> — этапы и задания наглядно. Для GitLab их можно менять: <B>+ задание</B>, <B>+ Этап</B>, кнопка <B>Изменить</B> в
+              деталях задания.
+            </>,
+            <>
+              <B>Файл</B> — редактор с проверкой на лету: ошибки подсвечиваются, схема обновляется по мере ввода. <K>Ctrl+S</K> — сохранить.
+            </>,
+            <>
+              <B>История</B> — коммиты, в которых менялись настройки CI.
+            </>,
+          ]}
+        />
+        <P>
+          Пока изменения не сохранены, сверху жёлтая полоса: «Изменения» (что поменяется в файле), «Отменить правки», «Сохранить».
+          Кнопка <B>Проверить в GitLab</B> проверяет черновик на сервере и показывает, какие задания запустятся.
+        </P>
+        <H>Пайплайны GitLab</H>
+        <Steps
+          items={[
+            <>
+              Откройте <B>CI/CD → Пайплайны</B> (или <B>Настройки → Подключения</B>) и нажмите <B>Создать токен</B> — откроется страница GitLab
+              с уже выбранными правами.
+            </>,
+            <>
+              Скопируйте токен, вставьте в программу и нажмите <B>Проверить и сохранить</B>. Токен хранится зашифрованным на этом компьютере.
+            </>,
+          ]}
+        />
+        <P>
+          После этого статусы пайплайнов видны прямо в графе, а во вкладке «Пайплайны» можно смотреть этапы, логи заданий, перезапускать и
+          отменять. Вкладки <B>Переменные</B> и <B>Расписания</B> позволяют добавлять, менять и удалять переменные CI/CD и расписания
+          пайплайнов, <B>Раннеры</B> — смотреть, кто выполняет задания.
+        </P>
+        <Tip>Токен только для чтения (read_api) позволяет смотреть; чтобы запускать и менять — нужен токен с правом api.</Tip>
+      </>
+    ),
+  },
+  {
+    id: 'look',
+    title: 'Оформление',
+    icon: Palette,
+    keywords: 'тема фон прозрачность оформление настройки анимации',
+    body: () => (
+      <>
+        <P>
+          <K>Ctrl+,</K> или шестерёнка справа вверху → <B>Оформление</B>: тема, фон (градиенты, своя картинка или прозрачность Windows 11),
+          прозрачность панелей, размытие, анимация фона. Изменения видны сразу и сохраняются.
+        </P>
+      </>
+    ),
+  },
+  {
+    id: 'keys',
+    title: 'Горячие клавиши',
+    icon: Keyboard,
+    keywords: SHORTCUTS.flatMap(([g, items]) => [g, ...items.flat()]).join(' '),
+    body: () => (
+      <div className="grid grid-cols-2 gap-x-6 gap-y-4">
+        {SHORTCUTS.map(([group, items]) => (
+          <section key={group}>
+            <h4 className="mb-1.5 text-[11px] font-semibold uppercase tracking-wider text-gk-dim">{group}</h4>
+            <ul className="space-y-1">
+              {items.map(([keys, label]) => (
+                <li key={keys + label} className="flex items-start justify-between gap-3 text-[12.5px]">
+                  <span className="text-gk-text">{label}</span>
+                  <K>{keys}</K>
+                </li>
+              ))}
+            </ul>
+          </section>
+        ))}
+      </div>
+    ),
+  },
+  {
+    id: 'faq',
+    title: 'Если что-то не так',
+    icon: LifeBuoy,
+    keywords: 'ошибка проблема git не найден доступ пароль ssh не работает частые вопросы',
+    body: () => (
+      <>
+        <List
+          items={[
+            <>
+              <B>«Git не найден»</B> — установите Git for Windows (git-scm.com) и полностью перезапустите программу (и терминал, из которого её
+              запускали).
+            </>,
+            <>
+              <B>Нет доступа к серверу</B> — программа покажет причину. Обычно помогает войти заново в окне Git Credential Manager или
+              проверить права в проекте на сервере.
+            </>,
+            <>
+              <B>Действие недоступно (серое)</B> — наведите курсор, подсказка объяснит почему: например, не завершён merge или вы не на
+              ветке.
+            </>,
+            <>
+              <B>Что-то сделали по ошибке</B> — <K>Ctrl+Z</K>. Название того, что будет отменено, видно в меню <B>Edit</B>.
+            </>,
+            <>
+              <B>Граф не обновился после работы в терминале</B> — кнопка обновления справа вверху. Обычно программа замечает изменения сама.
+            </>,
+          ]}
+        />
+      </>
+    ),
+  },
+];
+
+/**
+ * Руководство пользователя: разделы слева (с поиском), текст справа.
+ */
+export default function GuideDialog({ initialSection = 'start', onClose }) {
+  const [active, setActive] = useState(SECTIONS.some((s) => s.id === initialSection) ? initialSection : 'start');
+  const [query, setQuery] = useState('');
+  const contentRef = useRef(null);
+
+  const shown = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    if (!q) return SECTIONS;
+    return SECTIONS.filter((s) => `${s.title} ${s.keywords}`.toLowerCase().includes(q));
+  }, [query]);
+
+  useEffect(() => {
+    if (shown.length && !shown.some((s) => s.id === active)) setActive(shown[0].id);
+  }, [shown, active]);
+
+  useEffect(() => {
+    contentRef.current?.scrollTo({ top: 0 });
+  }, [active]);
+
+  useEffect(() => {
+    const onKey = (e) => {
+      if (e.key === 'Escape') onClose();
+      if ((e.key === 'ArrowDown' || e.key === 'ArrowUp') && e.target?.tagName !== 'INPUT') {
+        e.preventDefault();
+        const i = shown.findIndex((s) => s.id === active);
+        const next = shown[Math.max(0, Math.min(shown.length - 1, i + (e.key === 'ArrowDown' ? 1 : -1)))];
+        if (next) setActive(next.id);
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [onClose, shown, active]);
+
+  const section = SECTIONS.find((s) => s.id === active) ?? SECTIONS[0];
+  const index = SECTIONS.indexOf(section);
+
+  return (
+    <div className="fixed inset-0 z-50 flex animate-fade-in items-center justify-center bg-black/50 p-6 backdrop-blur-[3px]" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
+      <div className="glass-strong flex h-[min(760px,88vh)] w-[min(980px,100%)] animate-pop-in overflow-hidden rounded-xl border border-gk-border bg-gk-panel-2 shadow-2xl">
+        {/* Разделы */}
+        <nav className="flex w-60 shrink-0 flex-col border-r border-gk-border bg-black/10">
+          <div className="flex items-center gap-2 px-4 pb-2 pt-4">
+            <BookOpen size={16} className="text-gk-green" />
+            <span className="text-[14px] font-semibold text-white">Руководство</span>
+          </div>
+          <div className="px-3 pb-2">
+            <div className="flex items-center gap-1.5 rounded-md bg-gk-bg px-2 ring-1 ring-gk-border focus-within:ring-gk-blue">
+              <Search size={12} className="shrink-0 text-gk-dim" />
+              <input
+                autoFocus
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                placeholder="Поиск по руководству"
+                className="min-w-0 flex-1 bg-transparent py-1.5 text-[12.5px] text-gk-text outline-none placeholder:text-gk-dim"
+              />
+            </div>
+          </div>
+          <div className="min-h-0 flex-1 overflow-y-auto px-2 pb-3">
+            {shown.length === 0 && <div className="px-2 py-3 text-[12px] text-gk-dim">Ничего не найдено</div>}
+            {shown.map((s) => (
+              <button
+                key={s.id}
+                onClick={() => setActive(s.id)}
+                className={`flex w-full items-center gap-2.5 rounded-md px-2.5 py-1.5 text-left text-[13px] transition-colors ${
+                  s.id === active ? 'bg-gk-blue/15 text-white' : 'text-gk-muted hover:bg-gk-hover hover:text-gk-text'
+                }`}
+              >
+                <s.icon size={14} className={`shrink-0 ${s.id === active ? 'text-gk-blue' : ''}`} />
+                {s.title}
+              </button>
+            ))}
+          </div>
+        </nav>
+
+        {/* Текст раздела */}
+        <div className="flex min-w-0 flex-1 flex-col">
+          <div className="flex h-12 shrink-0 items-center gap-2.5 border-b border-gk-border px-5">
+            <section.icon size={17} className="text-gk-blue" />
+            <h2 className="flex-1 text-[15px] font-semibold text-white">{section.title}</h2>
+            <button onClick={onClose} title="Закрыть (Esc)" className="rounded p-1 text-gk-dim hover:bg-gk-hover hover:text-gk-text">
+              <X size={16} />
+            </button>
+          </div>
+          <div ref={contentRef} key={section.id} className="min-h-0 flex-1 animate-fade-in overflow-y-auto px-6 py-5 text-[13px] text-gk-muted">
+            <section.body />
+          </div>
+          <div className="flex shrink-0 items-center justify-between border-t border-gk-border px-5 py-2.5 text-[12px]">
+            <button
+              disabled={index === 0}
+              onClick={() => setActive(SECTIONS[index - 1].id)}
+              className="rounded px-2 py-1 text-gk-muted hover:bg-gk-hover hover:text-gk-text disabled:invisible"
+            >
+              ← {SECTIONS[index - 1]?.title}
+            </button>
+            <span className="text-gk-dim">
+              {index + 1} / {SECTIONS.length}
+            </span>
+            <button
+              disabled={index === SECTIONS.length - 1}
+              onClick={() => setActive(SECTIONS[index + 1].id)}
+              className="rounded px-2 py-1 text-gk-muted hover:bg-gk-hover hover:text-gk-text disabled:invisible"
+            >
+              {SECTIONS[index + 1]?.title} →
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}

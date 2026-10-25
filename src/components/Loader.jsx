@@ -51,7 +51,7 @@ export function GraphLoader({ size = 64 }) {
   );
 }
 
-export function Splash({ title = 'GitKraken Clone', subtitle }) {
+export function Splash({ title = 'GitIdea', subtitle }) {
   return (
     <div className="fixed inset-0 z-[60] flex animate-fade-in items-center justify-center">
       <div className="app-backdrop" />

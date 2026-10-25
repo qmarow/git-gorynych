@@ -17,6 +17,32 @@ const { serializeError } = require('./errors.cjs');
 const DEV_SERVER_URL = process.env.VITE_DEV_SERVER_URL;
 let mainWindow = null;
 
+/* ---------- Переименование GitKraken Clone → GitIdea ---------- */
+
+// Electron хранит данные в папке с названием программы. После переименования один раз переносим
+// из старой папки настройки, токены GitLab, вкладки, фоны и состояние интерфейса. Существующие файлы
+// не перезаписываются, поэтому повторный запуск ничего не портит.
+function migrateUserData() {
+  try {
+    const now = app.getPath('userData');
+    const old = path.join(app.getPath('appData'), 'GitKraken Clone');
+    const marker = path.join(now, '.migrated-from-gitkraken-clone');
+    if (path.resolve(now) === path.resolve(old) || !fs.existsSync(old) || fs.existsSync(marker)) return;
+    fs.mkdirSync(now, { recursive: true });
+    fs.cpSync(old, now, {
+      recursive: true,
+      force: false,
+      errorOnExist: false,
+      // файлы блокировки Chromium старого профиля не нужны
+      filter: (src) => !/[\\/](lockfile|LOCK|SingletonLock|SingletonCookie|SingletonSocket)$/.test(src),
+    });
+    fs.writeFileSync(marker, new Date().toISOString());
+  } catch (error) {
+    console.warn('Не удалось перенести настройки из GitKraken Clone:', error.message);
+  }
+}
+migrateUserData();
+
 /* ---------- Настройки (последний открытый репозиторий) ---------- */
 
 const settingsFile = () => path.join(app.getPath('userData'), 'settings.json');
@@ -357,7 +383,7 @@ if (DEV_SERVER_URL && process.env.GK_DEV_RESTART === '1') {
 /* ---------- Жизненный цикл ---------- */
 
 app.whenReady().then(() => {
-  if (process.platform === 'win32') app.setAppUserModelId('com.ironxenot.gitkrakenclone');
+  if (process.platform === 'win32') app.setAppUserModelId('com.ironxenot.gitidea');
   createWindow();
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();
