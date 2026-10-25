@@ -290,7 +290,7 @@ function loadGitlab(root, mainFile) {
         warnings.push(`«${name}»: extends ссылается на неизвестное задание «${parent}»`);
         continue;
       }
-      chain.push(parent, ...p.chain.filter((c) => !chain.includes(c)));
+      chain.push(parent, ...p.chain.filter((c) => !chain.includes(c) && c !== name && c !== parent));
       merged = deepMerge(merged, p.config);
     }
     const own = { ...entry.config };
@@ -317,7 +317,12 @@ function loadGitlab(root, mainFile) {
         const [jobName, ...keys] = value.__reference;
         let target = jobName in globals ? globals[jobName] : resolveJob(jobName)?.config;
         for (const k of keys) target = target?.[k];
-        return target === undefined ? value : resolveReferences(target, depth + 1);
+        if (target === undefined) {
+          const msg = `!reference [${value.__reference.join(', ')}] ссылается на то, чего нет`;
+          if (!warnings.includes(msg)) warnings.push(msg);
+          return value;
+        }
+        return resolveReferences(target, depth + 1);
       }
       return Object.fromEntries(Object.entries(value).map(([k, v]) => [k, resolveReferences(v, depth + 1)]));
     }
@@ -396,6 +401,18 @@ function variablesList(vars) {
       ? { name, value: v.value == null ? '' : String(v.value), description: v.description ?? null, options: v.options ?? null }
       : { name, value: v == null ? '' : String(v) },
   );
+}
+
+// Короткая запись значения в одну строку: { branches: { include: [main] } } → «branches include: main»
+function compact(value) {
+  if (value == null) return '';
+  if (Array.isArray(value)) return value.map(compact).join(', ');
+  if (isPlainObject(value)) {
+    return Object.entries(value)
+      .map(([k, v]) => (isPlainObject(v) ? `${k} ${compact(v)}` : `${k}: ${compact(v)}`))
+      .join('; ');
+  }
+  return String(value);
 }
 
 function ruleText(rule) {
@@ -717,8 +734,9 @@ function loadCircle(root, file) {
       name,
       source: file,
       line: jobLines[ref] ?? null,
-      kind: jobDefs[ref] ? 'job' : 'trigger',
-      trigger: jobDefs[ref] ? null : `orb: ${ref}`,
+      // Задание approval — это ожидание ручного подтверждения, а не орб
+      kind: jobDefs[ref] || opts.type === 'approval' ? 'job' : 'trigger',
+      trigger: jobDefs[ref] || opts.type === 'approval' ? null : `orb: ${ref}`,
       image: docker[0] ? imageName(docker[0]) : cfg.machine ? 'machine' : cfg.macos ? 'macos' : null,
       manual: opts.type === 'approval',
       when: opts.type === 'approval' ? 'manual' : 'on_success',
@@ -730,7 +748,7 @@ function loadCircle(root, file) {
             : { name: Object.keys(s ?? {})[0] ?? 'step', uses: Object.keys(s ?? {})[0] ?? null, run: null },
       ),
       needs: opts.requires ? asArray(opts.requires).map((r) => ({ job: String(r) })) : null,
-      rules: opts.filters ? [{ text: Object.entries(opts.filters).map(([k, v]) => `${k}: ${toYaml(v).replace(/\n/g, ' ')}`).join('; ') }] : [],
+      rules: opts.filters ? [{ text: compact(opts.filters) }] : [],
       variables: variablesList(cfg.environment),
       extends: [],
       raw: toYaml(cfg),
@@ -810,8 +828,8 @@ function loadAzure(root, file) {
     stages = [{ name: 'Шаги', jobs: [makeJob({ displayName: 'Задание', steps: data.steps, pool: data.pool })] }];
   }
   const triggers = [];
-  if (data.trigger !== undefined) triggers.push({ text: `push: ${data.trigger === 'none' ? 'выключен' : toYaml(data.trigger).replace(/\n/g, ' ')}` });
-  if (data.pr !== undefined) triggers.push({ text: `pull request: ${data.pr === 'none' ? 'выключен' : toYaml(data.pr).replace(/\n/g, ' ')}` });
+  if (data.trigger !== undefined) triggers.push({ text: `push: ${data.trigger === 'none' ? 'выключен' : compact(data.trigger)}` });
+  if (data.pr !== undefined) triggers.push({ text: `pull request: ${data.pr === 'none' ? 'выключен' : compact(data.pr)}` });
   for (const s of asArray(data.schedules)) if (s?.cron) triggers.push({ text: `cron: ${s.cron}${s.displayName ? ` (${s.displayName})` : ''}` });
   return {
     files: [{ path: file, text }],

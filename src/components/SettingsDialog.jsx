@@ -251,18 +251,23 @@ function Slider({ label, value, min, max, unit, hint, onChange }) {
 }
 
 function Toggle({ checked, onChange }) {
+  // Кнопка центрирует содержимое, поэтому бегунок позиционируем явно от левого края
   return (
     <button
       type="button"
       role="switch"
       aria-checked={checked}
-      onClick={() => onChange(!checked)}
-      className={`relative h-[18px] w-8 shrink-0 rounded-full transition-colors duration-200 ${checked ? 'bg-gk-green' : 'bg-white/15'}`}
+      onClick={(e) => {
+        e.preventDefault();
+        onChange(!checked);
+      }}
+      className={`relative block h-[18px] w-8 shrink-0 rounded-full p-0 transition-colors duration-200 ${
+        checked ? 'bg-gk-green' : 'bg-white/15'
+      }`}
     >
       <span
-        className={`absolute top-[2px] h-[14px] w-[14px] rounded-full bg-white shadow transition-transform duration-200 ${
-          checked ? 'translate-x-[16px]' : 'translate-x-[2px]'
-        }`}
+        className="absolute left-0 top-[2px] block h-[14px] w-[14px] rounded-full bg-white shadow transition-transform duration-200"
+        style={{ transform: `translateX(${checked ? 16 : 2}px)` }}
       />
     </button>
   );

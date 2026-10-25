@@ -110,7 +110,7 @@ async function detectRemote(root, preferredRemote) {
 
 /* =================== HTTP =================== */
 
-async function request(base, token, method, apiPath, { query, body, text = false } = {}) {
+async function request(base, token, method, apiPath, { query, body, text = false, notFound } = {}) {
   const url = new URL(`${base}/api/v4${apiPath}`);
   for (const [k, v] of Object.entries(query ?? {})) if (v != null && v !== '') url.searchParams.set(k, String(v));
   const controller = new AbortController();
@@ -162,9 +162,9 @@ async function request(base, token, method, apiPath, { query, body, text = false
       });
     }
     if (res.status === 404) {
-      throw new GitError('Не найдено в GitLab', {
+      throw new GitError(notFound ?? 'Не найдено в GitLab', {
         code: 'NOT_FOUND',
-        hint: 'Проект не существует или у токена нет к нему доступа',
+        hint: notFound ? null : 'Проект не существует или у токена нет к нему доступа',
         details: message,
       });
     }
@@ -360,7 +360,7 @@ async function pipelineDetail(root, pipelineId, { preferredRemote } = {}) {
   const ctx = await context(root, preferredRemote);
   const pid = ctx.project.id;
   const [p, jobs, bridges] = await Promise.all([
-    request(ctx.remote.base, ctx.token, 'GET', `/projects/${pid}/pipelines/${id}`),
+    request(ctx.remote.base, ctx.token, 'GET', `/projects/${pid}/pipelines/${id}`, { notFound: `Пайплайн #${id} не найден — возможно, его удалили` }),
     fetchAll(ctx, `/projects/${pid}/pipelines/${id}/jobs`),
     fetchAll(ctx, `/projects/${pid}/pipelines/${id}/bridges`, {}, 1).catch(() => []),
   ]);
@@ -398,7 +398,7 @@ async function jobLog(root, jobId, { preferredRemote } = {}) {
   if (!Number.isInteger(id) || id <= 0) throw new GitError('Некорректный номер задания', { code: 'BAD_ARGS' });
   const ctx = await context(root, preferredRemote);
   const [job, trace] = await Promise.all([
-    request(ctx.remote.base, ctx.token, 'GET', `/projects/${ctx.project.id}/jobs/${id}`),
+    request(ctx.remote.base, ctx.token, 'GET', `/projects/${ctx.project.id}/jobs/${id}`, { notFound: `Задание #${id} не найдено — возможно, его удалили` }),
     request(ctx.remote.base, ctx.token, 'GET', `/projects/${ctx.project.id}/jobs/${id}/trace`, { text: true }).catch((error) => {
       if (error.code === 'NOT_FOUND') return { text: '', size: 0 };
       throw error;
@@ -464,6 +464,7 @@ async function variableValue(root, { key, scope }, { preferredRemote } = {}) {
   if (typeof key !== 'string' || !/^[A-Za-z0-9_]+$/.test(key)) throw new GitError('Некорректное имя переменной', { code: 'BAD_ARGS' });
   const ctx = await context(root, preferredRemote);
   const v = await request(ctx.remote.base, ctx.token, 'GET', `/projects/${ctx.project.id}/variables/${key}`, {
+    notFound: `Переменная ${key} не найдена — возможно, её удалили`,
     query: scope && scope !== '*' ? { 'filter[environment_scope]': scope } : {},
   });
   if (v.hidden || v.value == null) return { key, hidden: true, value: null };
