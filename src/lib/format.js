@@ -52,3 +52,12 @@ export const FILE_STATUS = {
   R: { label: 'Renamed', color: '#2f9bff' },
   U: { label: 'Conflicted', color: '#ff8c3a' },
 };
+
+// Склонение по числу: plural(3, 'файл', 'файла', 'файлов') → «файла»
+export const plural = (n, one, few, many) => {
+  const m10 = n % 10;
+  const m100 = n % 100;
+  if (m10 === 1 && m100 !== 11) return one;
+  if (m10 >= 2 && m10 <= 4 && (m100 < 12 || m100 > 14)) return few;
+  return many;
+};

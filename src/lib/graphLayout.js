@@ -27,10 +27,15 @@ function takeFreeLane(lanes) {
 }
 
 /**
- * Раскладывает коммиты (от новых к старым, topo-order) по дорожкам.
- * Каждая дорожка «ждёт» хэш следующего коммита. Каждое ребро запоминает
- * дорожку, по которой оно идёт вниз (travel), поэтому линии не пересекают
- * чужие узлы.
+ * Раскладывает коммиты (от новых к старым) по дорожкам — жадно, с переиспользованием колонок.
+ * lanes[col] — хэш коммита, который «ждёт» колонка (null — свободна).
+ *  - коммит встаёт в самую левую колонку, которая его ждёт; остальные такие колонки здесь сходятся и освобождаются;
+ *  - новая ветка занимает первую свободную колонку слева;
+ *  - первый родитель продолжает колонку коммита (ровная линия ветки);
+ *  - второй и следующие родители (мердж) идут в колонку, где их уже ждут, иначе — в первую свободную.
+ * Каждое ребро запоминает колонку, по которой идёт вниз (travel), поэтому линии не пересекают чужие узлы.
+ * Порядок коммитов важен: git log --date-order (родители всегда ниже детей, параллельные ветки
+ * перемежаются по времени) — тогда мерджи короткие и колонки быстро освобождаются.
  */
 export function layoutGraph(commits) {
   const lanes = [];
@@ -47,8 +52,20 @@ export function layoutGraph(commits) {
     }
 
     const [firstParent, ...otherParents] = commit.parents;
-    lanes[lane] = firstParent ?? null;
-    if (firstParent) pending.push({ from: commit.hash, to: firstParent, travel: lane, primary: true });
+    if (!firstParent) {
+      lanes[lane] = null; // начальный коммит — дорожка свободна
+    } else {
+      // Первый родитель продолжает дорожку прямой линией. Исключение: его уже ждёт дорожка левее —
+      // тогда ветвь сразу уходит туда, а наша колонка освобождается для других веток ниже.
+      const waitingLeft = lanes.findIndex((h, i) => h === firstParent && i < lane);
+      if (waitingLeft !== -1) {
+        lanes[lane] = null;
+        pending.push({ from: commit.hash, to: firstParent, travel: waitingLeft, primary: true });
+      } else {
+        lanes[lane] = firstParent;
+        pending.push({ from: commit.hash, to: firstParent, travel: lane, primary: true });
+      }
+    }
 
     for (const parent of otherParents) {
       let travel = lanes.indexOf(parent);

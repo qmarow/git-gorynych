@@ -14,7 +14,7 @@ import {
   Plus,
   Trash2,
 } from 'lucide-react';
-import { FILE_STATUS, avatarColor, fullDate, initials, relativeTime } from '../lib/format.js';
+import { FILE_STATUS, avatarColor, fullDate, initials, plural, relativeTime } from '../lib/format.js';
 
 export default function CommitDetails({
   commit,
@@ -311,7 +311,7 @@ function WipPanel({ repo, busy, activeFile, onOpenFile, onStage, onUnstage, onCo
       <div className="flex h-9 shrink-0 items-center gap-2 border-b border-gk-border px-3 text-xs text-gk-muted">
         {busy ? <Loader2 size={14} className="animate-spin" /> : <FileText size={14} />}
         <span className="truncate">
-          {repo.wipFiles.length} изменений
+          {repo.wipFiles.length} {plural(repo.wipFiles.length, 'изменение', 'изменения', 'изменений')}
           {repo.currentBranch && (
             <>
               {' '}в <span className="font-medium text-gk-text">{repo.currentBranch}</span>

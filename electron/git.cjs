@@ -263,7 +263,10 @@ async function readCommits(cwd, refsInfo, limit) {
       '--remotes',
       '--tags',
       'HEAD',
-      '--topo-order',
+      // --date-order, а не --topo-order: topo выводит каждую линию истории целиком, и при частых
+      // мерджах develop → master все ребра мерджей висят одновременно — граф становится «лесенкой».
+      // date-order тоже гарантирует, что родители ниже детей, но перемежает ветки по времени.
+      '--date-order',
       `--max-count=${limit}`,
       `--format=${format}`,
       '--decorate=full',

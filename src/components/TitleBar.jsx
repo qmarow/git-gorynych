@@ -3,7 +3,7 @@ import { Copy, FolderGit2, GitBranch, Loader2, Minus, Plus, Square, X } from 'lu
 
 const MENU = ['File', 'Edit', 'View', 'Help'];
 
-export default function TitleBar({ tabs, activePath, loadingPath, onSelectTab, onCloseTab, onOpenRepository, onFileMenu, onViewMenu }) {
+export default function TitleBar({ tabs, activePath, loadingPath, onSelectTab, onCloseTab, onOpenRepository, onFileMenu, onEditMenu, onViewMenu, onHelpMenu }) {
   const [maximized, setMaximized] = useState(false);
   const win = window.api?.window;
 
@@ -29,7 +29,9 @@ export default function TitleBar({ tabs, activePath, loadingPath, onSelectTab, o
             onClick={(e) => {
               const r = e.currentTarget.getBoundingClientRect();
               if (item === 'File') onFileMenu?.(r.left, r.bottom + 4);
+              if (item === 'Edit') onEditMenu?.(r.left, r.bottom + 4);
               if (item === 'View') onViewMenu?.(r.left, r.bottom + 4);
+              if (item === 'Help') onHelpMenu?.(r.left, r.bottom + 4);
             }}
             className="app-no-drag rounded px-2 py-1 text-xs text-gk-muted transition-colors hover:bg-gk-hover hover:text-gk-text"
           >

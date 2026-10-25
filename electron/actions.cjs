@@ -637,6 +637,19 @@ async function continueOperation(cwd) {
 /* =================== История Undo / Redo =================== */
 
 const histories = new Map(); // repoPath -> { undo: [], redo: [] }
+// Операции, остановившиеся на конфликте: откуда начинали, чтобы после «Продолжить» их можно было отменить
+const pendingOps = new Map(); // repoPath -> { from, label }
+
+// Запускаем операцию; если она встала на конфликте — запоминаем исходный HEAD
+async function trackConflicts(cwd, label, fn) {
+  const from = await headHash(cwd).catch(() => null);
+  try {
+    return await fn();
+  } catch (error) {
+    if (error?.code === 'CONFLICT' && from) pendingOps.set(cwd, { from, label });
+    throw error;
+  }
+}
 
 function historyFor(cwd) {
   if (!histories.has(cwd)) histories.set(cwd, { undo: [], redo: [] });
@@ -817,12 +830,29 @@ async function redo(cwd) {
 const ACTIONS = {
   checkAccess: (cwd, p) => checkAccess(cwd, p),
   fetch: (cwd) => fetchAll(cwd),
-  pull: (cwd, p) => pull(cwd, p),
+  pull: (cwd, p) => trackConflicts(cwd, 'Pull', () => pull(cwd, p)),
   push: (cwd, p) => push(cwd, p),
   undo: (cwd) => undo(cwd),
   redo: (cwd) => redo(cwd),
-  abortOperation: (cwd) => abortOperation(cwd),
-  continueOperation: (cwd) => continueOperation(cwd),
+  async continueOperation(cwd) {
+    const res = await continueOperation(cwd);
+    if (res.finished) {
+      // Операция с конфликтами завершена — теперь её можно отменить целиком
+      let pending = pendingOps.get(cwd);
+      if (!pending && (res.operation === 'merge' || res.operation === 'rebase')) {
+        const orig = await git(cwd, ['rev-parse', '--verify', '--quiet', 'ORIG_HEAD']).then((x) => x.trim()).catch(() => null);
+        if (orig) pending = { from: orig, label: res.operation === 'merge' ? 'Merge' : 'Rebase' };
+      }
+      pendingOps.delete(cwd);
+      const to = await headHash(cwd);
+      if (pending && pending.from !== to) record(cwd, { type: 'headMove', label: `${pending.label} (с решением конфликтов)`, from: pending.from, to });
+    }
+    return res;
+  },
+  async abortOperation(cwd) {
+    pendingOps.delete(cwd);
+    return abortOperation(cwd);
+  },
   stage: (cwd, p) => stage(cwd, p.paths),
   unstage: (cwd, p) => unstage(cwd, p.paths),
 
@@ -895,12 +925,12 @@ const ACTIONS = {
     return res;
   },
   async cherryPick(cwd, p) {
-    const res = await cherryPick(cwd, p);
+    const res = await trackConflicts(cwd, `Cherry-pick ${String(p.hash).slice(0, 7)}`, () => cherryPick(cwd, p));
     record(cwd, { type: 'headMove', label: `Cherry-pick ${p.hash.slice(0, 7)}`, ...res });
     return res;
   },
   async revert(cwd, p) {
-    const res = await revertCommit(cwd, p);
+    const res = await trackConflicts(cwd, `Revert ${String(p.hash).slice(0, 7)}`, () => revertCommit(cwd, p));
     record(cwd, { type: 'headMove', label: `Revert ${p.hash.slice(0, 7)}`, ...res });
     return res;
   },
@@ -910,12 +940,12 @@ const ACTIONS = {
     return res;
   },
   async merge(cwd, p) {
-    const res = await mergeRef(cwd, p);
+    const res = await trackConflicts(cwd, `Merge ${p.ref}`, () => mergeRef(cwd, p));
     record(cwd, { type: 'headMove', label: `Merge ${p.ref}`, ...res });
     return res;
   },
   async rebase(cwd, p) {
-    const res = await rebaseOnto(cwd, p);
+    const res = await trackConflicts(cwd, `Rebase на ${p.ref}`, () => rebaseOnto(cwd, p));
     record(cwd, { type: 'headMove', label: `Rebase на ${p.ref}`, ...res });
     return res;
   },
