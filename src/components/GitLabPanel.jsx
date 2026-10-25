@@ -578,8 +578,8 @@ function JobLog({ repoPath, opts, job: initialJob, canWrite, onClose, onAction }
   };
 
   return (
-    <div className="absolute inset-0 z-10 flex animate-slide-in-right flex-col bg-[#0e1117] shadow-[-12px_0_30px_-12px_rgba(0,0,0,0.6)]">
-      <div className="flex shrink-0 items-center gap-2 border-b border-gk-border bg-[#151922] px-3 py-2">
+    <div className="absolute inset-0 z-10 flex animate-slide-in-right flex-col bg-[var(--gk-base)] shadow-[-12px_0_30px_-12px_rgba(0,0,0,0.6)]">
+      <div className="flex shrink-0 items-center gap-2 border-b border-gk-border bg-[var(--gk-solid-2)] px-3 py-2">
         <IconBtn title="Назад к пайплайну (Esc)" onClick={onClose}>
           <ArrowLeft size={15} />
         </IconBtn>
@@ -636,7 +636,7 @@ function JobLog({ repoPath, opts, job: initialJob, canWrite, onClose, onAction }
       <div
         ref={scrollRef}
         onScroll={onScroll}
-        className="min-h-0 flex-1 overflow-auto bg-[#0b0d12] py-2 font-mono text-[12px] leading-[1.6] text-[#d7dae0]"
+        className="min-h-0 flex-1 overflow-auto bg-[color-mix(in_srgb,var(--gk-base)_80%,black)] py-2 font-mono text-[12px] leading-[1.6] text-[#d7dae0]"
       >
         {state.loading && !state.data && (
           <div className="flex items-center gap-2 px-4 py-6 font-sans text-[13px] text-gk-muted">

@@ -1,6 +1,7 @@
 const { app, BrowserWindow, ipcMain, dialog, shell } = require('electron');
 const fs = require('node:fs');
 const path = require('node:path');
+const os = require('node:os');
 const git = require('./git.cjs');
 const actions = require('./actions.cjs');
 const gitInit = require('./init.cjs');
@@ -35,16 +36,49 @@ function writeSettings(patch) {
   }
 }
 
+/* ---------- Оформление ---------- */
+
+// Системный материал окна (Mica/Acrylic) есть в Windows 11 22H2+ (сборка 22621)
+const supportsMaterial = () => process.platform === 'win32' && Number(os.release().split('.')[2] ?? 0) >= 22621;
+const BG_DIR = () => path.join(app.getPath('userData'), 'backgrounds');
+const IMAGE_TYPES = { '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.webp': 'image/webp', '.gif': 'image/gif', '.bmp': 'image/bmp' };
+const MAX_IMAGE = 25 * 1024 * 1024;
+
+function storedImage() {
+  try {
+    const name = fs.readdirSync(BG_DIR()).find((f) => f.startsWith('current.'));
+    return name ? path.join(BG_DIR(), name) : null;
+  } catch {
+    return null;
+  }
+}
+
+function windowMaterial(appearance) {
+  if (!supportsMaterial() || appearance?.background !== 'system') return null;
+  return appearance.material === 'mica' ? 'mica' : 'acrylic';
+}
+
+function applyWindowMaterial(appearance) {
+  if (!mainWindow || process.platform !== 'win32' || !mainWindow.setBackgroundMaterial) return false;
+  const material = windowMaterial(appearance);
+  mainWindow.setBackgroundColor(material ? '#00000000' : appearance?.base || '#0e1117');
+  mainWindow.setBackgroundMaterial(material ?? 'none');
+  return Boolean(material);
+}
+
 /* ---------- Окно ---------- */
 
 function createWindow() {
+  const appearance = readSettings().appearance ?? {};
+  const material = windowMaterial(appearance);
   mainWindow = new BrowserWindow({
     width: 1200,
     height: 800,
     minWidth: 960,
     minHeight: 600,
     frame: false, // кастомный заголовок, как в GitKraken
-    backgroundColor: '#0e1117',
+    backgroundColor: material ? '#00000000' : appearance.base || '#0e1117',
+    ...(material ? { backgroundMaterial: material } : {}),
     show: false,
     autoHideMenuBar: true,
     webPreferences: {
@@ -94,6 +128,44 @@ ipcMain.on('window:toggle-maximize', () => {
 });
 ipcMain.on('window:close', () => mainWindow?.close());
 ipcMain.handle('window:is-maximized', () => mainWindow?.isMaximized() ?? false);
+
+/* ---------- Оформление: IPC ---------- */
+
+ipcMain.handle('appearance:get', () => ({
+  appearance: readSettings().appearance ?? null,
+  supportsMaterial: supportsMaterial(),
+  hasImage: Boolean(storedImage()),
+}));
+ipcMain.handle('appearance:set', (_event, value) => {
+  if (!value || typeof value !== 'object') return false;
+  writeSettings({ appearance: value });
+  return applyWindowMaterial(value);
+});
+// Выбрать картинку для фона: копируем её к себе, чтобы не зависеть от исходного файла
+ipcMain.handle('appearance:pick-image', async () => {
+  const result = await dialog.showOpenDialog(mainWindow, {
+    title: 'Картинка для фона',
+    properties: ['openFile'],
+    filters: [{ name: 'Изображения', extensions: Object.keys(IMAGE_TYPES).map((e) => e.slice(1)) }],
+  });
+  if (result.canceled || !result.filePaths[0]) return { ok: false, canceled: true };
+  const src = result.filePaths[0];
+  const ext = path.extname(src).toLowerCase();
+  if (!IMAGE_TYPES[ext]) return { ok: false, error: { message: 'Этот формат не поддерживается' } };
+  const size = fs.statSync(src).size;
+  if (size > MAX_IMAGE) return { ok: false, error: { message: `Картинка слишком большая (${Math.round(size / 1048576)} МБ, максимум 25 МБ)` } };
+  fs.mkdirSync(BG_DIR(), { recursive: true });
+  for (const f of fs.readdirSync(BG_DIR())) if (f.startsWith('current.')) fs.rmSync(path.join(BG_DIR(), f), { force: true });
+  fs.copyFileSync(src, path.join(BG_DIR(), `current${ext}`));
+  return { ok: true, name: path.basename(src) };
+});
+// Картинка фона как data: URL (renderer не может читать файлы напрямую)
+ipcMain.handle('appearance:image', () => {
+  const file = storedImage();
+  if (!file) return null;
+  const mime = IMAGE_TYPES[path.extname(file).toLowerCase()] ?? 'image/png';
+  return `data:${mime};base64,${fs.readFileSync(file).toString('base64')}`;
+});
 
 /* ---------- Git ---------- */
 

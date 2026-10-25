@@ -74,8 +74,27 @@ body,
 }
 
 /* Фон только у html: фон body перекрыл бы подложку .app-backdrop (z-index: -1) */
+:root {
+  --gk-base: #0e1117;
+  --gk-solid: #14171f;
+  --gk-solid-2: #181b24;
+  --gk-blur: 18px;
+  --glow-1: rgb(60 240 160 / 0.42);
+  --glow-2: rgb(47 155 255 / 0.45);
+  --glow-3: rgb(142 0 194 / 0.25);
+  --glow-1-soft: rgb(21 160 191 / 0.15);
+  --glow-2-soft: rgb(142 0 194 / 0.18);
+  --bg-image: none;
+  --bg-image-blur: 8px;
+  --bg-image-dim: 0.45;
+}
 html {
-  background: #0e1117;
+  background: var(--gk-base);
+  transition: background-color 0.4s ease;
+}
+/* «Стекло Windows»: окно прозрачное, под ним системный Mica/Acrylic */
+html[data-bg='system'] {
+  background: transparent;
 }
 
 body {
@@ -89,45 +108,138 @@ body {
   background: transparent;
 }
 
-/* Цветные пятна за стеклом */
+/* ---------- Фон за стеклом ---------- */
 .app-backdrop {
   position: fixed;
   inset: 0;
   z-index: -1;
   overflow: hidden;
-  background: radial-gradient(ellipse at 50% 120%, #161b26 0%, #0e1117 60%);
+  background: radial-gradient(ellipse at 50% 120%, color-mix(in srgb, var(--gk-base) 80%, white 4%) 0%, var(--gk-base) 60%);
+  transition: background 0.4s ease;
 }
 .app-backdrop::before,
 .app-backdrop::after {
   content: '';
   position: absolute;
+  pointer-events: none;
+  transition: opacity 0.5s ease, background 0.5s ease;
+}
+
+/* Сияние (по умолчанию): два мягких пятна */
+html:not([data-bg]) .app-backdrop::before,
+html[data-bg='glow'] .app-backdrop::before,
+html:not([data-bg]) .app-backdrop::after,
+html[data-bg='glow'] .app-backdrop::after {
   border-radius: 50%;
   filter: blur(80px);
   opacity: 0.85;
   animation: blob-drift 26s ease-in-out infinite;
 }
-.app-backdrop::before {
+html:not([data-bg]) .app-backdrop::before,
+html[data-bg='glow'] .app-backdrop::before {
   width: 46vw;
   height: 46vw;
   left: -10vw;
   top: -14vw;
-  background: radial-gradient(circle, rgb(60 240 160 / 0.42), rgb(21 160 191 / 0.15) 45%, transparent 68%);
+  background: radial-gradient(circle, var(--glow-1), var(--glow-1-soft) 45%, transparent 68%);
 }
-.app-backdrop::after {
+html:not([data-bg]) .app-backdrop::after,
+html[data-bg='glow'] .app-backdrop::after {
   width: 52vw;
   height: 52vw;
   right: -14vw;
   bottom: -18vw;
-  background: radial-gradient(circle, rgb(47 155 255 / 0.45), rgb(142 0 194 / 0.22) 45%, transparent 70%);
+  background: radial-gradient(circle, var(--glow-2), var(--glow-2-soft) 45%, transparent 70%);
   animation-delay: -13s;
+}
+
+/* Аврора: переливающиеся полосы */
+html[data-bg='aurora'] .app-backdrop::before {
+  inset: -30% -20%;
+  background:
+    linear-gradient(115deg, transparent 22%, var(--glow-1) 34%, transparent 46%),
+    linear-gradient(100deg, transparent 40%, var(--glow-2) 54%, transparent 66%),
+    linear-gradient(130deg, transparent 58%, var(--glow-3) 70%, transparent 82%);
+  filter: blur(70px);
+  opacity: 0.8;
+  animation: aurora-shift 34s ease-in-out infinite alternate;
+}
+html[data-bg='aurora'] .app-backdrop::after {
+  inset: 0;
+  background: radial-gradient(ellipse at 50% 0%, transparent 30%, var(--gk-base) 85%);
+  opacity: 0.7;
+}
+
+/* Сетка: тонкие линии + свечение сверху */
+html[data-bg='grid'] .app-backdrop {
+  background-color: var(--gk-base);
+  background-image:
+    linear-gradient(rgb(255 255 255 / 0.035) 1px, transparent 1px),
+    linear-gradient(90deg, rgb(255 255 255 / 0.035) 1px, transparent 1px);
+  background-size: 36px 36px;
+}
+html[data-bg='grid'] .app-backdrop::before {
+  width: 80vw;
+  height: 50vh;
+  left: 10vw;
+  top: -22vh;
+  border-radius: 50%;
+  background: radial-gradient(ellipse, var(--glow-1), transparent 70%);
+  filter: blur(60px);
+  opacity: 0.55;
+  animation: blob-drift 30s ease-in-out infinite;
+}
+html[data-bg='grid'] .app-backdrop::after {
+  inset: 0;
+  background: radial-gradient(ellipse at 50% 30%, transparent 40%, var(--gk-base) 95%);
+}
+
+/* Градиент: спокойный, без движения */
+html[data-bg='gradient'] .app-backdrop {
+  background:
+    radial-gradient(ellipse at 0% 0%, var(--glow-1-soft), transparent 55%),
+    radial-gradient(ellipse at 100% 100%, var(--glow-2-soft), transparent 60%),
+    linear-gradient(160deg, color-mix(in srgb, var(--gk-base) 85%, white 5%), var(--gk-base));
+}
+
+/* Однотонный */
+html[data-bg='solid'] .app-backdrop {
+  background: var(--gk-base);
+}
+
+/* Своя картинка: размытие и затемнение настраиваются */
+html[data-bg='image'] .app-backdrop::before {
+  inset: calc(var(--bg-image-blur) * -2);
+  background: var(--bg-image) center / cover no-repeat;
+  filter: blur(var(--bg-image-blur));
+}
+html[data-bg='image'] .app-backdrop::after {
+  inset: 0;
+  background: rgb(0 0 0 / var(--bg-image-dim));
+}
+
+html[data-bg='system'] .app-backdrop {
+  display: none;
+}
+
+/* Анимация фона выключена */
+html[data-motion='off'] .app-backdrop::before,
+html[data-motion='off'] .app-backdrop::after {
+  animation: none !important;
+}
+
+@keyframes aurora-shift {
+  0% { transform: translate3d(-6%, -2%, 0) rotate(-3deg); }
+  50% { transform: translate3d(4%, 3%, 0) rotate(2deg); }
+  100% { transform: translate3d(8%, -3%, 0) rotate(5deg); }
 }
 
 /* Стекло: полупрозрачный фон + размытие того, что под ним */
 .glass {
-  backdrop-filter: blur(18px) saturate(150%);
+  backdrop-filter: blur(var(--gk-blur)) saturate(150%);
 }
 .glass-strong {
-  backdrop-filter: blur(26px) saturate(170%);
+  backdrop-filter: blur(calc(var(--gk-blur) + 8px)) saturate(170%);
   box-shadow: 0 0 0 1px rgb(255 255 255 / 0.04) inset, 0 20px 50px -12px rgb(0 0 0 / 0.65);
 }
 
@@ -204,6 +316,33 @@ body.is-resizing * {
 
 button:not(:disabled):active {
   transform: scale(0.96);
+}
+
+/* Ползунок в настройках */
+.gk-range {
+  -webkit-appearance: none;
+  appearance: none;
+  height: 18px;
+  background: transparent;
+  cursor: pointer;
+}
+.gk-range::-webkit-slider-runnable-track {
+  height: 4px;
+  border-radius: 999px;
+  background: linear-gradient(90deg, var(--color-gk-green) var(--pct, 50%), rgb(255 255 255 / 0.12) var(--pct, 50%));
+}
+.gk-range::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 14px;
+  height: 14px;
+  margin-top: -5px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-gk-green) 35%, transparent), 0 2px 6px rgb(0 0 0 / 0.4);
+  transition: transform 0.15s ease;
+}
+.gk-range:active::-webkit-slider-thumb {
+  transform: scale(1.15);
 }
 
 /* Тонкие тёмные скроллбары */

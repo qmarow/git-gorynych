@@ -69,7 +69,7 @@ export function Splash({ title = 'GitKraken Clone', subtitle }) {
 
 export function LoadingOverlay({ label, title = 'Открываем репозиторий' }) {
   return (
-    <div className="absolute inset-0 z-20 flex animate-fade-in items-center justify-center bg-[#0e1117]/40 backdrop-blur-sm">
+    <div className="absolute inset-0 z-20 flex animate-fade-in items-center justify-center bg-[color-mix(in_srgb,var(--gk-base)_40%,transparent)] backdrop-blur-sm">
       <div className="glass-strong flex animate-pop-in items-center gap-4 rounded-xl border border-gk-border bg-gk-panel-2 px-6 py-4">
         <GraphLoader size={40} />
         <div>

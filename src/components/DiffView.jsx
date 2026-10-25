@@ -142,8 +142,8 @@ export default function DiffView({
 /* ---------- Unified ---------- */
 
 const LINE_STYLES = {
-  '+': { row: 'bg-[#3cf0a0]/[0.09]', num: 'bg-[#3cf0a0]/[0.13] text-gk-green/70', sign: 'text-gk-green' },
-  '-': { row: 'bg-[#f25d5d]/[0.10]', num: 'bg-[#f25d5d]/[0.15] text-gk-red/70', sign: 'text-gk-red' },
+  '+': { row: 'bg-gk-green/[0.09]', num: 'bg-gk-green/[0.13] text-gk-green/70', sign: 'text-gk-green' },
+  '-': { row: 'bg-gk-red/[0.10]', num: 'bg-gk-red/[0.15] text-gk-red/70', sign: 'text-gk-red' },
   ' ': { row: '', num: 'text-gk-dim', sign: 'text-gk-dim' },
   '\\': { row: '', num: 'text-gk-dim', sign: 'text-gk-dim' },
 };

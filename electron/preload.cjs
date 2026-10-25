@@ -22,6 +22,12 @@ contextBridge.exposeInMainWorld('api', {
     save: (tabs, active) => ipcRenderer.invoke('tabs:save', tabs, active),
   },
   openExternal: (url) => ipcRenderer.invoke('shell:open-external', url),
+  appearance: {
+    get: () => ipcRenderer.invoke('appearance:get'),
+    set: (value) => ipcRenderer.invoke('appearance:set', value),
+    pickImage: () => ipcRenderer.invoke('appearance:pick-image'),
+    image: () => ipcRenderer.invoke('appearance:image'),
+  },
   // GitLab: токен не покидает main-процесс; opts = { remote, ref }
   gitlab: {
     status: (dir, opts) => ipcRenderer.invoke('gitlab:status', dir, opts),

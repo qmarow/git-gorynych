@@ -17,6 +17,8 @@ import {
   Layers,
   Loader2,
   LogIn,
+  Palette,
+  Plug,
   RotateCcw,
   Tag,
   Trash2,
@@ -32,7 +34,15 @@ import Toasts from './components/Toasts.jsx';
 import DiffView from './components/DiffView.jsx';
 import ConflictView from './components/ConflictView.jsx';
 import CiView from './components/CiView.jsx';
-import { IntegrationsDialog } from './components/TokenSetup.jsx';
+import SettingsDialog from './components/SettingsDialog.jsx';
+import {
+  DEFAULT_APPEARANCE,
+  applyAppearance,
+  cacheAppearance,
+  normalizeAppearance,
+  readCachedAppearance,
+  themeById,
+} from './lib/appearance.js';
 import { ACTIVE_STATUSES } from './components/PipelineStatus.jsx';
 import StatusBar from './components/StatusBar.jsx';
 import InitRepoDialog, { plural } from './components/InitRepoDialog.jsx';
@@ -126,7 +136,12 @@ export default function App() {
   const [menu, setMenu] = useState(null); // { x, y, node }
   const [diffTarget, setDiffTarget] = useState(null); // { kind, mode, hash, parent, file, list, index, commitHash }
   const [ciView, setCiView] = useState(null); // { file, mode, pipelineId } — открыт просмотр CI/CD
-  const [pipelineMap, setPipelineMap] = useState(null); // статусы пайплайнов GitLab: { bySha, pipelines, error }
+  const [pipelineMap, setPipelineMap] = useState(null);
+  // Оформление: тема, фон, прозрачность. Кэш в localStorage — чтобы не мигало при запуске
+  const [appearance, setAppearance] = useState(readCachedAppearance);
+  const [appearanceMeta, setAppearanceMeta] = useState({ supportsMaterial: false, hasImage: false });
+  const [bgImage, setBgImage] = useState(null);
+  const saveAppearanceTimer = useRef(null); // статусы пайплайнов GitLab: { bySha, pipelines, error }
   const [diffData, setDiffData] = useState(null);
   const [diffView, setDiffView] = useState(() => readPref('diffView', 'unified'));
   const [ignoreWs, setIgnoreWs] = useState(() => readPref('ignoreWs', '0') === '1');
@@ -442,6 +457,11 @@ export default function App() {
     const onKey = (e) => {
       if (!e.ctrlKey || e.altKey) return;
       const key = e.key.toLowerCase();
+      if (e.code === 'Comma' && !e.shiftKey) {
+        e.preventDefault();
+        setDialog((d) => (d ? d : { type: 'settings', tab: 'appearance' }));
+        return;
+      }
       if ((key === 'o' || key === 'щ') && e.shiftKey) {
         e.preventDefault();
         setDialog({ type: 'clone' });
@@ -927,6 +947,53 @@ export default function App() {
 
   /* ---------- Коммиты и выбор ---------- */
 
+  /* ---------- Оформление ---------- */
+
+  useEffect(() => {
+    if (!api?.appearance) return;
+    api.appearance.get().then(async (res) => {
+      setAppearanceMeta({ supportsMaterial: res.supportsMaterial, hasImage: res.hasImage });
+      if (res.appearance) setAppearance(normalizeAppearance(res.appearance));
+      if (res.hasImage) setBgImage(await api.appearance.image());
+    });
+  }, []);
+
+  useEffect(() => {
+    applyAppearance(appearance, { imageUrl: bgImage, systemSupported: appearanceMeta.supportsMaterial });
+    cacheAppearance(appearance);
+  }, [appearance, bgImage, appearanceMeta.supportsMaterial]);
+
+  const persistAppearance = (next) => {
+    clearTimeout(saveAppearanceTimer.current);
+    saveAppearanceTimer.current = setTimeout(() => {
+      api?.appearance?.set({ ...next, base: themeById(next.theme).base });
+    }, 250);
+  };
+
+  const updateAppearance = (patch) =>
+    setAppearance((prev) => {
+      const next = normalizeAppearance({ ...prev, ...patch });
+      persistAppearance(next);
+      return next;
+    });
+
+  const resetAppearance = () => {
+    const next = normalizeAppearance(DEFAULT_APPEARANCE);
+    setAppearance(next);
+    persistAppearance(next);
+  };
+
+  const pickBackgroundImage = async () => {
+    const res = await api.appearance.pickImage();
+    if (res?.ok) {
+      setBgImage(await api.appearance.image());
+      setAppearanceMeta((m) => ({ ...m, hasImage: true }));
+    }
+    return res;
+  };
+
+  const openSettings = (tab = 'appearance') => setDialog({ type: 'settings', tab });
+
   /* ---------- GitLab: статусы пайплайнов для графа ---------- */
 
   const forge = repo?.forge ?? null;
@@ -1324,6 +1391,16 @@ export default function App() {
         onCloseTab={closeTab}
         onOpenRepository={openRepository}
         onFileMenu={openFileMenu}
+        onViewMenu={(x, y) =>
+          setMenu({
+            x,
+            y,
+            items: [
+              { label: 'Оформление…', icon: Palette, hint: 'Ctrl+,', onClick: () => openSettings('appearance') },
+              { label: 'Подключения (GitLab)…', icon: Plug, onClick: () => openSettings('integrations') },
+            ],
+          })
+        }
       />
 
       {loadError && <ErrorBanner error={loadError} onClose={() => setLoadError(null)} />}
@@ -1350,7 +1427,7 @@ export default function App() {
             onStash={stash}
             onPop={stashPop}
             onAccessClick={() => setDialog({ type: 'access' })}
-            onSettings={() => setDialog({ type: 'integrations' })}
+            onSettings={() => openSettings('appearance')}
             onSearch={() => (searchOpen ? closeSearch() : setSearchOpen(true))}
             searchOpen={searchOpen}
           />
@@ -1580,8 +1657,19 @@ export default function App() {
           onCheckAccess={repo?.remotes.length ? () => setDialog({ type: 'access' }) : null}
         />
       )}
-      {dialog?.type === 'integrations' && (
-        <IntegrationsDialog repo={repo} onForgeChanged={onForgeChanged} onClose={() => setDialog(null)} />
+      {(dialog?.type === 'settings' || dialog?.type === 'integrations') && (
+        <SettingsDialog
+          initialTab={dialog.type === 'integrations' ? 'integrations' : dialog.tab}
+          appearance={appearance}
+          meta={appearanceMeta}
+          imageUrl={bgImage}
+          onChange={updateAppearance}
+          onReset={resetAppearance}
+          onPickImage={pickBackgroundImage}
+          repo={repo}
+          onForgeChanged={onForgeChanged}
+          onClose={() => setDialog(null)}
+        />
       )}
       {dialog?.type === 'access' && (
         <AccessDialog access={access} onClose={() => setDialog(null)} onRecheck={checkAccess} />

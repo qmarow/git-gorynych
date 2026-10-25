@@ -143,7 +143,7 @@ export default function BranchPicker({ repo, onClose, onCheckout, onCreate, onNe
   return (
     <div
       onKeyDown={onKeyDown}
-      className="absolute left-0 top-full z-40 mt-1 flex max-h-[min(560px,75vh)] w-[380px] origin-top-left animate-pop-in flex-col overflow-hidden rounded-lg border border-white/10 bg-[#161a22] shadow-2xl shadow-black/60 ring-1 ring-black/40"
+      className="absolute left-0 top-full z-40 mt-1 flex max-h-[min(560px,75vh)] w-[380px] origin-top-left animate-pop-in flex-col overflow-hidden rounded-lg border border-white/10 bg-[var(--gk-solid-2)] shadow-2xl shadow-black/60 ring-1 ring-black/40"
     >
       {/* Поиск */}
       <div className="flex items-center gap-2 border-b border-gk-border px-3 py-2">

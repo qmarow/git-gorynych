@@ -2,6 +2,14 @@ import { Component, StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import App from './App.jsx';
 import './index.css';
+import { applyAppearance, readCachedAppearance } from './lib/appearance.js';
+
+// Тему и фон применяем до первой отрисовки — без вспышки стандартных цветов
+try {
+  applyAppearance(readCachedAppearance());
+} catch {
+  /* оформление по умолчанию из CSS */
+}
 
 // Если интерфейс упал — показываем ошибку вместо пустого окна
 class ErrorBoundary extends Component {
