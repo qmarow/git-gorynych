@@ -345,6 +345,18 @@ button:not(:disabled):active {
   transform: scale(1.15);
 }
 
+/* Скролл внутри разделов боковой панели — тонкий, проявляется при наведении */
+.sidebar-scroll::-webkit-scrollbar {
+  width: 6px;
+}
+.sidebar-scroll::-webkit-scrollbar-thumb {
+  background: transparent;
+  border-radius: 999px;
+}
+.sidebar-scroll:hover::-webkit-scrollbar-thumb {
+  background: rgb(255 255 255 / 0.16);
+}
+
 /* Тонкие тёмные скроллбары */
 ::-webkit-scrollbar {
   width: 10px;

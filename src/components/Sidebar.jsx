@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { StatusIcon, statusInfo } from './PipelineStatus.jsx';
 import {
   Archive,
@@ -210,9 +210,61 @@ function Section({ title, icon: Icon, count, children }) {
         </span>
       </button>
       <div className={`grid transition-[grid-template-rows] duration-200 ease-out ${open ? 'grid-rows-[1fr]' : 'grid-rows-[0fr]'}`}>
-        <div className="overflow-hidden">{children}</div>
+        <div className="overflow-hidden">
+          <ScrollArea>{children}</ScrollArea>
+        </div>
       </div>
     </section>
+  );
+}
+
+/**
+ * Свой скролл у каждого раздела: длинный список веток или тегов не выталкивает остальные разделы.
+ * Тени сверху и снизу подсказывают, что список можно прокрутить.
+ */
+function ScrollArea({ children }) {
+  const ref = useRef(null);
+  const [edges, setEdges] = useState({ top: false, bottom: false });
+
+  const update = useCallback(() => {
+    const el = ref.current;
+    if (!el) return;
+    const top = el.scrollTop > 2;
+    const bottom = el.scrollTop + el.clientHeight < el.scrollHeight - 2;
+    setEdges((prev) => (prev.top === top && prev.bottom === bottom ? prev : { top, bottom }));
+  }, []);
+
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return undefined;
+    update();
+    const ro = new ResizeObserver(update);
+    ro.observe(el);
+    // Содержимое меняется (фильтр, новые ветки) — пересчитываем тени
+    const mo = new MutationObserver(update);
+    mo.observe(el, { childList: true, subtree: true });
+    return () => {
+      ro.disconnect();
+      mo.disconnect();
+    };
+  }, [update]);
+
+  return (
+    <div className="relative">
+      <div ref={ref} onScroll={update} className="sidebar-scroll max-h-[min(280px,38vh)] overflow-y-auto overscroll-contain">
+        {children}
+      </div>
+      <div
+        className={`pointer-events-none absolute inset-x-0 top-0 h-4 bg-gradient-to-b from-black/35 to-transparent transition-opacity duration-200 ${
+          edges.top ? 'opacity-100' : 'opacity-0'
+        }`}
+      />
+      <div
+        className={`pointer-events-none absolute inset-x-0 bottom-0 h-5 bg-gradient-to-t from-black/40 to-transparent transition-opacity duration-200 ${
+          edges.bottom ? 'opacity-100' : 'opacity-0'
+        }`}
+      />
+    </div>
   );
 }
 
