@@ -33,6 +33,8 @@ export default function CommitGraph({
   matchSet = null, // Set хэшей, подходящих под поиск; остальные приглушаются
   pipelines = null, // { [sha]: { id, status } } — статусы пайплайнов GitLab
   onPipelineClick,
+  onCompare, // Ctrl+клик: сравнить выбранный коммит с этим
+  compareMark = null, // коммит, отмеченный для сравнения
 }) {
   const { nodes, edges, laneCount } = useMemo(() => layoutGraph(commits), [commits]);
   const [view, setView] = useState({ top: 0, height: 800, width: 1000 });
@@ -200,7 +202,11 @@ export default function CommitGraph({
             cols={cols}
             wipCount={wipCount}
             onHover={() => setHoverHash(node.hash)}
-            onSelect={() => onSelect(node.hash)}
+            marked={node.hash === compareMark}
+            onSelect={(e) => {
+              if ((e?.ctrlKey || e?.metaKey) && onCompare && !node.wip) onCompare(node.hash);
+              else onSelect(node.hash);
+            }}
             onDoubleClick={() => onActivate?.(node)}
             onContextMenu={(e) => {
               e.preventDefault();
@@ -303,13 +309,14 @@ function Row({
   onSelect,
   onDoubleClick,
   onContextMenu,
+  marked,
 }) {
   const color = laneColor(node.lane);
   const bandAlpha = selected ? '42' : hovered ? '2a' : '14';
 
   return (
     <div
-      onMouseDown={(e) => e.button === 0 && onSelect()}
+      onMouseDown={(e) => e.button === 0 && onSelect(e)}
       onMouseEnter={onHover}
       onContextMenu={onContextMenu}
       onDoubleClick={onDoubleClick}
@@ -325,6 +332,11 @@ function Row({
       />
 
       <div style={{ width: cols.refs }} className="@container relative flex shrink-0 items-center justify-end gap-1 overflow-hidden pl-2">
+        {marked && (
+          <span title="Отмечен для сравнения — Ctrl+клик по другому коммиту" className="shrink-0 rounded bg-gk-blue/20 px-1.5 text-[10px] font-medium text-gk-blue">
+            A
+          </span>
+        )}
         {node.isHead && !node.refs.some((r) => r.head) && <HeadPill detached />}
         <RefLabels refs={node.refs} color={color} />
       </div>

@@ -80,6 +80,8 @@ contextBridge.exposeInMainWorld('api', {
     commitFiles: (dir, hash, parent) => ipcRenderer.invoke('repo:commit-files', dir, hash, parent),
     // params: { mode: 'commit'|'staged'|'unstaged'|'untracked', hash, parent, path, oldPath, ignoreWhitespace, conflicted }
     fileDiff: (dir, params) => ipcRenderer.invoke('repo:file-diff', dir, params),
+    compare: (dir, params) => ipcRenderer.invoke('repo:compare', dir, params),
+    rebasePreview: (dir, params) => ipcRenderer.invoke('repo:rebase-preview', dir, params),
     action: (dir, name, payload) => ipcRenderer.invoke('repo:action', dir, name, payload),
   },
 });

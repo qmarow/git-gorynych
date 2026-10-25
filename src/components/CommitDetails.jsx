@@ -31,6 +31,7 @@ export default function CommitDetails({
   onStashAction,
   onOpenConflict,
   activeConflict,
+  onFileMenu,
 }) {
   return (
     <aside className="glass flex w-full min-w-0 flex-col border-l border-gk-border bg-gk-panel">
@@ -58,6 +59,7 @@ export default function CommitDetails({
           onCommit={onCommit}
           onOpenConflict={onOpenConflict}
           activeConflict={activeConflict}
+          onFileMenu={onFileMenu}
         />
       ) : (
         <CommitPanel
@@ -69,6 +71,7 @@ export default function CommitDetails({
           onSelectCommit={onSelectCommit}
           onRevertTo={onRevertTo}
           busy={busy}
+          onFileMenu={onFileMenu}
         />
       )}
     </aside>
@@ -77,7 +80,7 @@ export default function CommitDetails({
 
 /* ---------- Выбран обычный коммит ---------- */
 
-function CommitPanel({ commit, files, activeFile, onOpenFile, onSelectCommit, onRevertTo, busy }) {
+function CommitPanel({ commit, files, activeFile, onOpenFile, onSelectCommit, onRevertTo, busy, onFileMenu }) {
   const [treeView, setTreeView] = useState(false);
   const list = Array.isArray(files) ? files : [];
   const counts = list.reduce((acc, f) => ({ ...acc, [f.status]: (acc[f.status] ?? 0) + 1 }), {});
@@ -172,6 +175,10 @@ function CommitPanel({ commit, files, activeFile, onOpenFile, onSelectCommit, on
             tree={treeView}
             active={activeFile?.kind === 'commit' && activeFile.path === file.path}
             onClick={() => onOpenFile(file, 'commit', list)}
+            onContextMenu={(e) => {
+              e.preventDefault();
+              onFileMenu?.(file, 'commit', list, e.clientX, e.clientY);
+            }}
           >
             {file.additions !== null ? (
               <span className="ml-auto shrink-0 font-mono text-[11px]">
@@ -287,7 +294,7 @@ function FilesSkeleton() {
 
 /* ---------- Строка WIP: настоящий стейджинг и коммит ---------- */
 
-function WipPanel({ repo, busy, activeFile, onOpenFile, onStage, onUnstage, onCommit, onOpenConflict, activeConflict }) {
+function WipPanel({ repo, busy, activeFile, onOpenFile, onStage, onUnstage, onCommit, onOpenConflict, activeConflict, onFileMenu }) {
   const [summary, setSummary] = useState('');
   const [description, setDescription] = useState('');
 
@@ -361,6 +368,7 @@ function WipPanel({ repo, busy, activeFile, onOpenFile, onStage, onUnstage, onCo
           onFileAction={(f) => onStage([f.path])}
           fileActionIcon={Plus}
           fileActionTitle="Stage"
+          onFileMenu={onFileMenu}
         />
         <FileGroup
           title="Staged Files"
@@ -375,6 +383,7 @@ function WipPanel({ repo, busy, activeFile, onOpenFile, onStage, onUnstage, onCo
           onFileAction={(f) => onUnstage([f.path])}
           fileActionIcon={Minus}
           fileActionTitle="Unstage"
+          onFileMenu={onFileMenu}
         />
       </div>
 
@@ -426,6 +435,7 @@ function FileGroup({
   onFileAction,
   fileActionIcon: Icon,
   fileActionTitle,
+  onFileMenu,
 }) {
   return (
     <div className="flex min-h-0 flex-1 flex-col border-b border-gk-border last:border-b-0">
@@ -451,6 +461,10 @@ function FileGroup({
             active={activeFile?.kind === kind && activeFile.path === file.path}
             onClick={() => onOpenFile(file, kind, files)}
             onDoubleClick={() => !busy && onFileAction(file)}
+            onContextMenu={(e) => {
+              e.preventDefault();
+              onFileMenu?.(file, kind, files, e.clientX, e.clientY);
+            }}
           >
             <button
               title={fileActionTitle}

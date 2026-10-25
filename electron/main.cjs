@@ -9,6 +9,8 @@ const cloner = require('./clone.cjs');
 const ci = require('./ci.cjs');
 const ciEdit = require('./ciEdit.cjs');
 const gitlab = require('./gitlab.cjs');
+const compare = require('./compare.cjs');
+const rebasePlan = require('./rebase.cjs');
 const { watchRepository } = require('./watch.cjs');
 const { serializeError } = require('./errors.cjs');
 
@@ -327,6 +329,8 @@ ipcMain.handle('repo:watch', (event, dir) => {
 
 ipcMain.handle('repo:commit-files', safe((dir, hash, parent) => git.getCommitFiles(dir, hash, parent)));
 ipcMain.handle('repo:file-diff', safe((dir, params) => git.getFileDiff(dir, params)));
+ipcMain.handle('repo:compare', safe((dir, params) => compare.compareCommits(dir, params)));
+ipcMain.handle('repo:rebase-preview', safe((dir, params) => rebasePlan.simulate(dir, params)));
 
 // Все изменяющие и сетевые операции: checkAccess, fetch, pull, push, checkout,
 // createBranch, stash, stashPop, commit, stage, unstage, undo, redo, abort/continueOperation

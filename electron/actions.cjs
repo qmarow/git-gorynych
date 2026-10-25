@@ -13,6 +13,8 @@ const {
 const { GitError } = require('./errors.cjs');
 
 const conflicts = require('./conflicts.cjs');
+const rebase = require('./rebase.cjs');
+const restore = require('./restore.cjs');
 
 const NETWORK_TIMEOUT = 5 * 60 * 1000; // запас на окно входа Git Credential Manager
 
@@ -630,7 +632,11 @@ async function continueOperation(cwd) {
     });
   }
   if (op === 'merge') await git(cwd, ['commit', '--no-edit'], NO_EDITOR);
-  else await git(cwd, [op, '--continue'], NO_EDITOR);
+  else {
+    // Интерактивный rebase из приложения: reword/squash после конфликта получают заранее заданные сообщения
+    const env = op === 'rebase' ? rebase.continueEnv(cwd) : null;
+    await git(cwd, [op, '--continue'], env ? { env } : NO_EDITOR);
+  }
   return { operation: op, finished: !(await detectOperation(cwd)) };
 }
 
@@ -771,6 +777,15 @@ const HANDLERS = {
       await git(cwd, ['tag', '-d', e.name]);
     },
   },
+  // Откат файла/фрагмента в рабочей папке: возвращаем снимок содержимого
+  fileSnapshot: {
+    async undo(cwd, e) {
+      for (const snap of [...e.snapshots].reverse()) await restore.writeSnapshot(cwd, snap, 'before');
+    },
+    async redo(cwd, e) {
+      for (const snap of e.snapshots) await restore.writeSnapshot(cwd, snap, 'after');
+    },
+  },
   stashDrop: {
     async undo(cwd, e) {
       await git(cwd, ['stash', 'store', '-m', e.message || 'restored stash', e.hash]);
@@ -844,6 +859,7 @@ const ACTIONS = {
         if (orig) pending = { from: orig, label: res.operation === 'merge' ? 'Merge' : 'Rebase' };
       }
       pendingOps.delete(cwd);
+      rebase.cleanup(cwd);
       const to = await headHash(cwd);
       if (pending && pending.from !== to) record(cwd, { type: 'headMove', label: `${pending.label} (с решением конфликтов)`, from: pending.from, to });
     }
@@ -851,6 +867,7 @@ const ACTIONS = {
   },
   async abortOperation(cwd) {
     pendingOps.delete(cwd);
+    rebase.cleanup(cwd);
     return abortOperation(cwd);
   },
   stage: (cwd, p) => stage(cwd, p.paths),
@@ -948,6 +965,32 @@ const ACTIONS = {
     const res = await trackConflicts(cwd, `Rebase на ${p.ref}`, () => rebaseOnto(cwd, p));
     record(cwd, { type: 'headMove', label: `Rebase на ${p.ref}`, ...res });
     return res;
+  },
+  // Интерактивный rebase: применить посчитанный в предпросмотре результат
+  async rebaseApply(cwd, p) {
+    const res = await rebase.apply(cwd, p);
+    record(cwd, { type: 'headMove', label: `Rebase ${res.branch}`, from: res.from, to: res.to });
+    return res;
+  },
+  // …или запустить настоящий git rebase -i, чтобы разрешить конфликты вручную
+  async rebaseStart(cwd, p) {
+    const res = await trackConflicts(cwd, 'Rebase', () => rebase.start(cwd, p));
+    if (res.from !== res.to) record(cwd, { type: 'headMove', label: `Rebase ${res.branch}`, from: res.from, to: res.to });
+    return res;
+  },
+  async restoreFile(cwd, p) {
+    const res = await restore.restoreFile(cwd, p);
+    const what = p.side === 'before' ? 'до' : 'из';
+    if (res.snapshot) record(cwd, { type: 'fileSnapshot', label: `Файл ${res.path} → версия ${what} ${p.hash.slice(0, 7)}`, snapshots: [res.snapshot] });
+    else historyFor(cwd).redo = [];
+    return { path: res.path, deleted: res.deleted, side: res.side, undoable: Boolean(res.snapshot) };
+  },
+  async applyHunks(cwd, p) {
+    const res = await restore.applyHunks(cwd, p);
+    const labels = { revert: 'Откат фрагмента коммита', discard: 'Удаление правок' };
+    if (res.snapshot) record(cwd, { type: 'fileSnapshot', label: `${labels[res.op]} в ${res.path}`, snapshots: [res.snapshot] });
+    else if (labels[res.op]) historyFor(cwd).redo = [];
+    return { op: res.op, path: res.path, hunks: res.hunks, total: res.total, undoable: Boolean(res.snapshot) };
   },
   async discardAll(cwd) {
     const res = await discardAll(cwd);

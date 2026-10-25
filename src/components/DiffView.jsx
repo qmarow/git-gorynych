@@ -13,7 +13,7 @@ const readPref = (key, def) => {
 };
 
 const MODE_LABELS = {
-  commit: (t) => `коммит ${t.hash.slice(0, 7)}`,
+  commit: (t) => (t.kind === 'compare' ? `${t.parent.slice(0, 7)} → ${t.hash.slice(0, 7)}` : `коммит ${t.hash.slice(0, 7)}`),
   staged: () => 'staged',
   unstaged: () => 'unstaged',
   untracked: () => 'новый файл',
@@ -29,7 +29,23 @@ export default function DiffView({
   onPrev,
   onNext,
   onClose,
+  hunkActions,
+  onHunkAction,
+  fileActions,
 }) {
+  const [hunkBusy, setHunkBusy] = useState(null);
+  // Действия с фрагментом (stage / отменить …) — только когда фрагменты считаются по точному тексту
+  const actions = ignoreWhitespace ? null : hunkActions?.length ? hunkActions : null;
+  const runHunk = async (action, hunk, index) => {
+    setHunkBusy(`${action.id}:${index}`);
+    try {
+      await onHunkAction(action.id, hunk);
+    } finally {
+      setHunkBusy(null);
+    }
+  };
+  const hunkProps = actions ? { actions, busy: hunkBusy, onRun: runHunk } : null;
+
   const [inline, setInline] = useState(() => readPref('diff.inline', true));
   const scrollRef = useRef(null);
   const [current, setCurrent] = useState(-1); // текущий фрагмент изменений для навигации
@@ -126,6 +142,19 @@ export default function DiffView({
           </span>
         )}
 
+        {fileActions?.map((a) => (
+          <button
+            key={a.label}
+            onClick={a.onClick}
+            title={a.title}
+            className={`ml-1 flex h-6 shrink-0 items-center gap-1 rounded px-2 text-[11.5px] ring-1 ring-gk-border transition-colors ${
+              a.danger ? 'text-gk-red hover:bg-gk-red/10' : 'text-gk-muted hover:bg-white/10 hover:text-gk-text'
+            }`}
+          >
+            {a.icon && <a.icon size={12} />} {a.label}
+          </button>
+        ))}
+
         <div className="ml-2 flex overflow-hidden rounded ring-1 ring-gk-border">
           <ToggleButton active={view === 'unified'} onClick={() => onViewChange('unified')} title="Unified">
             <Rows3 size={13} />
@@ -205,9 +234,9 @@ export default function DiffView({
                 : 'Нет изменений в содержимом'}
           </Placeholder>
         ) : view === 'split' ? (
-          <SplitDiff hunks={data.hunks} highlights={highlights} />
+          <SplitDiff hunks={data.hunks} highlights={highlights} hunkProps={hunkProps} />
         ) : (
-          <UnifiedDiff hunks={data.hunks} highlights={highlights} />
+          <UnifiedDiff hunks={data.hunks} highlights={highlights} hunkProps={hunkProps} />
         )}
         {data?.truncated && (
           <div className="border-t border-gk-border px-4 py-2 font-sans text-xs text-gk-dim">
@@ -228,12 +257,12 @@ const LINE_STYLES = {
   '\\': { row: '', num: 'text-gk-dim', sign: 'text-gk-dim' },
 };
 
-export function UnifiedDiff({ hunks, highlights }) {
+export function UnifiedDiff({ hunks, highlights, hunkProps }) {
   return (
     <div className="min-w-max pb-6">
       {hunks.map((hunk, hi) => (
-        <div key={hi}>
-          <HunkHeader hunk={hunk} />
+        <div key={hi} className="group/hunk">
+          <HunkHeader hunk={hunk} index={hi} {...hunkProps} />
           {hunk.lines.map((line, li) => {
             const s = LINE_STYLES[line.t];
             const segs = highlights?.[hi]?.get(li);
@@ -307,7 +336,7 @@ function toSplitRows(lines, pairs) {
   return rows;
 }
 
-function SplitDiff({ hunks, highlights }) {
+function SplitDiff({ hunks, highlights, hunkProps }) {
   const prepared = useMemo(
     () => hunks.map((h, hi) => ({ hunk: h, rows: toSplitRows(h.lines, highlights?.[hi]?.pairs) })),
     [hunks, highlights],
@@ -315,8 +344,8 @@ function SplitDiff({ hunks, highlights }) {
   return (
     <div className="pb-6">
       {prepared.map(({ hunk, rows }, hi) => (
-        <div key={hi}>
-          <HunkHeader hunk={hunk} />
+        <div key={hi} className="group/hunk">
+          <HunkHeader hunk={hunk} index={hi} {...hunkProps} />
           {rows.map((row, ri) => {
             const isChange = (r) => r && (r.line.t === '+' || r.line.t === '-');
             const prev = rows[ri - 1];
@@ -375,11 +404,30 @@ function Segments({ segs, type }) {
 
 /* ---------- Общее ---------- */
 
-function HunkHeader({ hunk }) {
+function HunkHeader({ hunk, index, actions, busy, onRun }) {
   return (
-    <div className="sticky left-0 border-y border-gk-border/60 bg-gk-blue/10 px-3 py-0.5 text-[11px] text-gk-blue/90">
-      {hunk.header.replace(/ @@.*$/, ' @@')}
-      {hunk.section && <span className="ml-2 text-gk-muted">{hunk.section}</span>}
+    <div className="flex items-center border-y border-gk-border/60 bg-gk-blue/10 py-0.5 pl-3 text-[11px] text-gk-blue/90">
+      <span className="sticky left-3 flex items-center gap-2">
+        <span>{hunk.header.replace(/ @@.*$/, ' @@')}</span>
+        {hunk.section && <span className="text-gk-muted">{hunk.section}</span>}
+        {actions?.map((a) => {
+          const running = busy === `${a.id}:${index}`;
+          return (
+            <button
+              key={a.id}
+              disabled={Boolean(busy)}
+              title={a.title}
+              onClick={() => onRun(a, hunk, index)}
+              className={`flex items-center gap-1 rounded px-1.5 py-px font-sans text-[11px] opacity-70 ring-1 transition group-hover/hunk:opacity-100 disabled:opacity-40 ${
+                a.danger ? 'text-gk-red ring-gk-red/30 hover:bg-gk-red/15' : 'text-gk-text ring-gk-border hover:bg-white/10'
+              }`}
+            >
+              {running ? <Loader2 size={11} className="animate-spin" /> : a.icon && <a.icon size={11} />}
+              {a.label}
+            </button>
+          );
+        })}
+      </span>
     </div>
   );
 }

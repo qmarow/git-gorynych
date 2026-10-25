@@ -9,6 +9,11 @@ import {
   FileText,
   FolderOpen,
   GitBranch,
+  GitCompareArrows,
+  Minus,
+  Plus,
+  FileDiff,
+  Flag,
   GitCommitHorizontal,
   GitMerge,
   History,
@@ -40,6 +45,8 @@ import Toasts from './components/Toasts.jsx';
 import DiffView from './components/DiffView.jsx';
 import ConflictView from './components/ConflictView.jsx';
 import CiView from './components/CiView.jsx';
+import RebaseView from './components/RebaseView.jsx';
+import CompareView from './components/CompareView.jsx';
 import SettingsDialog from './components/SettingsDialog.jsx';
 import {
   DEFAULT_APPEARANCE,
@@ -81,6 +88,8 @@ const PROGRESS_TEXT = {
   fetch: 'Загружаем данные с сервера…',
   merge: 'Слияние веток…',
   rebase: 'Перебазирование…',
+  rebaseApply: 'Применяем rebase…',
+  rebaseStart: 'Перебазирование…',
   cherryPick: 'Cherry-pick…',
   revert: 'Создаём revert-коммит…',
   revertTo: 'Возвращаем файлы проекта…',
@@ -142,7 +151,34 @@ export default function App() {
   const [pullMode, setPullMode] = useState(readPullMode);
   const [menu, setMenu] = useState(null); // { x, y, node }
   const [diffTarget, setDiffTarget] = useState(null); // { kind, mode, hash, parent, file, list, index, commitHash }
-  const [ciView, setCiView] = useState(null); // { file, mode, pipelineId } — открыт просмотр CI/CD
+  const [ciView, setCiViewRaw] = useState(null); // { file, mode, pipelineId } — открыт просмотр CI/CD
+  const [compareView, setCompareViewRaw] = useState(null); // { a, b } — сравнение двух коммитов
+  const [rebaseView, setRebaseViewRaw] = useState(null); // { upstream, onto?, nonce } — интерактивный rebase
+  const [compareMark, setCompareMark] = useState(null); // коммит, отмеченный для сравнения
+  // В центре одновременно открыта только одна большая панель
+  const setCiView = (v) => {
+    setCiViewRaw(v);
+    if (v) {
+      setCompareViewRaw(null);
+      setRebaseViewRaw(null);
+    }
+  };
+  const setCompareView = (v) => {
+    setCompareViewRaw(v);
+    if (v) {
+      setCiViewRaw(null);
+      setRebaseViewRaw(null);
+      setDiffTarget(null);
+    }
+  };
+  const setRebaseView = (v) => {
+    setRebaseViewRaw(v);
+    if (v) {
+      setCiViewRaw(null);
+      setCompareViewRaw(null);
+      setDiffTarget(null);
+    }
+  };
   const [pipelineMap, setPipelineMap] = useState(null);
   // Оформление: тема, фон, прозрачность. Кэш в localStorage — чтобы не мигало при запуске
   const [appearance, setAppearance] = useState(readCachedAppearance);
@@ -247,6 +283,9 @@ export default function App() {
     rememberActiveTab();
     setDiffTarget(null);
     setCiView(null);
+    setCompareView(null);
+    setRebaseView(null);
+    setCompareMark(null);
     setMenu(null);
     setAccess(null);
     setActivePath(path);
@@ -661,6 +700,8 @@ export default function App() {
     if (!hash) return;
     setDiffTarget(null);
     setCiView(null);
+    setCompareView(null);
+    setRebaseView(null);
     setSelectedHash(hash);
   };
 
@@ -803,6 +844,10 @@ export default function App() {
           { label: 'Hard — удалить все изменения', danger: true, onClick: () => resetTo(node, 'hard') },
         ],
       },
+      { separator: true },
+      ...rebaseItems(node),
+      { separator: true },
+      ...compareItems(node),
     );
 
     for (const ref of node.refs) {
@@ -820,11 +865,11 @@ export default function App() {
               run('merge', { ref: ref.name }, { label: 'Merge', success: `${ref.name} слита в ${cur}` }),
           },
           {
-            label: `Rebase ${curLabel} onto ${ref.name}`,
+            label: `Rebase ${curLabel} onto ${ref.name}…`,
             icon: Layers,
             disabled: op || !cur,
-            onClick: () =>
-              run('rebase', { ref: ref.name }, { label: 'Rebase', success: `${cur} перебазирована на ${ref.name}` }),
+            title: 'С предпросмотром: итоговый граф, конфликты и изменения видны до применения',
+            onClick: () => openRebase(ref.name),
           },
           {
             label: `Delete ${ref.name}`,
@@ -858,6 +903,13 @@ export default function App() {
             disabled: op || !cur,
             onClick: () => run('merge', { ref: ref.name }, { label: 'Merge', success: `${ref.name} слита в ${cur}` }),
           },
+          {
+            label: `Rebase ${curLabel} onto ${ref.name}…`,
+            icon: Layers,
+            disabled: op || !cur,
+            title: 'С предпросмотром: итоговый граф, конфликты и изменения видны до применения',
+            onClick: () => openRebase(ref.name),
+          },
         );
       } else if (ref.type === 'tag') {
         items.push(
@@ -889,6 +941,85 @@ export default function App() {
         onClick: () => copy(node.description ? `${node.message}\n\n${node.description}` : node.message, 'Текст коммита'),
       },
     );
+    return items;
+  };
+
+  /* ---------- Интерактивный rebase и сравнение ---------- */
+
+  // Коммиты, достижимые из HEAD (среди загруженных) — чтобы понять, «история ветки» это или чужой коммит
+  const headAncestors = useMemo(() => {
+    const set = new Set();
+    if (!repo?.headHash) return set;
+    const byHash = new Map(repo.commits.map((c) => [c.hash, c]));
+    const stack = [repo.headHash];
+    while (stack.length) {
+      const h = stack.pop();
+      if (set.has(h)) continue;
+      set.add(h);
+      for (const p of byHash.get(h)?.parents ?? []) stack.push(p);
+    }
+    return set;
+  }, [repo?.commits, repo?.headHash]);
+
+  const openRebase = (upstream, onto) => {
+    if (!repo?.currentBranch) {
+      notify({ type: 'error', title: 'Rebase делается для ветки', hint: 'Сейчас detached HEAD — переключитесь на ветку.' });
+      return;
+    }
+    setRebaseView({ upstream, onto, nonce: Date.now() });
+  };
+
+  const rebaseItems = (node) => {
+    const cur = repo.currentBranch;
+    const op = Boolean(repo.operation);
+    if (!cur || !repo.headHash) return [];
+    const isHead = node.hash === repo.headHash;
+    if (headAncestors.has(node.hash)) {
+      if (isHead) return node.parents[0] ? [{ label: 'Изменить последний коммит (rebase)…', icon: Layers, disabled: op, onClick: () => openRebase(node.parents[0]) }] : [];
+      return [
+        {
+          label: `Интерактивный rebase ${cur}`,
+          icon: Layers,
+          disabled: op,
+          title: 'Изменить порядок, сообщения, объединить или удалить коммиты — с предпросмотром до применения',
+          submenu: [
+            { label: `Коммиты после ${short(node.hash)}…`, onClick: () => openRebase(node.hash) },
+            ...(node.parents[0] ? [{ label: `Начиная с ${short(node.hash)} (включительно)…`, onClick: () => openRebase(node.parents[0]) }] : []),
+          ],
+        },
+      ];
+    }
+    return [{ label: `Rebase ${cur} на этот коммит…`, icon: Layers, disabled: op, title: 'С предпросмотром результата до применения', onClick: () => openRebase(node.hash) }];
+  };
+
+  const commitTime = (h) => Date.parse(allCommits.find((c) => c.hash === h)?.date ?? '') || 0;
+  // «Было» — более старый из двух
+  const openCompare = (x, y) => {
+    if (!x || !y || x === y) return;
+    const [a, b] = commitTime(x) <= commitTime(y) ? [x, y] : [y, x];
+    setCompareView({ a, b });
+  };
+
+  const compareItems = (node) => {
+    const items = [];
+    if (compareMark && compareMark !== node.hash) {
+      items.push({ label: `Сравнить с отмеченным ${short(compareMark)}`, icon: GitCompareArrows, onClick: () => openCompare(compareMark, node.hash) });
+    }
+    if (repo.headHash && node.hash !== repo.headHash) {
+      items.push({ label: 'Сравнить с HEAD', icon: GitCompareArrows, onClick: () => openCompare(node.hash, repo.headHash) });
+    }
+    items.push({
+      label: compareMark === node.hash ? 'Снять отметку для сравнения' : 'Отметить для сравнения',
+      icon: Flag,
+      hint: 'Ctrl+клик',
+      onClick: () => {
+        if (compareMark === node.hash) setCompareMark(null);
+        else {
+          setCompareMark(node.hash);
+          notify({ type: 'info', title: `${short(node.hash)} отмечен для сравнения`, hint: 'Ctrl+клик или правый клик по другому коммиту → «Сравнить с отмеченным»' });
+        }
+      },
+    });
     return items;
   };
 
@@ -1158,11 +1289,119 @@ export default function App() {
     });
   };
 
+  // Файл из сравнения двух коммитов (или из предпросмотра rebase): diff между a и b
+  const openCompareFile = (file, list, a, b) => {
+    const index = Math.max(0, list.findIndex((f) => f.path === file.path));
+    setDiffTarget({ kind: 'compare', mode: 'commit', hash: b, parent: a, commitHash: selectedHash, file, list, index });
+  };
+
   const stepFile = (delta) => {
     if (!diffTarget) return null;
     const next = diffTarget.index + delta;
     if (next < 0 || next >= diffTarget.list.length) return null;
+    if (diffTarget.kind === 'compare') return () => openCompareFile(diffTarget.list[next], diffTarget.list, diffTarget.parent, diffTarget.hash);
     return () => openFile(diffTarget.list[next], diffTarget.kind, diffTarget.list);
+  };
+
+  /* ---------- Откат файла / фрагмента без коммита ---------- */
+
+  const isDirty = (path) => repo.wipFiles.some((f) => f.path === path);
+
+  const restoreFile = (file, hash, side) => {
+    const go = () =>
+      run('restoreFile', { hash, path: file.path, side }, {
+        label: 'Вернуть файл',
+        success: (d) =>
+          `${d.path}: ${d.deleted ? 'удалён (его не было в той версии)' : `версия ${side === 'before' ? 'до' : 'из'} ${hash.slice(0, 7)}`} — без коммита${d.undoable ? ', Undo вернёт' : ''}`,
+      });
+    if (!isDirty(file.path)) return go();
+    confirm({
+      title: 'В файле есть незакоммиченные изменения',
+      body: `Файл ${file.path} уже изменён в рабочей папке. Он будет заменён версией ${side === 'before' ? 'до' : 'из'} коммита ${hash.slice(0, 7)}. Undo (Ctrl+Z) вернёт текущее содержимое.`,
+      confirmLabel: 'Заменить',
+      onConfirm: go,
+    });
+  };
+
+  const HUNK_TEXT = {
+    revert: { label: 'Отмена фрагмента', ok: (d) => `${d.hunks === d.total ? 'Изменения коммита отменены' : 'Фрагмент отменён'} в ${d.path} — без коммита, Undo вернёт` },
+    discard: { label: 'Отмена фрагмента', ok: (d) => `${d.hunks === d.total ? 'Изменения' : 'Фрагмент'} в ${d.path} отменён — Undo вернёт` },
+    stage: { label: 'Stage фрагмента', ok: null },
+    unstage: { label: 'Unstage фрагмента', ok: null },
+  };
+  const applyHunks = (op, mode, file, hash, hunks) =>
+    run('applyHunks', { op, mode, hash, path: file.path, oldPath: file.oldPath, hunks }, { label: HUNK_TEXT[op].label, success: HUNK_TEXT[op].ok });
+
+  const hunkActionsFor = (t) => {
+    if (!t || t.file.status === 'U' || t.file.untracked) return null;
+    if (t.kind === 'commit')
+      return [{ id: 'revert', label: 'Отменить в рабочей папке', icon: Undo2, title: 'Убрать изменения этого фрагмента из файла в рабочей папке — без коммита. Undo вернёт.' }];
+    if (t.kind === 'unstaged')
+      return [
+        { id: 'stage', label: 'Stage', icon: Plus, title: 'Добавить только этот фрагмент в коммит' },
+        { id: 'discard', label: 'Отменить', icon: Undo2, danger: true, title: 'Выбросить этот фрагмент изменений. Undo вернёт.' },
+      ];
+    if (t.kind === 'staged') return [{ id: 'unstage', label: 'Unstage', icon: Minus, title: 'Убрать этот фрагмент из коммита (останется в рабочей папке)' }];
+    return null;
+  };
+  const onHunkAction = (id, hunk) => {
+    const t = diffTarget;
+    if (!t) return null;
+    return applyHunks(id, t.mode === 'untracked' ? 'unstaged' : t.mode, t.file, t.hash, [hunk.header]);
+  };
+
+  const buildFileMenu = (file, kind, list) => {
+    const items = [{ header: file.path }];
+    if (kind === 'commit') {
+      const c = selected;
+      if (!c || c.wip) return null;
+      items.push(
+        { label: 'Показать изменения', icon: FileDiff, onClick: () => openFile(file, 'commit', list) },
+        { separator: true },
+        {
+          label: 'Вернуть файл к версии из этого коммита',
+          icon: RotateCcw,
+          title: 'Файл в рабочей папке станет таким, как в этом коммите. Коммит не создаётся.',
+          onClick: () => restoreFile(file, c.hash, 'after'),
+        },
+        {
+          label: 'Вернуть файл к версии до этого коммита',
+          icon: History,
+          disabled: !c.parents.length,
+          title: 'Файл станет таким, каким был до этого коммита. Коммит не создаётся.',
+          onClick: () => restoreFile(file, c.hash, 'before'),
+        },
+        {
+          label: 'Отменить изменения этого коммита в файле',
+          icon: Undo2,
+          disabled: file.additions === null || !c.parents.length || file.status === 'A' || file.status === 'D',
+          title: 'Убрать из рабочего файла только то, что изменил этот коммит, — более поздние правки останутся',
+          onClick: () => applyHunks('revert', 'commit', file, c.hash, null),
+        },
+      );
+    } else if (kind === 'unstaged' || kind === 'staged') {
+      items.push(
+        { label: 'Показать изменения', icon: FileDiff, onClick: () => openFile(file, kind, list) },
+        kind === 'unstaged'
+          ? { label: 'Stage', icon: Plus, onClick: () => stageFiles([file.path]) }
+          : { label: 'Unstage', icon: Minus, onClick: () => unstageFiles([file.path]) },
+      );
+      if (kind === 'unstaged' && !file.untracked && file.status !== 'U') {
+        items.push({
+          label: 'Отменить изменения в файле',
+          icon: Undo2,
+          danger: true,
+          title: 'Выбросить незастейдженные правки этого файла. Undo вернёт.',
+          onClick: () => applyHunks('discard', 'unstaged', file, null, null),
+        });
+      }
+    } else return null;
+    items.push({ separator: true }, { label: 'Копировать путь', icon: Copy, onClick: () => copy(file.path, 'Путь') });
+    return items;
+  };
+  const openFileContextMenu = (file, kind, list, x, y) => {
+    const items = buildFileMenu(file, kind, list);
+    if (items) setMenu({ x, y, items });
   };
 
   // Закрываем diff, если выбран другой коммит
@@ -1172,7 +1411,7 @@ export default function App() {
 
   // Для WIP файл мог уйти из группы (застейджен/закоммичен) — переключаемся или закрываем
   useEffect(() => {
-    if (!repo || !diffTarget || diffTarget.kind === 'commit') return;
+    if (!repo || !diffTarget || (diffTarget.kind !== 'staged' && diffTarget.kind !== 'unstaged')) return;
     const staged = diffTarget.kind === 'staged';
     const group = repo.wipFiles.filter((f) => f.staged === staged);
     const still = group.find((f) => f.path === diffTarget.file.path);
@@ -1189,7 +1428,7 @@ export default function App() {
   }, [repo]);
 
   // Загрузка diff (для WIP — заново при каждом обновлении репозитория)
-  const diffReload = diffTarget && diffTarget.kind !== 'commit' ? repo : null;
+  const diffReload = diffTarget && (diffTarget.kind === 'staged' || diffTarget.kind === 'unstaged') ? repo : null;
   useEffect(() => {
     if (!diffTarget || !repoRef.current) {
       setDiffData(null);
@@ -1637,8 +1876,72 @@ export default function App() {
                   onPrev={stepFile(-1)}
                   onNext={stepFile(1)}
                   onClose={closeDiff}
+                  hunkActions={hunkActionsFor(diffTarget)}
+                  onHunkAction={onHunkAction}
+                  fileActions={
+                    diffTarget.kind === 'commit' && selected && !selected.wip
+                      ? [
+                          {
+                            label: 'Вернуть файл…',
+                            icon: RotateCcw,
+                            title: 'Вернуть этот файл в рабочей папке к версии из коммита или до него — без коммита',
+                            onClick: (e) => {
+                              const r = e.currentTarget.getBoundingClientRect();
+                              const items = buildFileMenu(diffTarget.file, 'commit', diffTarget.list);
+                              if (items) setMenu({ x: r.left, y: r.bottom + 4, items: items.filter((i) => i.label !== 'Показать изменения') });
+                            },
+                          },
+                        ]
+                      : null
+                  }
                 />
-              ) : ciView ? (
+              ) : null}
+              {compareView && (
+                <CompareView
+                  repoPath={repo.path}
+                  a={compareView.a}
+                  b={compareView.b}
+                  hidden={Boolean(conflictPath || diffTarget)}
+                  activePath={null}
+                  onSwap={() => setCompareView({ a: compareView.b, b: compareView.a })}
+                  onClose={() => setCompareView(null)}
+                  onOpenFile={(f, list) => openCompareFile(f, list, compareView.a, compareView.b)}
+                  onLocate={setSelectedHash}
+                />
+              )}
+              {rebaseView && (
+                <RebaseView
+                  key={rebaseView.nonce}
+                  repoPath={repo.path}
+                  session={rebaseView}
+                  hidden={Boolean(conflictPath || diffTarget)}
+                  busy={Boolean(busyAction)}
+                  onClose={() => setRebaseView(null)}
+                  onLocate={setSelectedHash}
+                  onOpenDiff={(f, list, a, b) => openCompareFile(f, list, a, b)}
+                  onApply={async (d) => {
+                    const res = await run('rebaseApply', { oldHead: d.oldHead, newHead: d.newHead, branch: d.branch, onto: d.onto.hash }, {
+                      label: 'Rebase',
+                      success: `Rebase ${d.branch} выполнен — Undo (Ctrl+Z) вернёт как было`,
+                    });
+                    if (res.ok) {
+                      setRebaseView(null);
+                      setSelectedHash(d.newHead);
+                    } else if (res.error?.code === 'PLAN_STALE') {
+                      setRebaseView({ ...rebaseView, nonce: Date.now() });
+                    }
+                  }}
+                  onStart={async (plan) => {
+                    const session = rebaseView;
+                    setRebaseView(null);
+                    await run('rebaseStart', { upstream: session.upstream, onto: session.onto, plan }, {
+                      label: 'Rebase',
+                      success: 'Rebase выполнен — Undo (Ctrl+Z) вернёт как было',
+                    });
+                  }}
+                />
+              )}
+              {conflictPath || diffTarget || compareView || rebaseView ? null : ciView ? (
                 <CiView
                   repoPath={repo.path}
                   initialFile={ciView.file}
@@ -1667,6 +1970,14 @@ export default function App() {
                   introKey={repo.path}
                   selectedHash={selectedHash}
                   onSelect={setSelectedHash}
+                  onCompare={(hash) => {
+                    // Ctrl+клик: сравнить с отмеченным коммитом, а если его нет — с выбранным
+                    const sel = allCommits.find((c) => c.hash === selectedHash);
+                    const base = compareMark && compareMark !== hash ? compareMark : sel && !sel.wip && sel.hash !== hash ? sel.hash : null;
+                    if (base) openCompare(base, hash);
+                    else setSelectedHash(hash);
+                  }}
+                  compareMark={compareMark}
                   onActivate={activateCommit}
                   onContextMenu={openMenu}
                   wipCount={repo.wipFiles.length}
@@ -1704,6 +2015,7 @@ export default function App() {
                 onStashAction={stashAction}
                 onOpenConflict={openConflict}
                 activeConflict={conflictPath}
+                onFileMenu={openFileContextMenu}
               />
             </div>
           </div>
@@ -1988,6 +2300,13 @@ const SHORTCUTS = [
     ['Ctrl+B', 'Переключить ветку'],
     ['Двойной клик по коммиту', 'Checkout'],
     ['Правый клик по коммиту', 'Меню действий'],
+    ['Ctrl+клик по коммиту', 'Сравнить с выбранным'],
+    ['Правый клик по файлу', 'Вернуть файл / отменить правки'],
+  ]],
+  ['Интерактивный rebase', [
+    ['↑ / ↓', 'Выбрать коммит'],
+    ['Alt+↑ / Alt+↓', 'Переместить коммит'],
+    ['P R S F D', 'Оставить / сообщение / squash / fixup / удалить'],
   ]],
   ['Просмотр изменений', [
     ['F7 / Shift+F7', 'Следующее / предыдущее изменение'],
