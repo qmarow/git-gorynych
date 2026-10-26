@@ -29,6 +29,7 @@ export default function SettingsDialog({
   onWorkflowChange,
   guard,
   onGuardChange,
+  repoPath,
   onClose,
 }) {
   const [tab, setTab] = useState(initialTab);
@@ -85,7 +86,7 @@ export default function SettingsDialog({
             ) : tab === 'branches' ? (
               <BranchesTab workflow={workflow} onChange={onWorkflowChange} />
             ) : tab === 'guard' ? (
-              <GuardSettings cfg={guard} onChange={onGuardChange} />
+              <GuardSettings cfg={guard} onChange={onGuardChange} repoPath={repoPath} />
             ) : (
               <IntegrationsTab repo={repo} onForgeChanged={onForgeChanged} />
             )}

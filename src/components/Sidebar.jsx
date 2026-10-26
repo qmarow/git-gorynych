@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { StatusIcon, statusInfo } from './PipelineStatus.jsx';
+import { hasRefDrag, readRefDrag, startRefDrag } from '../lib/dnd.js';
 import {
   Archive,
   ArrowDown,
@@ -42,7 +43,40 @@ export default function Sidebar({
   pipelinesError,
   pipelinesActive,
   onOpenPipelines,
+  dragSource,
+  onDragSource,
+  onDropOnBranch,
 }) {
+  // Перетаскивание: ветки можно тащить (на другие ветки — слить, перемотать, rebase), локальные ветки принимают
+  const [dropName, setDropName] = useState(null);
+  useEffect(() => {
+    if (!dragSource) setDropName(null);
+  }, [dragSource]);
+  const dragProps = (payload) => ({
+    draggable: true,
+    onDragStart: (e) => {
+      startRefDrag(e, payload);
+      onDragSource?.(payload);
+    },
+    onDragEnd: () => onDragSource?.(null),
+  });
+  const dropProps = (branch) => ({
+    onDragOver: (e) => {
+      if (!hasRefDrag(e) || !dragSource) return;
+      if ((dragSource.kind === 'branch' && dragSource.name === branch.name) || dragSource.hash === branch.hash) return;
+      e.preventDefault();
+      e.dataTransfer.dropEffect = 'copy';
+      if (dropName !== branch.name) setDropName(branch.name);
+    },
+    onDragLeave: () => setDropName((n) => (n === branch.name ? null : n)),
+    onDrop: (e) => {
+      e.preventDefault();
+      setDropName(null);
+      const payload = readRefDrag(e);
+      onDragSource?.(null);
+      if (payload) onDropOnBranch?.([{ name: branch.name, hash: branch.hash }], e.clientX, e.clientY, payload);
+    },
+  });
   const [filter, setFilter] = useState('');
   const match = (name) => name.toLowerCase().includes(filter.toLowerCase());
   const folders = useFolders();
@@ -92,6 +126,9 @@ export default function Sidebar({
               <Item
                 key={branch.name}
                 depth={depth}
+                {...dragProps({ kind: 'branch', name: branch.name, hash: branch.hash, label: branch.name })}
+                {...dropProps(branch)}
+                dropTarget={dropName === branch.name}
                 title={`${branch.upstream ? `${branch.name} → ${branch.upstream}` : branch.name}${
                   branch.gone ? ' (remote-ветка удалена)' : ''
                 }\nДвойной клик — checkout`}
@@ -135,6 +172,7 @@ export default function Sidebar({
               key={remote.name}
               remote={remote}
               match={match}
+              dragProps={dragProps}
               folders={folders}
               filtering={Boolean(filter)}
               selectedHash={selectedHash}
@@ -314,7 +352,7 @@ function ScrollArea({ children }) {
   );
 }
 
-function RemoteGroup({ remote, match, folders, filtering, selectedHash, onSelect, onCheckout }) {
+function RemoteGroup({ remote, match, dragProps, folders, filtering, selectedHash, onSelect, onCheckout }) {
   const key = `remote:${remote.name}`;
   const open = filtering || !folders.isCollapsed(key);
   return (
@@ -336,6 +374,7 @@ function RemoteGroup({ remote, match, folders, filtering, selectedHash, onSelect
             <Item
               key={branch.fullName}
               depth={depth}
+              {...dragProps({ kind: 'remote', name: branch.fullName, hash: branch.hash, label: branch.fullName })}
               title={`${branch.fullName}\nДвойной клик — checkout (создаст локальную ветку)`}
               selected={branch.hash === selectedHash}
               onClick={() => onSelect(branch.hash)}
@@ -439,8 +478,10 @@ function BranchTree({ branches, folderKey, folders, filtering, depth, isCurrent,
   );
 }
 
-function Item({ children, current, selected, indent, depth, ...props }) {
-  const state = selected
+function Item({ children, current, selected, indent, depth, dropTarget, ...props }) {
+  const state = dropTarget
+    ? 'bg-gk-green/15 text-gk-text outline-dashed outline-2 -outline-offset-2 outline-gk-green'
+    : selected
     ? 'bg-gk-blue/15 text-gk-text'
     : current
       ? 'bg-gk-green/10 text-gk-text'

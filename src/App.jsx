@@ -12,6 +12,9 @@ import {
   FolderOpen,
   GitBranch,
   GitCompareArrows,
+  FastForward,
+  FolderPlus,
+  Check,
   Minus,
   Plus,
   FileDiff,
@@ -24,6 +27,9 @@ import {
   Layers,
   Loader2,
   LogIn,
+  LogOut,
+  ArrowUpToLine,
+  ArrowUpFromLine,
   Keyboard,
   Info,
   Palette,
@@ -53,7 +59,7 @@ import GuideDialog from './components/GuideDialog.jsx';
 import ActionBuilder, { ACTION_ICONS } from './components/ActionBuilder.jsx';
 import { RunDialog, RunnerCard } from './components/ActionRunner.jsx';
 import { GuardDialog } from './components/Guard.jsx';
-import { activeRules, readGuard, writeGuard } from './lib/guardRules.js';
+import { activeRules, guardOnFor, readGuard, writeGuard } from './lib/guardRules.js';
 import { STEP_TYPES, defaultBranchOf, expandParams, hotkeyFromEvent, inputsOf, readActions, validateAction, writeActions } from './lib/actions.js';
 import SettingsDialog from './components/SettingsDialog.jsx';
 import {
@@ -71,6 +77,7 @@ import CloneDialog from './components/CloneDialog.jsx';
 import RevertToDialog from './components/RevertToDialog.jsx';
 import SearchBar, { EMPTY_FILTER, isFilterActive, matchCommit } from './components/SearchBar.jsx';
 import { GraphLoader, LoadingOverlay, Splash } from './components/Loader.jsx';
+import AppLogo from './components/AppLogo.jsx';
 import { ResizeHandle, useStoredWidth } from './components/Resizer.jsx';
 import {
   AccessDialog,
@@ -177,6 +184,7 @@ export default function App() {
     writeActions(list);
   };
   const [actionRun, setActionRun] = useState(null); // ход выполнения
+  const [dragSource, setDragSource] = useState(null); // перетаскиваемый коммит/ветка
   const [runPrompt, setRunPrompt] = useState(null); // { action, inputs } — спросить значения перед запуском
   const [menu, setMenu] = useState(null); // { x, y, node }
   const [diffTarget, setDiffTarget] = useState(null); // { kind, mode, hash, parent, file, list, index, commitHash }
@@ -523,7 +531,7 @@ export default function App() {
           disabled: !activePath,
           onClick: () => activePath && closeTab(activePath),
         },
-        { label: 'Выход', onClick: () => api?.window.close() },
+        { label: 'Выход', icon: LogOut, onClick: () => api?.window.close() },
       ],
     });
 
@@ -756,10 +764,10 @@ export default function App() {
   const unstageFiles = (paths) => run('unstage', { paths }, { label: 'Unstage' });
   // Pre-commit Guard: проверка добавленных строк; если что-то нашлось — спрашиваем
   const guardCheck = async (path) => {
-    if (!guardCfg.enabled || !api.repo.guardScan) return true;
+    if (!guardOnFor(guardCfg, path) || !api.repo.guardScan) return true;
     let scan;
     try {
-      scan = await api.repo.guardScan(path, { rules: activeRules(guardCfg) });
+      scan = await api.repo.guardScan(path, { rules: activeRules(guardCfg), exclude: guardCfg.exclude });
     } catch {
       return true; // сама проверка сломалась — коммиту это мешать не должно
     }
@@ -894,9 +902,9 @@ export default function App() {
         icon: History,
         disabled: op || isHead || !repo.headHash,
         submenu: [
-          { label: 'Soft — оставить все изменения в индексе', onClick: () => resetTo(node, 'soft') },
-          { label: 'Mixed — оставить изменения в рабочей папке', onClick: () => resetTo(node, 'mixed') },
-          { label: 'Hard — удалить все изменения', danger: true, onClick: () => resetTo(node, 'hard') },
+          { label: 'Soft — оставить все изменения в индексе', icon: Archive, onClick: () => resetTo(node, 'soft') },
+          { label: 'Mixed — оставить изменения в рабочей папке', icon: FileDiff, onClick: () => resetTo(node, 'mixed') },
+          { label: 'Hard — удалить все изменения', icon: Trash2, danger: true, onClick: () => resetTo(node, 'hard') },
         ],
       },
       { separator: true },
@@ -1038,8 +1046,8 @@ export default function App() {
           disabled: op,
           title: 'Изменить порядок, сообщения, объединить или удалить коммиты — с предпросмотром до применения',
           submenu: [
-            { label: `Коммиты после ${short(node.hash)}…`, onClick: () => openRebase(node.hash) },
-            ...(node.parents[0] ? [{ label: `Начиная с ${short(node.hash)} (включительно)…`, onClick: () => openRebase(node.parents[0]) }] : []),
+            { label: `Коммиты после ${short(node.hash)}…`, icon: ArrowUpToLine, onClick: () => openRebase(node.hash) },
+            ...(node.parents[0] ? [{ label: `Начиная с ${short(node.hash)} (включительно)…`, icon: ArrowUpFromLine, onClick: () => openRebase(node.parents[0]) }] : []),
           ],
         },
       ];
@@ -1081,14 +1089,14 @@ export default function App() {
   /* ---------- Pre-commit Guard: живая проверка staged-изменений ---------- */
 
   useEffect(() => {
-    if (!repo || !guardCfg.enabled || !api.repo.guardScan || !repo.wipFiles.some((f) => f.staged)) {
+    if (!repo || !guardCfg.live || !guardOnFor(guardCfg, repo.path) || !api.repo.guardScan || !repo.wipFiles.some((f) => f.staged)) {
       setGuardResult(null);
       return undefined;
     }
     let alive = true;
     const t = setTimeout(() => {
       api.repo
-        .guardScan(repo.path, { rules: activeRules(guardCfg) })
+        .guardScan(repo.path, { rules: activeRules(guardCfg), exclude: guardCfg.exclude })
         .then((res) => alive && setGuardResult(res.ok ? res.data : null))
         .catch(() => alive && setGuardResult(null));
     }, 250);
@@ -1285,6 +1293,92 @@ export default function App() {
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, []);
+
+  /* ---------- Перетаскивание коммитов и веток на ветки ---------- */
+
+  // Достижим ли коммит anc из desc по родителям (среди загруженных коммитов)
+  const isAncestorLoaded = (anc, desc) => {
+    if (!repo || anc === desc) return anc === desc;
+    const byHash = new Map(repo.commits.map((c) => [c.hash, c]));
+    const seen = new Set();
+    const stack = [desc];
+    while (stack.length) {
+      const h = stack.pop();
+      if (h === anc) return true;
+      if (seen.has(h)) continue;
+      seen.add(h);
+      for (const p of byHash.get(h)?.parents ?? []) stack.push(p);
+    }
+    return false;
+  };
+
+  const dropOnBranch = (targets, x, y, src) => {
+    if (!repo || !src) return;
+    const op = Boolean(repo.operation) || Boolean(busyAction);
+    const cur = repo.currentBranch;
+    const ref = src.kind === 'commit' ? src.hash : src.name;
+    const srcLabel = src.kind === 'commit' ? short(src.hash) : src.name;
+    const items = [];
+    for (const t of targets) {
+      if (src.kind === 'branch' && src.name === t.name) continue;
+      const isCur = t.name === cur;
+      items.push({ header: `${srcLabel} → ${t.name}` });
+      const contained = isAncestorLoaded(src.hash, t.hash);
+      if (contained) {
+        items.push({ label: `Уже есть в ${t.name} — сливать нечего`, icon: Check, disabled: true });
+        continue;
+      }
+      if (isAncestorLoaded(t.hash, src.hash)) {
+        items.push({
+          label: `Перемотать ${t.name} вперёд`,
+          icon: FastForward,
+          hint: 'fast-forward',
+          disabled: op,
+          title: 'Ветка просто передвинется вперёд — без merge-коммита и без переключения',
+          onClick: () => run('fastForward', { branch: t.name, to: ref }, { label: 'Fast-forward', success: (d) => `${d.branch} перемотана до ${short(d.to)} — Undo вернёт` }),
+        });
+      }
+      items.push({
+        label: `Слить в ${t.name}`,
+        icon: GitMerge,
+        hint: isCur ? 'merge' : 'с переключением',
+        disabled: op,
+        onClick: () =>
+          run('mergeInto', { ref, target: t.name, smart: workflow.smartSwitch }, { label: 'Merge', success: `${srcLabel} слита в ${t.name} — Undo вернёт` }),
+      });
+      if (src.kind === 'commit') {
+        items.push({
+          label: `Cherry-pick в ${t.name}`,
+          icon: Cherry,
+          hint: isCur ? 'один коммит' : 'с переключением',
+          disabled: op,
+          onClick: () =>
+            run('cherryPickInto', { hash: src.hash, target: t.name, smart: workflow.smartSwitch }, {
+              label: 'Cherry-pick',
+              success: `Коммит ${srcLabel} применён к ${t.name}`,
+            }),
+        });
+      }
+      items.push({
+        label: `Rebase ${t.name} на ${srcLabel}…`,
+        icon: Layers,
+        hint: isCur ? 'с предпросмотром' : 'с переключением',
+        disabled: op,
+        onClick: async () => {
+          if (!isCur) {
+            const res = await checkout({ branch: t.name });
+            if (!res.ok) return;
+          }
+          setRebaseView({ upstream: ref, nonce: Date.now() });
+        },
+      });
+    }
+    if (!items.length) {
+      notify({ type: 'info', title: 'Нельзя слить ветку саму в себя' });
+      return;
+    }
+    setMenu({ x, y, items });
+  };
 
   const buildActionsMenu = () => [
     ...(userActions.length ? [{ header: 'Мои действия' }] : []),
@@ -2086,6 +2180,9 @@ export default function App() {
                   setSelectedHash(h);
                 }}
                 onCheckout={checkout}
+                dragSource={dragSource}
+                onDragSource={setDragSource}
+                onDropOnBranch={dropOnBranch}
                 onStashMenu={(st, x, y) => setMenu({ x, y, items: buildStashMenu(st) })}
                 onOpenCi={(file) => {
                   setDiffTarget(null);
@@ -2271,6 +2368,9 @@ export default function App() {
                     else setSelectedHash(hash);
                   }}
                   compareMark={compareMark}
+                  dragSource={dragSource}
+                  onDragSource={setDragSource}
+                  onDropOnBranch={dropOnBranch}
                   onActivate={activateCommit}
                   onContextMenu={openMenu}
                   wipCount={repo.wipFiles.length}
@@ -2310,7 +2410,14 @@ export default function App() {
                 activeConflict={conflictPath}
                 onFileMenu={openFileContextMenu}
                 guardResult={guardResult}
+                guardState={!guardCfg.enabled ? 'off' : guardCfg.repoOff.includes(repo.path) ? 'repo-off' : 'on'}
                 onGuardOpen={() => guardResult && setDialog({ type: 'guard', mode: 'view', result: guardResult })}
+                onGuardToggleRepo={() => {
+                  const off = guardCfg.repoOff.includes(repo.path);
+                  updateGuard({ ...guardCfg, repoOff: off ? guardCfg.repoOff.filter((p) => p !== repo.path) : [...guardCfg.repoOff, repo.path] });
+                  notify({ type: 'info', title: off ? 'Проверка перед коммитом включена для этого репозитория' : 'Проверка перед коммитом выключена для этого репозитория', hint: off ? null : 'Включить обратно — в строке над кнопкой Commit или в настройках.' });
+                }}
+                onGuardSettings={() => setDialog({ type: 'settings', tab: 'guard' })}
               />
             </div>
           </div>
@@ -2384,6 +2491,7 @@ export default function App() {
           onWorkflowChange={updateWorkflow}
           guard={guardCfg}
           onGuardChange={updateGuard}
+          repoPath={repo?.path}
           onClose={() => setDialog(null)}
         />
       )}
@@ -2587,10 +2695,15 @@ function OperationBanner({ operation, conflicts, busy, onContinue, onAbort, onRe
 function Welcome({ loading, onOpen, onCreate, onConnect, onClone, onGuide }) {
   return (
     <div className="flex flex-1 flex-col items-center justify-center gap-5">
-      <div className="glass-strong flex h-24 w-24 animate-pop-in items-center justify-center rounded-3xl border border-gk-border bg-gk-panel">
-        {loading ? <GraphLoader size={52} /> : <GitBranch size={38} className="text-gk-green" />}
-      </div>
+      {loading ? (
+        <div className="glass-strong flex h-24 w-24 animate-pop-in items-center justify-center rounded-3xl border border-gk-border bg-gk-panel">
+          <GraphLoader size={52} />
+        </div>
+      ) : (
+        <AppLogo size={96} className="animate-pop-in drop-shadow-[0_10px_30px_rgba(60,240,160,0.18)]" />
+      )}
       <div className="animate-slide-up text-center">
+        <div className="mb-1 text-[11px] font-semibold uppercase tracking-[0.25em] text-gk-dim">GitIdea</div>
         <h1 className="text-lg font-semibold text-white">Откройте репозиторий</h1>
         <p className="mt-1 text-gk-muted">Выберите папку с локальным Git-репозиторием</p>
       </div>
@@ -2607,7 +2720,7 @@ function Welcome({ loading, onOpen, onCreate, onConnect, onClone, onGuide }) {
         disabled={loading}
         className="flex animate-slide-up items-center gap-2 rounded-lg px-4 py-2 text-[13px] text-gk-muted ring-1 ring-gk-border transition hover:bg-gk-hover hover:text-gk-text disabled:opacity-60"
       >
-        <GitBranch size={15} />
+        <FolderPlus size={15} />
         Создать репозиторий в папке проекта
       </button>
       <button

@@ -27,20 +27,43 @@ export const DEFAULT_RULES = [
   { id: 'do-not-commit', category: 'debug', label: 'DO NOT COMMIT', flags: 'i', pattern: '\\b(?:DO\\s*NOT\\s*COMMIT|NOCOMMIT|НЕ\\s*КОММИТИТЬ)\\b' }, // gitidea-ignore
 ];
 
-export const CATEGORY_LABELS = { secret: 'Похоже на секрет', debug: 'Забытая отладка', other: 'Своё правило' };
+export const CATEGORY_LABELS = { secret: 'Похоже на секрет', debug: 'Забытая отладка', other: 'Свои правила' };
+
+// Что делать при срабатывании правила
+export const LEVELS = [
+  { id: 'off', label: 'Выкл', hint: 'Правило не проверяется' },
+  { id: 'warn', label: 'Предупреждать', hint: 'Показать и спросить, коммитить ли всё равно' },
+  { id: 'block', label: 'Запрещать', hint: 'Коммит не создаётся, пока строка не исправлена или не помечена gitidea-ignore' },
+];
+
+// Частые исключения — подсказки в настройках
+export const EXCLUDE_SUGGESTIONS = ['**/*.min.js', '**/vendor/**', '**/dist/**', '**/*.test.*', '**/__tests__/**', 'docs/**', '*.md', 'package-lock.json'];
 
 const KEY = 'guard.v1';
 
-export const DEFAULT_GUARD = { enabled: true, disabled: [], custom: [] };
+export const DEFAULT_GUARD = {
+  enabled: true, // проверять перед коммитом
+  live: true, // подсказки, пока готовите коммит (плашка, значки, отметки в diff)
+  levels: {}, // id правила → off | warn | block (по умолчанию warn)
+  exclude: [], // пути, которые не проверяются (glob)
+  custom: [],
+  repoOff: [], // репозитории, где проверка выключена
+};
 
 export function readGuard() {
   try {
     const v = JSON.parse(localStorage.getItem(KEY) ?? 'null');
     if (!v) return DEFAULT_GUARD;
+    const levels = v.levels && typeof v.levels === 'object' ? { ...v.levels } : {};
+    // Старый формат: список выключенных правил
+    if (Array.isArray(v.disabled)) for (const id of v.disabled) levels[id] = levels[id] ?? 'off';
     return {
       enabled: v.enabled !== false,
-      disabled: Array.isArray(v.disabled) ? v.disabled : [],
+      live: v.live !== false,
+      levels,
+      exclude: Array.isArray(v.exclude) ? v.exclude.filter((x) => typeof x === 'string' && x.trim()) : [],
       custom: Array.isArray(v.custom) ? v.custom.filter((r) => r && r.pattern) : [],
+      repoOff: Array.isArray(v.repoOff) ? v.repoOff : [],
     };
   } catch {
     return DEFAULT_GUARD;
@@ -55,16 +78,24 @@ export function writeGuard(cfg) {
   }
 }
 
-// Правила, которые реально отправляются на проверку
+export const levelOf = (cfg, rule) => cfg.levels?.[rule.id] ?? rule.level ?? 'warn';
+
+export function guardOnFor(cfg, repoPath) {
+  return Boolean(cfg.enabled) && !(repoPath && cfg.repoOff?.includes(repoPath));
+}
+
+// Правила, которые реально отправляются на проверку (с уровнем)
 export function activeRules(cfg) {
-  const off = new Set(cfg.disabled);
-  const custom = cfg.custom.filter((r) => !off.has(r.id)).map((r) => ({ ...r, category: r.category ?? 'other' }));
+  const custom = cfg.custom.map((r) => ({ ...r, category: r.category ?? 'other' }));
+  const withLevel = (r) => ({ ...r, level: levelOf(cfg, r) });
   // Свои правила-секреты — вперёд, остальные свои — в конец
   return [
     ...custom.filter((r) => r.category === 'secret'),
-    ...DEFAULT_RULES.filter((r) => !off.has(r.id)),
+    ...DEFAULT_RULES,
     ...custom.filter((r) => r.category !== 'secret'),
-  ];
+  ]
+    .map(withLevel)
+    .filter((r) => r.level !== 'off');
 }
 
 export function validatePattern(pattern, flags = '') {

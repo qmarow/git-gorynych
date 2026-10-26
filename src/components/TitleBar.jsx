@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
-import { Copy, FolderGit2, GitBranch, Loader2, Minus, Plus, Square, X } from 'lucide-react';
+import { Copy, FolderGit2, Loader2, Minus, Plus, Square, X } from 'lucide-react';
+import AppLogo from './AppLogo.jsx';
 
 const MENU = ['File', 'Edit', 'View', 'Actions', 'Help'];
 
@@ -20,9 +21,7 @@ export default function TitleBar({ tabs, activePath, loadingPath, onSelectTab, o
     >
       {/* Логотип + меню */}
       <div className="flex items-center gap-1 pl-3 pr-2">
-        <div className="mr-2 flex h-5 w-5 items-center justify-center rounded-full bg-gk-green/15">
-          <GitBranch size={12} className="text-gk-green" strokeWidth={2.5} />
-        </div>
+        <AppLogo size={20} className="mr-2 shrink-0" />
         {MENU.map((item) => (
           <button
             key={item}

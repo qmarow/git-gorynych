@@ -111,6 +111,7 @@ function createWindow() {
     ...(material ? { backgroundMaterial: material } : {}),
     show: false,
     autoHideMenuBar: true,
+    icon: path.join(__dirname, 'icon.png'), // значок окна и панели задач (в .exe — build/icon.ico)
     webPreferences: {
       preload: path.join(__dirname, 'preload.cjs'),
       contextIsolation: true,

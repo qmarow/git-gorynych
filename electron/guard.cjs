@@ -32,14 +32,48 @@ const extOf = (file) => {
   return i > 0 ? name.slice(i + 1).toLowerCase() : name.toLowerCase();
 };
 
+// glob → RegExp: ** — любые папки, * — любые символы кроме /, ? — один символ.
+// Шаблон без «/» относится к имени файла в любой папке (*.md), с «/» — к пути от корня репозитория.
+function globToRe(glob) {
+  let g = String(glob).trim().replace(/\\/g, '/').replace(/^\.\//, '');
+  if (!g) return null;
+  const anywhere = !g.includes('/');
+  if (g.endsWith('/')) g += '**';
+  let re = '';
+  for (let i = 0; i < g.length; i++) {
+    const ch = g[i];
+    if (ch === '*' && g[i + 1] === '*') {
+      if (g[i + 2] === '/') {
+        re += '(?:.*/)?';
+        i += 2;
+      } else {
+        re += '.*';
+        i += 1;
+      }
+    } else if (ch === '*') re += '[^/]*';
+    else if (ch === '?') re += '[^/]';
+    else re += ch.replace(/[.+^${}()|[\]\\]/g, '\\$&');
+  }
+  return new RegExp(`^${anywhere ? '(?:.*/)?' : ''}${re}$`, 'i');
+}
+
+function excluder(globs) {
+  const res = (Array.isArray(globs) ? globs : []).map(globToRe).filter(Boolean);
+  return (file) => res.some((re) => re.test(file));
+}
+
+const RANK = { block: 2, warn: 1 };
+
 // Секреты в списке показываем замаскированными
 function mask(text) {
   if (text.length <= 8) return '••••••••';
   return `${text.slice(0, 4)}${'•'.repeat(Math.min(12, text.length - 6))}${text.slice(-2)}`;
 }
 
-function scanDiff(diff, rules) {
+function scanDiff(diff, rules, exclude = []) {
   const { ok, invalid } = compile(rules);
+  const isExcluded = excluder(exclude);
+  let skipped = 0;
   const findings = [];
   let file = null;
   let line = 0;
@@ -55,6 +89,10 @@ function scanDiff(diff, rules) {
     if (raw.startsWith('+++ ')) {
       const p = raw.slice(4).trim();
       file = p === '/dev/null' ? null : p.replace(/^b\//, '').replace(/^"b\//, '').replace(/"$/, '');
+      if (file && isExcluded(file)) {
+        skipped++;
+        file = null;
+      }
       if (file) files.add(file);
       continue;
     }
@@ -71,14 +109,22 @@ function scanDiff(diff, rules) {
       if (!IGNORE_MARK.test(text)) {
         const sample = text.length > MAX_LINE ? text.slice(0, MAX_LINE) : text;
         const ext = extOf(file);
+        // На строку — одна находка: самое строгое из сработавших правил (при равенстве — первое по списку)
+        let best = null;
         for (const r of ok) {
           if (r.exts.length && !r.exts.includes(ext)) continue;
           const m = r.re.exec(sample);
           if (!m) continue;
+          const rank = RANK[r.level] ?? 1;
+          if (!best || rank > best.rank) best = { r, m, rank };
+          if (rank === 2) break;
+        }
+        if (best) {
+          const { r, m } = best;
           const shown = sample.trim().slice(0, 240);
           const matchText = m[0];
           const offset = sample.length - sample.trimStart().length;
-          let start = m.index - offset;
+          const start = m.index - offset;
           let end = start + matchText.length;
           let display = shown;
           if (r.category === 'secret' && start >= 0 && end <= shown.length) {
@@ -92,15 +138,12 @@ function scanDiff(diff, rules) {
             rule: r.id,
             label: r.label,
             category: r.category ?? 'other',
+            level: r.level === 'block' ? 'block' : 'warn',
             text: display,
             start: Math.max(0, start),
             end: Math.min(display.length, Math.max(0, end)),
           });
-          if (findings.length >= MAX_FINDINGS) {
-            truncated = true;
-            break;
-          }
-          break; // одна находка на строку — самое важное правило (порядок в списке)
+          if (findings.length >= MAX_FINDINGS) truncated = true;
         }
       }
       line++;
@@ -109,11 +152,11 @@ function scanDiff(diff, rules) {
     }
     if (truncated) break;
   }
-  return { findings, invalid, files: files.size, addedLines, truncated };
+  return { findings, invalid, files: files.size, addedLines, truncated, skippedFiles: skipped, blocked: findings.some((f) => f.level === 'block') };
 }
 
 /** Проверить staged-изменения (то, что войдёт в коммит) */
-async function scanStaged(cwd, { rules }) {
+async function scanStaged(cwd, { rules, exclude }) {
   const started = Date.now();
   let diff;
   try {
@@ -123,7 +166,7 @@ async function scanStaged(cwd, { rules }) {
     else throw error;
   }
   if (typeof diff !== 'string') throw new GitError('Не удалось прочитать изменения', { code: 'GIT' });
-  return { ...scanDiff(diff, rules), ms: Date.now() - started };
+  return { ...scanDiff(diff, rules, exclude), ms: Date.now() - started };
 }
 
-module.exports = { scanStaged, scanDiff };
+module.exports = { scanStaged, scanDiff, globToRe };

@@ -594,6 +594,33 @@ async function rebaseOnto(cwd, { ref }) {
   return { ref, branch: state.branchName, from: state.headHash, to: await headHash(cwd) };
 }
 
+// Перемотать ветку вперёд до коммита (fast-forward) — без переключения на неё
+async function fastForward(cwd, { branch, to }) {
+  if (typeof branch !== 'string' || !branch || typeof to !== 'string' || !to || to.startsWith('-')) {
+    throw new GitError('Не указана ветка', { code: 'BAD_ARGS' });
+  }
+  const tip = await branchTip(cwd, branch);
+  if (!tip) throw new GitError(`Ветка «${branch}» не найдена`, { code: 'NOT_FOUND_REF' });
+  const target = (await git(cwd, ['rev-parse', '--verify', '--quiet', `${to}^{commit}`]).catch(() => '')).trim();
+  if (!target) throw new GitError(`Не найдено: ${to}`, { code: 'NOT_FOUND_REF' });
+  if (tip === target) throw new GitError(`${branch} уже указывает на этот коммит`, { code: 'UP_TO_DATE' });
+  if (!(await isAncestor(cwd, tip, target))) {
+    throw new GitError(`Перемотать ${branch} нельзя: в ней есть коммиты, которых нет в ${to.length === 40 ? to.slice(0, 7) : to}`, {
+      code: 'NOT_FAST_FORWARD',
+      hint: 'Используйте слияние (merge) или rebase.',
+    });
+  }
+  const state = await currentState(cwd);
+  const current = state.branchName === branch;
+  if (current) {
+    requireNoOperation(state, 'fast-forward');
+    await git(cwd, ['merge', '--ff-only', target]);
+  } else {
+    await git(cwd, ['update-ref', '-m', `fast-forward: ${branch}`, `refs/heads/${branch}`, target, tip]);
+  }
+  return { branch, from: tip, to: target, current };
+}
+
 async function discardAll(cwd) {
   requireNoOperation(await currentState(cwd), 'discard');
   const files = await readStatus(cwd);
@@ -827,6 +854,19 @@ const HANDLERS = {
     async redo(cwd, e) {
       if ((await headHash(cwd)) !== e.parent) throw stale('HEAD');
       await git(cwd, ['reset', '--soft', e.hash]);
+    },
+  },
+  // Ветка перемотана (fast-forward): возвращаем её на прежний коммит
+  branchMove: {
+    async undo(cwd, e) {
+      if ((await branchTip(cwd, e.branch)) !== e.to) throw stale(`ветка ${e.branch}`);
+      if ((await currentState(cwd)).branchName === e.branch) await git(cwd, ['reset', '--keep', e.from]);
+      else await git(cwd, ['update-ref', `refs/heads/${e.branch}`, e.from, e.to]);
+    },
+    async redo(cwd, e) {
+      if ((await branchTip(cwd, e.branch)) !== e.from) throw stale(`ветка ${e.branch}`);
+      if ((await currentState(cwd)).branchName === e.branch) await git(cwd, ['reset', '--keep', e.to]);
+      else await git(cwd, ['update-ref', `refs/heads/${e.branch}`, e.to, e.from]);
     },
   },
   // Отмена умного переключения — такое же умное переключение обратно (изменения снова меняются местами)
@@ -1127,6 +1167,22 @@ const ACTIONS = {
     if (res.snapshot) record(cwd, { type: 'fileSnapshot', label: `${labels[res.op]} в ${res.path}`, snapshots: [res.snapshot] });
     else if (labels[res.op]) historyFor(cwd).redo = [];
     return { op: res.op, path: res.path, hunks: res.hunks, total: res.total, undoable: Boolean(res.snapshot) };
+  },
+  // Перетаскивание на ветку: при необходимости переключиться на неё, затем merge / cherry-pick
+  async mergeInto(cwd, p) {
+    const state = await currentState(cwd);
+    if (state.branchName !== p.target) await ACTIONS.checkout(cwd, { branch: p.target, smart: p.smart });
+    return ACTIONS.merge(cwd, { ref: p.ref });
+  },
+  async cherryPickInto(cwd, p) {
+    const state = await currentState(cwd);
+    if (state.branchName !== p.target) await ACTIONS.checkout(cwd, { branch: p.target, smart: p.smart });
+    return ACTIONS.cherryPick(cwd, { hash: p.hash });
+  },
+  async fastForward(cwd, p) {
+    const res = await fastForward(cwd, p);
+    record(cwd, { type: 'branchMove', label: `Fast-forward ${res.branch}`, branch: res.branch, from: res.from, to: res.to });
+    return res;
   },
   async gitRaw(cwd, p) {
     const res = await gitRaw(cwd, p);

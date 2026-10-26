@@ -35,7 +35,10 @@ export default function CommitDetails({
   activeConflict,
   onFileMenu,
   guardResult,
+  guardState,
   onGuardOpen,
+  onGuardToggleRepo,
+  onGuardSettings,
 }) {
   return (
     <aside className="glass flex w-full min-w-0 flex-col border-l border-gk-border bg-gk-panel">
@@ -65,7 +68,10 @@ export default function CommitDetails({
           activeConflict={activeConflict}
           onFileMenu={onFileMenu}
           guardResult={guardResult}
+          guardState={guardState}
           onGuardOpen={onGuardOpen}
+          onGuardToggleRepo={onGuardToggleRepo}
+          onGuardSettings={onGuardSettings}
         />
       ) : (
         <CommitPanel
@@ -300,7 +306,7 @@ function FilesSkeleton() {
 
 /* ---------- Строка WIP: настоящий стейджинг и коммит ---------- */
 
-function WipPanel({ repo, busy, activeFile, onOpenFile, onStage, onUnstage, onCommit, onOpenConflict, activeConflict, onFileMenu, guardResult, onGuardOpen }) {
+function WipPanel({ repo, busy, activeFile, onOpenFile, onStage, onUnstage, onCommit, onOpenConflict, activeConflict, onFileMenu, guardResult, guardState, onGuardOpen, onGuardToggleRepo, onGuardSettings }) {
   const [summary, setSummary] = useState('');
   const [description, setDescription] = useState('');
 
@@ -399,7 +405,7 @@ function WipPanel({ repo, busy, activeFile, onOpenFile, onStage, onUnstage, onCo
 
       <div className="space-y-2 border-t border-gk-border p-3">
         <div className="text-[11px] font-semibold uppercase tracking-wider text-gk-muted">Commit</div>
-        <GuardBanner result={guardResult} onOpen={onGuardOpen} />
+        <GuardBanner result={stagedFiles.length ? guardResult : null} state={guardState ?? 'on'} onOpen={onGuardOpen} onToggleRepo={onGuardToggleRepo} onSettings={onGuardSettings} />
         <input
           value={summary}
           onChange={(e) => setSummary(e.target.value)}

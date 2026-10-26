@@ -14,6 +14,7 @@ import { StatusIcon, statusInfo } from './PipelineStatus.jsx';
 import { fullDate, initials, relativeTime, shortDate } from '../lib/format.js';
 import { ResizeHandle, useStoredWidth } from './Resizer.jsx';
 import { avatarUrl, isFailed, markFailed } from '../lib/avatars.js';
+import { hasRefDrag, readRefDrag, startRefDrag } from '../lib/dnd.js';
 
 const HEADER_HEIGHT = 30;
 const OVERSCAN = 15; // запас строк выше и ниже видимой области
@@ -35,7 +36,14 @@ export default function CommitGraph({
   onPipelineClick,
   onCompare, // Ctrl+клик: сравнить выбранный коммит с этим
   compareMark = null, // коммит, отмеченный для сравнения
+  dragSource = null, // что сейчас перетаскивают (коммит или ветку)
+  onDragSource, // начало/конец перетаскивания
+  onDropOnBranch, // (ветки строки, x, y, что перетащили) — бросили на строку с веткой
 }) {
+  const [dropHash, setDropHash] = useState(null);
+  useEffect(() => {
+    if (!dragSource) setDropHash(null);
+  }, [dragSource]);
   const { nodes, edges, laneCount } = useMemo(() => layoutGraph(commits), [commits]);
   const [view, setView] = useState({ top: 0, height: 800, width: 1000 });
 
@@ -203,6 +211,30 @@ export default function CommitGraph({
             wipCount={wipCount}
             onHover={() => setHoverHash(node.hash)}
             marked={node.hash === compareMark}
+            dropTarget={dropHash === node.hash}
+            onDragStartRef={(e, payload) => {
+              startRefDrag(e, payload);
+              onDragSource?.(payload);
+            }}
+            onDragEndRef={() => onDragSource?.(null)}
+            onDragOverRow={(e) => {
+              if (!hasRefDrag(e) || !dragSource) return;
+              const locals = node.refs.filter((r) => r.type === 'local').map((r) => r.name);
+              if (!locals.length || dragSource.hash === node.hash) return;
+              e.preventDefault();
+              e.dataTransfer.dropEffect = 'copy';
+              if (dropHash !== node.hash) setDropHash(node.hash);
+            }}
+            onDragLeaveRow={() => setDropHash((h) => (h === node.hash ? null : h))}
+            onDropRow={(e) => {
+              e.preventDefault();
+              setDropHash(null);
+              const payload = readRefDrag(e);
+              onDragSource?.(null);
+              if (!payload) return;
+              const locals = node.refs.filter((r) => r.type === 'local').map((r) => r.name);
+              onDropOnBranch?.(locals.map((name) => ({ name, hash: node.hash })), e.clientX, e.clientY, payload);
+            }}
             onSelect={(e) => {
               if ((e?.ctrlKey || e?.metaKey) && onCompare && !node.wip) onCompare(node.hash);
               else onSelect(node.hash);
@@ -310,6 +342,12 @@ function Row({
   onDoubleClick,
   onContextMenu,
   marked,
+  dropTarget,
+  onDragStartRef,
+  onDragEndRef,
+  onDragOverRow,
+  onDragLeaveRow,
+  onDropRow,
 }) {
   const color = laneColor(node.lane);
   const bandAlpha = selected ? '42' : hovered ? '2a' : '14';
@@ -320,10 +358,18 @@ function Row({
       onMouseEnter={onHover}
       onContextMenu={onContextMenu}
       onDoubleClick={onDoubleClick}
+      draggable={!node.wip}
+      onDragStart={(e) =>
+        onDragStartRef(e, { kind: 'commit', hash: node.hash, label: `${node.hash.slice(0, 7)} ${node.message}`, message: node.message })
+      }
+      onDragEnd={onDragEndRef}
+      onDragOver={onDragOverRow}
+      onDragLeave={onDragLeaveRow}
+      onDrop={onDropRow}
       style={{ top: node.row * ROW_HEIGHT, height: ROW_HEIGHT, animationDelay: intro ? delay : undefined }}
       className={`absolute inset-x-0 flex min-w-max cursor-default items-center text-[13px] transition-opacity duration-150 ${
         intro ? 'animate-row-in' : ''
-      } ${dim && !selected ? 'opacity-30' : ''}`}
+      } ${dim && !selected ? 'opacity-30' : ''} ${dropTarget ? 'z-10 rounded-md bg-gk-green/10 outline-dashed outline-2 -outline-offset-2 outline-gk-green' : ''}`}
     >
       {/* Цветная полоса от узла через всю строку, как в GitKraken */}
       <div
@@ -338,7 +384,15 @@ function Row({
           </span>
         )}
         {node.isHead && !node.refs.some((r) => r.head) && <HeadPill detached />}
-        <RefLabels refs={node.refs} color={color} />
+        <RefLabels
+          refs={node.refs}
+          color={color}
+          onDragStart={(e, g) => {
+            e.stopPropagation();
+            const remote = g.all.find((r) => r.type === 'remote');
+            onDragStartRef(e, g.local ? { kind: 'branch', name: g.name, hash: node.hash, label: g.name } : { kind: 'remote', name: remote?.name ?? g.name, hash: node.hash, label: g.name });
+          }}
+        />
       </div>
 
       <div style={{ width: cols.graph }} className="shrink-0" />
@@ -426,14 +480,17 @@ function groupRefs(refs) {
   return groups;
 }
 
-function RefLabels({ refs, color }) {
+function RefLabels({ refs, color, onDragStart }) {
   if (!refs.length) return null;
   const groups = groupRefs(refs);
   const [first, ...rest] = groups;
+  const draggable = !first.tag;
   return (
     <>
       <span
-        title={refs.map((r) => r.name).join('\n')}
+        draggable={draggable}
+        onDragStart={draggable ? (e) => onDragStart(e, first) : undefined}
+        title={`${refs.map((r) => r.name).join('\n')}${draggable ? '\nПеретащите на другую ветку: слить, перемотать, rebase' : ''}`}
         style={{ backgroundColor: `${color}55`, boxShadow: `inset 0 0 0 1px ${color}aa` }}
         className="flex h-[22px] min-w-0 items-center gap-1.5 rounded-l px-2 text-[12px] font-medium text-white"
       >
