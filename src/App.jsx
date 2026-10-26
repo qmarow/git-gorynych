@@ -3,6 +3,7 @@ import {
   AlertTriangle,
   Archive,
   BookOpen,
+  WandSparkles,
   Cherry,
   Cloud,
   Copy,
@@ -49,6 +50,11 @@ import CiView from './components/CiView.jsx';
 import RebaseView from './components/RebaseView.jsx';
 import CompareView from './components/CompareView.jsx';
 import GuideDialog from './components/GuideDialog.jsx';
+import ActionBuilder, { ACTION_ICONS } from './components/ActionBuilder.jsx';
+import { RunDialog, RunnerCard } from './components/ActionRunner.jsx';
+import { GuardDialog } from './components/Guard.jsx';
+import { activeRules, readGuard, writeGuard } from './lib/guardRules.js';
+import { STEP_TYPES, defaultBranchOf, expandParams, hotkeyFromEvent, inputsOf, readActions, validateAction, writeActions } from './lib/actions.js';
 import SettingsDialog from './components/SettingsDialog.jsx';
 import {
   DEFAULT_APPEARANCE,
@@ -151,6 +157,27 @@ export default function App() {
   const [dialog, setDialog] = useState(null);
   const [access, setAccess] = useState(null);
   const [pullMode, setPullMode] = useState(readPullMode);
+  // Поведение: умное переключение веток (по умолчанию включено)
+  const [workflow, setWorkflow] = useState(() => ({ smartSwitch: readPref('smartSwitch', '1') !== '0' }));
+  const updateWorkflow = (next) => {
+    setWorkflow(next);
+    writePref('smartSwitch', next.smartSwitch ? '1' : '0');
+  };
+  // Pre-commit Guard: правила и последняя проверка staged-изменений
+  const [guardCfg, setGuardCfg] = useState(readGuard);
+  const updateGuard = (next) => {
+    setGuardCfg(next);
+    writeGuard(next);
+  };
+  const [guardResult, setGuardResult] = useState(null);
+  // Конструктор действий
+  const [userActions, setUserActions] = useState(readActions);
+  const updateActions = (list) => {
+    setUserActions(list);
+    writeActions(list);
+  };
+  const [actionRun, setActionRun] = useState(null); // ход выполнения
+  const [runPrompt, setRunPrompt] = useState(null); // { action, inputs } — спросить значения перед запуском
   const [menu, setMenu] = useState(null); // { x, y, node }
   const [diffTarget, setDiffTarget] = useState(null); // { kind, mode, hash, parent, file, list, index, commitHash }
   const [ciView, setCiViewRaw] = useState(null); // { file, mode, pipelineId } — открыт просмотр CI/CD
@@ -665,11 +692,22 @@ export default function App() {
 
 
   const checkout = (target) =>
-    run('checkout', target, {
+    run('checkout', { ...target, smart: workflow.smartSwitch }, {
       label: 'Checkout',
       progress: `Переключаемся на ${target.branch ?? target.remoteBranch?.fullName ?? ''}`,
-      success: (d) =>
-        d.created ? `Создана ветка ${d.created.name}, отслеживает ${d.created.track}` : `Checkout: ${d.to.branch}`,
+      success: (d) => {
+        const parts = [d.created ? `Создана ветка ${d.created.name}, отслеживает ${d.created.track}` : `Checkout: ${d.to.branch}`];
+        if (d.autoStash) parts.push(`правки ${d.autoStash.branch} спрятаны (${d.autoStash.files}) — вернутся при возврате`);
+        if (d.restored && !d.restored.conflict) parts.push(`правки ${d.restored.branch} восстановлены`);
+        if (d.restored?.conflict) {
+          notify({
+            type: 'error',
+            title: `Правки ветки ${d.restored.branch} вернулись с конфликтом`,
+            hint: 'Stash сохранён в списке Stashes. Решите конфликты в файлах с пометкой U или откатите их и примените stash позже.',
+          });
+        }
+        return parts.join(' · ');
+      },
     });
 
   const stash = () => run('stash', {}, { label: 'Stash', success: (d) => `Спрятано изменений: ${d.files}` });
@@ -716,7 +754,22 @@ export default function App() {
 
   const stageFiles = (paths) => run('stage', { paths }, { label: 'Stage' });
   const unstageFiles = (paths) => run('unstage', { paths }, { label: 'Unstage' });
+  // Pre-commit Guard: проверка добавленных строк; если что-то нашлось — спрашиваем
+  const guardCheck = async (path) => {
+    if (!guardCfg.enabled || !api.repo.guardScan) return true;
+    let scan;
+    try {
+      scan = await api.repo.guardScan(path, { rules: activeRules(guardCfg) });
+    } catch {
+      return true; // сама проверка сломалась — коммиту это мешать не должно
+    }
+    if (!scan?.ok || !scan.data.findings.length) return true;
+    return new Promise((resolve) => setDialog({ type: 'guard', mode: 'commit', result: scan.data, resolve }));
+  };
+
   const commit = async (summary, description) => {
+    if (!repoRef.current || busyRef.current) return false;
+    if (!(await guardCheck(repoRef.current.path))) return false;
     const res = await run('commit', { summary, description }, {
       label: 'Commit',
       success: (d) => `Коммит ${d.hash.slice(0, 7)} создан`,
@@ -1024,6 +1077,227 @@ export default function App() {
     });
     return items;
   };
+
+  /* ---------- Pre-commit Guard: живая проверка staged-изменений ---------- */
+
+  useEffect(() => {
+    if (!repo || !guardCfg.enabled || !api.repo.guardScan || !repo.wipFiles.some((f) => f.staged)) {
+      setGuardResult(null);
+      return undefined;
+    }
+    let alive = true;
+    const t = setTimeout(() => {
+      api.repo
+        .guardScan(repo.path, { rules: activeRules(guardCfg) })
+        .then((res) => alive && setGuardResult(res.ok ? res.data : null))
+        .catch(() => alive && setGuardResult(null));
+    }, 250);
+    return () => {
+      alive = false;
+      clearTimeout(t);
+    };
+  }, [repo, guardCfg]);
+
+  // Строки staged-файла с находками — для подсветки в diff
+  const guardMarkers = useMemo(() => {
+    if (!guardResult?.findings?.length || diffTarget?.kind !== 'staged') return null;
+    const m = new Map();
+    for (const f of guardResult.findings) if (f.file === diffTarget.file.path) m.set(f.line, f);
+    return m.size ? m : null;
+  }, [guardResult, diffTarget]);
+
+  const openStagedFile = (path) => {
+    const staged = repoRef.current?.wipFiles.filter((f) => f.staged) ?? [];
+    const file = staged.find((f) => f.path === path);
+    if (!file) return;
+    setSelectedHash(allCommits.find((c) => c.wip)?.hash ?? selectedHash);
+    setTimeout(() => openFile(file, 'staged', staged), 0);
+  };
+
+  /* ---------- Конструктор действий: выполнение цепочек ---------- */
+
+  const confirmAsync = (title, text) =>
+    new Promise((resolve) =>
+      setDialog({ type: 'actionConfirm', title, body: text, onYes: () => resolve(true), onNo: () => setTimeout(() => resolve(false), 0) }),
+    );
+
+  // Один шаг: { ok, error?, skipped?, note? }
+  const runStep = async (type, p, path) => {
+    const act = (name, payload) => api.repo.action(path, name, payload);
+    const cur = repoRef.current;
+    const skip = (note) => ({ ok: true, skipped: true, note });
+    const fail = (message, hint) => ({ ok: false, error: { message, hint } });
+    switch (type) {
+      case 'fetch':
+        return act('fetch', {});
+      case 'pull':
+        return act('pull', { mode: p.mode || 'merge' });
+      case 'push':
+        return act('push', { force: Boolean(p.force) });
+      case 'createBranch':
+        return act('createBranch', { name: p.name, start: p.from || undefined, checkout: p.checkout !== false });
+      case 'checkout': {
+        if (p.branch === cur.currentBranch) return skip('уже на этой ветке');
+        if (cur.localBranches.some((b) => b.name === p.branch)) return act('checkout', { branch: p.branch, smart: workflow.smartSwitch });
+        for (const r of cur.remotes) {
+          const rb = r.branches.find((b) => b.fullName === p.branch || b.name === p.branch);
+          if (rb) return act('checkout', { remoteBranch: { name: rb.name, fullName: rb.fullName }, smart: workflow.smartSwitch });
+        }
+        return fail(`Ветка ${p.branch} не найдена`, 'Проверьте имя или сделайте Fetch.');
+      }
+      case 'rebase': {
+        const r = await act('rebase', { ref: p.onto });
+        return !r.ok && r.error.code === 'UP_TO_DATE' ? skip('уже содержит все коммиты') : r;
+      }
+      case 'merge': {
+        const r = await act('merge', { ref: p.ref });
+        return !r.ok && r.error.code === 'UP_TO_DATE' ? skip('уже слита') : r;
+      }
+      case 'deleteBranch':
+        return act('deleteBranch', { name: p.name, force: Boolean(p.force) });
+      case 'stash': {
+        const r = await act('stash', { message: p.message });
+        return !r.ok && r.error.code === 'NOTHING_TO_STASH' ? skip('нечего прятать') : r;
+      }
+      case 'stashPop': {
+        const r = await act('stashPop', {});
+        return !r.ok && r.error.code === 'NO_STASH' ? skip('stash пуст') : r;
+      }
+      case 'commit': {
+        if (!p.message?.trim()) return fail('Пустое сообщение коммита');
+        if (p.stageAll) {
+          if (!cur.wipFiles.length) return fail('Нет изменений для коммита');
+          const st = await act('stage', { paths: 'all' });
+          if (!st.ok) return st;
+        }
+        if (!(await guardCheck(path))) return { ok: false, error: { message: 'Коммит отменён после проверки', code: 'STOPPED' } };
+        const r = await act('commit', { summary: p.message.trim(), description: '' });
+        return r.ok ? { ...r, note: r.data?.hash?.slice(0, 7) } : r;
+      }
+      case 'mergeRequest': {
+        const source = cur.currentBranch;
+        if (!source) return fail('Нужна активная ветка');
+        const f = cur.forge;
+        if (f?.kind === 'gitlab') {
+          if (!f.token?.configured) return fail('GitLab не подключён', 'Настройки → Подключения: добавьте токен со scope «api».');
+          const r = await api.gitlab.createMergeRequest(path, { source, target: p.target, title: p.title || source, draft: Boolean(p.draft) }, { remote: f.remote });
+          if (!r.ok) return r;
+          if (p.open !== false && r.data.webUrl) api.openExternal(r.data.webUrl);
+          return { ok: true, note: `${r.data.created ? 'создан' : 'уже был'} !${r.data.iid}` };
+        }
+        if (f?.webUrl && /github/i.test(f.host ?? f.webUrl)) {
+          api.openExternal(`${f.webUrl}/compare/${encodeURIComponent(p.target)}...${encodeURIComponent(source)}?expand=1`);
+          return { ok: true, note: 'открыта страница pull request' };
+        }
+        return fail('Не удалось определить сервер для merge request', 'Поддерживаются GitLab (через токен) и GitHub (откроется страница PR).');
+      }
+      case 'confirm':
+        return (await confirmAsync('Продолжить?', p.text || 'Продолжить?')) ? { ok: true } : { ok: false, error: { message: 'Остановлено вами', code: 'STOPPED' } };
+      case 'git': {
+        const r = await act('gitRaw', { command: p.command });
+        return r.ok ? { ...r, note: r.data.output.split('\n')[0] || null } : r;
+      }
+      default:
+        return fail(`Неизвестный шаг: ${type}`);
+    }
+  };
+
+  const executeAction = async (action, inputs, fromIndex = 0, previous = null) => {
+    const path = repoRef.current?.path;
+    if (!path) return;
+    const ctx = previous?.ctx ?? { inputs, start: repoRef.current.currentBranch, defaultBranch: defaultBranchOf(repoRef.current) };
+    const describe = (step) => STEP_TYPES[step.type]?.describe(expandParams(step.params, { ...ctx, branch: repoRef.current?.currentBranch })) ?? step.type;
+    let state = {
+      action,
+      ctx,
+      error: null,
+      finished: false,
+      steps: action.steps.map((step, i) =>
+        previous && i < fromIndex ? previous.steps[i] : { id: step.id, type: step.type, label: describe(step), status: 'pending', note: null },
+      ),
+    };
+    const publish = (patch) => {
+      state = { ...state, ...patch };
+      setActionRun(state);
+    };
+    const setStep = (i, patch) => publish({ steps: state.steps.map((x, j) => (j === i ? { ...x, ...patch } : x)) });
+    publish({});
+    busyRef.current = true;
+    setBusyAction('chain');
+    try {
+      for (let i = fromIndex; i < action.steps.length; i++) {
+        const step = action.steps[i];
+        const params = expandParams(step.params, { ...ctx, branch: repoRef.current?.currentBranch });
+        setStep(i, { status: 'running', label: STEP_TYPES[step.type]?.describe(params) ?? step.type });
+        let res;
+        try {
+          res = await runStep(step.type, params, path);
+        } catch (error) {
+          res = { ok: false, error: { message: error.message } };
+        }
+        await loadRepo(path, { silent: true });
+        if (!res.ok) {
+          if (res.error?.code === 'CONFLICT') autoOpenConflict.current = true;
+          setStep(i, { status: 'failed' });
+          publish({ error: res.error, finished: true });
+          return;
+        }
+        setStep(i, { status: res.skipped ? 'skipped' : 'done', note: res.note ?? null });
+      }
+      publish({ finished: true, summary: 'каждый шаг можно отменить через Undo' });
+    } finally {
+      busyRef.current = false;
+      setBusyAction(null);
+    }
+  };
+
+  const startAction = (action) => {
+    if (!repoRef.current) return;
+    const problems = validateAction(action);
+    if (problems.length) {
+      notify({ type: 'error', title: `«${action.name}»: ${problems[0]}`, hint: 'Откройте конструктор действий и поправьте шаги.' });
+      return;
+    }
+    if (busyRef.current) {
+      notify({ type: 'info', title: 'Дождитесь окончания текущей операции' });
+      return;
+    }
+    const inputs = inputsOf(action);
+    if (inputs.length || action.confirm) setRunPrompt({ action, inputs });
+    else executeAction(action, {});
+  };
+
+  // Горячие клавиши действий (не в полях ввода и не поверх диалогов)
+  const actionKeys = useRef(null);
+  actionKeys.current = { userActions, startAction };
+  useEffect(() => {
+    const onKey = (e) => {
+      const t = e.target;
+      if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' || t.isContentEditable)) return;
+      if (document.querySelector('.fixed.inset-0')) return;
+      const combo = hotkeyFromEvent(e);
+      if (!combo) return;
+      const a = actionKeys.current.userActions.find((x) => x.hotkey === combo);
+      if (!a) return;
+      e.preventDefault();
+      actionKeys.current.startAction(a);
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, []);
+
+  const buildActionsMenu = () => [
+    ...(userActions.length ? [{ header: 'Мои действия' }] : []),
+    ...userActions.map((a) => ({
+      label: a.name || 'Без названия',
+      icon: ACTION_ICONS[a.icon] ?? WandSparkles,
+      hint: a.hotkey ?? undefined,
+      disabled: !repo || Boolean(busyAction),
+      onClick: () => startAction(a),
+    })),
+    ...(userActions.length ? [{ separator: true }] : []),
+    { label: 'Конструктор действий…', icon: WandSparkles, onClick: () => setDialog({ type: 'actions' }) },
+  ];
 
   const buildWipMenu = () => {
     const op = Boolean(repo.operation);
@@ -1713,6 +1987,7 @@ export default function App() {
             ],
           })
         }
+        onActionsMenu={(x, y) => setMenu({ x, y, items: buildActionsMenu() })}
         onHelpMenu={(x, y) =>
           setMenu({
             x,
@@ -1763,6 +2038,20 @@ export default function App() {
             onSettings={() => openSettings('appearance')}
             onSearch={() => (searchOpen ? closeSearch() : setSearchOpen(true))}
             searchOpen={searchOpen}
+            customActions={userActions
+              .filter((a) => a.toolbar)
+              .map((a) => ({
+                id: a.id,
+                name: a.name || 'Действие',
+                icon: ACTION_ICONS[a.icon] ?? WandSparkles,
+                title: `${a.name}${a.hotkey ? ` (${a.hotkey})` : ''}\n${a.steps.map((st, i) => `${i + 1}. ${STEP_TYPES[st.type]?.describe(st.params) ?? st.type}`).join('\n')}`,
+                running: Boolean(actionRun && !actionRun.finished && actionRun.action.id === a.id),
+              }))}
+            onRunAction={(id) => {
+              const a = userActions.find((x) => x.id === id);
+              if (a) startAction(a);
+            }}
+            onOpenActions={() => setDialog({ type: 'actions' })}
           />
 
           {(repo.operation || conflictPaths.length > 0) && (
@@ -1879,6 +2168,7 @@ export default function App() {
                   onPrev={stepFile(-1)}
                   onNext={stepFile(1)}
                   onClose={closeDiff}
+                  guardMarkers={guardMarkers}
                   hunkActions={hunkActionsFor(diffTarget)}
                   onHunkAction={onHunkAction}
                   fileActions={
@@ -2019,6 +2309,8 @@ export default function App() {
                 onOpenConflict={openConflict}
                 activeConflict={conflictPath}
                 onFileMenu={openFileContextMenu}
+                guardResult={guardResult}
+                onGuardOpen={() => guardResult && setDialog({ type: 'guard', mode: 'view', result: guardResult })}
               />
             </div>
           </div>
@@ -2088,7 +2380,75 @@ export default function App() {
           onPickImage={pickBackgroundImage}
           repo={repo}
           onForgeChanged={onForgeChanged}
+          workflow={workflow}
+          onWorkflowChange={updateWorkflow}
+          guard={guardCfg}
+          onGuardChange={updateGuard}
           onClose={() => setDialog(null)}
+        />
+      )}
+      {dialog?.type === 'guard' && (
+        <GuardDialog
+          result={dialog.result}
+          mode={dialog.mode}
+          onCancel={() => {
+            setDialog(null);
+            dialog.resolve?.(false);
+          }}
+          onCommitAnyway={() => {
+            setDialog(null);
+            dialog.resolve?.(true);
+          }}
+          onOpenFile={(path) => {
+            setDialog(null);
+            dialog.resolve?.(false);
+            openStagedFile(path);
+          }}
+          onSettings={() => {
+            dialog.resolve?.(false);
+            setDialog({ type: 'settings', tab: 'guard' });
+          }}
+        />
+      )}
+      {dialog?.type === 'actionConfirm' && (
+        <ConfirmDialog title={dialog.title} confirmLabel="Продолжить" onConfirm={dialog.onYes} onClose={() => {
+          setDialog(null);
+          dialog.onNo();
+        }}>
+          <p className="leading-relaxed">{dialog.body}</p>
+        </ConfirmDialog>
+      )}
+      {dialog?.type === 'actions' && (
+        <ActionBuilder
+          actions={userActions}
+          branches={ciBranches}
+          initialId={dialog.id}
+          onChange={updateActions}
+          onRun={(a) => {
+            setDialog(null);
+            startAction(a);
+          }}
+          onClose={() => setDialog(null)}
+        />
+      )}
+      {runPrompt && (
+        <RunDialog
+          action={runPrompt.action}
+          inputs={runPrompt.inputs}
+          branches={ciBranches}
+          onClose={() => setRunPrompt(null)}
+          onRun={(values) => {
+            const a = runPrompt.action;
+            setRunPrompt(null);
+            executeAction(a, values);
+          }}
+        />
+      )}
+      {actionRun && (
+        <RunnerCard
+          run={actionRun}
+          onClose={() => setActionRun(null)}
+          onRetry={(index) => executeAction(actionRun.action, actionRun.ctx.inputs, index, actionRun)}
         />
       )}
       {dialog?.type === 'access' && (

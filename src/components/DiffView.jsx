@@ -32,6 +32,7 @@ export default function DiffView({
   hunkActions,
   onHunkAction,
   fileActions,
+  guardMarkers,
 }) {
   const [hunkBusy, setHunkBusy] = useState(null);
   // Действия с фрагментом (stage / отменить …) — только когда фрагменты считаются по точному тексту
@@ -234,9 +235,9 @@ export default function DiffView({
                 : 'Нет изменений в содержимом'}
           </Placeholder>
         ) : view === 'split' ? (
-          <SplitDiff hunks={data.hunks} highlights={highlights} hunkProps={hunkProps} />
+          <SplitDiff hunks={data.hunks} highlights={highlights} hunkProps={hunkProps} markers={guardMarkers} />
         ) : (
-          <UnifiedDiff hunks={data.hunks} highlights={highlights} hunkProps={hunkProps} />
+          <UnifiedDiff hunks={data.hunks} highlights={highlights} hunkProps={hunkProps} markers={guardMarkers} />
         )}
         {data?.truncated && (
           <div className="border-t border-gk-border px-4 py-2 font-sans text-xs text-gk-dim">
@@ -257,7 +258,11 @@ const LINE_STYLES = {
   '\\': { row: '', num: 'text-gk-dim', sign: 'text-gk-dim' },
 };
 
-export function UnifiedDiff({ hunks, highlights, hunkProps }) {
+// Строка с находкой Pre-commit Guard: жёлтая/красная метка слева и подсказка
+const markerOf = (markers, line) => (markers && line.t === '+' ? markers.get(line.n) : null);
+const markerCls = (m) => (m ? (m.category === 'secret' ? 'shadow-[inset_3px_0_0_rgb(242_93_93)]' : 'shadow-[inset_3px_0_0_rgb(242_202_51)]') : '');
+
+export function UnifiedDiff({ hunks, highlights, hunkProps, markers }) {
   return (
     <div className="min-w-max pb-6">
       {hunks.map((hunk, hi) => (
@@ -267,8 +272,9 @@ export function UnifiedDiff({ hunks, highlights, hunkProps }) {
             const s = LINE_STYLES[line.t];
             const segs = highlights?.[hi]?.get(li);
             const startsChange = (line.t === '+' || line.t === '-') && !['+', '-'].includes(hunk.lines[li - 1]?.t);
+            const mark = markerOf(markers, line);
             return (
-              <div key={li} className={`flex ${s.row}`} data-change={startsChange ? '' : undefined}>
+              <div key={li} className={`flex ${s.row} ${markerCls(mark)}`} data-change={startsChange ? '' : undefined} title={mark ? `Pre-commit Guard: ${mark.label}` : undefined}>
                 <span className={`w-12 shrink-0 select-none pr-2 text-right ${s.num}`}>{line.o ?? ''}</span>
                 <span className={`w-12 shrink-0 select-none pr-2 text-right ${s.num}`}>{line.n ?? ''}</span>
                 <span className={`w-5 shrink-0 select-none text-center ${s.sign}`}>{line.t === '\\' ? '' : line.t}</span>
@@ -336,7 +342,7 @@ function toSplitRows(lines, pairs) {
   return rows;
 }
 
-function SplitDiff({ hunks, highlights, hunkProps }) {
+function SplitDiff({ hunks, highlights, hunkProps, markers }) {
   const prepared = useMemo(
     () => hunks.map((h, hi) => ({ hunk: h, rows: toSplitRows(h.lines, highlights?.[hi]?.pairs) })),
     [hunks, highlights],
@@ -353,7 +359,7 @@ function SplitDiff({ hunks, highlights, hunkProps }) {
             return (
               <div key={ri} className="grid grid-cols-2" data-change={startsChange ? '' : undefined}>
                 <SplitCell cell={row.left} segs={row.left && highlights?.[hi]?.get(row.left.idx)} side="old" />
-                <SplitCell cell={row.right} segs={row.right && highlights?.[hi]?.get(row.right.idx)} side="new" border />
+                <SplitCell cell={row.right} segs={row.right && highlights?.[hi]?.get(row.right.idx)} side="new" border mark={row.right && markerOf(markers, row.right.line)} />
               </div>
             );
           })}
@@ -363,7 +369,7 @@ function SplitDiff({ hunks, highlights, hunkProps }) {
   );
 }
 
-function SplitCell({ cell, segs, side, border }) {
+function SplitCell({ cell, segs, side, border, mark }) {
   if (!cell) {
     return <div className={`bg-white/[0.02] ${border ? 'border-l border-gk-border' : ''}`} />;
   }
@@ -371,7 +377,7 @@ function SplitCell({ cell, segs, side, border }) {
   const s = LINE_STYLES[line.t];
   const num = side === 'old' ? line.o : line.n;
   return (
-    <div className={`flex min-w-0 ${s.row} ${border ? 'border-l border-gk-border' : ''}`}>
+    <div className={`flex min-w-0 ${s.row} ${border ? 'border-l border-gk-border' : ''} ${markerCls(mark)}`} title={mark ? `Pre-commit Guard: ${mark.label}` : undefined}>
       <span className={`w-12 shrink-0 select-none pr-2 text-right ${s.num}`}>{num ?? ''}</span>
       <span className={`w-5 shrink-0 select-none text-center ${s.sign}`}>{line.t === ' ' || line.t === '\\' ? '' : line.t}</span>
       <span

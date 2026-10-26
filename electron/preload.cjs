@@ -46,6 +46,8 @@ contextBridge.exposeInMainWorld('api', {
     schedules: (dir, opts) => ipcRenderer.invoke('gitlab:schedules', dir, opts),
     saveSchedule: (dir, s, opts) => ipcRenderer.invoke('gitlab:schedule-save', dir, s, opts),
     scheduleAction: (dir, a, opts) => ipcRenderer.invoke('gitlab:schedule-action', dir, a, opts),
+    // mr: { source, target, title, description, draft, removeSource }
+    createMergeRequest: (dir, mr, opts) => ipcRenderer.invoke('gitlab:create-mr', dir, mr, opts),
   },
   // Методы возвращают { ok: true, data } или { ok: false, error: { code, message, hint, details } }
   repo: {
@@ -82,6 +84,8 @@ contextBridge.exposeInMainWorld('api', {
     fileDiff: (dir, params) => ipcRenderer.invoke('repo:file-diff', dir, params),
     compare: (dir, params) => ipcRenderer.invoke('repo:compare', dir, params),
     rebasePreview: (dir, params) => ipcRenderer.invoke('repo:rebase-preview', dir, params),
+    // rules: [{ id, label, pattern, flags, files, category }] — проверка staged-изменений перед коммитом
+    guardScan: (dir, params) => ipcRenderer.invoke('repo:guard-scan', dir, params),
     action: (dir, name, payload) => ipcRenderer.invoke('repo:action', dir, name, payload),
   },
 });

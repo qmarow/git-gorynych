@@ -704,7 +704,44 @@ async function scheduleAction(root, { id, type }, { preferredRemote } = {}) {
   return { id: n, type };
 }
 
+/* =================== Merge request =================== */
+
+async function createMergeRequest(root, { source, target, title, description, draft = false, removeSource = false }, { preferredRemote } = {}) {
+  for (const [v, what] of [[source, 'исходная ветка'], [target, 'целевая ветка']]) {
+    if (typeof v !== 'string' || !v.trim() || v.startsWith('-')) throw new GitError(`Не указана ${what}`, { code: 'BAD_ARGS' });
+  }
+  if (source === target) throw new GitError('Исходная и целевая ветки совпадают', { code: 'BAD_ARGS' });
+  const ctx = await context(root, preferredRemote);
+  requireWrite(ctx);
+  const t = String(title ?? '').trim() || source;
+  try {
+    const mr = await request(ctx.remote.base, ctx.token, 'POST', `/projects/${ctx.project.id}/merge_requests`, {
+      body: {
+        source_branch: source,
+        target_branch: target,
+        title: draft && !/^draft:/i.test(t) ? `Draft: ${t}` : t,
+        description: description ?? '',
+        remove_source_branch: Boolean(removeSource),
+      },
+    });
+    return { iid: mr.iid, webUrl: mr.web_url, created: true, title: mr.title };
+  } catch (error) {
+    // MR для этой ветки уже есть — просто открываем его
+    if (error.code === 'VALIDATION' && /already exists|уже существует/i.test(`${error.details} ${error.message}`)) {
+      const list = await request(ctx.remote.base, ctx.token, 'GET', `/projects/${ctx.project.id}/merge_requests`, {
+        query: { state: 'opened', source_branch: source, target_branch: target },
+      }).catch(() => []);
+      if (list[0]) return { iid: list[0].iid, webUrl: list[0].web_url, created: false, title: list[0].title };
+    }
+    if (error.code === 'VALIDATION' && /source.?branch|does not exist|не существует/i.test(`${error.details}`)) {
+      error.hint = 'Сначала отправьте ветку на сервер (Push).';
+    }
+    throw error;
+  }
+}
+
 module.exports = {
+  createMergeRequest,
   lintCi,
   saveVariable,
   deleteVariable,

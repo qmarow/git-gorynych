@@ -1,9 +1,9 @@
 import { useEffect, useState } from 'react';
 import { Copy, FolderGit2, GitBranch, Loader2, Minus, Plus, Square, X } from 'lucide-react';
 
-const MENU = ['File', 'Edit', 'View', 'Help'];
+const MENU = ['File', 'Edit', 'View', 'Actions', 'Help'];
 
-export default function TitleBar({ tabs, activePath, loadingPath, onSelectTab, onCloseTab, onOpenRepository, onFileMenu, onEditMenu, onViewMenu, onHelpMenu }) {
+export default function TitleBar({ tabs, activePath, loadingPath, onSelectTab, onCloseTab, onOpenRepository, onFileMenu, onEditMenu, onViewMenu, onActionsMenu, onHelpMenu }) {
   const [maximized, setMaximized] = useState(false);
   const win = window.api?.window;
 
@@ -31,6 +31,7 @@ export default function TitleBar({ tabs, activePath, loadingPath, onSelectTab, o
               if (item === 'File') onFileMenu?.(r.left, r.bottom + 4);
               if (item === 'Edit') onEditMenu?.(r.left, r.bottom + 4);
               if (item === 'View') onViewMenu?.(r.left, r.bottom + 4);
+              if (item === 'Actions') onActionsMenu?.(r.left, r.bottom + 4);
               if (item === 'Help') onHelpMenu?.(r.left, r.bottom + 4);
             }}
             className="app-no-drag rounded px-2 py-1 text-xs text-gk-muted transition-colors hover:bg-gk-hover hover:text-gk-text"

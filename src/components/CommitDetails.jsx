@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import {
+  AlertTriangle,
   Archive,
   ArrowDownToLine,
   Copy,
@@ -15,6 +16,7 @@ import {
   Trash2,
 } from 'lucide-react';
 import { FILE_STATUS, avatarColor, fullDate, initials, plural, relativeTime } from '../lib/format.js';
+import { GuardBanner } from './Guard.jsx';
 
 export default function CommitDetails({
   commit,
@@ -32,6 +34,8 @@ export default function CommitDetails({
   onOpenConflict,
   activeConflict,
   onFileMenu,
+  guardResult,
+  onGuardOpen,
 }) {
   return (
     <aside className="glass flex w-full min-w-0 flex-col border-l border-gk-border bg-gk-panel">
@@ -60,6 +64,8 @@ export default function CommitDetails({
           onOpenConflict={onOpenConflict}
           activeConflict={activeConflict}
           onFileMenu={onFileMenu}
+          guardResult={guardResult}
+          onGuardOpen={onGuardOpen}
         />
       ) : (
         <CommitPanel
@@ -294,7 +300,7 @@ function FilesSkeleton() {
 
 /* ---------- Строка WIP: настоящий стейджинг и коммит ---------- */
 
-function WipPanel({ repo, busy, activeFile, onOpenFile, onStage, onUnstage, onCommit, onOpenConflict, activeConflict, onFileMenu }) {
+function WipPanel({ repo, busy, activeFile, onOpenFile, onStage, onUnstage, onCommit, onOpenConflict, activeConflict, onFileMenu, guardResult, onGuardOpen }) {
   const [summary, setSummary] = useState('');
   const [description, setDescription] = useState('');
 
@@ -303,6 +309,9 @@ function WipPanel({ repo, busy, activeFile, onOpenFile, onStage, onUnstage, onCo
   const unstagedFiles = repo.wipFiles.filter((f) => !f.staged && f.status !== 'U');
   const stagedFiles = repo.wipFiles.filter((f) => f.staged);
   const canCommit = !busy && stagedFiles.length > 0 && summary.trim().length > 0;
+  // Файлы с находками Pre-commit Guard: путь → количество
+  const guardFiles = new Map();
+  for (const f of guardResult?.findings ?? []) guardFiles.set(f.file, (guardFiles.get(f.file) ?? 0) + 1);
 
   const submit = async () => {
     if (!canCommit) return;
@@ -384,11 +393,13 @@ function WipPanel({ repo, busy, activeFile, onOpenFile, onStage, onUnstage, onCo
           fileActionIcon={Minus}
           fileActionTitle="Unstage"
           onFileMenu={onFileMenu}
+          flagged={guardFiles}
         />
       </div>
 
       <div className="space-y-2 border-t border-gk-border p-3">
         <div className="text-[11px] font-semibold uppercase tracking-wider text-gk-muted">Commit</div>
+        <GuardBanner result={guardResult} onOpen={onGuardOpen} />
         <input
           value={summary}
           onChange={(e) => setSummary(e.target.value)}
@@ -436,6 +447,7 @@ function FileGroup({
   fileActionIcon: Icon,
   fileActionTitle,
   onFileMenu,
+  flagged,
 }) {
   return (
     <div className="flex min-h-0 flex-1 flex-col border-b border-gk-border last:border-b-0">
@@ -466,6 +478,11 @@ function FileGroup({
               onFileMenu?.(file, kind, files, e.clientX, e.clientY);
             }}
           >
+            {flagged?.get(file.path) && (
+              <span title={`Pre-commit Guard: ${flagged.get(file.path)} — см. предупреждение над кнопкой Commit`} className="ml-auto shrink-0 group-hover:hidden">
+                <AlertTriangle size={12} className="text-gk-yellow" />
+              </span>
+            )}
             <button
               title={fileActionTitle}
               disabled={busy}

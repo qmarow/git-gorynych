@@ -312,8 +312,13 @@ async function createBranch(cwd, { name, start, checkout: doCheckout = true }) {
   if (!(await hasHead(cwd))) throw new GitError('Сначала сделайте первый коммит', { code: 'NO_COMMITS' });
   if (doCheckout) requireNoOperation(await currentState(cwd), 'checkout');
   const branchName = await validateBranchName(cwd, name);
-  if (start && !HASH_RE.test(start)) throw new GitError('Некорректный коммит', { code: 'BAD_ARGS' });
-  const startPoint = start || 'HEAD';
+  // Начало ветки: хэш или любая ссылка (main, origin/main, тег) — проверяем, что она существует
+  let startPoint = 'HEAD';
+  if (start) {
+    if (typeof start !== 'string' || start.startsWith('-')) throw new GitError('Некорректный коммит', { code: 'BAD_ARGS' });
+    startPoint = (await git(cwd, ['rev-parse', '--verify', '--quiet', `${start}^{commit}`]).catch(() => '')).trim();
+    if (!startPoint) throw new GitError(`Не найдено: ${start}`, { code: 'NOT_FOUND_REF', hint: 'Проверьте имя ветки или сделайте Fetch.' });
+  }
   const previous = await currentPosition(cwd);
 
   if (doCheckout) await git(cwd, ['switch', '--create', branchName, startPoint]);
@@ -321,6 +326,118 @@ async function createBranch(cwd, { name, start, checkout: doCheckout = true }) {
 
   const hash = (await git(cwd, ['rev-parse', branchName])).trim();
   return { name: branchName, hash, checkedOut: doCheckout, previous };
+}
+
+/* =================== Умное переключение веток (Workspace Context) =================== */
+
+// Незакоммиченные изменения прячутся в stash с именем ветки и сами возвращаются, когда вы снова на неё переключитесь
+const AUTO_STASH = 'gitidea-auto: ';
+
+async function autoStashes(cwd) {
+  const out = await git(cwd, ['stash', 'list', '--format=%gd%x1f%H%x1f%gs']).catch(() => '');
+  return out
+    .split('\n')
+    .filter(Boolean)
+    .map((line) => {
+      const [id, hash, subject] = line.split('\x1f');
+      const m = /gitidea-auto: (.+)$/.exec(subject ?? '');
+      return m ? { id, hash, branch: m[1].trim() } : null;
+    })
+    .filter(Boolean);
+}
+
+async function popStash(cwd, id) {
+  try {
+    await git(cwd, ['stash', 'pop', '--index', id]); // вместе с тем, что было застейджено
+  } catch (error) {
+    if (!/index/i.test(`${error.details}`)) throw error;
+    await git(cwd, ['stash', 'pop', id]); // индекс восстановить нельзя — хотя бы файлы
+  }
+}
+
+async function smartCheckout(cwd, target) {
+  const state = await currentState(cwd);
+  requireNoOperation(state, 'checkout');
+  const from = state.branchName;
+  const targetName = target.branch ?? target.remoteBranch?.name;
+  if (from && from === targetName) return { ...(await checkout(cwd, target)), autoStash: null, restored: null };
+
+  // 1. Прячем изменения текущей ветки под её именем
+  let autoStash = null;
+  const files = await readStatus(cwd);
+  if (files.length && from && state.headHash) {
+    if (files.some((f) => f.status === 'U')) {
+      throw new GitError('В рабочей папке есть неразрешённые конфликты', { code: 'CONFLICT', hint: 'Сначала решите их, затем переключайтесь.' });
+    }
+    await git(cwd, ['stash', 'push', '--include-untracked', '-m', `${AUTO_STASH}${from}`]);
+    const hash = (await git(cwd, ['rev-parse', 'stash@{0}'])).trim();
+    autoStash = { branch: from, hash, files: new Set(files.map((f) => f.path)).size };
+  }
+
+  // 2. Переключаемся; не вышло — возвращаем спрятанное на место
+  let res;
+  try {
+    res = await checkout(cwd, target);
+  } catch (error) {
+    if (autoStash) {
+      const top = (await git(cwd, ['rev-parse', '--verify', '--quiet', 'stash@{0}']).catch(() => '')).trim();
+      if (top === autoStash.hash) await popStash(cwd, 'stash@{0}').catch(() => {});
+    }
+    throw error;
+  }
+
+  // 3. Если для новой ветки что-то было спрятано — достаём (самое свежее)
+  let restored = null;
+  const waiting = (await autoStashes(cwd)).filter((s) => s.branch === res.to.branch && s.hash !== autoStash?.hash);
+  if (waiting.length) {
+    const s = waiting[0];
+    try {
+      await popStash(cwd, s.id);
+      restored = { branch: s.branch, hash: s.hash, conflict: false, more: waiting.length - 1 };
+    } catch (error) {
+      restored = {
+        branch: s.branch,
+        hash: s.hash,
+        conflict: true,
+        more: waiting.length - 1,
+        message: error.code === 'CONFLICT' ? 'Изменения вернулись с конфликтами — stash сохранён' : error.message,
+      };
+    }
+  }
+  return { ...res, autoStash, restored };
+}
+
+/* =================== Своя git-команда (из конструктора действий) =================== */
+
+// Аргументы разбираются без shell: кавычки группируют, спецсимволы оболочки ничего не делают
+function splitArgs(line) {
+  const args = [];
+  let cur = '';
+  let quote = null;
+  let has = false;
+  for (const ch of String(line)) {
+    if (quote) {
+      if (ch === quote) quote = null;
+      else cur += ch;
+    } else if (ch === '"' || ch === "'") {
+      quote = ch;
+      has = true;
+    } else if (/\s/.test(ch)) {
+      if (cur || has) args.push(cur);
+      cur = '';
+      has = false;
+    } else cur += ch;
+  }
+  if (quote) throw new GitError('Незакрытая кавычка в команде', { code: 'BAD_ARGS' });
+  if (cur || has) args.push(cur);
+  return args;
+}
+
+async function gitRaw(cwd, { command }) {
+  const args = splitArgs(String(command ?? '').replace(/^\s*git\s+/, ''));
+  if (!args.length) throw new GitError('Пустая команда', { code: 'BAD_ARGS' });
+  const out = await git(cwd, args, NO_EDITOR);
+  return { command: `git ${args.join(' ')}`, output: out.trim().slice(0, 4000) };
 }
 
 /* =================== Stash =================== */
@@ -712,6 +829,18 @@ const HANDLERS = {
       await git(cwd, ['reset', '--soft', e.hash]);
     },
   },
+  // Отмена умного переключения — такое же умное переключение обратно (изменения снова меняются местами)
+  smartCheckout: {
+    async undo(cwd, e) {
+      if (!e.previous.branch) throw new GitError('Нельзя вернуться: до переключения был detached HEAD', { code: 'HISTORY_STALE' });
+      await smartCheckout(cwd, { branch: e.previous.branch });
+      if (e.created && (await branchTip(cwd, e.created.name)) === e.created.hash) await git(cwd, ['branch', '-D', e.created.name]);
+    },
+    async redo(cwd, e) {
+      if (e.created) await smartCheckout(cwd, { remoteBranch: { name: e.created.name, fullName: e.created.track } });
+      else await smartCheckout(cwd, { branch: e.to.branch });
+    },
+  },
   checkout: {
     async undo(cwd, e) {
       await switchTo(cwd, e.previous);
@@ -879,6 +1008,13 @@ const ACTIONS = {
     return res;
   },
   async checkout(cwd, p) {
+    if (p.smart) {
+      const res = await smartCheckout(cwd, p);
+      if (res.previous.branch !== res.to.branch || res.created) {
+        record(cwd, { type: 'smartCheckout', label: `Checkout ${posLabel(res.to)}`, previous: res.previous, to: res.to, created: res.created });
+      }
+      return res;
+    }
     const res = await checkout(cwd, p);
     if (res.previous.branch !== res.to.branch || res.created) {
       record(cwd, { type: 'checkout', label: `Checkout ${posLabel(res.to)}`, ...res });
@@ -991,6 +1127,11 @@ const ACTIONS = {
     if (res.snapshot) record(cwd, { type: 'fileSnapshot', label: `${labels[res.op]} в ${res.path}`, snapshots: [res.snapshot] });
     else if (labels[res.op]) historyFor(cwd).redo = [];
     return { op: res.op, path: res.path, hunks: res.hunks, total: res.total, undoable: Boolean(res.snapshot) };
+  },
+  async gitRaw(cwd, p) {
+    const res = await gitRaw(cwd, p);
+    historyFor(cwd).redo = [];
+    return res;
   },
   async discardAll(cwd) {
     const res = await discardAll(cwd);

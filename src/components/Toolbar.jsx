@@ -51,6 +51,9 @@ export default function Toolbar({
   onSettings,
   onSearch,
   searchOpen,
+  customActions = [],
+  onRunAction,
+  onOpenActions,
 }) {
   const current = repo.localBranches.find((b) => b.name === repo.currentBranch);
   const hasRemote = repo.remotes.length > 0;
@@ -156,6 +159,23 @@ export default function Toolbar({
           loading={busyAction === 'stashPop'}
           onClick={onPop}
         />
+        {customActions.length > 0 && <Divider />}
+        {customActions.map((a) => (
+          <ActionButton
+            key={a.id}
+            icon={a.icon}
+            label={a.name}
+            title={a.title}
+            className="w-auto min-w-14 max-w-[110px] px-1.5"
+            disabled={blocked}
+            loading={a.running}
+            onClick={() => onRunAction?.(a.id)}
+            onContextMenu={(e) => {
+              e.preventDefault();
+              onOpenActions?.();
+            }}
+          />
+        ))}
       </div>
 
       <div className="flex items-center gap-1">
@@ -387,7 +407,7 @@ function ActionButton({ icon: Icon, label, disabled, loading, badge, className =
           </span>
         ) : null}
       </span>
-      <span className="text-[11px]">{label}</span>
+      <span className="max-w-full truncate text-[11px]">{label}</span>
     </button>
   );
 }

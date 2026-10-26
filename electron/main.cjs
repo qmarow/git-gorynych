@@ -11,6 +11,7 @@ const ciEdit = require('./ciEdit.cjs');
 const gitlab = require('./gitlab.cjs');
 const compare = require('./compare.cjs');
 const rebasePlan = require('./rebase.cjs');
+const guard = require('./guard.cjs');
 const { watchRepository } = require('./watch.cjs');
 const { serializeError } = require('./errors.cjs');
 
@@ -307,6 +308,7 @@ ipcMain.handle('gitlab:variable-delete', gl((root, v, opts) => gitlab.deleteVari
 ipcMain.handle('gitlab:schedules', gl((root, opts) => gitlab.listSchedules(root, remoteOpt(opts))));
 ipcMain.handle('gitlab:schedule-save', gl((root, s, opts) => gitlab.saveSchedule(root, s ?? {}, remoteOpt(opts))));
 ipcMain.handle('gitlab:schedule-action', gl((root, a, opts) => gitlab.scheduleAction(root, a ?? {}, remoteOpt(opts))));
+ipcMain.handle('gitlab:create-mr', gl((root, mr, opts) => gitlab.createMergeRequest(root, mr ?? {}, remoteOpt(opts))));
 // Открыть ссылку (пайплайн/задание в GitLab) в браузере — только http(s)
 ipcMain.handle('shell:open-external', async (_event, url) => {
   try {
@@ -357,6 +359,7 @@ ipcMain.handle('repo:commit-files', safe((dir, hash, parent) => git.getCommitFil
 ipcMain.handle('repo:file-diff', safe((dir, params) => git.getFileDiff(dir, params)));
 ipcMain.handle('repo:compare', safe((dir, params) => compare.compareCommits(dir, params)));
 ipcMain.handle('repo:rebase-preview', safe((dir, params) => rebasePlan.simulate(dir, params)));
+ipcMain.handle('repo:guard-scan', safe((dir, params) => guard.scanStaged(dir, params ?? {})));
 
 // Все изменяющие и сетевые операции: checkAccess, fetch, pull, push, checkout,
 // createBranch, stash, stashPop, commit, stage, unstage, undo, redo, abort/continueOperation

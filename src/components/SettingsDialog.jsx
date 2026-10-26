@@ -1,10 +1,13 @@
 import { useEffect, useState } from 'react';
-import { Check, Image as ImageIcon, Loader2, Palette, Plug, RotateCcw, Sparkles, X } from 'lucide-react';
+import { Archive, Check, GitBranch, Image as ImageIcon, Loader2, Palette, Plug, RotateCcw, ShieldCheck, Sparkles, X } from 'lucide-react';
 import { BACKGROUNDS, THEMES, themeById } from '../lib/appearance.js';
 import { TokenSetup } from './TokenSetup.jsx';
+import { GuardSettings, Switch } from './Guard.jsx';
 
 const TABS = [
   { id: 'appearance', label: 'Оформление', icon: Palette },
+  { id: 'branches', label: 'Ветки', icon: GitBranch },
+  { id: 'guard', label: 'Проверка перед коммитом', icon: ShieldCheck },
   { id: 'integrations', label: 'Подключения', icon: Plug },
 ];
 
@@ -22,6 +25,10 @@ export default function SettingsDialog({
   onPickImage,
   repo,
   onForgeChanged,
+  workflow,
+  onWorkflowChange,
+  guard,
+  onGuardChange,
   onClose,
 }) {
   const [tab, setTab] = useState(initialTab);
@@ -75,6 +82,10 @@ export default function SettingsDialog({
           <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4">
             {tab === 'appearance' ? (
               <AppearanceTab appearance={appearance} meta={meta} imageUrl={imageUrl} onChange={onChange} onPickImage={onPickImage} />
+            ) : tab === 'branches' ? (
+              <BranchesTab workflow={workflow} onChange={onWorkflowChange} />
+            ) : tab === 'guard' ? (
+              <GuardSettings cfg={guard} onChange={onGuardChange} />
             ) : (
               <IntegrationsTab repo={repo} onForgeChanged={onForgeChanged} />
             )}
@@ -217,6 +228,40 @@ function AppearanceTab({ appearance: a, meta, imageUrl, onChange, onPickImage })
           </label>
         </div>
       </section>
+    </div>
+  );
+}
+
+function BranchesTab({ workflow, onChange }) {
+  return (
+    <div className="space-y-4 text-[12.5px]">
+      <label className="flex cursor-pointer items-start gap-3">
+        <Switch checked={workflow.smartSwitch} onChange={(v) => onChange({ ...workflow, smartSwitch: v })} />
+        <span>
+          <span className="block font-medium text-gk-text">Умное переключение веток</span>
+          <span className="mt-0.5 block leading-relaxed text-gk-muted">
+            При переключении на другую ветку незакоммиченные изменения сами прячутся в stash с именем текущей ветки, а когда вы вернётесь
+            на неё — так же сами достаются обратно. Больше не нужно помнить, какой stash@{'{3}'} к чему относился.
+          </span>
+        </span>
+      </label>
+      <div className="ml-11 rounded-lg border border-gk-border bg-white/[0.02] p-3 text-gk-muted">
+        <div className="mb-1.5 flex items-center gap-1.5 font-medium text-gk-text">
+          <Archive size={13} className="text-gk-yellow" /> Как это выглядит
+        </div>
+        <ol className="list-decimal space-y-0.5 pl-4 leading-relaxed">
+          <li>Работаете в feature-A, есть правки. Двойной клик по hotfix.</li>
+          <li>Правки feature-A спрятаны (stash «feature-A (авто)»), вы на чистой hotfix.</li>
+          <li>Вернулись на feature-A — правки на месте, в том числе staged.</li>
+        </ol>
+        <div className="mt-2 text-[11.5px] text-gk-dim">
+          Работает для всех переключений из программы. Если при возврате будет конфликт, stash не удаляется. Ctrl+Z переключает обратно вместе с
+          правками.
+        </div>
+      </div>
+      <p className="text-[11.5px] text-gk-dim">
+        Когда выключено — как в обычном Git: правки переезжают вместе с вами на новую ветку, а если мешают переключению, Git сообщит об ошибке.
+      </p>
     </div>
   );
 }

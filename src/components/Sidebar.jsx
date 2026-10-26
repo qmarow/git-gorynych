@@ -10,6 +10,8 @@ import {
   Cloud,
   Filter,
   Folder,
+  FolderOpen,
+  FolderTree,
   Laptop,
   Tag,
   Workflow,
@@ -43,6 +45,14 @@ export default function Sidebar({
 }) {
   const [filter, setFilter] = useState('');
   const match = (name) => name.toLowerCase().includes(filter.toLowerCase());
+  const folders = useFolders();
+  // Правки, спрятанные «умным переключением» под именем ветки
+  const autoStash = (msg) => /gitidea-auto: (.+)$/.exec(msg ?? '')?.[1]?.trim() ?? null;
+  const waiting = new Map();
+  for (const st of repo.stashes) {
+    const b = autoStash(st.message);
+    if (b) waiting.set(b, (waiting.get(b) ?? 0) + 1);
+  }
   const remoteCount = repo.remotes.reduce((n, r) => n + r.branches.length, 0);
   const ciSystems = repo.ci ?? [];
   const ciCount = ciSystems.reduce((n, s) => n + s.files.length, 0);
@@ -58,42 +68,64 @@ export default function Sidebar({
             placeholder="Filter (Ctrl + Alt + F)"
             className="w-full bg-transparent text-xs outline-none placeholder:text-gk-dim"
           />
+          <button
+            type="button"
+            onClick={folders.toggleGrouping}
+            title={folders.grouping ? 'Ветки сгруппированы по папкам (feature/, bugfix/…) — показать списком' : 'Сгруппировать ветки по папкам до «/»'}
+            className={`shrink-0 rounded p-0.5 transition-colors ${folders.grouping ? 'text-gk-blue hover:bg-gk-blue/15' : 'text-gk-dim hover:bg-gk-hover hover:text-gk-text'}`}
+          >
+            <FolderTree size={13} />
+          </button>
         </label>
       </div>
 
       <div className="flex-1 overflow-y-auto py-1">
         <Section title="Local" icon={Laptop} count={repo.localBranches.length}>
-          {repo.localBranches.filter((b) => match(b.name)).map((branch) => (
-            <Item
-              key={branch.name}
-              title={`${branch.upstream ? `${branch.name} → ${branch.upstream}` : branch.name}${
-                branch.gone ? ' (remote-ветка удалена)' : ''
-              }\nДвойной клик — checkout`}
-              current={branch.name === repo.currentBranch}
-              selected={branch.hash === selectedHash}
-              onClick={() => onSelect(branch.hash)}
-              onDoubleClick={() => branch.name !== repo.currentBranch && onCheckout({ branch: branch.name })}
-            >
-              <span className="w-3.5 shrink-0">
-                {branch.name === repo.currentBranch && <Check size={13} className="text-gk-green" />}
-              </span>
-              <span className="truncate">{branch.name}</span>
-              <span className="ml-auto flex gap-1.5 text-[11px] text-gk-muted">
-                {branch.behind > 0 && (
-                  <span className="flex items-center">
-                    {branch.behind}
-                    <ArrowDown size={11} />
-                  </span>
-                )}
-                {branch.ahead > 0 && (
-                  <span className="flex items-center">
-                    {branch.ahead}
-                    <ArrowUp size={11} />
-                  </span>
-                )}
-              </span>
-            </Item>
-          ))}
+          <BranchTree
+            branches={repo.localBranches.filter((b) => match(b.name))}
+            folderKey="local"
+            folders={folders}
+            filtering={Boolean(filter)}
+            depth={0}
+            isCurrent={(b) => b.name === repo.currentBranch}
+            renderBranch={(branch, label, depth) => (
+              <Item
+                key={branch.name}
+                depth={depth}
+                title={`${branch.upstream ? `${branch.name} → ${branch.upstream}` : branch.name}${
+                  branch.gone ? ' (remote-ветка удалена)' : ''
+                }\nДвойной клик — checkout`}
+                current={branch.name === repo.currentBranch}
+                selected={branch.hash === selectedHash}
+                onClick={() => onSelect(branch.hash)}
+                onDoubleClick={() => branch.name !== repo.currentBranch && onCheckout({ branch: branch.name })}
+              >
+                <span className="w-3.5 shrink-0">
+                  {branch.name === repo.currentBranch && <Check size={13} className="text-gk-green" />}
+                </span>
+                <span className="truncate">{label}</span>
+                <span className="ml-auto flex gap-1.5 text-[11px] text-gk-muted">
+                  {waiting.has(branch.name) && (
+                    <span title="Здесь ждут спрятанные правки — вернутся, когда вы переключитесь на эту ветку" className="flex items-center text-gk-yellow/90">
+                      <Archive size={11} />
+                    </span>
+                  )}
+                  {branch.behind > 0 && (
+                    <span className="flex items-center">
+                      {branch.behind}
+                      <ArrowDown size={11} />
+                    </span>
+                  )}
+                  {branch.ahead > 0 && (
+                    <span className="flex items-center">
+                      {branch.ahead}
+                      <ArrowUp size={11} />
+                    </span>
+                  )}
+                </span>
+              </Item>
+            )}
+          />
           {repo.localBranches.length === 0 && <Empty>Нет коммитов</Empty>}
         </Section>
 
@@ -103,6 +135,8 @@ export default function Sidebar({
               key={remote.name}
               remote={remote}
               match={match}
+              folders={folders}
+              filtering={Boolean(filter)}
               selectedHash={selectedHash}
               onSelect={onSelect}
               onCheckout={onCheckout}
@@ -125,7 +159,19 @@ export default function Sidebar({
               }}
             >
               <Archive size={13} className="shrink-0 text-gk-yellow/80" />
-              <span className="truncate">{stash.message.replace(/^(WIP on|On) [^:]+:\s*/, '')}</span>
+              {autoStash(stash.message) ? (
+                <>
+                  <span className="truncate">{autoStash(stash.message)}</span>
+                  <span
+                    title="Спрятано умным переключением — вернётся само, когда вы переключитесь на эту ветку"
+                    className="ml-auto shrink-0 rounded bg-gk-yellow/10 px-1.5 text-[10px] text-gk-yellow"
+                  >
+                    авто
+                  </span>
+                </>
+              ) : (
+                <span className="truncate">{stash.message.replace(/^(WIP on|On) [^:]+:\s*/, '')}</span>
+              )}
             </Item>
           ))}
           {repo.stashes.length === 0 && <Empty>Нет сташей</Empty>}
@@ -268,33 +314,132 @@ function ScrollArea({ children }) {
   );
 }
 
-function RemoteGroup({ remote, match, selectedHash, onSelect, onCheckout }) {
-  const [open, setOpen] = useState(true);
+function RemoteGroup({ remote, match, folders, filtering, selectedHash, onSelect, onCheckout }) {
+  const key = `remote:${remote.name}`;
+  const open = filtering || !folders.isCollapsed(key);
   return (
     <div>
-      <Item onClick={() => setOpen((v) => !v)}>
+      <Item onClick={() => folders.toggle(key)}>
         {open ? <ChevronDown size={13} className="text-gk-muted" /> : <ChevronRight size={13} className="text-gk-muted" />}
         <Folder size={13} className="text-gk-blue" />
         <span className="font-medium">{remote.name}</span>
+        <span className="ml-auto text-[10.5px] text-gk-dim">{remote.branches.length}</span>
       </Item>
-      {open &&
-        remote.branches.filter((b) => match(b.name)).map((branch) => (
-          <Item
-            key={branch.fullName}
-            indent
-            title={`${branch.fullName}\nДвойной клик — checkout (создаст локальную ветку)`}
-            selected={branch.hash === selectedHash}
-            onClick={() => onSelect(branch.hash)}
-            onDoubleClick={() => onCheckout({ remoteBranch: { name: branch.name, fullName: branch.fullName } })}
-          >
-            <span className="truncate">{branch.name}</span>
-          </Item>
-        ))}
+      {open && (
+        <BranchTree
+          branches={remote.branches.filter((b) => match(b.name))}
+          folderKey={key}
+          folders={folders}
+          filtering={filtering}
+          depth={1}
+          renderBranch={(branch, label, depth) => (
+            <Item
+              key={branch.fullName}
+              depth={depth}
+              title={`${branch.fullName}\nДвойной клик — checkout (создаст локальную ветку)`}
+              selected={branch.hash === selectedHash}
+              onClick={() => onSelect(branch.hash)}
+              onDoubleClick={() => onCheckout({ remoteBranch: { name: branch.name, fullName: branch.fullName } })}
+            >
+              <span className="truncate">{label}</span>
+            </Item>
+          )}
+        />
+      )}
     </div>
   );
 }
 
-function Item({ children, current, selected, indent, ...props }) {
+/* ---------- Группировка веток по папкам: feature/x, feature/y → папка feature ---------- */
+
+const FOLDERS_KEY = 'sidebar.collapsedFolders';
+const GROUPING_KEY = 'sidebar.groupBranches';
+
+function readJson(key, fallback) {
+  try {
+    const v = localStorage.getItem(key);
+    return v === null ? fallback : JSON.parse(v);
+  } catch {
+    return fallback;
+  }
+}
+
+function writeJson(key, value) {
+  try {
+    localStorage.setItem(key, JSON.stringify(value));
+  } catch {
+    /* хранилище недоступно — состояние просто не запомнится */
+  }
+}
+
+// Свёрнутые папки и режим группировки запоминаются между запусками
+function useFolders() {
+  const [collapsed, setCollapsed] = useState(() => new Set(readJson(FOLDERS_KEY, [])));
+  const [grouping, setGrouping] = useState(() => readJson(GROUPING_KEY, true) !== false);
+  return {
+    grouping,
+    isCollapsed: (key) => collapsed.has(key),
+    toggle: (key) =>
+      setCollapsed((prev) => {
+        const next = new Set(prev);
+        if (next.has(key)) next.delete(key);
+        else next.add(key);
+        writeJson(FOLDERS_KEY, [...next]);
+        return next;
+      }),
+    toggleGrouping: () =>
+      setGrouping((v) => {
+        writeJson(GROUPING_KEY, !v);
+        return !v;
+      }),
+  };
+}
+
+// Ветки без «/» — сверху, затем папки по алфавиту; внутри папки — остаток имени после «/»
+export function groupBranches(branches) {
+  const plain = [];
+  const map = new Map();
+  for (const b of branches) {
+    const i = b.name.indexOf('/');
+    if (i <= 0 || i === b.name.length - 1) plain.push(b);
+    else {
+      const folder = b.name.slice(0, i);
+      if (!map.has(folder)) map.set(folder, []);
+      map.get(folder).push({ branch: b, label: b.name.slice(i + 1) });
+    }
+  }
+  const folders = [...map.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([name, items]) => ({ name, items }));
+  return { plain, folders };
+}
+
+function BranchTree({ branches, folderKey, folders, filtering, depth, isCurrent, renderBranch }) {
+  if (!folders.grouping) return branches.map((b) => renderBranch(b, b.name, depth));
+  const { plain, folders: groups } = groupBranches(branches);
+  return (
+    <>
+      {plain.map((b) => renderBranch(b, b.name, depth))}
+      {groups.map((g) => {
+        const key = `${folderKey}/${g.name}`;
+        const open = filtering || !folders.isCollapsed(key);
+        const hasCurrent = isCurrent && g.items.some((x) => isCurrent(x.branch));
+        return (
+          <div key={key}>
+            <Item depth={depth} onClick={() => folders.toggle(key)} title={`${g.name}/ — ${g.items.length}`}>
+              <ChevronRight size={13} className={`shrink-0 text-gk-muted transition-transform duration-200 ${open ? 'rotate-90' : ''}`} />
+              {open ? <FolderOpen size={13} className="shrink-0 text-gk-yellow/80" /> : <Folder size={13} className="shrink-0 text-gk-yellow/80" />}
+              <span className="truncate font-medium">{g.name}</span>
+              {hasCurrent && !open && <span title="Здесь текущая ветка" className="h-1.5 w-1.5 shrink-0 rounded-full bg-gk-green" />}
+              <span className="ml-auto shrink-0 rounded bg-white/5 px-1.5 text-[10.5px] text-gk-dim">{g.items.length}</span>
+            </Item>
+            {open && g.items.map((x) => renderBranch(x.branch, x.label, depth + 1))}
+          </div>
+        );
+      })}
+    </>
+  );
+}
+
+function Item({ children, current, selected, indent, depth, ...props }) {
   const state = selected
     ? 'bg-gk-blue/15 text-gk-text'
     : current
@@ -303,8 +448,9 @@ function Item({ children, current, selected, indent, ...props }) {
   return (
     <div
       {...props}
+      style={depth !== undefined ? { paddingLeft: 24 + depth * 20 } : undefined}
       className={`flex h-7 cursor-pointer items-center gap-2 pr-3 text-[13px] transition-colors ${
-        indent ? 'pl-12' : 'pl-6'
+        depth !== undefined ? '' : indent ? 'pl-12' : 'pl-6'
       } ${state}`}
     >
       {children}
