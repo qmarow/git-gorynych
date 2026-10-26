@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   AlertTriangle,
+  ArrowDownToLine,
   Archive,
   BookOpen,
   WandSparkles,
@@ -74,6 +75,7 @@ import {
 } from './lib/appearance.js';
 import { ACTIVE_STATUSES } from './components/PipelineStatus.jsx';
 import StatusBar from './components/StatusBar.jsx';
+import { DEFAULT_SYNC_MODE, SYNC_MODES, nextDelay, resetSyncStatus, setSyncStatus } from './lib/syncStatus.js';
 import InitRepoDialog, { plural } from './components/InitRepoDialog.jsx';
 import CloneDialog from './components/CloneDialog.jsx';
 import RevertToDialog from './components/RevertToDialog.jsx';
@@ -123,7 +125,6 @@ const PROGRESS_TEXT = {
   abortOperation: 'Прерываем…',
 };
 
-const AUTO_FETCH_MIN = 5; // как часто фоново забирать изменения с сервера
 
 const OPERATION_LABELS = { rebase: 'rebase', merge: 'merge', 'cherry-pick': 'cherry-pick', revert: 'revert' };
 
@@ -864,6 +865,23 @@ export default function App() {
       return [
         { header: `Ветка ${ref.name}` },
         { label: `Checkout ${ref.name}`, icon: LogIn, disabled: op || isCur, onClick: () => checkout({ branch: ref.name }) },
+        ...(info?.upstream && !info.gone
+          ? [
+              {
+                label: info.behind ? `Update (Pull) — ↓${info.behind}` : 'Update (Pull)',
+                icon: ArrowDownToLine,
+                disabled: (isCur && op) || !info.behind || (!isCur && info.ahead > 0),
+                title: !info.behind
+                  ? `Новых коммитов в ${info.upstream} нет`
+                  : !isCur && info.ahead > 0
+                    ? `В ${ref.name} есть свои коммиты (↑${info.ahead}) — переключитесь на неё и сделайте Pull`
+                    : isCur
+                      ? `Забрать ${info.behind} ${plural(info.behind, 'коммит', 'коммита', 'коммитов')} из ${info.upstream}`
+                      : `Перемотать ${ref.name} до ${info.upstream} без переключения ветки`,
+                onClick: () => updateBranch(ref.name),
+              },
+            ]
+          : []),
         {
           label: `Merge ${ref.name} into ${curLabel}`,
           icon: GitMerge,
@@ -986,7 +1004,24 @@ export default function App() {
     const items = buildRefItems(ref);
     if (items.length) setMenu({ x, y, items });
   };
+  // Update (Pull) ветки из списка: не текущая — fast-forward без переключения; текущая — тоже fast-forward,
+  // а если в ней есть свои коммиты — обычный Pull в выбранном режиме
+  const updateBranch = (name) => {
+    const info = repoRef.current?.localBranches.find((b) => b.name === name);
+    if (!info) return null;
+    if (name === repoRef.current.currentBranch && info.ahead > 0) return pull();
+    return run('updateBranch', { branch: name }, {
+      label: `Update ${name}`,
+      progress: `Обновляем ${name}…`,
+      success: (d) =>
+        d.count ? `${d.branch}: +${d.count} ${plural(d.count, 'коммит', 'коммита', 'коммитов')} из ${d.upstream}${d.current ? '' : ' (без переключения)'}` : `${d.branch} уже актуальна`,
+    });
+  };
+
   const refActions = {
+    update: updateBranch,
+    push: () => push(false),
+    log: (branch, direction) => api.repo.branchLog(repoRef.current.path, { branch, direction }),
     checkout: (ref) => {
       if (ref.type === 'local') return ref.name !== repo.currentBranch && checkout({ branch: ref.name });
       if (ref.type === 'remote') {
@@ -2051,6 +2086,8 @@ export default function App() {
   const [lastFetch, setLastFetch] = useState(null);
   const [fetchError, setFetchError] = useState(null);
   const bgFetchingRef = useRef(false);
+  const syncKick = useRef(null); // «проверь сервер сейчас»
+  const syncFailures = useRef(0); // ошибок подряд — для паузы (backoff)
   const refreshTimer = useRef(null);
   const accessRef = useRef(null);
   accessRef.current = access;
@@ -2118,6 +2155,11 @@ export default function App() {
       if (res.ok) {
         setLastFetch(new Date().toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' }));
         setFetchError(null);
+        if (syncFailures.current) {
+          syncFailures.current = 0;
+          setSyncStatus({ error: null, failures: 0, retryAt: null, at: Date.now() });
+          syncKick.current?.();
+        }
         if (repoRef.current?.path === current.path) loadRepo(current.path, { silent: true });
       } else {
         setFetchError(res.error.message);
@@ -2127,20 +2169,89 @@ export default function App() {
     [loadRepo, notify],
   );
 
+  // 3) Лёгкая проверка сервера: каждые 5–300 с в активном окне, 90 с в фоне, пауза после ошибок.
+  //    Рекурсивный setTimeout — следующий отсчёт начинается после завершения проверки.
+  //    Сервер не изменился — в .git ничего не пишется; изменился — fetch и перечит графа.
+  const [syncMode, setSyncMode] = useState(() => {
+    const v = readPref('syncMode', DEFAULT_SYNC_MODE);
+    return SYNC_MODES.some((m) => m.id === v) ? v : DEFAULT_SYNC_MODE;
+  });
+  const syncModeRef = useRef(syncMode);
+  syncModeRef.current = syncMode;
+
   useEffect(() => {
     setLastFetch(null);
     setFetchError(null);
-    if (!autoSync || !repo?.path || repo.remotes.length === 0) return undefined;
-    // Только если доступ на чтение подтверждён — чтобы фоновая проверка не открывала окно входа
-    const canFetch = () => accessRef.current?.data?.canRead && document.hasFocus();
-    const first = setTimeout(() => canFetch() && backgroundFetch(), 15000);
-    const timer = setInterval(() => canFetch() && backgroundFetch(), AUTO_FETCH_MIN * 60000);
+    resetSyncStatus();
+    syncFailures.current = 0;
+    const path = repo?.path;
+    if (!autoSync || !path || repo.remotes.length === 0 || !api?.repo.remoteCheck) return undefined;
+    let stopped = false;
+    let timer = null;
+    let dueAt = 0;
+    const focused = () => document.hasFocus() && document.visibilityState === 'visible';
+    const delay = (retryAfter) => nextDelay({ mode: syncModeRef.current, focused: focused(), failures: syncFailures.current, retryAfter });
+    const schedule = (ms) => {
+      clearTimeout(timer);
+      if (stopped) return;
+      dueAt = Date.now() + ms;
+      timer = setTimeout(tick, ms);
+    };
+    const tick = async () => {
+      if (stopped || repoRef.current?.path !== path) return;
+      // isGitBusy: идёт действие пользователя или ручной fetch — пропускаем тик, чтобы не столкнуться с index.lock
+      if (busyRef.current || bgFetchingRef.current) return schedule(2000);
+      // Доступ на чтение не подтверждён — фоновая проверка не должна вызывать окно входа
+      if (!accessRef.current?.data?.canRead) return schedule(accessRef.current?.status === 'checking' ? 2000 : delay());
+      bgFetchingRef.current = true;
+      const res = await api.repo.remoteCheck(path);
+      bgFetchingRef.current = false;
+      if (stopped) return;
+      const data = res.ok ? res.data : { status: 'error', error: res.error };
+      if (data.status === 'skipped') return schedule(2000);
+      if (data.status === 'error') {
+        // Без всплывающих ошибок: увеличиваем паузу 15 → 30 → 60 с → 5 мин до первого успеха
+        syncFailures.current += 1;
+        const ms = delay(data.retryAfter);
+        setSyncStatus({ error: data.error?.message ?? 'Нет связи с сервером', code: data.error?.code ?? null, failures: syncFailures.current, retryAt: Date.now() + ms, focused: focused() });
+        return schedule(ms);
+      }
+      syncFailures.current = 0;
+      setSyncStatus({ at: Date.now(), via: data.via, ms: data.ms, error: null, code: null, failures: 0, retryAt: null, focused: focused() });
+      if (data.fetched) {
+        setLastFetch(new Date().toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' }));
+        setFetchError(null);
+        if (repoRef.current?.path === path && !busyRef.current) loadRepo(path, { silent: true });
+      }
+      schedule(delay());
+    };
+    // Вернулись в окно после долгой паузы — проверяем сразу, не дожидаясь фонового интервала
+    const onFocus = () => {
+      setSyncStatus({ focused: focused() });
+      if (!stopped && focused() && syncFailures.current === 0 && dueAt - Date.now() > delay()) schedule(400);
+    };
+    syncKick.current = () => schedule(300);
+    window.addEventListener('focus', onFocus);
+    window.addEventListener('blur', onFocus);
+    document.addEventListener('visibilitychange', onFocus);
+    schedule(2500);
     return () => {
-      clearTimeout(first);
-      clearInterval(timer);
+      stopped = true;
+      clearTimeout(timer);
+      syncKick.current = null;
+      window.removeEventListener('focus', onFocus);
+      window.removeEventListener('blur', onFocus);
+      document.removeEventListener('visibilitychange', onFocus);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [repo?.path, autoSync, backgroundFetch]);
+  }, [repo?.path, autoSync, repo?.remotes.length, loadRepo]);
+
+  const changeSyncMode = (mode) => {
+    setSyncMode(mode);
+    writePref('syncMode', mode);
+    syncFailures.current = 0;
+    syncKick.current?.();
+  };
 
   /* ---------- Разметка ---------- */
 
@@ -2294,6 +2405,7 @@ export default function App() {
                 onDragSource={setDragSource}
                 onDropOnBranch={dropOnBranch}
                 refActions={refActions}
+                busy={Boolean(busyAction)}
                 onStashMenu={(st, x, y) => setMenu({ x, y, items: buildStashMenu(st) })}
                 onOpenCi={(file) => {
                   setDiffTarget(null);
@@ -2553,7 +2665,8 @@ export default function App() {
           repo={repo}
           sync={{
             enabled: autoSync,
-            intervalMin: AUTO_FETCH_MIN,
+            mode: syncMode,
+            onSettings: () => setDialog({ type: 'settings', tab: 'sync' }),
             fetching: bgFetching,
             lastFetch: lastFetch,
             error: fetchError,
@@ -2604,6 +2717,15 @@ export default function App() {
           onForgeChanged={onForgeChanged}
           workflow={workflow}
           onWorkflowChange={updateWorkflow}
+          sync={{
+            enabled: autoSync,
+            mode: syncMode,
+            onMode: changeSyncMode,
+            onToggle: (v) => {
+              setAutoSync(v);
+              writePref('autoSync', v ? '1' : '0');
+            },
+          }}
           guard={guardCfg}
           onGuardChange={updateGuard}
           repoPath={repo?.path}

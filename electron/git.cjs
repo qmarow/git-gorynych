@@ -794,8 +794,37 @@ async function readCommitTemplate(cwd) {
   return { path: file, ...cleanCommitTemplate(raw, cc) };
 }
 
+/**
+ * Коммиты, которые придут при Pull (direction 'in': branch..upstream) или уйдут при Push ('out': upstream..branch).
+ * → { commits: [{ hash, short, author, date, subject }], total, upstream }
+ */
+async function branchLog(cwd, { branch, direction = 'in', limit = 50 } = {}) {
+  if (typeof branch !== 'string' || !branch || branch.startsWith('-') || /[\s~^:?*[\\]|\.\.|@\{/.test(branch)) {
+    throw new GitError('Некорректное имя ветки', { code: 'BAD_ARGS' });
+  }
+  const local = `refs/heads/${branch}`;
+  // for-each-ref по полному имени — без путаницы с одноимённым тегом (rev-parse x@{u} понимает только короткое имя)
+  const upstream = (await git(cwd, ['for-each-ref', '--format=%(upstream)', local]).catch(() => '')).trim();
+  if (!upstream) throw new GitError(`У ветки «${branch}» нет upstream`, { code: 'NO_UPSTREAM' });
+  const range = direction === 'out' ? `${upstream}..${local}` : `${local}..${upstream}`;
+  const n = Math.max(1, Math.min(200, Number(limit) || 50));
+  const [out, count] = await Promise.all([
+    git(cwd, ['log', `--format=%H${FS}%h${FS}%an${FS}%aI${FS}%s`, `-n${n}`, range, '--']),
+    git(cwd, ['rev-list', '--count', range, '--']),
+  ]);
+  const commits = out
+    .split('\n')
+    .filter(Boolean)
+    .map((line) => {
+      const [hash, short, author, date, subject] = line.split(FS);
+      return { hash, short, author, date, subject };
+    });
+  return { commits, total: Number(count.trim()) || commits.length, upstream: upstream.replace(/^refs\/(remotes|heads)\//, '') };
+}
+
 module.exports = {
   git,
+  branchLog,
   readCommitTemplate,
   cleanCommitTemplate,
   gitInfo,

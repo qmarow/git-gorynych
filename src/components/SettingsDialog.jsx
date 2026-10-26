@@ -1,13 +1,15 @@
 import { useEffect, useState } from 'react';
-import { Archive, Check, GitBranch, GitCommitHorizontal, Image as ImageIcon, Loader2, Palette, Plug, RotateCcw, ShieldCheck, Sparkles, X } from 'lucide-react';
+import { Archive, Check, GitBranch, GitCommitHorizontal, RefreshCw, Image as ImageIcon, Loader2, Palette, Plug, RotateCcw, ShieldCheck, Sparkles, X } from 'lucide-react';
 import { BACKGROUNDS, THEMES, themeById } from '../lib/appearance.js';
 import { TokenSetup } from './TokenSetup.jsx';
 import { GuardSettings, Switch } from './Guard.jsx';
 import { CommitSettings } from './CommitForm.jsx';
+import { BACKGROUND_SEC, BACKOFF_SEC, SYNC_MODES, useSyncStatus } from '../lib/syncStatus.js';
 
 const TABS = [
   { id: 'appearance', label: 'Оформление', icon: Palette },
   { id: 'branches', label: 'Ветки', icon: GitBranch },
+  { id: 'sync', label: 'Синхронизация', icon: RefreshCw },
   { id: 'commit', label: 'Сообщение коммита', icon: GitCommitHorizontal },
   { id: 'guard', label: 'Проверка перед коммитом', icon: ShieldCheck },
   { id: 'integrations', label: 'Подключения', icon: Plug },
@@ -29,6 +31,7 @@ export default function SettingsDialog({
   onForgeChanged,
   workflow,
   onWorkflowChange,
+  sync,
   guard,
   onGuardChange,
   repoPath,
@@ -87,6 +90,8 @@ export default function SettingsDialog({
               <AppearanceTab appearance={appearance} meta={meta} imageUrl={imageUrl} onChange={onChange} onPickImage={onPickImage} />
             ) : tab === 'branches' ? (
               <BranchesTab workflow={workflow} onChange={onWorkflowChange} />
+            ) : tab === 'sync' ? (
+              <SyncTab sync={sync} hasRemotes={Boolean(repo?.remotes?.length)} />
             ) : tab === 'commit' ? (
               <CommitSettings repoPath={repoPath} branch={repo?.currentBranch} />
             ) : tab === 'guard' ? (
@@ -267,6 +272,77 @@ function BranchesTab({ workflow, onChange }) {
       <p className="text-[11.5px] text-gk-dim">
         Когда выключено — как в обычном Git: правки переезжают вместе с вами на новую ветку, а если мешают переключению, Git сообщит об ошибке.
       </p>
+    </div>
+  );
+}
+
+function SyncTab({ sync, hasRemotes }) {
+  const st = useSyncStatus();
+  if (!sync) return null;
+  const via = { api: 'GitLab API с ETag — ответ «не изменилось» почти ничего не стоит серверу', 'ls-remote': 'git ls-remote — без токена, работает с любым сервером' };
+  return (
+    <div className="space-y-5 text-[12.5px]">
+      <label className="flex cursor-pointer items-start gap-3">
+        <Switch checked={sync.enabled} onChange={sync.onToggle} />
+        <span>
+          <span className="block font-medium text-gk-text">Автообновление</span>
+          <span className="mt-0.5 block leading-relaxed text-gk-muted">
+            Граф и ветки обновляются сами: при изменениях в папке (в том числе fetch/pull из терминала) и при новых коммитах на сервере. То же
+            переключает «авто» в строке состояния.
+          </span>
+        </span>
+      </label>
+
+      <section className={sync.enabled ? '' : 'pointer-events-none opacity-40'}>
+        <SectionTitle>Как часто проверять сервер</SectionTitle>
+        <div className="grid grid-cols-2 gap-2">
+          {SYNC_MODES.map((m) => (
+            <button
+              key={m.id}
+              onClick={() => sync.onMode(m.id)}
+              className={`rounded-lg px-3 py-2 text-left ring-1 transition-colors ${
+                sync.mode === m.id ? 'bg-gk-green/10 ring-gk-green/60' : 'ring-gk-border hover:bg-white/[0.03] hover:ring-white/20'
+              }`}
+            >
+              <span className="flex items-center gap-1.5 font-medium text-gk-text">
+                {m.label}
+                {sync.mode === m.id && <Check size={12} className="text-gk-green" />}
+              </span>
+              <span className="block text-[11.5px] text-gk-dim">{m.hint}</span>
+            </button>
+          ))}
+        </div>
+        <ul className="mt-3 list-disc space-y-1 pl-4 leading-relaxed text-gk-muted">
+          <li>Проверяется только открытая вкладка и только пока окно программы активно. Окно свёрнуто или в фоне — раз в {BACKGROUND_SEC} секунд.</li>
+          <li>
+            Сначала спрашиваем у сервера только хэши веток — это быстро и почти бесплатно. Настоящий <code className="font-mono text-gk-text">git fetch --prune</code>{' '}
+            запускается, только если что-то изменилось.
+          </li>
+          <li>Пока вы делаете коммит, checkout, rebase или другое действие, проверка ждёт — она никогда не мешает вашим командам.</li>
+          <li>
+            Нет связи или сервер просит подождать (429) — без всплывающих ошибок, паузы растут: {BACKOFF_SEC.map((x) => (x < 60 ? `${x} с` : `${x / 60} мин`)).join(' → ')}.
+          </li>
+          <li>Для GitLab с сохранённым токеном используется API с ETag, иначе — git ls-remote.</li>
+        </ul>
+      </section>
+
+      {sync.enabled && hasRemotes && (
+        <section className="rounded-lg border border-gk-border bg-white/[0.02] p-3 text-[12px]">
+          <div className="mb-1 font-medium text-gk-text">Сейчас</div>
+          {st.error ? (
+            <div className="text-gk-yellow">
+              Сервер недоступен: {st.error}. Ошибок подряд: {st.failures}.
+            </div>
+          ) : st.at ? (
+            <div className="text-gk-muted">
+              Последняя проверка в {new Date(st.at).toLocaleTimeString('ru-RU')}
+              {st.ms != null ? ` (${st.ms} мс)` : ''}. Способ: {via[st.via] ?? st.via ?? '—'}.
+            </div>
+          ) : (
+            <div className="text-gk-dim">Ещё не проверяли — первая проверка через пару секунд после открытия репозитория.</div>
+          )}
+        </section>
+      )}
     </div>
   );
 }

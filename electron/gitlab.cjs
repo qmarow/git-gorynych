@@ -740,7 +740,73 @@ async function createMergeRequest(root, { source, target, title, description, dr
   }
 }
 
+/* =================== Лёгкая проверка веток (для фонового опроса) =================== */
+
+// URL → { etag, list, next }. Ответ 304 на If-None-Match почти ничего не стоит серверу и не тратит трафик
+const etagCache = new Map();
+const LIGHT_TIMEOUT = 8000;
+const LIGHT_MAX_PAGES = 20;
+
+/**
+ * Хэши веток на сервере через GitLab API (с ETag), без запуска git.
+ * → Map имя → хэш, либо null, если для этого remote нет токена GitLab (тогда — ls-remote).
+ */
+async function branchHeads(root, remoteName) {
+  const remote = await detectRemote(root, remoteName);
+  if (!remote || remote.kind !== 'gitlab' || remote.remote !== remoteName) return null;
+  const token = tokenFor(remote.base);
+  if (!token) return null;
+
+  const doFetch = electron?.net?.fetch ? electron.net.fetch.bind(electron.net) : fetch;
+  const heads = new Map();
+  let page = 1;
+  for (let i = 0; i < LIGHT_MAX_PAGES; i++) {
+    const url = `${remote.base}/api/v4/projects/${encodeURIComponent(remote.path)}/repository/branches?per_page=100&page=${page}`;
+    const cached = etagCache.get(url);
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), LIGHT_TIMEOUT);
+    let res;
+    try {
+      res = await doFetch(url, {
+        headers: { 'PRIVATE-TOKEN': token, Accept: 'application/json', ...(cached?.etag ? { 'If-None-Match': cached.etag } : {}) },
+        signal: controller.signal,
+      });
+    } catch (error) {
+      throw new GitError(`Нет связи с ${remote.host}`, { code: 'NETWORK', details: error.message });
+    } finally {
+      clearTimeout(timer);
+    }
+    let entry;
+    if (res.status === 304 && cached) entry = cached;
+    else if (res.ok) {
+      const body = await res.json();
+      entry = {
+        etag: res.headers.get('etag'),
+        list: Array.isArray(body) ? body.map((b) => [b.name, b.commit?.id]).filter(([n, h]) => n && h) : [],
+        next: res.headers.get('x-next-page') || null,
+      };
+      if (entry.etag) {
+        etagCache.set(url, entry);
+        if (etagCache.size > 300) etagCache.delete(etagCache.keys().next().value);
+      }
+    } else if (res.status === 429) {
+      const retryAfter = Number(res.headers.get('retry-after')) || null;
+      const err = new GitError('GitLab ограничил частоту запросов', { code: 'RATE_LIMIT', details: retryAfter ? `retry-after: ${retryAfter}` : '' });
+      err.retryAfter = retryAfter;
+      throw err;
+    } else {
+      // 401/403/404 и прочее — токен не подходит для этого проекта; вызывающий перейдёт на ls-remote
+      throw new GitError(`GitLab вернул ${res.status}`, { code: res.status === 401 ? 'AUTH' : res.status === 403 ? 'FORBIDDEN' : 'GITLAB_ERROR' });
+    }
+    for (const [n, h] of entry.list) heads.set(n, h);
+    if (!entry.next) break;
+    page = Number(entry.next);
+  }
+  return heads;
+}
+
 module.exports = {
+  branchHeads,
   createMergeRequest,
   lintCi,
   saveVariable,

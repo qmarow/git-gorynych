@@ -86,6 +86,10 @@ contextBridge.exposeInMainWorld('api', {
     rebasePreview: (dir, params) => ipcRenderer.invoke('repo:rebase-preview', dir, params),
     // rules: [{ id, label, pattern, flags, files, category }] — проверка staged-изменений перед коммитом
     guardScan: (dir, params) => ipcRenderer.invoke('repo:guard-scan', dir, params),
+    // Лёгкая проверка сервера: ETag-запрос к API или ls-remote, fetch только если что-то изменилось
+    remoteCheck: (dir) => ipcRenderer.invoke('repo:remote-check', dir),
+    // params: { branch, direction: 'in'|'out', limit } → { commits, total, upstream }
+    branchLog: (dir, params) => ipcRenderer.invoke('repo:branch-log', dir, params),
     // git config commit.template → null | { path, body, hint, error? }
     commitTemplate: (dir) => ipcRenderer.invoke('repo:commit-template', dir),
     action: (dir, name, payload) => ipcRenderer.invoke('repo:action', dir, name, payload),

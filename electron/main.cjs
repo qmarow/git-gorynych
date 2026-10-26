@@ -13,6 +13,7 @@ const compare = require('./compare.cjs');
 const rebasePlan = require('./rebase.cjs');
 const guard = require('./guard.cjs');
 const { watchRepository } = require('./watch.cjs');
+const remoteWatch = require('./remoteWatch.cjs');
 const { serializeError } = require('./errors.cjs');
 
 const DEV_SERVER_URL = process.env.VITE_DEV_SERVER_URL;
@@ -361,6 +362,9 @@ ipcMain.handle('repo:file-diff', safe((dir, params) => git.getFileDiff(dir, para
 ipcMain.handle('repo:compare', safe((dir, params) => compare.compareCommits(dir, params)));
 ipcMain.handle('repo:rebase-preview', safe((dir, params) => rebasePlan.simulate(dir, params)));
 ipcMain.handle('repo:guard-scan', safe((dir, params) => guard.scanStaged(dir, params ?? {})));
+// Фоновая лёгкая проверка сервера (fetch только при изменениях) и коммиты для бейджей ↓/↑ веток
+ipcMain.handle('repo:remote-check', safe(async (dir) => remoteWatch.lightCheck(await git.resolveRepoRoot(dir))));
+ipcMain.handle('repo:branch-log', safe(async (dir, params) => git.branchLog(await git.resolveRepoRoot(dir), params ?? {})));
 ipcMain.handle('repo:commit-template', safe(async (dir) => git.readCommitTemplate(await git.resolveRepoRoot(dir))));
 
 // Все изменяющие и сетевые операции: checkAccess, fetch, pull, push, checkout,

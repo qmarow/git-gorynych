@@ -44,8 +44,16 @@ function watchRepository(root, onChange, { delay = 700 } = {}) {
     // recursive поддерживается на Windows и macOS, в Node 20+ — и на Linux
     watchers.push(fs.watch(root, { recursive: true }, handler));
   } catch {
-    // Запасной вариант: следим хотя бы за .git (коммиты, ветки) и корнем проекта
-    for (const dir of [root, path.join(root, '.git'), path.join(root, '.git', 'refs', 'heads')]) {
+    // Запасной вариант: следим хотя бы за .git (коммиты, ветки, FETCH_HEAD) и корнем проекта.
+    // refs/remotes/<remote> — чтобы fetch/pull из внешнего терминала сразу обновлял бейджи ↓/↑
+    const refsRemotes = path.join(root, '.git', 'refs', 'remotes');
+    let remoteDirs = [];
+    try {
+      remoteDirs = fs.readdirSync(refsRemotes, { withFileTypes: true }).filter((d) => d.isDirectory()).map((d) => path.join(refsRemotes, d.name));
+    } catch {
+      /* remote ещё нет */
+    }
+    for (const dir of [root, path.join(root, '.git'), path.join(root, '.git', 'refs', 'heads'), refsRemotes, ...remoteDirs]) {
       try {
         const prefix = path.relative(root, dir);
         watchers.push(fs.watch(dir, (e, f) => handler(e, f ? path.join(prefix, String(f)) : prefix)));

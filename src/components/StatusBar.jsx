@@ -1,5 +1,6 @@
-import { AlertTriangle, ArrowDown, ArrowUp, Crosshair, FolderGit2, GitBranch, Loader2, Pencil, RefreshCw } from 'lucide-react';
+import { AlertTriangle, ArrowDown, ArrowUp, Crosshair, FolderGit2, GitBranch, Loader2, Pencil, RefreshCw, WifiOff } from 'lucide-react';
 import { fullDate, relativeTime } from '../lib/format.js';
+import { BACKGROUND_SEC, syncModeById, useSyncStatus } from '../lib/syncStatus.js';
 
 // Строка состояния: текущая ветка и активный коммит (HEAD). Клик — перейти к HEAD в графе.
 export default function StatusBar({ repo, onJumpToHead, sync }) {
@@ -27,13 +28,13 @@ export default function StatusBar({ repo, onJumpToHead, sync }) {
       {branch && (branch.ahead > 0 || branch.behind > 0) && (
         <span className="flex shrink-0 items-center gap-2" title="Относительно upstream">
           {branch.ahead > 0 && (
-            <span className="flex items-center text-gk-blue">
+            <span className="flex items-center text-gk-green" title={`Неотправленных коммитов: ${branch.ahead}`}>
               <ArrowUp size={11} />
               {branch.ahead}
             </span>
           )}
           {branch.behind > 0 && (
-            <span className="flex items-center text-gk-yellow">
+            <span className="flex items-center text-gk-blue" title={`Придут при Pull: ${branch.behind}`}>
               <ArrowDown size={11} />
               {branch.behind}
             </span>
@@ -69,42 +70,8 @@ export default function StatusBar({ repo, onJumpToHead, sync }) {
 
       <span className="flex-1" />
 
-      {/* Автообновление: слежение за папкой + фоновый fetch */}
-      {sync && (
-        <span className="flex shrink-0 items-center gap-1">
-          <button
-            onClick={sync.onToggle}
-            title={
-              sync.enabled
-                ? `Автообновление включено: граф обновляется при любых изменениях в папке${
-                    repo.remotes.length ? `, данные с сервера — каждые ${sync.intervalMin} мин` : ''
-                  }. Нажмите, чтобы выключить.`
-                : 'Автообновление выключено. Нажмите, чтобы включить.'
-            }
-            className="flex items-center gap-1.5 rounded px-1.5 py-0.5 hover:bg-gk-hover hover:text-gk-text"
-          >
-            <span className={`h-1.5 w-1.5 rounded-full ${sync.enabled ? 'bg-gk-green' : 'bg-gk-dim'}`} />
-            {sync.enabled ? 'авто' : 'авто выкл'}
-          </button>
-          {repo.remotes.length > 0 && (
-            <button
-              onClick={sync.onFetchNow}
-              disabled={sync.fetching}
-              title={
-                sync.error
-                  ? `Последний fetch не удался: ${sync.error}`
-                  : sync.lastFetch
-                    ? `Данные с сервера получены в ${sync.lastFetch}. Нажмите, чтобы обновить сейчас.`
-                    : 'Получить изменения с сервера (fetch)'
-              }
-              className={`flex items-center gap-1 rounded px-1.5 py-0.5 hover:bg-gk-hover hover:text-gk-text ${sync.error ? 'text-gk-yellow' : ''}`}
-            >
-              {sync.fetching ? <Loader2 size={11} className="animate-spin" /> : <RefreshCw size={11} />}
-              {sync.fetching ? 'fetch…' : sync.lastFetch ?? 'fetch'}
-            </button>
-          )}
-        </span>
-      )}
+      {/* Автообновление: слежение за папкой + фоновая проверка сервера */}
+      {sync && <SyncControls sync={sync} hasRemotes={repo.remotes.length > 0} />}
 
       {repo.operation && (
         <span className="shrink-0 rounded bg-gk-yellow/15 px-1.5 text-gk-yellow">{repo.operation} в процессе</span>
@@ -120,5 +87,63 @@ export default function StatusBar({ repo, onJumpToHead, sync }) {
         <span className="truncate">{repo.path}</span>
       </span>
     </footer>
+  );
+}
+
+const clock = (t) => new Date(t).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+const VIA = { api: 'GitLab API (ETag)', 'ls-remote': 'git ls-remote', 'api+ls-remote': 'GitLab API и git ls-remote' };
+
+function SyncControls({ sync, hasRemotes }) {
+  const st = useSyncStatus();
+  const mode = syncModeById(sync.mode);
+  const retryIn = st.retryAt ? Math.max(1, Math.round((st.retryAt - Date.now()) / 1000)) : null;
+  const autoTitle = sync.enabled
+    ? [
+        'Автообновление включено: граф обновляется при любых изменениях в папке.',
+        hasRemotes ? `Сервер проверяется ${mode.hint} (окно не в фокусе — раз в ${BACKGROUND_SEC} с); fetch — только если там что-то изменилось.` : null,
+        st.at ? `Последняя проверка: ${clock(st.at)}${st.via ? ` через ${VIA[st.via] ?? st.via}` : ''}${st.ms != null ? `, ${st.ms} мс` : ''}.` : null,
+        'Клик — выключить, правый клик — настройки.',
+      ]
+        .filter(Boolean)
+        .join('\n')
+    : 'Автообновление выключено. Клик — включить, правый клик — настройки.';
+  return (
+    <span className="flex shrink-0 items-center gap-1">
+      <button
+        onClick={sync.onToggle}
+        onContextMenu={(e) => {
+          e.preventDefault();
+          sync.onSettings?.();
+        }}
+        title={autoTitle}
+        className="flex items-center gap-1.5 rounded px-1.5 py-0.5 hover:bg-gk-hover hover:text-gk-text"
+      >
+        <span
+          className={`h-1.5 w-1.5 rounded-full ${!sync.enabled ? 'bg-gk-dim' : st.error && hasRemotes ? 'bg-gk-yellow' : 'bg-gk-green'} ${
+            sync.enabled && hasRemotes && !st.error && mode.sec <= 15 && st.focused ? 'animate-pulse' : ''
+          }`}
+        />
+        {sync.enabled ? (hasRemotes ? `авто · ${mode.sec < 60 ? `${mode.sec} с` : `${mode.sec / 60} мин`}` : 'авто') : 'авто выкл'}
+      </button>
+      {hasRemotes && (
+        <button
+          onClick={sync.onFetchNow}
+          disabled={sync.fetching}
+          title={
+            sync.enabled && st.error
+              ? `Сервер недоступен: ${st.error}${retryIn ? `\nСледующая попытка через ${retryIn} с` : ''}\nНажмите, чтобы сделать fetch сейчас.`
+              : sync.error
+                ? `Последний fetch не удался: ${sync.error}`
+                : sync.lastFetch
+                  ? `Новые данные с сервера получены в ${sync.lastFetch}. Нажмите, чтобы сделать fetch сейчас.`
+                  : 'Получить изменения с сервера (fetch)'
+          }
+          className={`flex items-center gap-1 rounded px-1.5 py-0.5 hover:bg-gk-hover hover:text-gk-text ${sync.error || (sync.enabled && st.error) ? 'text-gk-yellow' : ''}`}
+        >
+          {sync.fetching ? <Loader2 size={11} className="animate-spin" /> : sync.enabled && st.error ? <WifiOff size={11} /> : <RefreshCw size={11} />}
+          {sync.fetching ? 'fetch…' : sync.enabled && st.error ? 'нет связи' : (sync.lastFetch ?? 'fetch')}
+        </button>
+      )}
+    </span>
   );
 }

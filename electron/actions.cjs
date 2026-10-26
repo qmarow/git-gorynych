@@ -666,6 +666,82 @@ async function fastForward(cwd, { branch, to }) {
   return { branch, from: tip, to: target, current };
 }
 
+/**
+ * Обновить ветку из её upstream без переключения (fast-forward).
+ * Не текущая ветка: git fetch <remote> <ref>:refs/heads/<branch> — рабочая папка не трогается.
+ * Текущая: fetch и merge --ff-only. Если в ветке есть свои коммиты — отказ: тут нужен pull/rebase.
+ */
+async function updateBranch(cwd, { branch }) {
+  if (typeof branch !== 'string' || !branch || branch.startsWith('-')) throw new GitError('Не указана ветка', { code: 'BAD_ARGS' });
+  const state = await currentState(cwd);
+  const b = state.refs.localBranches.find((x) => x.name === branch);
+  if (!b) throw new GitError(`Ветка «${branch}» не найдена`, { code: 'NOT_FOUND_REF' });
+  if (!b.upstream || !b.upstreamRemote || !b.upstreamRef || b.upstreamRemote === '.') {
+    throw new GitError(`У ветки «${branch}» нет ветки на сервере`, { code: 'NO_UPSTREAM', hint: 'Сделайте Push, чтобы опубликовать её.' });
+  }
+  if (b.gone) {
+    throw new GitError(`${b.upstream} удалена на сервере`, { code: 'UPSTREAM_GONE', hint: 'Обновлять неоткуда: ветку на сервере удалили.' });
+  }
+  if (!state.remotes.includes(b.upstreamRemote)) throw new GitError(`Remote «${b.upstreamRemote}» не найден`, { code: 'NO_REMOTE' });
+  const current = state.branchName === branch;
+  const from = b.hash;
+
+  if (current) {
+    requireNoOperation(state, 'обновление');
+    await net(cwd, ['fetch', '--no-tags', b.upstreamRemote, `+${b.upstreamRef}:refs/remotes/${b.upstream}`]);
+    const target = (await git(cwd, ['rev-parse', '--verify', '--quiet', `refs/remotes/${b.upstream}^{commit}`]).catch(() => '')).trim();
+    if (!target || target === from) return { branch, from, to: from, current, count: 0 };
+    if (!(await isAncestor(cwd, from, target))) {
+      throw new GitError(`В ${branch} есть свои коммиты — перемотать нельзя`, {
+        code: 'NOT_FAST_FORWARD',
+        hint: 'Используйте Pull (merge или rebase), чтобы объединить изменения.',
+      });
+    }
+    try {
+      await git(cwd, ['merge', '--ff-only', '-q', target]);
+    } catch (error) {
+      if (/overwritten|would be overwritten|untracked working tree/i.test(error.details ?? error.message)) {
+        throw new GitError('Обновление затронет файлы с вашими незакоммиченными правками', {
+          code: 'LOCAL_CHANGES',
+          hint: 'Закоммитьте или спрячьте правки (Stash) и повторите.',
+          details: error.details,
+        });
+      }
+      throw error;
+    }
+  } else {
+    if (b.ahead > 0) {
+      throw new GitError(`В ${branch} есть неотправленные коммиты (${b.ahead})`, {
+        code: 'NOT_FAST_FORWARD',
+        hint: 'Без переключения обновить нельзя: переключитесь на ветку и сделайте Pull (merge или rebase).',
+      });
+    }
+    try {
+      // Без «+»: Git сам откажется, если это не перемотка вперёд
+      await net(cwd, ['fetch', '--no-tags', b.upstreamRemote, `${b.upstreamRef}:refs/heads/${branch}`]);
+    } catch (error) {
+      const text = `${error.message}\n${error.details ?? ''}`;
+      if (/non-fast-forward|rejected/i.test(text)) {
+        throw new GitError(`${branch} разошлась с ${b.upstream}`, {
+          code: 'NOT_FAST_FORWARD',
+          hint: 'Переключитесь на ветку и сделайте Pull (merge или rebase).',
+          details: error.details,
+        });
+      }
+      if (/checked out|refusing to fetch into/i.test(text)) {
+        throw new GitError(`${branch} открыта в другой рабочей папке (worktree)`, { code: 'BRANCH_IN_USE', details: error.details });
+      }
+      throw error;
+    }
+    // Ссылку origin/… Git обновляет сам (opportunistic update), но на старых версиях — нет
+    const tip = await branchTip(cwd, branch);
+    await git(cwd, ['update-ref', `refs/remotes/${b.upstream}`, tip]).catch(() => {});
+  }
+  const to = await branchTip(cwd, branch);
+  const count = to === from ? 0 : Number((await git(cwd, ['rev-list', '--count', `${from}..${to}`])).trim()) || 0;
+  return { branch, from, to, current, count, upstream: b.upstream };
+}
+
 async function discardAll(cwd) {
   requireNoOperation(await currentState(cwd), 'discard');
   const files = await readStatus(cwd);
@@ -1248,6 +1324,11 @@ const ACTIONS = {
     if (state.branchName !== p.target) await ACTIONS.checkout(cwd, { branch: p.target, smart: p.smart });
     return ACTIONS.cherryPick(cwd, { hash: p.hash });
   },
+  async updateBranch(cwd, p) {
+    const res = await updateBranch(cwd, p);
+    if (res.from !== res.to) record(cwd, { type: 'branchMove', label: `Обновление ${res.branch}`, branch: res.branch, from: res.from, to: res.to });
+    return res;
+  },
   async fastForward(cwd, p) {
     const res = await fastForward(cwd, p);
     record(cwd, { type: 'branchMove', label: `Fast-forward ${res.branch}`, branch: res.branch, from: res.from, to: res.to });
@@ -1271,10 +1352,41 @@ const ACTIONS = {
   },
 };
 
+/*
+ * Занятость репозитория. Пока идёт действие пользователя (коммит, checkout, rebase…), фоновая
+ * проверка сервера пропускает тик; а действие пользователя дожидается фонового fetch, если он уже идёт.
+ * Так два git-процесса не борются за .git/index.lock и блокировки ссылок.
+ */
+const busy = new Map(); // root → число выполняющихся действий
+const background = new Map(); // root → Promise фоновой задачи
+
+function isBusy(cwd) {
+  return (busy.get(cwd) ?? 0) > 0;
+}
+
+/** Запустить фоновую задачу, если репозиторий свободен. → Promise или null (занято) */
+function runBackground(cwd, fn) {
+  if (isBusy(cwd) || background.has(cwd)) return null;
+  const job = Promise.resolve()
+    .then(fn)
+    .finally(() => background.delete(cwd));
+  background.set(cwd, job);
+  return job;
+}
+
 async function runAction(cwd, name, payload = {}) {
   const action = ACTIONS[name];
   if (!action) throw new GitError(`Неизвестное действие: ${name}`, { code: 'BAD_ARGS' });
-  return action(cwd, payload ?? {});
+  busy.set(cwd, (busy.get(cwd) ?? 0) + 1);
+  try {
+    const bg = background.get(cwd);
+    if (bg) await bg.catch(() => {});
+    return await action(cwd, payload ?? {});
+  } finally {
+    const n = (busy.get(cwd) ?? 1) - 1;
+    if (n > 0) busy.set(cwd, n);
+    else busy.delete(cwd);
+  }
 }
 
-module.exports = { runAction, historySummary, checkAccess, networkOptions };
+module.exports = { runAction, historySummary, checkAccess, networkOptions, isBusy, runBackground };

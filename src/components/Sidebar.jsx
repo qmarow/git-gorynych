@@ -1,11 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { StatusIcon, statusInfo } from './PipelineStatus.jsx';
 import { hasRefDrag, readRefDrag, startRefDrag } from '../lib/dnd.js';
+import { SyncBadges } from './BranchSync.jsx';
 import { RefKindIcon } from './RefBadge.jsx';
 import {
   Archive,
-  ArrowDown,
-  ArrowUp,
   Check,
   ChevronDown,
   ChevronRight,
@@ -49,6 +48,7 @@ export default function Sidebar({
   onDragSource,
   onDropOnBranch,
   refActions,
+  busy,
 }) {
   // Перетаскивание: ветки можно тащить (на другие ветки — слить, перемотать, rebase), локальные ветки принимают
   const [dropName, setDropName] = useState(null);
@@ -102,6 +102,7 @@ export default function Sidebar({
       refActions?.menu?.(ref, e.clientX, e.clientY);
     },
   });
+  const syncActions = { update: refActions?.update, push: refActions?.push, log: refActions?.log, select: onSelect };
   const ciSystems = repo.ci ?? [];
   const ciCount = ciSystems.reduce((n, s) => n + s.files.length, 0);
 
@@ -163,29 +164,13 @@ export default function Sidebar({
                 </span>
                 <RefKindIcon local remote={syncedLocal(branch)} size={12} className={syncedLocal(branch) ? 'text-gk-muted' : 'text-gk-dim'} />
                 <span className="truncate">{label}</span>
-                {branch.gone && (
-                  <span title="Ветка на сервере удалена" className="shrink-0 text-gk-red/70">
-                    <CloudOff size={11} />
-                  </span>
-                )}
-                <span className="ml-auto flex gap-1.5 text-[11px] text-gk-muted">
+                <span className="ml-auto flex items-center gap-1.5 text-[11px] text-gk-muted">
                   {waiting.has(branch.name) && (
                     <span title="Здесь ждут спрятанные правки — вернутся, когда вы переключитесь на эту ветку" className="flex items-center text-gk-yellow/90">
                       <Archive size={11} />
                     </span>
                   )}
-                  {branch.behind > 0 && (
-                    <span className="flex items-center">
-                      {branch.behind}
-                      <ArrowDown size={11} />
-                    </span>
-                  )}
-                  {branch.ahead > 0 && (
-                    <span className="flex items-center">
-                      {branch.ahead}
-                      <ArrowUp size={11} />
-                    </span>
-                  )}
+                  <SyncBadges branch={branch} current={branch.name === repo.currentBranch} busy={busy} actions={syncActions} />
                 </span>
               </Item>
             )}
