@@ -1,5 +1,6 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import { Check, Cloud, Laptop, Pencil, Tag } from 'lucide-react';
+import { Check, Pencil } from 'lucide-react';
+import { RefKindIcon, RefsPopover, refKindLabel, useHoverPopover } from './RefBadge.jsx';
 import {
   NODE_RADIUS,
   ROW_HEIGHT,
@@ -39,6 +40,8 @@ export default function CommitGraph({
   dragSource = null, // что сейчас перетаскивают (коммит или ветку)
   onDragSource, // начало/конец перетаскивания
   onDropOnBranch, // (ветки строки, x, y, что перетащили) — бросили на строку с веткой
+  currentBranch = null,
+  refActions = null, // { checkout(ref), deleteRemote(fullName), menu(ref, x, y) } — для поповера «+N»
 }) {
   const [dropHash, setDropHash] = useState(null);
   useEffect(() => {
@@ -226,6 +229,8 @@ export default function CommitGraph({
               if (dropHash !== node.hash) setDropHash(node.hash);
             }}
             onDragLeaveRow={() => setDropHash((h) => (h === node.hash ? null : h))}
+            currentBranch={currentBranch}
+            refActions={refActions}
             onDropRow={(e) => {
               e.preventDefault();
               setDropHash(null);
@@ -348,6 +353,8 @@ function Row({
   onDragOverRow,
   onDragLeaveRow,
   onDropRow,
+  currentBranch,
+  refActions,
 }) {
   const color = laneColor(node.lane);
   const bandAlpha = selected ? '42' : hovered ? '2a' : '14';
@@ -387,6 +394,8 @@ function Row({
         <RefLabels
           refs={node.refs}
           color={color}
+          currentBranch={currentBranch}
+          actions={refActions}
           onDragStart={(e, g) => {
             e.stopPropagation();
             const remote = g.all.find((r) => r.type === 'remote');
@@ -467,11 +476,12 @@ function groupRefs(refs) {
   for (const ref of refs) {
     if (used.has(ref)) continue;
     if (ref.type === 'local') {
-      const remote = refs.find((r) => r.type === 'remote' && r.name.slice(r.name.indexOf('/') + 1) === ref.name);
+      // Серверная ветка с тем же именем на этом же коммите — значит, синхронизированы
+      const remote = refs.find((r) => r.type === 'remote' && !used.has(r) && r.name.slice(r.name.indexOf('/') + 1) === ref.name);
       if (remote) used.add(remote);
-      groups.push({ name: ref.name, head: ref.head, local: true, remote: Boolean(remote), tag: false, all: [ref, remote].filter(Boolean) });
+      groups.push({ name: ref.name, head: ref.head, local: true, remote: Boolean(remote), remoteName: remote?.name ?? null, tag: false, all: [ref, remote].filter(Boolean) });
     } else if (ref.type === 'remote') {
-      groups.push({ name: ref.name, local: false, remote: true, tag: false, all: [ref] });
+      groups.push({ name: ref.name, local: false, remote: true, remoteName: ref.name, tag: false, all: [ref] });
     } else {
       groups.push({ name: ref.name, local: false, remote: false, tag: true, all: [ref] });
     }
@@ -480,36 +490,82 @@ function groupRefs(refs) {
   return groups;
 }
 
-function RefLabels({ refs, color, onDragStart }) {
+function RefLabels({ refs, color, onDragStart, currentBranch, actions }) {
+  const pop = useHoverPopover();
+  const badgeRef = useRef(null);
   if (!refs.length) return null;
   const groups = groupRefs(refs);
   const [first, ...rest] = groups;
   const draggable = !first.tag;
+  const remoteOnly = first.remote && !first.local;
+  // Локальная — заливка цветом ветки; только на сервере — контур пунктиром; тег — приглушённая заливка
+  const style = remoteOnly
+    ? { backgroundColor: `${color}1a`, borderColor: `${color}cc` }
+    : first.tag
+      ? { backgroundColor: `${color}30`, boxShadow: `inset 0 0 0 1px ${color}88` }
+      : { backgroundColor: `${color}55`, boxShadow: `inset 0 0 0 1px ${color}aa` };
   return (
     <>
       <span
         draggable={draggable}
         onDragStart={draggable ? (e) => onDragStart(e, first) : undefined}
-        title={`${refs.map((r) => r.name).join('\n')}${draggable ? '\nПеретащите на другую ветку: слить, перемотать, rebase' : ''}`}
-        style={{ backgroundColor: `${color}55`, boxShadow: `inset 0 0 0 1px ${color}aa` }}
-        className="flex h-[22px] min-w-0 items-center gap-1.5 rounded-l px-2 text-[12px] font-medium text-white"
+        title={`${first.remoteName && !first.local ? first.remoteName : first.name} — ${refKindLabel(first)}${rest.length ? `\nЕщё ${rest.length}: наведите на «+${rest.length}»` : ''}${draggable ? '\nПеретащите на другую ветку: слить, перемотать, rebase' : ''}`}
+        style={style}
+        className={`flex h-[22px] min-w-0 items-center gap-1.5 rounded-l px-2 text-[12px] font-medium ${remoteOnly ? 'border border-dashed text-white/90' : 'text-white'}`}
       >
         {first.head && <Check size={13} strokeWidth={3} className="shrink-0 text-white" />}
-        <span className="truncate">{first.name}</span>
-        {/* В узкой колонке значки прячем — имя ветки важнее */}
-        <span className="hidden shrink-0 items-center gap-1 opacity-80 @[150px]:flex">
-          {first.local && <Laptop size={12} />}
-          {first.remote && <Cloud size={12} />}
-          {first.tag && <Tag size={12} />}
+        {/* Где живёт ветка: ноутбук — у вас, облако — на сервере, вместе — синхронизированы */}
+        <span className="hidden shrink-0 opacity-85 @[96px]:flex">
+          <RefKindIcon local={first.local} remote={first.remote} tag={first.tag} size={12} />
         </span>
+        <span className="truncate">{first.name}</span>
       </span>
       {rest.length > 0 && (
         <span
-          title={rest.map((g) => g.name).join('\n')}
-          style={{ backgroundColor: `${color}33`, boxShadow: `inset 0 0 0 1px ${color}77` }}
-          className="flex h-[22px] shrink-0 items-center rounded px-1.5 text-[11px] text-white/80"
+          ref={badgeRef}
+          onMouseEnter={() => pop.show()}
+          onMouseLeave={() => pop.hide()}
+          onMouseDown={(e) => {
+            e.stopPropagation();
+            if (e.button === 0) (pop.open ? pop.close() : pop.show(0));
+          }}
+          style={{ backgroundColor: pop.open ? `${color}66` : `${color}33`, boxShadow: `inset 0 0 0 1px ${color}77` }}
+          className="flex h-[22px] shrink-0 cursor-pointer items-center rounded px-1.5 text-[11px] text-white/85 transition-colors"
         >
           +{rest.length}
+        </span>
+      )}
+      {pop.open && rest.length > 0 && (
+        <span
+          onMouseDown={(e) => e.stopPropagation()}
+          onContextMenu={(e) => e.stopPropagation()}
+          onDoubleClick={(e) => e.stopPropagation()}
+          onDragStart={(e) => e.stopPropagation()}
+        >
+          <RefsPopover
+            anchor={badgeRef.current}
+            groups={groups}
+            color={color}
+            currentBranch={currentBranch}
+            actions={
+              actions && {
+                checkout: (r) => {
+                  pop.close();
+                  actions.checkout(r);
+                },
+                deleteRemote: (n) => {
+                  pop.close();
+                  actions.deleteRemote(n);
+                },
+                menu: (r, x, y) => {
+                  pop.close();
+                  actions.menu(r, x, y);
+                },
+              }
+            }
+            onEnter={pop.keep}
+            onLeave={() => pop.hide()}
+          />
         </span>
       )}
       <span style={{ backgroundColor: color }} className="h-[2px] w-1 shrink-0 opacity-85" />

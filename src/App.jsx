@@ -14,6 +14,8 @@ import {
   GitCompareArrows,
   FastForward,
   FolderPlus,
+  ArchiveRestore,
+  CloudOff,
   Check,
   Minus,
   Plus,
@@ -84,6 +86,7 @@ import {
   BranchDialog,
   Button,
   ConfirmDialog,
+  DeleteRemoteDialog,
   ErrorDialog,
   Modal,
   PushRejectedDialog,
@@ -850,6 +853,152 @@ export default function App() {
     });
   };
 
+  // Пункты меню одной ветки/тега — для меню коммита, поповера «+N» и списка веток слева
+  const buildRefItems = (ref) => {
+    const cur = repo.currentBranch;
+    const curLabel = cur ?? 'HEAD';
+    const op = Boolean(repo.operation);
+    if (ref.type === 'local') {
+      const isCur = ref.name === cur;
+      const info = repo.localBranches.find((b) => b.name === ref.name);
+      return [
+        { header: `Ветка ${ref.name}` },
+        { label: `Checkout ${ref.name}`, icon: LogIn, disabled: op || isCur, onClick: () => checkout({ branch: ref.name }) },
+        {
+          label: `Merge ${ref.name} into ${curLabel}`,
+          icon: GitMerge,
+          disabled: op || !cur || isCur,
+          onClick: () => run('merge', { ref: ref.name }, { label: 'Merge', success: `${ref.name} слита в ${cur}` }),
+        },
+        {
+          label: `Rebase ${curLabel} onto ${ref.name}…`,
+          icon: Layers,
+          disabled: op || !cur || isCur,
+          title: 'С предпросмотром: итоговый граф, конфликты и изменения видны до применения',
+          onClick: () => openRebase(ref.name),
+        },
+        {
+          label: `Delete ${ref.name}`,
+          icon: Trash2,
+          danger: true,
+          disabled: isCur,
+          title: isCur ? 'Нельзя удалить текущую ветку' : 'Удалить локальную ветку. Ветка на сервере не затрагивается.',
+          onClick: () =>
+            confirm({
+              title: 'Удалить ветку',
+              body: `Удалить локальную ветку «${ref.name}»? Remote-ветка не затрагивается.`,
+              confirmLabel: 'Удалить',
+              danger: true,
+              onConfirm: () => deleteBranch(ref.name),
+            }),
+        },
+        ...(info?.upstream && !info.gone
+          ? [
+              {
+                label: `Удалить ${info.upstream} с сервера…`,
+                icon: CloudOff,
+                danger: true,
+                title: 'Удалить ветку на сервере (git push --delete). Локальная ветка останется.',
+                onClick: () => askDeleteRemote(info.upstream),
+              },
+            ]
+          : []),
+      ];
+    }
+    if (ref.type === 'remote') {
+      const slash = ref.name.indexOf('/');
+      const name = ref.name.slice(slash + 1);
+      return [
+        { header: `На сервере: ${ref.name}` },
+        {
+          label: `Checkout ${ref.name}`,
+          icon: Cloud,
+          disabled: op,
+          onClick: () => checkout({ remoteBranch: { name, fullName: ref.name } }),
+        },
+        {
+          label: `Merge ${ref.name} into ${curLabel}`,
+          icon: GitMerge,
+          disabled: op || !cur,
+          onClick: () => run('merge', { ref: ref.name }, { label: 'Merge', success: `${ref.name} слита в ${cur}` }),
+        },
+        {
+          label: `Rebase ${curLabel} onto ${ref.name}…`,
+          icon: Layers,
+          disabled: op || !cur,
+          title: 'С предпросмотром: итоговый граф, конфликты и изменения видны до применения',
+          onClick: () => openRebase(ref.name),
+        },
+        {
+          label: `Удалить ${ref.name} с сервера…`,
+          icon: CloudOff,
+          danger: true,
+          title: 'Удалить ветку на сервере (git push --delete) — для всех, кто работает с репозиторием',
+          onClick: () => askDeleteRemote(ref.name),
+        },
+      ];
+    }
+    if (ref.type === 'tag') {
+      return [
+        { header: `Тег ${ref.name}` },
+        {
+          label: `Delete tag ${ref.name}`,
+          icon: Trash2,
+          danger: true,
+          onClick: () =>
+            confirm({
+              title: 'Удалить тег',
+              body: `Удалить локальный тег «${ref.name}»?`,
+              confirmLabel: 'Удалить',
+              danger: true,
+              onConfirm: () => run('deleteTag', { name: ref.name }, { label: 'Удаление тега', success: `Тег ${ref.name} удалён` }),
+            }),
+        },
+      ];
+    }
+    return [];
+  };
+
+  // Удаление ветки на сервере: подтверждение → git push --delete (с индикатором в окне)
+  const askDeleteRemote = (fullName) => {
+    const slash = fullName.indexOf('/');
+    if (slash <= 0) return;
+    const remote = fullName.slice(0, slash);
+    const branch = fullName.slice(slash + 1);
+    const locals = repo.localBranches.filter((b) => b.upstream === fullName).map((b) => b.name);
+    setDialog({ type: 'deleteRemote', remote, branch, fullName, locals, busy: false, error: null });
+  };
+  const confirmDeleteRemote = async () => {
+    const d = dialog;
+    if (!d || d.type !== 'deleteRemote' || d.busy) return;
+    setDialog({ ...d, busy: true, error: null });
+    const res = await run('deleteRemoteBranch', { remote: d.remote, branch: d.branch }, {
+      label: 'Удаление с сервера',
+      progress: `Удаляем ${d.fullName} с сервера…`,
+      success: `Ветка ${d.branch} удалена с ${d.remote} — Undo вернёт её на сервер`,
+      onError: () => true,
+    });
+    if (res.ok) setDialog(null);
+    else setDialog((cur) => (cur?.type === 'deleteRemote' ? { ...cur, busy: false, error: res.error } : cur));
+  };
+
+  const openRefMenu = (ref, x, y) => {
+    const items = buildRefItems(ref);
+    if (items.length) setMenu({ x, y, items });
+  };
+  const refActions = {
+    checkout: (ref) => {
+      if (ref.type === 'local') return ref.name !== repo.currentBranch && checkout({ branch: ref.name });
+      if (ref.type === 'remote') {
+        const name = ref.name.slice(ref.name.indexOf('/') + 1);
+        return checkout({ remoteBranch: { name, fullName: ref.name } });
+      }
+      return null;
+    },
+    deleteRemote: askDeleteRemote,
+    menu: openRefMenu,
+  };
+
   const buildCommitMenu = (node) => {
     const cur = repo.currentBranch;
     const curLabel = cur ?? 'HEAD';
@@ -914,85 +1063,9 @@ export default function App() {
     );
 
     for (const ref of node.refs) {
-      if (ref.type === 'local') {
-        if (ref.name === cur) continue;
-        items.push(
-          { separator: true },
-          { header: `Ветка ${ref.name}` },
-          { label: `Checkout ${ref.name}`, icon: LogIn, disabled: op, onClick: () => checkout({ branch: ref.name }) },
-          {
-            label: `Merge ${ref.name} into ${curLabel}`,
-            icon: GitMerge,
-            disabled: op || !cur,
-            onClick: () =>
-              run('merge', { ref: ref.name }, { label: 'Merge', success: `${ref.name} слита в ${cur}` }),
-          },
-          {
-            label: `Rebase ${curLabel} onto ${ref.name}…`,
-            icon: Layers,
-            disabled: op || !cur,
-            title: 'С предпросмотром: итоговый граф, конфликты и изменения видны до применения',
-            onClick: () => openRebase(ref.name),
-          },
-          {
-            label: `Delete ${ref.name}`,
-            icon: Trash2,
-            danger: true,
-            onClick: () =>
-              confirm({
-                title: 'Удалить ветку',
-                body: `Удалить локальную ветку «${ref.name}»? Remote-ветка не затрагивается.`,
-                confirmLabel: 'Удалить',
-                danger: true,
-                onConfirm: () => deleteBranch(ref.name),
-              }),
-          },
-        );
-      } else if (ref.type === 'remote') {
-        const slash = ref.name.indexOf('/');
-        const name = ref.name.slice(slash + 1);
-        items.push(
-          { separator: true },
-          { header: `Remote ${ref.name}` },
-          {
-            label: `Checkout ${ref.name}`,
-            icon: Cloud,
-            disabled: op,
-            onClick: () => checkout({ remoteBranch: { name, fullName: ref.name } }),
-          },
-          {
-            label: `Merge ${ref.name} into ${curLabel}`,
-            icon: GitMerge,
-            disabled: op || !cur,
-            onClick: () => run('merge', { ref: ref.name }, { label: 'Merge', success: `${ref.name} слита в ${cur}` }),
-          },
-          {
-            label: `Rebase ${curLabel} onto ${ref.name}…`,
-            icon: Layers,
-            disabled: op || !cur,
-            title: 'С предпросмотром: итоговый граф, конфликты и изменения видны до применения',
-            onClick: () => openRebase(ref.name),
-          },
-        );
-      } else if (ref.type === 'tag') {
-        items.push(
-          { separator: true },
-          {
-            label: `Delete tag ${ref.name}`,
-            icon: Trash2,
-            danger: true,
-            onClick: () =>
-              confirm({
-                title: 'Удалить тег',
-                body: `Удалить локальный тег «${ref.name}»?`,
-                confirmLabel: 'Удалить',
-                danger: true,
-                onConfirm: () =>
-                  run('deleteTag', { name: ref.name }, { label: 'Удаление тега', success: `Тег ${ref.name} удалён` }),
-              }),
-          },
-        );
-      }
+      if (ref.type === 'local' && ref.name === cur) continue;
+      const refItems = buildRefItems(ref);
+      if (refItems.length) items.push({ separator: true }, ...refItems);
     }
 
     items.push(
@@ -1642,7 +1715,7 @@ export default function App() {
   const openFile = (file, kind, list) => {
     const index = Math.max(0, list.findIndex((f) => f.path === file.path && Boolean(f.untracked) === Boolean(file.untracked)));
     if (kind === 'stash') {
-      setDiffTarget({ kind, mode: 'commit', hash: file.diffHash, parent: file.diffParent, commitHash: selectedHash, file, list, index });
+      setDiffTarget({ kind, mode: 'commit', hash: file.diffHash, parent: file.diffParent, commitHash: selectedHash, stashId: selected?.id, file, list, index });
       return;
     }
     const commit = kind === 'commit' ? allCommits.find((c) => c.hash === selectedHash) : null;
@@ -1698,6 +1771,7 @@ export default function App() {
     discard: { label: 'Отмена фрагмента', ok: (d) => `${d.hunks === d.total ? 'Изменения' : 'Фрагмент'} в ${d.path} отменён — Undo вернёт` },
     stage: { label: 'Stage фрагмента', ok: null },
     unstage: { label: 'Unstage фрагмента', ok: null },
+    apply: { label: 'Фрагмент из stash', ok: (d) => `${d.hunks === d.total ? 'Изменения' : 'Фрагмент'} из stash применён к ${d.path} — Undo вернёт` },
   };
   const applyHunks = (op, mode, file, hash, hunks) =>
     run('applyHunks', { op, mode, hash, path: file.path, oldPath: file.oldPath, hunks }, { label: HUNK_TEXT[op].label, success: HUNK_TEXT[op].ok });
@@ -1712,6 +1786,8 @@ export default function App() {
         { id: 'discard', label: 'Отменить', icon: Undo2, danger: true, title: 'Выбросить этот фрагмент изменений. Undo вернёт.' },
       ];
     if (t.kind === 'staged') return [{ id: 'unstage', label: 'Unstage', icon: Minus, title: 'Убрать этот фрагмент из коммита (останется в рабочей папке)' }];
+    if (t.kind === 'stash' && t.file.status !== 'D')
+      return [{ id: 'apply', label: 'Применить', icon: ArchiveRestore, title: 'Перенести только этот фрагмент из stash в файл в рабочей папке. Stash не меняется, Undo вернёт.' }];
     return null;
   };
   const onHunkAction = (id, hunk) => {
@@ -1720,9 +1796,21 @@ export default function App() {
     return applyHunks(id, t.mode === 'untracked' ? 'unstaged' : t.mode, t.file, t.hash, [hunk.header]);
   };
 
-  const buildFileMenu = (file, kind, list) => {
+  const buildFileMenu = (file, kind, list, extra) => {
     const items = [{ header: file.path }];
-    if (kind === 'commit') {
+    if (kind === 'stash') {
+      const st = extra?.stash ?? selected;
+      items.push(
+        { label: 'Показать изменения', icon: FileDiff, onClick: () => openFile(file, 'stash', list) },
+        { separator: true },
+        {
+          label: 'Восстановить файл из stash',
+          icon: ArchiveRestore,
+          title: 'Файл в рабочей папке станет таким, как в stash. Stash остаётся в списке. Undo вернёт.',
+          onClick: () => (extra?.restore ? extra.restore() : restoreFromStash([file], st)),
+        },
+      );
+    } else if (kind === 'commit') {
       const c = selected;
       if (!c || c.wip) return null;
       items.push(
@@ -1754,7 +1842,7 @@ export default function App() {
         { label: 'Показать изменения', icon: FileDiff, onClick: () => openFile(file, kind, list) },
         kind === 'unstaged'
           ? { label: 'Stage', icon: Plus, onClick: () => stageFiles([file.path]) }
-          : { label: 'Unstage', icon: Minus, onClick: () => unstageFiles([file.path]) },
+          : { label: 'Unstage', icon: Minus, onClick: () => unstageFiles(file.oldPath ? [file.path, file.oldPath] : [file.path]) },
       );
       if (kind === 'unstaged' && !file.untracked && file.status !== 'U') {
         items.push({
@@ -1769,8 +1857,8 @@ export default function App() {
     items.push({ separator: true }, { label: 'Копировать путь', icon: Copy, onClick: () => copy(file.path, 'Путь') });
     return items;
   };
-  const openFileContextMenu = (file, kind, list, x, y) => {
-    const items = buildFileMenu(file, kind, list);
+  const openFileContextMenu = (file, kind, list, x, y, extra) => {
+    const items = buildFileMenu(file, kind, list, extra);
     if (items) setMenu({ x, y, items });
   };
 
@@ -1871,6 +1959,28 @@ export default function App() {
       if (res.ok) setSelectedHash('WIP');
       return res;
     });
+  };
+
+  // Восстановить отдельные файлы из stash (без применения всего stash)
+  const restoreFromStash = (list, st) => {
+    if (!list?.length || !st) return Promise.resolve({ ok: false });
+    const touched = new Set(list.flatMap((f) => [f.path, f.oldPath].filter(Boolean)));
+    const dirty = (repo?.wipFiles ?? []).filter((f) => touched.has(f.path));
+    const names = list.length === 1 ? list[0].path : `${list.length} ${plural(list.length, 'файл', 'файла', 'файлов')}`;
+    const go = () =>
+      run('restoreFromStash', { hash: st.hash, id: st.id, files: list.map(({ path, oldPath, status, untracked }) => ({ path, oldPath, status, untracked })) }, {
+        label: 'Восстановление из stash',
+        success: (d) => `${names} из ${st.id} — в рабочей папке${d.undoable ? '. Undo вернёт' : ''}`,
+      });
+    if (!dirty.length) return go();
+    return new Promise((resolve) =>
+      confirm({
+        title: 'Заменить изменённые файлы?',
+        body: `У вас есть несохранённые правки в ${dirty.length === 1 ? `файле ${dirty[0].path}` : `${dirty.length} файлах`}. Они будут заменены версией из ${st.id}. Undo (Ctrl+Z) вернёт текущее содержимое.`,
+        confirmLabel: 'Заменить',
+        onConfirm: () => go().then(resolve),
+      }),
+    );
   };
 
   const buildStashMenu = (st) => [
@@ -2183,6 +2293,7 @@ export default function App() {
                 dragSource={dragSource}
                 onDragSource={setDragSource}
                 onDropOnBranch={dropOnBranch}
+                refActions={refActions}
                 onStashMenu={(st, x, y) => setMenu({ x, y, items: buildStashMenu(st) })}
                 onOpenCi={(file) => {
                   setDiffTarget(null);
@@ -2371,6 +2482,8 @@ export default function App() {
                   dragSource={dragSource}
                   onDragSource={setDragSource}
                   onDropOnBranch={dropOnBranch}
+                  currentBranch={repo.currentBranch}
+                  refActions={refActions}
                   onActivate={activateCommit}
                   onContextMenu={openMenu}
                   wipCount={repo.wipFiles.length}
@@ -2406,6 +2519,7 @@ export default function App() {
                 onCommit={commit}
                 onRevertTo={openRevertTo}
                 onStashAction={stashAction}
+                onStashRestore={restoreFromStash}
                 onOpenConflict={openConflict}
                 activeConflict={conflictPath}
                 onFileMenu={openFileContextMenu}
@@ -2418,6 +2532,7 @@ export default function App() {
                   notify({ type: 'info', title: off ? 'Проверка перед коммитом включена для этого репозитория' : 'Проверка перед коммитом выключена для этого репозитория', hint: off ? null : 'Включить обратно — в строке над кнопкой Commit или в настройках.' });
                 }}
                 onGuardSettings={() => setDialog({ type: 'settings', tab: 'guard' })}
+                onCommitSettings={() => setDialog({ type: 'settings', tab: 'commit' })}
               />
             </div>
           </div>
@@ -2636,6 +2751,17 @@ export default function App() {
           error={dialog.error}
           onClose={() => setDialog(null)}
           onSubmit={createTag}
+        />
+      )}
+      {dialog?.type === 'deleteRemote' && (
+        <DeleteRemoteDialog
+          remote={dialog.remote}
+          branch={dialog.branch}
+          locals={dialog.locals}
+          busy={dialog.busy}
+          error={dialog.error}
+          onConfirm={confirmDeleteRemote}
+          onClose={() => setDialog(null)}
         />
       )}
       {dialog?.type === 'confirm' && (

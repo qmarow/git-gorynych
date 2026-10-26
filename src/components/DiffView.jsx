@@ -13,7 +13,7 @@ const readPref = (key, def) => {
 };
 
 const MODE_LABELS = {
-  commit: (t) => (t.kind === 'compare' ? `${t.parent.slice(0, 7)} → ${t.hash.slice(0, 7)}` : `коммит ${t.hash.slice(0, 7)}`),
+  commit: (t) => (t.kind === 'compare' ? `${t.parent.slice(0, 7)} → ${t.hash.slice(0, 7)}` : t.kind === 'stash' ? (t.stashId ?? 'stash') : `коммит ${t.hash.slice(0, 7)}`),
   staged: () => 'staged',
   unstaged: () => 'unstaged',
   untracked: () => 'новый файл',

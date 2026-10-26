@@ -2,6 +2,8 @@ import { useState } from 'react';
 import {
   AlertTriangle,
   Archive,
+  ArchiveRestore,
+  ArrowRight,
   ArrowDownToLine,
   Copy,
   FileText,
@@ -13,10 +15,14 @@ import {
   Minus,
   PackageOpen,
   Plus,
+  Square,
+  SquareCheck,
+  SquareMinus,
   Trash2,
 } from 'lucide-react';
 import { FILE_STATUS, avatarColor, fullDate, initials, plural, relativeTime } from '../lib/format.js';
 import { GuardBanner } from './Guard.jsx';
+import CommitForm from './CommitForm.jsx';
 
 export default function CommitDetails({
   commit,
@@ -39,6 +45,8 @@ export default function CommitDetails({
   onGuardOpen,
   onGuardToggleRepo,
   onGuardSettings,
+  onStashRestore,
+  onCommitSettings,
 }) {
   return (
     <aside className="glass flex w-full min-w-0 flex-col border-l border-gk-border bg-gk-panel">
@@ -53,6 +61,8 @@ export default function CommitDetails({
           activeFile={activeFile}
           onOpenFile={onOpenFile}
           onAction={onStashAction}
+          onRestoreFiles={onStashRestore}
+          onFileMenu={onFileMenu}
         />
       ) : commit.wip ? (
         <WipPanel
@@ -72,6 +82,7 @@ export default function CommitDetails({
           onGuardOpen={onGuardOpen}
           onGuardToggleRepo={onGuardToggleRepo}
           onGuardSettings={onGuardSettings}
+          onCommitSettings={onCommitSettings}
         />
       ) : (
         <CommitPanel
@@ -192,14 +203,9 @@ function CommitPanel({ commit, files, activeFile, onOpenFile, onSelectCommit, on
               onFileMenu?.(file, 'commit', list, e.clientX, e.clientY);
             }}
           >
-            {file.additions !== null ? (
-              <span className="ml-auto shrink-0 font-mono text-[11px]">
-                <span className="text-gk-green">+{file.additions}</span>{' '}
-                <span className="text-gk-red">-{file.deletions}</span>
-              </span>
-            ) : (
-              <span className="ml-auto shrink-0 text-[11px] text-gk-dim">bin</span>
-            )}
+            <span className="ml-auto flex shrink-0 items-center gap-1.5">
+              <DiffStat file={file} />
+            </span>
           </FileRow>
         ))}
       </div>
@@ -209,10 +215,27 @@ function CommitPanel({ commit, files, activeFile, onOpenFile, onSelectCommit, on
 
 /* ---------- Выбран stash ---------- */
 
-function StashPanel({ stash, details, busy, activeFile, onOpenFile, onAction }) {
+function StashPanel({ stash, details, busy, activeFile, onOpenFile, onAction, onRestoreFiles, onFileMenu }) {
   const files = Array.isArray(details?.files) ? details.files : [];
   const message = stash.message.replace(/^(WIP on|On) [^:]+:\s*/, '');
   const branch = /^(?:WIP on|On) ([^:]+):/.exec(stash.message)?.[1];
+  const keyOf = (f) => `${f.untracked ? 'u' : 't'}:${f.path}`;
+  const [picked, setPicked] = useState(() => new Set());
+  const chosen = files.filter((f) => picked.has(keyOf(f)));
+  const all = files.length > 0 && chosen.length === files.length;
+  const toggle = (f) =>
+    setPicked((prev) => {
+      const next = new Set(prev);
+      const k = keyOf(f);
+      if (next.has(k)) next.delete(k);
+      else next.add(k);
+      return next;
+    });
+  const restore = async (list) => {
+    const res = await onRestoreFiles?.(list, stash);
+    if (res?.ok) setPicked(new Set());
+  };
+
   return (
     <>
       <div className="flex h-9 shrink-0 items-center gap-2 border-b border-gk-border px-3 text-xs text-gk-muted">
@@ -221,8 +244,8 @@ function StashPanel({ stash, details, busy, activeFile, onOpenFile, onAction }) 
         {branch && <span className="truncate">на ветке {branch}</span>}
       </div>
 
-      <div className="shrink-0 space-y-3 border-b border-gk-border p-3">
-        <div>
+      <div className="shrink-0 space-y-2.5 border-b border-gk-border p-3">
+        <div className="pb-0.5">
           <h2 className="select-text text-[14px] font-semibold leading-snug text-white">{message || 'Без названия'}</h2>
           {stash.date && (
             <div className="mt-1 text-xs text-gk-muted" title={fullDate(stash.date)}>
@@ -230,11 +253,22 @@ function StashPanel({ stash, details, busy, activeFile, onOpenFile, onAction }) 
             </div>
           )}
         </div>
-        <div className="grid grid-cols-3 gap-1.5">
-          <StashButton icon={ArrowDownToLine} disabled={busy} onClick={() => onAction('apply', stash)} title="Применить изменения, stash остаётся в списке">
-            Apply
+        {chosen.length > 0 && (
+          <StashButton
+            icon={ArchiveRestore}
+            accent
+            disabled={busy}
+            onClick={() => restore(chosen)}
+            title="Восстановить только выбранные файлы в рабочую папку. Stash остаётся в списке, индекс не меняется. Undo вернёт."
+          >
+            Apply Selected ({chosen.length})
           </StashButton>
-          <StashButton icon={PackageOpen} disabled={busy} onClick={() => onAction('pop', stash)} title="Применить и удалить из списка">
+        )}
+        <div className="grid grid-cols-3 gap-1.5">
+          <StashButton icon={ArrowDownToLine} disabled={busy} onClick={() => onAction('apply', stash)} title="Применить весь stash, он остаётся в списке. Чтобы взять отдельные файлы — отметьте их ниже.">
+            {chosen.length > 0 ? 'Apply all' : 'Apply'}
+          </StashButton>
+          <StashButton icon={PackageOpen} disabled={busy} onClick={() => onAction('pop', stash)} title="Применить весь stash и удалить из списка">
             Pop
           </StashButton>
           <StashButton icon={Trash2} danger disabled={busy} onClick={() => onAction('drop', stash)} title="Удалить stash (можно вернуть через Undo)">
@@ -244,31 +278,69 @@ function StashPanel({ stash, details, busy, activeFile, onOpenFile, onAction }) 
       </div>
 
       <div className="flex h-9 shrink-0 items-center gap-2 border-b border-gk-border px-3 text-xs text-gk-muted">
+        {files.length > 0 && (
+          <Checkbox
+            checked={all}
+            mixed={!all && chosen.length > 0}
+            onChange={() => setPicked(all ? new Set() : new Set(files.map(keyOf)))}
+            title={all ? 'Снять выбор' : 'Выбрать все файлы'}
+          />
+        )}
         {Array.isArray(details?.files) && (
-          <>
-            {files.length} {files.length === 1 ? 'файл' : 'файлов'}
-            {files.some((f) => f.untracked) && <span className="text-gk-dim">· включая новые файлы</span>}
-          </>
+          <span className="truncate">
+            {chosen.length > 0 ? (
+              <>
+                выбрано <span className="text-gk-text">{chosen.length}</span> из {files.length}
+              </>
+            ) : (
+              <>
+                {files.length} {plural(files.length, 'файл', 'файла', 'файлов')}
+                {files.some((f) => f.untracked) && <span className="text-gk-dim"> · включая новые</span>}
+              </>
+            )}
+          </span>
+        )}
+        {chosen.length > 0 && (
+          <button onClick={() => setPicked(new Set())} className="ml-auto shrink-0 rounded px-1.5 py-0.5 text-[11px] text-gk-dim hover:bg-gk-hover hover:text-gk-text">
+            сбросить
+          </button>
         )}
       </div>
 
       <div className="flex-1 overflow-y-auto py-1">
         {details === undefined && <FilesSkeleton />}
         {details?.error && <div className="px-3 py-2 text-xs text-gk-red">{details.error}</div>}
+        {files.length > 0 && chosen.length === 0 && (
+          <div className="px-3 pb-1 pt-0.5 text-[11px] leading-snug text-gk-dim">Отметьте файлы, чтобы восстановить только их, или наведите на файл.</div>
+        )}
         {files.map((file) => (
           <FileRow
-            key={`${file.untracked ? 'u' : 't'}:${file.path}`}
+            key={keyOf(file)}
             file={file}
             active={activeFile?.kind === 'stash' && activeFile.path === file.path}
+            selected={picked.has(keyOf(file))}
             onClick={() => onOpenFile(file, 'stash', files)}
+            onContextMenu={(e) => {
+              e.preventDefault();
+              onFileMenu?.(file, 'stash', files, e.clientX, e.clientY, { stash, restore: () => restore([file]) });
+            }}
+            lead={<Checkbox checked={picked.has(keyOf(file))} onChange={() => toggle(file)} title="Выбрать для восстановления" />}
           >
-            {file.untracked && <span className="ml-auto shrink-0 rounded bg-gk-green/10 px-1 text-[10px] text-gk-green">новый</span>}
-            {file.additions !== null && (
-              <span className={`${file.untracked ? '' : 'ml-auto'} shrink-0 font-mono text-[11px]`}>
-                <span className="text-gk-green">+{file.additions}</span>{' '}
-                <span className="text-gk-red">-{file.deletions}</span>
-              </span>
-            )}
+            <span className="ml-auto flex shrink-0 items-center gap-1.5">
+              {file.untracked && <span className="shrink-0 rounded bg-gk-green/10 px-1 text-[10px] text-gk-green">новый</span>}
+              <DiffStat file={file} />
+              <button
+                title="Восстановить этот файл в рабочую папку (Undo вернёт)"
+                disabled={busy}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  restore([file]);
+                }}
+                className="hidden h-5 w-5 shrink-0 items-center justify-center rounded text-gk-muted hover:bg-gk-bg hover:text-gk-green group-hover:flex"
+              >
+                <ArchiveRestore size={13} />
+              </button>
+            </span>
           </FileRow>
         ))}
       </div>
@@ -276,16 +348,40 @@ function StashPanel({ stash, details, busy, activeFile, onOpenFile, onAction }) 
   );
 }
 
-function StashButton({ icon: Icon, danger, children, ...props }) {
+function Checkbox({ checked, mixed, onChange, title }) {
+  const Icon = checked ? SquareCheck : mixed ? SquareMinus : Square;
+  return (
+    <button
+      type="button"
+      role="checkbox"
+      aria-checked={mixed ? 'mixed' : checked}
+      title={title}
+      onClick={(e) => {
+        e.stopPropagation();
+        onChange();
+      }}
+      onDoubleClick={(e) => e.stopPropagation()}
+      className={`flex h-4 w-4 shrink-0 items-center justify-center rounded-sm ${checked || mixed ? 'text-gk-blue' : 'text-gk-dim hover:text-gk-text'}`}
+    >
+      <Icon size={14} />
+    </button>
+  );
+}
+
+function StashButton({ icon: Icon, danger, accent, children, ...props }) {
   return (
     <button
       {...props}
-      className={`flex items-center justify-center gap-1.5 rounded-md py-1.5 text-xs ring-1 ring-gk-border transition disabled:opacity-40 ${
-        danger ? 'text-gk-red hover:bg-gk-red/10' : 'text-gk-text hover:bg-white/10'
+      className={`flex w-full min-w-0 items-center justify-center gap-1.5 rounded-md px-1 py-1.5 text-xs ring-1 transition disabled:opacity-40 ${
+        danger
+          ? 'text-gk-red ring-gk-border hover:bg-gk-red/10'
+          : accent
+            ? 'bg-gk-green/15 font-medium text-gk-green ring-gk-green/40 hover:bg-gk-green/25'
+            : 'text-gk-text ring-gk-border hover:bg-white/10'
       }`}
     >
-      <Icon size={13} />
-      {children}
+      <Icon size={13} className="shrink-0" />
+      <span className="truncate">{children}</span>
     </button>
   );
 }
@@ -306,27 +402,15 @@ function FilesSkeleton() {
 
 /* ---------- Строка WIP: настоящий стейджинг и коммит ---------- */
 
-function WipPanel({ repo, busy, activeFile, onOpenFile, onStage, onUnstage, onCommit, onOpenConflict, activeConflict, onFileMenu, guardResult, guardState, onGuardOpen, onGuardToggleRepo, onGuardSettings }) {
-  const [summary, setSummary] = useState('');
-  const [description, setDescription] = useState('');
+function WipPanel({ repo, busy, activeFile, onOpenFile, onStage, onUnstage, onCommit, onOpenConflict, activeConflict, onFileMenu, guardResult, guardState, onGuardOpen, onGuardToggleRepo, onGuardSettings, onCommitSettings }) {
 
   // Конфликтные файлы — отдельной группой сверху, их нельзя просто застейджить
   const conflictFiles = repo.wipFiles.filter((f) => f.status === 'U');
   const unstagedFiles = repo.wipFiles.filter((f) => !f.staged && f.status !== 'U');
   const stagedFiles = repo.wipFiles.filter((f) => f.staged);
-  const canCommit = !busy && stagedFiles.length > 0 && summary.trim().length > 0;
   // Файлы с находками Pre-commit Guard: путь → количество
   const guardFiles = new Map();
   for (const f of guardResult?.findings ?? []) guardFiles.set(f.file, (guardFiles.get(f.file) ?? 0) + 1);
-
-  const submit = async () => {
-    if (!canCommit) return;
-    const ok = await onCommit(summary, description);
-    if (ok) {
-      setSummary('');
-      setDescription('');
-    }
-  };
 
   return (
     <>
@@ -395,7 +479,7 @@ function WipPanel({ repo, busy, activeFile, onOpenFile, onStage, onUnstage, onCo
           actionLabel="Unstage all"
           actionClass="bg-gk-red/15 text-gk-red hover:bg-gk-red/25"
           onAction={() => onUnstage('all')}
-          onFileAction={(f) => onUnstage([f.path])}
+          onFileAction={(f) => onUnstage(f.oldPath ? [f.path, f.oldPath] : [f.path])}
           fileActionIcon={Minus}
           fileActionTitle="Unstage"
           onFileMenu={onFileMenu}
@@ -403,38 +487,17 @@ function WipPanel({ repo, busy, activeFile, onOpenFile, onStage, onUnstage, onCo
         />
       </div>
 
-      <div className="space-y-2 border-t border-gk-border p-3">
-        <div className="text-[11px] font-semibold uppercase tracking-wider text-gk-muted">Commit</div>
-        <GuardBanner result={stagedFiles.length ? guardResult : null} state={guardState ?? 'on'} onOpen={onGuardOpen} onToggleRepo={onGuardToggleRepo} onSettings={onGuardSettings} />
-        <input
-          value={summary}
-          onChange={(e) => setSummary(e.target.value)}
-          onKeyDown={(e) => e.key === 'Enter' && e.ctrlKey && submit()}
-          maxLength={200}
-          placeholder="Summary"
-          className="w-full rounded bg-gk-bg px-2.5 py-2 text-[13px] outline-none ring-1 ring-gk-border placeholder:text-gk-dim focus:ring-gk-blue"
-        />
-        <textarea
-          value={description}
-          onChange={(e) => setDescription(e.target.value)}
-          onKeyDown={(e) => e.key === 'Enter' && e.ctrlKey && submit()}
-          rows={3}
-          placeholder="Description"
-          className="w-full resize-none rounded bg-gk-bg px-2.5 py-2 text-[13px] outline-none ring-1 ring-gk-border placeholder:text-gk-dim focus:ring-gk-blue"
-        />
-        <button
-          onClick={submit}
-          disabled={!canCommit}
-          title="Ctrl+Enter"
-          className="w-full rounded py-2 text-[13px] font-semibold transition-colors enabled:bg-gk-green enabled:text-gk-ink enabled:shadow-lg enabled:shadow-gk-green/20 enabled:hover:brightness-110 disabled:bg-gk-hover disabled:text-gk-dim"
-        >
-          {stagedFiles.length === 0
-            ? 'Stage files/changes to commit'
-            : !summary.trim()
-              ? 'Введите сообщение коммита'
-              : `Commit changes to ${stagedFiles.length} file${stagedFiles.length > 1 ? 's' : ''}`}
-        </button>
-      </div>
+      <CommitForm
+        repoPath={repo.path}
+        branch={repo.currentBranch}
+        stagedFiles={stagedFiles}
+        busy={busy}
+        onCommit={onCommit}
+        onOpenSettings={onCommitSettings}
+        banner={
+          <GuardBanner result={stagedFiles.length ? guardResult : null} state={guardState ?? 'on'} onOpen={onGuardOpen} onToggleRepo={onGuardToggleRepo} onSettings={onGuardSettings} />
+        }
+      />
     </>
   );
 }
@@ -484,23 +547,26 @@ function FileGroup({
               onFileMenu?.(file, kind, files, e.clientX, e.clientY);
             }}
           >
-            {flagged?.get(file.path) && (
-              <span title={`Pre-commit Guard: ${flagged.get(file.path)} — см. предупреждение над кнопкой Commit`} className="ml-auto shrink-0 group-hover:hidden">
-                <AlertTriangle size={12} className="text-gk-yellow" />
-              </span>
-            )}
-            <button
-              title={fileActionTitle}
-              disabled={busy}
-              onClick={(e) => {
-                e.stopPropagation();
-                onFileAction(file);
-              }}
-              onDoubleClick={(e) => e.stopPropagation()}
-              className="ml-auto hidden h-5 w-5 shrink-0 items-center justify-center rounded text-gk-muted hover:bg-gk-bg hover:text-gk-text group-hover:flex"
-            >
-              <Icon size={13} />
-            </button>
+            <span className="ml-auto flex shrink-0 items-center gap-1.5">
+              {flagged?.get(file.path) && (
+                <span title={`Pre-commit Guard: ${flagged.get(file.path)} — см. предупреждение над кнопкой Commit`} className="shrink-0">
+                  <AlertTriangle size={12} className="text-gk-yellow" />
+                </span>
+              )}
+              <DiffStat file={file} />
+              <button
+                title={fileActionTitle}
+                disabled={busy}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onFileAction(file);
+                }}
+                onDoubleClick={(e) => e.stopPropagation()}
+                className="hidden h-5 w-5 shrink-0 items-center justify-center rounded text-gk-muted hover:bg-gk-bg hover:text-gk-text group-hover:flex"
+              >
+                <Icon size={13} />
+              </button>
+            </span>
           </FileRow>
         ))}
       </div>
@@ -510,26 +576,78 @@ function FileGroup({
 
 /* ---------- Общие мелочи ---------- */
 
-function FileRow({ file, tree, active, children, ...props }) {
+function FileRow({ file, tree, active, selected, lead, children, ...props }) {
   const parts = file.path.split('/');
   const name = parts.pop();
   const dir = parts.join('/');
+  const renamed = Boolean(file.oldPath && file.oldPath !== file.path);
+  const title = renamed
+    ? `${file.oldPath} → ${file.path}\n${file.moved ? 'Перенесён без изменений содержимого' : 'Перенесён и изменён'}`
+    : file.path;
   return (
     <div
       {...props}
-      title={file.oldPath ? `${file.oldPath} → ${file.path}` : file.path}
+      title={title}
       className={`group flex h-7 cursor-pointer items-center gap-2 px-3 text-[13px] ${
-        active ? 'bg-gk-blue/20' : 'hover:bg-gk-hover'
+        active ? 'bg-gk-blue/20' : selected ? 'bg-gk-blue/[0.08] hover:bg-gk-hover' : 'hover:bg-gk-hover'
       }`}
       style={tree ? { paddingLeft: 12 + parts.length * 12 } : undefined}
     >
+      {lead}
       <StatusBadge status={file.status} />
-      <span className="min-w-0 truncate">
-        {!tree && dir && <span className="text-gk-muted">{dir}/</span>}
-        <span className="text-gk-text">{name}</span>
-      </span>
+      {renamed ? (
+        <RenamedPath from={file.oldPath} to={file.path} moved={file.moved} />
+      ) : (
+        <span className="min-w-0 truncate">
+          {!tree && dir && <span className="text-gk-muted">{dir}/</span>}
+          <span className="text-gk-text">{name}</span>
+        </span>
+      )}
       {children}
     </div>
+  );
+}
+
+// «старый → новый»: общая начальная часть пути пишется один раз, отличающаяся — по обе стороны стрелки
+function RenamedPath({ from, to, moved }) {
+  const a = from.split('/');
+  const b = to.split('/');
+  let common = 0;
+  while (common < a.length - 1 && common < b.length - 1 && a[common] === b[common]) common++;
+  const prefix = a.slice(0, common).join('/');
+  const oldRest = a.slice(common).join('/');
+  const newRest = b.slice(common).join('/');
+  return (
+    <span className={`min-w-0 truncate ${moved ? 'opacity-70' : ''}`}>
+      {prefix && <span className="text-gk-muted">{prefix}/</span>}
+      <span className="text-gk-muted line-through decoration-gk-dim/60">{oldRest}</span>
+      <ArrowRight size={11} className="mx-1 inline-block align-[-1px] text-gk-blue" />
+      <span className={moved ? 'italic text-gk-muted' : 'text-gk-text'}>{newRest}</span>
+    </span>
+  );
+}
+
+/** Счётчики +X −Y; чистый перенос — метка moved; бинарный — bin */
+export function DiffStat({ file }) {
+  if (file.additions === undefined) return null;
+  if (file.moved) {
+    return (
+      <span title="Файл только перенесён или переименован — содержимое не менялось" className="shrink-0 rounded bg-gk-blue/10 px-1 text-[10px] font-medium text-gk-blue/90">
+        moved
+      </span>
+    );
+  }
+  if (file.additions === null) {
+    return (
+      <span title="Бинарный или слишком большой файл — строки не считаются" className="shrink-0 text-[11px] text-gk-dim">
+        bin
+      </span>
+    );
+  }
+  return (
+    <span className="shrink-0 font-mono text-[11px]">
+      <span className="text-gk-green">+{file.additions}</span> <span className="text-gk-red">-{file.deletions}</span>
+    </span>
   );
 }
 

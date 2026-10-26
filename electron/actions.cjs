@@ -537,6 +537,51 @@ async function deleteBranch(cwd, { name, force = false }) {
   return { name, hash };
 }
 
+/* =================== Удаление ветки на сервере =================== */
+
+/**
+ * git push <remote> --delete <branch>. Перед удалением запоминаем, на каком коммите была ветка, —
+ * Undo публикует её обратно на тот же коммит.
+ */
+async function deleteRemoteBranch(cwd, { remote, branch }) {
+  if (typeof remote !== 'string' || !remote || remote.startsWith('-') || typeof branch !== 'string' || !branch || branch.startsWith('-')) {
+    throw new GitError('Не указана ветка', { code: 'BAD_ARGS' });
+  }
+  const state = await currentState(cwd);
+  if (!state.remotes.includes(remote)) throw new GitError(`Remote «${remote}» не найден`, { code: 'NO_REMOTE' });
+  // Узнаём реальное состояние сервера: ветку могли уже удалить или передвинуть
+  const out = await net(cwd, ['ls-remote', '--heads', remote, `refs/heads/${branch}`]);
+  const line = out.split('\n').find((l) => l.split('\t')[1] === `refs/heads/${branch}`);
+  if (!line) {
+    await git(cwd, ['update-ref', '-d', `refs/remotes/${remote}/${branch}`]).catch(() => {});
+    throw new GitError(`Ветки ${branch} уже нет на ${remote}`, { code: 'NOT_FOUND_REF', hint: 'Её удалили раньше — список веток обновлён.' });
+  }
+  const hash = line.split('\t')[0].trim();
+  try {
+    await net(cwd, ['push', '--porcelain', remote, '--delete', `refs/heads/${branch}`]);
+  } catch (error) {
+    const text = `${error.details ?? ''}\n${error.message ?? ''}`;
+    if (/refusing to delete the current branch|deletion of the current branch prohibited|default branch/i.test(text)) {
+      throw new GitError(`Нельзя удалить ${branch}: это основная ветка репозитория на сервере`, {
+        code: 'DEFAULT_BRANCH',
+        hint: 'Сначала смените ветку по умолчанию в настройках проекта на GitLab/GitHub.',
+        details: error.details,
+      });
+    }
+    if (/protected|only delete protected branches|GH006|cannot delete/i.test(text)) {
+      throw new GitError(`Ветка ${branch} защищена на сервере — удалить её нельзя`, {
+        code: 'PROTECTED',
+        hint: 'Снимите защиту ветки в настройках проекта (Settings → Repository → Protected branches) или удалите её в веб-интерфейсе.',
+        details: error.details,
+      });
+    }
+    throw error;
+  }
+  await git(cwd, ['update-ref', '-d', `refs/remotes/${remote}/${branch}`]).catch(() => {});
+  const tracking = state.refs.localBranches.filter((b) => b.upstream === `${remote}/${branch}`).map((b) => b.name);
+  return { remote, branch, hash, tracking };
+}
+
 async function cherryPick(cwd, { hash }) {
   requireHash(hash);
   const state = await currentState(cwd);
@@ -974,6 +1019,18 @@ const HANDLERS = {
       await git(cwd, ['branch', '-D', e.name]);
     },
   },
+  deleteRemoteBranch: {
+    async undo(cwd, e) {
+      if (!e.hash) throw new GitError('Не известно, на каком коммите была ветка', { code: 'HISTORY_STALE' });
+      const have = await git(cwd, ['cat-file', '-e', `${e.hash}^{commit}`]).then(() => true, () => false);
+      if (!have) throw new GitError('Коммита ветки нет локально — вернуть на сервер нельзя', { code: 'HISTORY_STALE', hint: 'Сделайте fetch у коллеги или восстановите ветку на сервере.' });
+      await net(cwd, ['push', '--porcelain', e.remote, `${e.hash}:refs/heads/${e.branch}`]);
+      await git(cwd, ['update-ref', `refs/remotes/${e.remote}/${e.branch}`, e.hash]);
+    },
+    async redo(cwd, e) {
+      await deleteRemoteBranch(cwd, { remote: e.remote, branch: e.branch });
+    },
+  },
   stash: {
     async undo(cwd, e) {
       const top = (await git(cwd, ['rev-parse', '--verify', '--quiet', 'stash@{0}']).catch(() => '')).trim();
@@ -1112,6 +1169,11 @@ const ACTIONS = {
     record(cwd, { type: 'deleteTag', label: `Удаление тега ${res.name}`, ...res });
     return res;
   },
+  async deleteRemoteBranch(cwd, p) {
+    const res = await deleteRemoteBranch(cwd, p);
+    record(cwd, { type: 'deleteRemoteBranch', label: `Удаление ${res.remote}/${res.branch} с сервера`, ...res });
+    return res;
+  },
   async deleteBranch(cwd, p) {
     const res = await deleteBranch(cwd, p);
     record(cwd, { type: 'deleteBranch', label: `Удаление ветки ${res.name}`, ...res });
@@ -1161,9 +1223,16 @@ const ACTIONS = {
     else historyFor(cwd).redo = [];
     return { path: res.path, deleted: res.deleted, side: res.side, undoable: Boolean(res.snapshot) };
   },
+  async restoreFromStash(cwd, p) {
+    const res = await restore.restoreFromStash(cwd, p);
+    if (res.snapshots.length) {
+      record(cwd, { type: 'fileSnapshot', label: `Из ${p.id ?? 'stash'}: ${res.changed} ${res.changed === 1 ? 'файл' : 'файлов'}`, snapshots: res.snapshots });
+    }
+    return { files: res.files, changed: res.changed, undoable: res.complete };
+  },
   async applyHunks(cwd, p) {
     const res = await restore.applyHunks(cwd, p);
-    const labels = { revert: 'Откат фрагмента коммита', discard: 'Удаление правок' };
+    const labels = { revert: 'Откат фрагмента коммита', discard: 'Удаление правок', apply: 'Фрагмент из stash' };
     if (res.snapshot) record(cwd, { type: 'fileSnapshot', label: `${labels[res.op]} в ${res.path}`, snapshots: [res.snapshot] });
     else if (labels[res.op]) historyFor(cwd).redo = [];
     return { op: res.op, path: res.path, hunks: res.hunks, total: res.total, undoable: Boolean(res.snapshot) };

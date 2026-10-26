@@ -68,6 +68,70 @@ async function restoreFile(cwd, { hash, path: file, side = 'after' }) {
   return { path: file, source: source ?? EMPTY_TREE, side, deleted: !present, snapshot: snap };
 }
 
+/* ---------------- Отдельные файлы из stash ---------------- */
+
+/**
+ * Восстановить выбранные файлы из stash в рабочую папку — без применения всего stash.
+ * files: [{ path, oldPath?, status, untracked? }] — как в списке файлов stash.
+ * Отслеживаемые файлы берутся из самого stash, новые (--include-untracked) — из его третьего родителя.
+ * Индекс не трогаем: как и stash apply, изменения появляются в Unstaged.
+ */
+async function restoreFromStash(cwd, { hash, files }) {
+  requireHash(hash);
+  if (!Array.isArray(files) || files.length === 0) throw new GitError('Не выбраны файлы', { code: 'BAD_ARGS' });
+  const root = await resolveRepoRoot(cwd);
+  const parents = (await git(root, ['rev-list', '--parents', '-n', '1', hash])).trim().split(' ').slice(1);
+  if (parents.length < 2) throw new GitError('Это не stash', { code: 'BAD_ARGS' });
+  const untrackedCommit = parents[2] ?? null;
+
+  // Что сделать с каждым путём: взять из источника или удалить
+  const plan = new Map(); // path -> { source } | { remove: true }
+  for (const f of files) {
+    if (!f || typeof f.path !== 'string') throw new GitError('Некорректный файл', { code: 'BAD_ARGS' });
+    safeRelative(root, f.path);
+    if (f.status === 'D') plan.set(f.path, { remove: true });
+    else {
+      const source = f.untracked ? untrackedCommit : hash;
+      if (!source) throw new GitError(`Файла ${f.path} нет в stash`, { code: 'NOT_FOUND' });
+      plan.set(f.path, { source });
+    }
+    if (f.oldPath && f.oldPath !== f.path) {
+      safeRelative(root, f.oldPath);
+      if (!plan.has(f.oldPath)) plan.set(f.oldPath, { remove: true });
+    }
+  }
+
+  const before = new Map();
+  for (const file of plan.keys()) before.set(file, readFileOrNull(safeRelative(root, file)));
+
+  // Сначала проверяем, что всё есть в stash, — чтобы не применить половину
+  const bySource = new Map();
+  for (const [file, step] of plan) {
+    if (!step.source) continue;
+    if (!(await existsIn(root, step.source, file))) throw new GitError(`Файла ${file} нет в stash`, { code: 'NOT_FOUND' });
+    if (!bySource.has(step.source)) bySource.set(step.source, []);
+    bySource.get(step.source).push(file);
+  }
+  for (const [source, list] of bySource) {
+    for (let i = 0; i < list.length; i += 100) {
+      await git(root, ['restore', `--source=${source}`, '--worktree', '--', ...list.slice(i, i + 100)]);
+    }
+  }
+  for (const [file, step] of plan) if (step.remove) fs.rmSync(safeRelative(root, file), { force: true });
+
+  const snapshots = [];
+  let changed = 0;
+  for (const [file, prev] of before) {
+    const snap = snapshot(root, file, prev);
+    const after = readFileOrNull(safeRelative(root, file));
+    const same = prev === null ? after === null : after !== null && prev.equals(after);
+    if (!same) changed++;
+    if (snap && !same) snapshots.push(snap);
+  }
+  if (changed === 0) throw new GitError('Эти файлы в рабочей папке уже такие же, как в stash', { code: 'UP_TO_DATE' });
+  return { files: files.length, changed, snapshots, complete: snapshots.length === changed };
+}
+
 /* ---------------- Фрагменты (hunks) ---------------- */
 
 // Заголовок фрагмента без описания функции: «@@ -10,4 +10,6 @@»
@@ -127,6 +191,8 @@ const OPS = {
   revert: { modes: ['commit'], args: ['-R'], worktree: true },
   // Выбросить незакоммиченный фрагмент
   discard: { modes: ['unstaged'], args: ['-R'], worktree: true },
+  // Применить фрагмент из stash (или коммита) к рабочей папке
+  apply: { modes: ['commit'], args: [], worktree: true },
   // Добавить фрагмент в индекс / убрать из индекса
   stage: { modes: ['unstaged'], args: ['--cached'], worktree: false },
   unstage: { modes: ['staged'], args: ['-R', '--cached'], worktree: false },
@@ -167,13 +233,25 @@ async function applyHunks(cwd, { op, mode, hash, path: file, oldPath, hunks: wan
   if (spec.worktree && !fs.existsSync(full)) {
     throw new GitError('Файла нет в рабочей папке', {
       code: 'NOT_FOUND',
-      hint: op === 'revert' ? 'Используйте «Вернуть файл к версии до этого коммита» — он создаст файл заново.' : null,
+      hint:
+        op === 'revert'
+          ? 'Используйте «Вернуть файл к версии до этого коммита» — он создаст файл заново.'
+          : op === 'apply'
+            ? 'Восстановите файл из stash целиком.'
+            : null,
     });
   }
   const before = spec.worktree ? readFileOrNull(full) : null;
   try {
     await applyPatch(root, buildPatch(file, chosen), spec.args);
   } catch (error) {
+    if (op === 'apply') {
+      throw new GitError('Фрагмент не применяется: эти строки в рабочей папке уже другие', {
+        code: 'PATCH_FAILED',
+        hint: 'Восстановите файл из stash целиком (он заменит текущую версию; Undo вернёт).',
+        details: error.details,
+      });
+    }
     if (op === 'revert') {
       throw new GitError('Этот фрагмент уже изменён в рабочей папке — автоматически отменить нельзя', {
         code: 'PATCH_FAILED',
@@ -214,4 +292,4 @@ async function writeSnapshot(cwd, snap, which) {
   }
 }
 
-module.exports = { restoreFile, applyHunks, writeSnapshot, hunkKey, splitHunks };
+module.exports = { restoreFile, restoreFromStash, applyHunks, writeSnapshot, hunkKey, splitHunks };

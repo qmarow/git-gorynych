@@ -361,6 +361,7 @@ ipcMain.handle('repo:file-diff', safe((dir, params) => git.getFileDiff(dir, para
 ipcMain.handle('repo:compare', safe((dir, params) => compare.compareCommits(dir, params)));
 ipcMain.handle('repo:rebase-preview', safe((dir, params) => rebasePlan.simulate(dir, params)));
 ipcMain.handle('repo:guard-scan', safe((dir, params) => guard.scanStaged(dir, params ?? {})));
+ipcMain.handle('repo:commit-template', safe(async (dir) => git.readCommitTemplate(await git.resolveRepoRoot(dir))));
 
 // Все изменяющие и сетевые операции: checkAccess, fetch, pull, push, checkout,
 // createBranch, stash, stashPop, commit, stage, unstage, undo, redo, abort/continueOperation

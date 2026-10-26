@@ -4,6 +4,7 @@ import {
   Check,
   ChevronDown,
   ChevronRight,
+  CloudOff,
   GitBranch,
   KeyRound,
   Loader2,
@@ -301,6 +302,55 @@ export function ConfirmDialog({ title, children, confirmLabel = 'Подтвер�
       }
     >
       {children}
+    </Modal>
+  );
+}
+
+/* =================== Удаление ветки на сервере =================== */
+
+export function DeleteRemoteDialog({ remote, branch, locals = [], busy, error, onConfirm, onClose }) {
+  const close = () => !busy && onClose();
+  return (
+    <Modal
+      title="Удалить ветку с сервера"
+      icon={CloudOff}
+      iconClass="text-gk-red"
+      onClose={close}
+      footer={
+        <>
+          <Button onClick={close} disabled={busy}>
+            Отмена
+          </Button>
+          <Button variant="danger" onClick={onConfirm} disabled={busy} autoFocus>
+            {busy ? <Loader2 size={13} className="animate-spin" /> : <CloudOff size={13} />}
+            {busy ? 'Удаляем на сервере…' : 'Удалить с сервера'}
+          </Button>
+        </>
+      }
+    >
+      <div className="space-y-3 text-[13px] leading-relaxed">
+        <p>
+          Ветка <b className="font-mono font-medium text-white">{branch}</b> будет удалена на сервере{' '}
+          <b className="font-medium text-white">{remote}</b> (<code className="font-mono text-[12px] text-gk-muted">git push {remote} --delete {branch}</code>).
+        </p>
+        <div className="rounded-lg border border-gk-red/30 bg-gk-red/[0.07] px-3 py-2 text-[12.5px] text-gk-text">
+          Её больше не увидят все, кто работает с репозиторием. Открытые merge request из этой ветки закроются или станут недоступны.
+        </div>
+        <ul className="space-y-1 text-[12.5px] text-gk-muted">
+          <li>
+            {locals.length
+              ? <>Локальная ветка {locals.map((l, i) => <span key={l}>{i ? ', ' : ''}<b className="font-medium text-gk-text">{l}</b></span>)} останется у вас — её можно отправить снова (Push).</>
+              : 'Локальной копии этой ветки у вас нет.'}
+          </li>
+          <li>Undo (Ctrl+Z) опубликует ветку обратно на тот же коммит.</li>
+        </ul>
+        {error && (
+          <div className="rounded-lg border border-gk-red/40 bg-gk-red/10 px-3 py-2 text-[12.5px]">
+            <div className="font-medium text-gk-red">{error.message ?? 'Программа занята другой операцией — повторите через секунду'}</div>
+            {error.hint && <div className="mt-0.5 text-gk-muted">{error.hint}</div>}
+          </div>
+        )}
+      </div>
     </Modal>
   );
 }

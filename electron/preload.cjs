@@ -86,6 +86,8 @@ contextBridge.exposeInMainWorld('api', {
     rebasePreview: (dir, params) => ipcRenderer.invoke('repo:rebase-preview', dir, params),
     // rules: [{ id, label, pattern, flags, files, category }] — проверка staged-изменений перед коммитом
     guardScan: (dir, params) => ipcRenderer.invoke('repo:guard-scan', dir, params),
+    // git config commit.template → null | { path, body, hint, error? }
+    commitTemplate: (dir) => ipcRenderer.invoke('repo:commit-template', dir),
     action: (dir, name, payload) => ipcRenderer.invoke('repo:action', dir, name, payload),
   },
 });

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { StatusIcon, statusInfo } from './PipelineStatus.jsx';
 import { hasRefDrag, readRefDrag, startRefDrag } from '../lib/dnd.js';
+import { RefKindIcon } from './RefBadge.jsx';
 import {
   Archive,
   ArrowDown,
@@ -9,6 +10,7 @@ import {
   ChevronDown,
   ChevronRight,
   Cloud,
+  CloudOff,
   Filter,
   Folder,
   FolderOpen,
@@ -46,6 +48,7 @@ export default function Sidebar({
   dragSource,
   onDragSource,
   onDropOnBranch,
+  refActions,
 }) {
   // Перетаскивание: ветки можно тащить (на другие ветки — слить, перемотать, rebase), локальные ветки принимают
   const [dropName, setDropName] = useState(null);
@@ -88,6 +91,17 @@ export default function Sidebar({
     if (b) waiting.set(b, (waiting.get(b) ?? 0) + 1);
   }
   const remoteCount = repo.remotes.reduce((n, r) => n + r.branches.length, 0);
+  // Где какая ветка: серверные хэши и какие локальные ветки за ними следят
+  const remoteHash = new Map(repo.remotes.flatMap((r) => r.branches.map((b) => [b.fullName, b.hash])));
+  const trackedBy = new Map();
+  for (const b of repo.localBranches) if (b.upstream) trackedBy.set(b.upstream, b);
+  const syncedLocal = (b) => Boolean(b.upstream && !b.gone && remoteHash.get(b.upstream) === b.hash);
+  const menuProps = (ref) => ({
+    onContextMenu: (e) => {
+      e.preventDefault();
+      refActions?.menu?.(ref, e.clientX, e.clientY);
+    },
+  });
   const ciSystems = repo.ci ?? [];
   const ciCount = ciSystems.reduce((n, s) => n + s.files.length, 0);
 
@@ -128,10 +142,17 @@ export default function Sidebar({
                 depth={depth}
                 {...dragProps({ kind: 'branch', name: branch.name, hash: branch.hash, label: branch.name })}
                 {...dropProps(branch)}
+                {...menuProps({ type: 'local', name: branch.name })}
                 dropTarget={dropName === branch.name}
-                title={`${branch.upstream ? `${branch.name} → ${branch.upstream}` : branch.name}${
-                  branch.gone ? ' (remote-ветка удалена)' : ''
-                }\nДвойной клик — checkout`}
+                title={`${branch.name}\n${
+                  !branch.upstream
+                    ? 'Только у вас — на сервер ещё не отправлена'
+                    : branch.gone
+                      ? `${branch.upstream} удалена на сервере`
+                      : syncedLocal(branch)
+                        ? `Синхронизирована с ${branch.upstream}`
+                        : `Следит за ${branch.upstream}${branch.ahead ? ` · впереди на ${branch.ahead}` : ''}${branch.behind ? ` · позади на ${branch.behind}` : ''}`
+                }\nДвойной клик — checkout, правый клик — действия`}
                 current={branch.name === repo.currentBranch}
                 selected={branch.hash === selectedHash}
                 onClick={() => onSelect(branch.hash)}
@@ -140,7 +161,13 @@ export default function Sidebar({
                 <span className="w-3.5 shrink-0">
                   {branch.name === repo.currentBranch && <Check size={13} className="text-gk-green" />}
                 </span>
+                <RefKindIcon local remote={syncedLocal(branch)} size={12} className={syncedLocal(branch) ? 'text-gk-muted' : 'text-gk-dim'} />
                 <span className="truncate">{label}</span>
+                {branch.gone && (
+                  <span title="Ветка на сервере удалена" className="shrink-0 text-gk-red/70">
+                    <CloudOff size={11} />
+                  </span>
+                )}
                 <span className="ml-auto flex gap-1.5 text-[11px] text-gk-muted">
                   {waiting.has(branch.name) && (
                     <span title="Здесь ждут спрятанные правки — вернутся, когда вы переключитесь на эту ветку" className="flex items-center text-gk-yellow/90">
@@ -173,6 +200,9 @@ export default function Sidebar({
               remote={remote}
               match={match}
               dragProps={dragProps}
+              menuProps={menuProps}
+              trackedBy={trackedBy}
+              onDeleteRemote={refActions?.deleteRemote}
               folders={folders}
               filtering={Boolean(filter)}
               selectedHash={selectedHash}
@@ -352,7 +382,7 @@ function ScrollArea({ children }) {
   );
 }
 
-function RemoteGroup({ remote, match, dragProps, folders, filtering, selectedHash, onSelect, onCheckout }) {
+function RemoteGroup({ remote, match, dragProps, menuProps, trackedBy, onDeleteRemote, folders, filtering, selectedHash, onSelect, onCheckout }) {
   const key = `remote:${remote.name}`;
   const open = filtering || !folders.isCollapsed(key);
   return (
@@ -375,12 +405,38 @@ function RemoteGroup({ remote, match, dragProps, folders, filtering, selectedHas
               key={branch.fullName}
               depth={depth}
               {...dragProps({ kind: 'remote', name: branch.fullName, hash: branch.hash, label: branch.fullName })}
-              title={`${branch.fullName}\nДвойной клик — checkout (создаст локальную ветку)`}
+              {...menuProps({ type: 'remote', name: branch.fullName })}
+              title={`${branch.fullName} — на сервере${
+                trackedBy.get(branch.fullName)
+                  ? trackedBy.get(branch.fullName).hash === branch.hash
+                    ? `\nЛокальная ${trackedBy.get(branch.fullName).name} на том же коммите`
+                    : `\nЛокальная ${trackedBy.get(branch.fullName).name} отличается`
+                  : '\nЛокальной копии нет'
+              }\nДвойной клик — checkout, правый клик — действия`}
               selected={branch.hash === selectedHash}
               onClick={() => onSelect(branch.hash)}
               onDoubleClick={() => onCheckout({ remoteBranch: { name: branch.name, fullName: branch.fullName } })}
             >
+              <RefKindIcon
+                remote
+                local={trackedBy.get(branch.fullName)?.hash === branch.hash}
+                size={12}
+                className="text-gk-blue/80"
+              />
               <span className="truncate">{label}</span>
+              {onDeleteRemote && (
+                <button
+                  title={`Удалить ${branch.fullName} с сервера…`}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onDeleteRemote(branch.fullName);
+                  }}
+                  onDoubleClick={(e) => e.stopPropagation()}
+                  className="ml-auto hidden shrink-0 rounded p-0.5 text-gk-dim hover:bg-gk-red/15 hover:text-gk-red group-hover:flex"
+                >
+                  <CloudOff size={12} />
+                </button>
+              )}
             </Item>
           )}
         />
@@ -490,7 +546,7 @@ function Item({ children, current, selected, indent, depth, dropTarget, ...props
     <div
       {...props}
       style={depth !== undefined ? { paddingLeft: 24 + depth * 20 } : undefined}
-      className={`flex h-7 cursor-pointer items-center gap-2 pr-3 text-[13px] transition-colors ${
+      className={`group flex h-7 cursor-pointer items-center gap-2 pr-3 text-[13px] transition-colors ${
         depth !== undefined ? '' : indent ? 'pl-12' : 'pl-6'
       } ${state}`}
     >

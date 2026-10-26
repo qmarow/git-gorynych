@@ -1,12 +1,14 @@
 import { useEffect, useState } from 'react';
-import { Archive, Check, GitBranch, Image as ImageIcon, Loader2, Palette, Plug, RotateCcw, ShieldCheck, Sparkles, X } from 'lucide-react';
+import { Archive, Check, GitBranch, GitCommitHorizontal, Image as ImageIcon, Loader2, Palette, Plug, RotateCcw, ShieldCheck, Sparkles, X } from 'lucide-react';
 import { BACKGROUNDS, THEMES, themeById } from '../lib/appearance.js';
 import { TokenSetup } from './TokenSetup.jsx';
 import { GuardSettings, Switch } from './Guard.jsx';
+import { CommitSettings } from './CommitForm.jsx';
 
 const TABS = [
   { id: 'appearance', label: 'Оформление', icon: Palette },
   { id: 'branches', label: 'Ветки', icon: GitBranch },
+  { id: 'commit', label: 'Сообщение коммита', icon: GitCommitHorizontal },
   { id: 'guard', label: 'Проверка перед коммитом', icon: ShieldCheck },
   { id: 'integrations', label: 'Подключения', icon: Plug },
 ];
@@ -85,6 +87,8 @@ export default function SettingsDialog({
               <AppearanceTab appearance={appearance} meta={meta} imageUrl={imageUrl} onChange={onChange} onPickImage={onPickImage} />
             ) : tab === 'branches' ? (
               <BranchesTab workflow={workflow} onChange={onWorkflowChange} />
+            ) : tab === 'commit' ? (
+              <CommitSettings repoPath={repoPath} branch={repo?.currentBranch} />
             ) : tab === 'guard' ? (
               <GuardSettings cfg={guard} onChange={onGuardChange} repoPath={repoPath} />
             ) : (

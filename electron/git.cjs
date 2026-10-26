@@ -321,7 +321,65 @@ async function readCommits(cwd, refsInfo, limit) {
 
 const STATUS_MAP = { M: 'M', A: 'A', D: 'D', R: 'R', C: 'A', T: 'M', U: 'U', '?': 'A' };
 
-async function readStatus(cwd) {
+// --numstat -z: "add\tdel\tpath\0" или для переименования "add\tdel\t\0old\0new\0"
+function parseNumstat(text) {
+  const stats = new Map();
+  const nm = text.split('\0');
+  for (let i = 0; i < nm.length; i++) {
+    const entry = nm[i];
+    if (!entry) continue;
+    const [add, del, p] = entry.split('\t');
+    let filePath = p;
+    let oldPath = null;
+    if (p === '' || p === undefined) {
+      oldPath = nm[++i];
+      filePath = nm[++i];
+    }
+    stats.set(filePath, {
+      additions: add === '-' ? null : Number(add),
+      deletions: del === '-' ? null : Number(del),
+      oldPath,
+    });
+  }
+  return stats;
+}
+
+async function diffNumstat(cwd, extra) {
+  const args = ['diff', ...extra, '--numstat', '-z', '-M', '--no-color', '--no-ext-diff'];
+  try {
+    return parseNumstat(await git(cwd, [...args, '--ignore-cr-at-eol']));
+  } catch (error) {
+    if (/ignore-cr-at-eol|unknown option/i.test(error.details || error.message)) {
+      return parseNumstat(await git(cwd, args).catch(() => ''));
+    }
+    return new Map();
+  }
+}
+
+const MAX_COUNTED_UNTRACKED = 400;
+const MAX_COUNT_BYTES = 1024 * 1024;
+
+// Новый файл: все его строки — «добавленные». Бинарные и слишком большие — без счётчика.
+async function countLines(full) {
+  try {
+    const st = await fs.promises.stat(full);
+    if (!st.isFile() || st.size > MAX_COUNT_BYTES) return null;
+    const buf = await fs.promises.readFile(full);
+    if (buf.subarray(0, 8000).includes(0)) return null;
+    if (buf.length === 0) return 0;
+    let n = 0;
+    for (const b of buf) if (b === 10) n++;
+    return buf[buf.length - 1] === 10 ? n : n + 1;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Изменения в рабочей папке и индексе.
+ * stats: true — ещё и счётчики добавленных/удалённых строк (+X −Y) и переносы файлов (oldPath, moved).
+ */
+async function readStatus(cwd, { stats = false } = {}) {
   const out = await git(cwd, ['status', '--porcelain=v1', '-z', '--untracked-files=all']);
   const parts = out.split('\0');
   const files = [];
@@ -332,7 +390,7 @@ async function readStatus(cwd) {
     const x = entry[0];
     const y = entry[1];
     const filePath = entry.slice(3);
-    if (x === 'R' || x === 'C') i++; // следующее поле — исходный путь
+    const oldPath = x === 'R' || x === 'C' ? parts[++i] : null; // следующее поле — исходный путь
 
     const conflicted = x === 'U' || y === 'U' || (x === 'A' && y === 'A') || (x === 'D' && y === 'D');
     if (conflicted) {
@@ -343,9 +401,37 @@ async function readStatus(cwd) {
       files.push({ path: filePath, status: 'A', staged: false, untracked: true });
       continue;
     }
-    if (x !== ' ') files.push({ path: filePath, status: STATUS_MAP[x] ?? 'M', staged: true });
+    if (x !== ' ') files.push({ path: filePath, status: STATUS_MAP[x] ?? 'M', staged: true, ...(x === 'R' && oldPath ? { oldPath } : {}) });
     if (y !== ' ') files.push({ path: filePath, status: STATUS_MAP[y] ?? 'M', staged: false });
   }
+  if (!stats || files.length === 0) return files;
+
+  const [unstagedStats, stagedStats] = await Promise.all([diffNumstat(cwd, []), diffNumstat(cwd, ['--cached'])]);
+  let counted = 0;
+  await Promise.all(
+    files.map(async (f) => {
+      if (f.status === 'U') return;
+      if (f.untracked) {
+        const n = counted++ < MAX_COUNTED_UNTRACKED ? await countLines(path.join(cwd, f.path)) : null;
+        f.additions = n;
+        f.deletions = n === null ? null : 0;
+        return;
+      }
+      const st = (f.staged ? stagedStats : unstagedStats).get(f.path);
+      if (!st) {
+        f.additions = null;
+        f.deletions = null;
+        return;
+      }
+      f.additions = st.additions;
+      f.deletions = st.deletions;
+      if (st.oldPath && !f.oldPath) {
+        f.oldPath = st.oldPath;
+        f.status = 'R';
+      }
+      if (f.oldPath) f.moved = st.additions === 0 && st.deletions === 0;
+    }),
+  );
   return files;
 }
 
@@ -377,7 +463,7 @@ async function detectOperation(cwd) {
 // Только статус файлов — для мгновенной реакции на правки, без перечитывания истории
 async function quickStatus(dir) {
   const root = await resolveRepoRoot(dir);
-  const [wipFiles, operation] = await Promise.all([readStatus(root), detectOperation(root)]);
+  const [wipFiles, operation] = await Promise.all([readStatus(root, { stats: true }), detectOperation(root)]);
   return { path: root, wipFiles, operation };
 }
 
@@ -388,7 +474,7 @@ async function loadRepository(dir, { limit = DEFAULT_LIMIT } = {}) {
   const refsInfo = await readRefs(root);
   const [commits, wipFiles, headHash, operation] = await Promise.all([
     readCommits(root, refsInfo, limit),
-    readStatus(root),
+    readStatus(root, { stats: true }),
     git(root, ['rev-parse', '--verify', '--quiet', 'HEAD']).then((s) => s.trim()).catch(() => null),
     detectOperation(root),
   ]);
@@ -432,31 +518,21 @@ async function getCommitFiles(dir, hash, parentHash) {
     if (letter === 'R' || letter === 'C') {
       const oldPath = ns[++i];
       const newPath = ns[++i];
-      files.push({ path: newPath, oldPath, status: letter === 'R' ? 'R' : 'A' });
+      const similarity = Number(code.slice(1)) || null;
+      files.push(letter === 'R' ? { path: newPath, oldPath, status: 'R', similarity } : { path: newPath, status: 'A' });
     } else {
       files.push({ path: ns[++i], status: STATUS_MAP[letter] ?? 'M' });
     }
   }
 
-  // --numstat -z: "add\tdel\tpath\0" или "add\tdel\t\0old\0new\0"
-  const stats = new Map();
-  const nm = numstat.split('\0');
-  for (let i = 0; i < nm.length; i++) {
-    const entry = nm[i];
-    if (!entry) continue;
-    const [add, del, p] = entry.split('\t');
-    let filePath = p;
-    if (p === '' || p === undefined) {
-      i++; // old
-      filePath = nm[++i]; // new
-    }
-    stats.set(filePath, {
-      additions: add === '-' ? null : Number(add),
-      deletions: del === '-' ? null : Number(del),
-    });
-  }
+  const stats = parseNumstat(numstat);
 
-  return files.map((f) => ({ ...f, ...(stats.get(f.path) ?? { additions: null, deletions: null }) }));
+  return files.map((f) => {
+    const st = stats.get(f.path) ?? { additions: null, deletions: null };
+    const res = { ...f, additions: st.additions, deletions: st.deletions };
+    if (f.oldPath) res.moved = f.similarity === 100 || (st.additions === 0 && st.deletions === 0);
+    return res;
+  });
 }
 
 /* ---------------- Содержимое stash ---------------- */
@@ -665,8 +741,63 @@ async function commit(dir, summary, description) {
   return { hash, parent, summary: summary.trim() };
 }
 
+/**
+ * Шаблон сообщения из git config commit.template (как `git commit` без -m).
+ * Строки-комментарии (core.commentChar, по умолчанию «#») Git сам вырезает при коммите
+ * из редактора, но с -m оставил бы — поэтому отдаём их отдельно, как подсказку.
+ * → null, если шаблон не задан; { path, body, hint, error? }
+ */
+const TEMPLATE_MAX = 64 * 1024;
+
+function cleanCommitTemplate(text, commentChar = '#') {
+  const body = [];
+  const hint = [];
+  for (const line of String(text).replace(/^﻿/, '').split(/\r?\n/)) {
+    if (commentChar && line.startsWith(commentChar)) hint.push(line.slice(commentChar.length).replace(/^ /, ''));
+    else body.push(line.replace(/\s+$/, ''));
+  }
+  const trimLines = (arr) => {
+    let a = 0;
+    let b = arr.length;
+    while (a < b && !arr[a].trim()) a++;
+    while (b > a && !arr[b - 1].trim()) b--;
+    return arr.slice(a, b).join('\n');
+  };
+  return { body: trimLines(body), hint: trimLines(hint) };
+}
+
+async function readCommitTemplate(cwd) {
+  let file = '';
+  try {
+    file = (await git(cwd, ['config', '--path', '--get', 'commit.template'])).trim();
+  } catch {
+    return null; // не задан (git config выходит с кодом 1)
+  }
+  if (!file) return null;
+  const abs = path.isAbsolute(file) ? file : path.resolve(cwd, file);
+  let raw;
+  try {
+    const st = fs.statSync(abs);
+    if (!st.isFile()) throw new Error('not a file');
+    if (st.size > TEMPLATE_MAX) return { path: file, body: '', hint: '', error: 'Файл шаблона слишком большой (больше 64 КБ)' };
+    raw = fs.readFileSync(abs, 'utf8');
+  } catch {
+    return { path: file, body: '', hint: '', error: `Файл шаблона не найден: ${abs}` };
+  }
+  let cc = '#';
+  try {
+    const v = (await git(cwd, ['config', '--get', 'core.commentChar'])).trim();
+    if (v && v !== 'auto') cc = v[0];
+  } catch {
+    /* по умолчанию «#» */
+  }
+  return { path: file, ...cleanCommitTemplate(raw, cc) };
+}
+
 module.exports = {
   git,
+  readCommitTemplate,
+  cleanCommitTemplate,
   gitInfo,
   hasHead,
   detectOperation,
@@ -678,6 +809,7 @@ module.exports = {
   getStashDetails,
   quickStatus,
   parseUnifiedDiff,
+  parseNumstat,
   stage,
   unstage,
   commit,
