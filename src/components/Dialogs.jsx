@@ -15,6 +15,7 @@ import {
   Tag,
   X,
 } from 'lucide-react';
+import { kb } from '../lib/platform.js';
 
 /* =================== Базовое модальное окно =================== */
 
@@ -342,7 +343,7 @@ export function DeleteRemoteDialog({ remote, branch, locals = [], busy, error, o
               ? <>Локальная ветка {locals.map((l, i) => <span key={l}>{i ? ', ' : ''}<b className="font-medium text-gk-text">{l}</b></span>)} останется у вас — её можно отправить снова (Push).</>
               : 'Локальной копии этой ветки у вас нет.'}
           </li>
-          <li>Undo (Ctrl+Z) опубликует ветку обратно на тот же коммит.</li>
+          <li>Undo ({kb('Ctrl+Z')}) опубликует ветку обратно на тот же коммит.</li>
         </ul>
         {error && (
           <div className="rounded-lg border border-gk-red/40 bg-gk-red/10 px-3 py-2 text-[12.5px]">

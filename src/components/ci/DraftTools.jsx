@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { AlertTriangle, CheckCircle2, CircleX, FileDiff, Loader2, Save, ShieldCheck, X } from 'lucide-react';
 import { UnifiedDiff } from '../DiffView.jsx';
 import { inlineHighlights } from '../../lib/inlineDiff.js';
+import { kb } from '../../lib/platform.js';
 
 const api = window.api;
 
@@ -28,7 +29,7 @@ export function DraftBar({ paths, saving, onSave, onDiscard, onDiff, onLint, lin
       <button
         onClick={onSave}
         disabled={saving}
-        title="Сохранить (Ctrl+S)"
+        title={kb('Сохранить (Ctrl+S)')}
         className="flex items-center gap-1.5 rounded-md bg-gk-green px-2.5 py-1 font-semibold text-gk-ink transition hover:brightness-110 disabled:opacity-50"
       >
         {saving ? <Loader2 size={12} className="animate-spin" /> : <Save size={12} />} Сохранить

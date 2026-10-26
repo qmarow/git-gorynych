@@ -18,6 +18,7 @@ import {
   X,
 } from 'lucide-react';
 import { FILE_STATUS, plural, relativeTime } from '../lib/format.js';
+import { isMod, kb } from '../lib/platform.js';
 
 const api = window.api;
 
@@ -237,7 +238,7 @@ export default function RebaseView({ repoPath, session, hidden, busy, onClose, o
             </span>
           )}
         </div>
-        <span className="hidden shrink-0 text-[11px] text-gk-dim xl:inline">↑↓ выбор · Alt+↑↓ двигать · P R S F D — действие</span>
+        <span className="hidden shrink-0 text-[11px] text-gk-dim xl:inline">{kb('↑↓ выбор · Alt+↑↓ двигать · P R S F D — действие')}</span>
         <button onClick={onClose} title="Закрыть без изменений (Esc)" className="rounded p-1.5 text-gk-muted hover:bg-gk-hover hover:text-gk-text">
           <X size={15} />
         </button>
@@ -331,7 +332,7 @@ export default function RebaseView({ repoPath, session, hidden, busy, onClose, o
               'План ничего не меняет'
             ) : d?.ok ? (
               <>
-                Ветка <b className="font-medium text-gk-text">{d.branch}</b> перейдёт на новую историю. Undo (Ctrl+Z) вернёт как было.
+                Ветка <b className="font-medium text-gk-text">{d.branch}</b> перейдёт на новую историю. Undo ({kb('Ctrl+Z')}) вернёт как было.
               </>
             ) : d?.conflict ? (
               'Применить автоматически нельзя — будет конфликт'
@@ -470,10 +471,10 @@ function PlanRow({
           </div>
         </div>
         <div className="flex shrink-0 flex-col opacity-0 transition-opacity group-hover:opacity-100">
-          <button title="Выше (Alt+↑)" onClick={() => onMove(-1)} className="rounded text-gk-dim hover:text-gk-text">
+          <button title={kb('Выше (Alt+↑)')} onClick={() => onMove(-1)} className="rounded text-gk-dim hover:text-gk-text">
             <ArrowUp size={12} />
           </button>
-          <button title="Ниже (Alt+↓)" onClick={() => onMove(1)} className="rounded text-gk-dim hover:text-gk-text">
+          <button title={kb('Ниже (Alt+↓)')} onClick={() => onMove(1)} className="rounded text-gk-dim hover:text-gk-text">
             <ArrowDown size={12} />
           </button>
         </div>
@@ -493,7 +494,7 @@ function PlanRow({
             value={groupMessage ?? item.message ?? ''}
             onChange={(e) => onMessage(e.target.value)}
             onKeyDown={(e) => {
-              if (e.key === 'Enter' && e.ctrlKey) onDoneEditing();
+              if (e.key === 'Enter' && isMod(e)) onDoneEditing();
               e.stopPropagation();
             }}
             rows={Math.min(8, Math.max(2, (groupMessage ?? item.message ?? '').split('\n').length + 1))}
@@ -504,7 +505,7 @@ function PlanRow({
             {!(groupMessage ?? item.message ?? '').trim() && <span className="text-gk-red">Сообщение не может быть пустым</span>}
             <div className="flex-1" />
             <button onClick={onDoneEditing} className="rounded px-2 py-0.5 text-gk-muted hover:bg-gk-hover hover:text-gk-text">
-              Готово (Ctrl+Enter)
+              Готово ({kb('Ctrl+Enter')})
             </button>
           </div>
         </div>

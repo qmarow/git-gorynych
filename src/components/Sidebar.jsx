@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { StatusIcon, statusInfo } from './PipelineStatus.jsx';
 import { hasRefDrag, readRefDrag, startRefDrag } from '../lib/dnd.js';
 import { SyncBadges } from './BranchSync.jsx';
+import { kb } from '../lib/platform.js';
 import { RefKindIcon } from './RefBadge.jsx';
 import {
   Archive,
@@ -81,6 +82,16 @@ export default function Sidebar({
     },
   });
   const [filter, setFilter] = useState('');
+  const filterRef = useRef(null);
+  // Ctrl+Alt+F (⌘⌥F на macOS) — сюда
+  useEffect(() => {
+    const focus = () => {
+      filterRef.current?.focus();
+      filterRef.current?.select();
+    };
+    window.addEventListener('gitidea:focus-filter', focus);
+    return () => window.removeEventListener('gitidea:focus-filter', focus);
+  }, []);
   const match = (name) => name.toLowerCase().includes(filter.toLowerCase());
   const folders = useFolders();
   // Правки, спрятанные «умным переключением» под именем ветки
@@ -114,7 +125,14 @@ export default function Sidebar({
           <input
             value={filter}
             onChange={(e) => setFilter(e.target.value)}
-            placeholder="Filter (Ctrl + Alt + F)"
+            ref={filterRef}
+            placeholder={kb('Фильтр веток и тегов (Ctrl+Alt+F)')}
+            onKeyDown={(e) => {
+              if (e.key === 'Escape') {
+                setFilter('');
+                e.currentTarget.blur();
+              }
+            }}
             className="w-full bg-transparent text-xs outline-none placeholder:text-gk-dim"
           />
           <button
@@ -129,7 +147,7 @@ export default function Sidebar({
       </div>
 
       <div className="flex-1 overflow-y-auto py-1">
-        <Section title="Local" icon={Laptop} count={repo.localBranches.length}>
+        <Section title="Локальные" icon={Laptop} count={repo.localBranches.length}>
           <BranchTree
             branches={repo.localBranches.filter((b) => match(b.name))}
             folderKey="local"
@@ -178,7 +196,7 @@ export default function Sidebar({
           {repo.localBranches.length === 0 && <Empty>Нет коммитов</Empty>}
         </Section>
 
-        <Section title="Remote" icon={Cloud} count={remoteCount}>
+        <Section title="На сервере" icon={Cloud} count={remoteCount}>
           {repo.remotes.map((remote) => (
             <RemoteGroup
               key={remote.name}
@@ -198,11 +216,11 @@ export default function Sidebar({
           {repo.remotes.length === 0 && <Empty>Remote не настроен</Empty>}
         </Section>
 
-        <Section title="Stashes" icon={Archive} count={repo.stashes.length}>
+        <Section title="Stash" icon={Archive} count={repo.stashes.length}>
           {repo.stashes.filter((s) => match(s.message)).map((stash) => (
             <Item
               key={stash.hash}
-              title={`${stash.id}: ${stash.message}\nКлик — посмотреть изменения, правый клик — действия`}
+              title={`${stash.id}\n${stash.message}\nКлик — посмотреть изменения, правый клик — действия`}
               selected={selectedHash === `stash:${stash.hash}`}
               onClick={() => onSelect(`stash:${stash.hash}`)}
               onContextMenu={(e) => {
@@ -227,12 +245,12 @@ export default function Sidebar({
               )}
             </Item>
           ))}
-          {repo.stashes.length === 0 && <Empty>Нет сташей</Empty>}
+          {repo.stashes.length === 0 && <Empty>Нет спрятанных изменений</Empty>}
         </Section>
 
-        <Section title="Tags" icon={Tag} count={repo.tags.length}>
+        <Section title="Теги" icon={Tag} count={repo.tags.length}>
           {repo.tags.filter((t) => match(t.name)).map((tag) => (
-            <Item key={tag.name} selected={tag.hash === selectedHash} onClick={() => onSelect(tag.hash)}>
+            <Item key={tag.name} title={`Тег ${tag.name}\n${tag.hash.slice(0, 10)}`} selected={tag.hash === selectedHash} onClick={() => onSelect(tag.hash)}>
               <Tag size={13} className="shrink-0 text-gk-muted" />
               <span className="truncate">{tag.name}</span>
             </Item>
@@ -519,7 +537,9 @@ function BranchTree({ branches, folderKey, folders, filtering, depth, isCurrent,
   );
 }
 
-function Item({ children, current, selected, indent, depth, dropTarget, ...props }) {
+// title превращается в data-tip: длинные подсказки (сообщения stash, ветки) показывает TooltipLayer —
+// с переносом строк и без обрезания краем окна
+function Item({ children, current, selected, indent, depth, dropTarget, title, ...props }) {
   const state = dropTarget
     ? 'bg-gk-green/15 text-gk-text outline-dashed outline-2 -outline-offset-2 outline-gk-green'
     : selected
@@ -530,6 +550,7 @@ function Item({ children, current, selected, indent, depth, dropTarget, ...props
   return (
     <div
       {...props}
+      data-tip={title || undefined}
       style={depth !== undefined ? { paddingLeft: 24 + depth * 20 } : undefined}
       className={`group flex h-7 cursor-pointer items-center gap-2 pr-3 text-[13px] transition-colors ${
         depth !== undefined ? '' : indent ? 'pl-12' : 'pl-6'

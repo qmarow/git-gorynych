@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { AlertTriangle, CheckCircle2, ChevronDown, ChevronRight, Info, X } from 'lucide-react';
+import { kb } from '../lib/platform.js';
 
 const STYLES = {
   success: { icon: CheckCircle2, accent: 'text-gk-green', bar: 'bg-gk-green' },
@@ -26,8 +27,8 @@ function Toast({ toast, onClose }) {
       <div className="flex items-start gap-2.5 py-2.5 pl-4 pr-2">
         <Icon size={16} className={`mt-0.5 shrink-0 ${accent}`} />
         <div className="min-w-0 flex-1 text-[13px]">
-          <div className="font-medium text-gk-text">{toast.title}</div>
-          {toast.hint && <div className="mt-0.5 text-xs leading-relaxed text-gk-muted">{toast.hint}</div>}
+          <div className="font-medium text-gk-text">{kb(toast.title)}</div>
+          {toast.hint && <div className="mt-0.5 text-xs leading-relaxed text-gk-muted">{kb(toast.hint)}</div>}
           {toast.details && (
             <>
               <button

@@ -1,5 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { ChevronRight } from 'lucide-react';
+import { kb } from '../lib/platform.js';
 
 /**
  * Контекстное меню.
@@ -105,7 +106,7 @@ function MenuRow({ item, open, onHover, onClose }) {
           {Icon && <Icon size={14} className={item.danger ? 'text-gk-red' : 'text-gk-muted'} />}
         </span>
         <span className="min-w-0 flex-1 truncate">{item.label}</span>
-        {item.hint && <span className="shrink-0 pl-3 text-[11px] text-gk-dim">{item.hint}</span>}
+        {item.hint && <span className="shrink-0 pl-3 text-[11px] text-gk-dim">{kb(item.hint)}</span>}
         {item.submenu && <ChevronRight size={13} className="shrink-0 text-gk-dim" />}
       </button>
       {open && item.submenu && !item.disabled && (

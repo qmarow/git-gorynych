@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, dialog, shell } = require('electron');
+const { app, BrowserWindow, Menu, ipcMain, dialog, shell } = require('electron');
 const fs = require('node:fs');
 const path = require('node:path');
 const os = require('node:os');
@@ -99,6 +99,8 @@ function applyWindowMaterial(appearance) {
 
 /* ---------- Окно ---------- */
 
+const IS_MAC = process.platform === 'darwin';
+
 function createWindow() {
   const appearance = readSettings().appearance ?? {};
   const material = windowMaterial(appearance);
@@ -107,7 +109,9 @@ function createWindow() {
     height: 800,
     minWidth: 960,
     minHeight: 600,
-    frame: false, // кастомный заголовок, как в GitKraken
+    // Windows/Linux — свой заголовок с кнопками окна (как в GitKraken).
+    // macOS — нативный «светофор» поверх нашего заголовка, меню — в системной строке меню
+    ...(IS_MAC ? { titleBarStyle: 'hiddenInset', trafficLightPosition: { x: 14, y: 11 } } : { frame: false }),
     backgroundColor: material ? '#00000000' : appearance.base || '#0e1117',
     ...(material ? { backgroundMaterial: material } : {}),
     show: false,
@@ -151,6 +155,90 @@ function createWindow() {
     mainWindow.loadFile(path.join(__dirname, '..', 'dist', 'index.html'));
   }
 }
+
+/* ---------- Нативное меню macOS ---------- */
+
+// Пункты (подписи, доступность, подсказки клавиш) строит интерфейс — у него вся логика и состояние.
+// Здесь из них собирается системное меню; клик отправляется обратно: menu:invoke { menu, index }.
+// Сочетания клавиш только показываются (registerAccelerator: false) — их обрабатывает сам интерфейс,
+// иначе одно нажатие срабатывало бы дважды.
+const MAC_ACCEL = { Ctrl: 'Cmd', Alt: 'Alt', Shift: 'Shift' };
+function toAccelerator(hint) {
+  if (typeof hint !== 'string' || !/^(?:(?:Ctrl|Alt|Shift)\+)*(?:[A-Za-z0-9,./]|F\d{1,2}|Tab|Enter)$/.test(hint)) return undefined;
+  if (/^Ctrl\+(?:Shift\+)?Tab$/.test(hint)) return hint; // переключение вкладок на Mac — Control+Tab
+  return hint
+    .split('+')
+    .map((k) => MAC_ACCEL[k] ?? k)
+    .join('+');
+}
+
+function buildMacMenu(model) {
+  const send = (menu, index, id = null) => mainWindow && !mainWindow.isDestroyed() && mainWindow.webContents.send('menu:invoke', { menu, index, id });
+  const fromModel = (menuName, items = []) =>
+    items.map((it, index) => {
+      if (it.separator) return { type: 'separator' };
+      if (it.header) return { label: it.header, enabled: false };
+      const accelerator = toAccelerator(it.hint);
+      return {
+        label: it.label,
+        enabled: !it.disabled,
+        ...(accelerator ? { accelerator, registerAccelerator: false } : {}),
+        click: () => send(menuName, index, it.id ?? null),
+      };
+    });
+  const m = model ?? {};
+  const template = [
+    {
+      label: app.name,
+      submenu: [
+        model ? { label: 'О программе GitIdea', click: () => send(null, -1, 'about') } : { role: 'about' },
+        { type: 'separator' },
+        { label: 'Настройки…', accelerator: 'Cmd+,', registerAccelerator: false, enabled: Boolean(model), click: () => send(null, -1, 'settings') },
+        { type: 'separator' },
+        { role: 'services' },
+        { type: 'separator' },
+        { role: 'hide', label: 'Скрыть GitIdea' },
+        { role: 'hideOthers', label: 'Скрыть остальные' },
+        { role: 'unhide', label: 'Показать все' },
+        { type: 'separator' },
+        { role: 'quit', label: 'Завершить GitIdea' },
+      ],
+    },
+    { label: 'Файл', submenu: fromModel('File', m.File) },
+    {
+      label: 'Правка',
+      submenu: [
+        ...fromModel('Edit', m.Edit),
+        { type: 'separator' },
+        // Системные пункты: без них на macOS не работают ⌘C / ⌘V / ⌘A в полях ввода
+        { role: 'cut', label: 'Вырезать' },
+        { role: 'copy', label: 'Копировать' },
+        { role: 'paste', label: 'Вставить' },
+        { role: 'selectAll', label: 'Выбрать всё' },
+      ],
+    },
+    { label: 'Вид', submenu: [...fromModel('View', m.View), { type: 'separator' }, { role: 'togglefullscreen', label: 'Полноэкранный режим' }] },
+    { label: 'Действия', submenu: fromModel('Actions', m.Actions) },
+    { role: 'windowMenu', label: 'Окно' },
+    { role: 'help', label: 'Справка', submenu: fromModel('Help', m.Help) },
+  ];
+  // Пустое подменю macOS не показывает — добавим заглушку
+  for (const t of template) if (Array.isArray(t.submenu) && t.submenu.length === 0) t.submenu.push({ label: 'Нет действий', enabled: false });
+  Menu.setApplicationMenu(Menu.buildFromTemplate(template));
+}
+
+let lastMenuJson = '';
+ipcMain.on('menu:set', (_event, model) => {
+  if (!IS_MAC) return;
+  const json = JSON.stringify(model ?? {});
+  if (json === lastMenuJson) return; // без изменений — не пересобираем
+  lastMenuJson = json;
+  try {
+    buildMacMenu(model);
+  } catch (error) {
+    console.error('menu:set', error);
+  }
+});
 
 ipcMain.on('window:minimize', () => mainWindow?.minimize());
 ipcMain.on('window:toggle-maximize', () => {
@@ -393,6 +481,7 @@ if (DEV_SERVER_URL && process.env.GK_DEV_RESTART === '1') {
 
 app.whenReady().then(() => {
   if (process.platform === 'win32') app.setAppUserModelId('com.ironxenot.gitidea');
+  if (IS_MAC) buildMacMenu(null); // до загрузки интерфейса — системные пункты; дальше меню присылает интерфейс
   createWindow();
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();

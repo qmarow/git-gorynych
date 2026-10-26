@@ -1,10 +1,22 @@
 import { useEffect, useState } from 'react';
 import { Copy, FolderGit2, Loader2, Minus, Plus, Square, X } from 'lucide-react';
 import AppLogo from './AppLogo.jsx';
+import { IS_MAC, kb } from '../lib/platform.js';
 
-const MENU = ['File', 'Edit', 'View', 'Actions', 'Help'];
+// Подписи — по-русски, ключи — имена меню в App (appMenus)
+const MENU = [
+  ['File', 'Файл'],
+  ['Edit', 'Правка'],
+  ['View', 'Вид'],
+  ['Actions', 'Действия'],
+  ['Help', 'Справка'],
+];
 
-export default function TitleBar({ tabs, activePath, loadingPath, onSelectTab, onCloseTab, onOpenRepository, onFileMenu, onEditMenu, onViewMenu, onActionsMenu, onHelpMenu }) {
+/**
+ * Заголовок окна: меню, вкладки репозиториев, кнопки окна.
+ * macOS: меню — в системной строке меню, кнопки окна — нативный «светофор» слева (под него отступ).
+ */
+export default function TitleBar({ tabs, activePath, loadingPath, onSelectTab, onCloseTab, onOpenRepository, onMenu }) {
   const [maximized, setMaximized] = useState(false);
   const win = window.api?.window;
 
@@ -19,26 +31,28 @@ export default function TitleBar({ tabs, activePath, loadingPath, onSelectTab, o
       className="app-drag glass relative z-30 flex h-9 shrink-0 items-stretch border-b border-gk-border bg-gk-titlebar"
       onDoubleClick={() => win?.toggleMaximize()}
     >
-      {/* Логотип + меню */}
-      <div className="flex items-center gap-1 pl-3 pr-2">
-        <AppLogo size={20} className="mr-2 shrink-0" />
-        {MENU.map((item) => (
-          <button
-            key={item}
-            onClick={(e) => {
-              const r = e.currentTarget.getBoundingClientRect();
-              if (item === 'File') onFileMenu?.(r.left, r.bottom + 4);
-              if (item === 'Edit') onEditMenu?.(r.left, r.bottom + 4);
-              if (item === 'View') onViewMenu?.(r.left, r.bottom + 4);
-              if (item === 'Actions') onActionsMenu?.(r.left, r.bottom + 4);
-              if (item === 'Help') onHelpMenu?.(r.left, r.bottom + 4);
-            }}
-            className="app-no-drag rounded px-2 py-1 text-xs text-gk-muted transition-colors hover:bg-gk-hover hover:text-gk-text"
-          >
-            {item}
-          </button>
-        ))}
-      </div>
+      {/* Логотип + меню (на macOS меню в системной строке, а слева — место под «светофор») */}
+      {IS_MAC ? (
+        <div className="flex shrink-0 items-center" style={{ paddingLeft: 78 }} data-testid="mac-traffic-lights-space">
+          <AppLogo size={18} className="mr-1 shrink-0 opacity-80" />
+        </div>
+      ) : (
+        <div className="flex items-center gap-1 pl-3 pr-2">
+          <AppLogo size={20} className="mr-2 shrink-0" />
+          {MENU.map(([key, label]) => (
+            <button
+              key={key}
+              onClick={(e) => {
+                const r = e.currentTarget.getBoundingClientRect();
+                onMenu?.(key, r.left, r.bottom + 4);
+              }}
+              className="app-no-drag rounded px-2 py-1 text-xs text-gk-muted transition-colors hover:bg-gk-hover hover:text-gk-text"
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+      )}
 
       {/* Вкладки репозиториев */}
       <div className="flex min-w-0 flex-1 items-end gap-0.5 overflow-hidden pl-2">
@@ -53,7 +67,7 @@ export default function TitleBar({ tabs, activePath, loadingPath, onSelectTab, o
           />
         ))}
         <button
-          title="Открыть репозиторий в новой вкладке (Ctrl+O)"
+          title={kb('Открыть репозиторий в новой вкладке (Ctrl+O)')}
           onClick={onOpenRepository}
           className="app-no-drag mb-1 ml-1 flex h-6 w-6 shrink-0 items-center justify-center rounded text-gk-muted transition-colors hover:bg-gk-hover hover:text-gk-text"
         >
@@ -65,8 +79,8 @@ export default function TitleBar({ tabs, activePath, loadingPath, onSelectTab, o
         </button>
       </div>
 
-      {/* Кнопки управления окном (Windows-стиль) */}
-      <div className="app-no-drag flex" onDoubleClick={(e) => e.stopPropagation()}>
+      {/* Кнопки управления окном (Windows/Linux; на macOS — нативные) */}
+      {!IS_MAC && <div className="app-no-drag flex" onDoubleClick={(e) => e.stopPropagation()}>
         <WindowButton title="Свернуть" onClick={() => win?.minimize()}>
           <Minus size={15} strokeWidth={1.5} />
         </WindowButton>
@@ -80,7 +94,7 @@ export default function TitleBar({ tabs, activePath, loadingPath, onSelectTab, o
         <WindowButton title="Закрыть" danger onClick={() => win?.close()}>
           <X size={16} strokeWidth={1.5} />
         </WindowButton>
-      </div>
+      </div>}
     </header>
   );
 }
@@ -113,7 +127,7 @@ function Tab({ tab, active, loading, onSelect, onClose }) {
       )}
       <span className={`truncate ${active ? 'font-medium' : ''}`}>{tab.name}</span>
       <button
-        title="Закрыть вкладку (Ctrl+W)"
+        title={kb('Закрыть вкладку (Ctrl+W)')}
         onMouseDown={(e) => e.stopPropagation()}
         onClick={(e) => {
           e.stopPropagation();

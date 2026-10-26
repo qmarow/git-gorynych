@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { Check, ExternalLink, Eye, EyeOff, KeyRound, Loader2, LogOut, Plug, ShieldCheck } from 'lucide-react';
 import { Button, ErrorBox, Modal } from './Dialogs.jsx';
+import { secretStorageText } from '../lib/platform.js';
 
 const api = window.api;
 
@@ -181,7 +182,7 @@ export function TokenSetup({ repoPath, forge, remoteName, onChanged, autoFocus =
         )}
       </div>
       <p className="text-[11px] leading-relaxed text-gk-dim">
-        Токен шифруется средствами Windows и хранится только на этом компьютере. Приложение отправляет его только на {host}.
+        {secretStorageText()} Приложение отправляет его только на {host}.
       </p>
     </div>
   );

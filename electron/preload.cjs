@@ -17,6 +17,11 @@ contextBridge.exposeInMainWorld('api', {
     onMaximizedChange: (callback) => subscribe('window:maximized-changed', callback),
     onFocus: (callback) => subscribe('window:focus', callback),
   },
+  // Нативное меню macOS: интерфейс присылает пункты, клики приходят обратно
+  menu: {
+    set: (model) => ipcRenderer.send('menu:set', model),
+    onInvoke: (callback) => subscribe('menu:invoke', callback),
+  },
   tabs: {
     get: () => ipcRenderer.invoke('tabs:get'),
     save: (tabs, active) => ipcRenderer.invoke('tabs:save', tabs, active),

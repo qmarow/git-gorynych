@@ -16,11 +16,13 @@ import { fullDate, initials, relativeTime, shortDate } from '../lib/format.js';
 import { ResizeHandle, useStoredWidth } from './Resizer.jsx';
 import { avatarUrl, isFailed, markFailed } from '../lib/avatars.js';
 import { hasRefDrag, readRefDrag, startRefDrag } from '../lib/dnd.js';
+import { isMod, kb } from '../lib/platform.js';
 
 const HEADER_HEIGHT = 30;
 const OVERSCAN = 15; // запас строк выше и ниже видимой области
 const MAX_AUTO_GRAPH_WIDTH = 400; // авто-ширина графа; вручную можно растянуть шире
 const MESSAGE_MIN_WIDTH = 140;
+const DATE_MIN_WIDTH = 118;
 const INTRO_MS = 1300; // длительность анимации появления графа
 
 export default function CommitGraph({
@@ -54,7 +56,8 @@ export default function CommitGraph({
   const [refsW, setRefsW, saveRefsW] = useStoredWidth('graph.refs', 150, 60, 480);
   const [graphW, setGraphW, saveGraphW] = useStoredWidth('graph.graph', null, 40, 1400); // null = авто
   const [authorW, setAuthorW, saveAuthorW] = useStoredWidth('graph.author', 140, 60, 420);
-  const [dateW, setDateW, saveDateW] = useStoredWidth('graph.date.v2', 142, 64, 260);
+  // Дата не уже DATE_MIN_WIDTH: «26.10.26 22:58» должна помещаться целиком
+  const [dateW, setDateW, saveDateW] = useStoredWidth('graph.date.v2', 142, DATE_MIN_WIDTH, 260);
   // Авто-ширина графа: по числу дорожек, но не больше, чем позволяет место,
   // чтобы колонки Author и Date оставались видны без горизонтальной прокрутки
   const roomForGraph = view.width - refsW - authorW - dateW - MESSAGE_MIN_WIDTH;
@@ -62,7 +65,9 @@ export default function CommitGraph({
     90,
     Math.min(graphWidth(laneCount), MAX_AUTO_GRAPH_WIDTH, Math.max(120, roomForGraph)),
   );
-  const width = graphW ?? autoGraphWidth;
+  // Ширина графа, заданная вручную, не должна выталкивать колонки Author и Date за правый край
+  // (под панель деталей): если места не хватает, граф ужимается, а сообщение — до минимума
+  const width = Math.max(40, Math.min(graphW ?? autoGraphWidth, view.width - refsW - authorW - dateW - MESSAGE_MIN_WIDTH));
   const cols = { refs: refsW, graph: width, author: authorW, date: dateW };
   const height = nodes.length * ROW_HEIGHT;
 
@@ -141,7 +146,7 @@ export default function CommitGraph({
         className="glass sticky top-0 z-10 flex min-w-max items-center border-b border-gk-border bg-gk-panel text-[10px] font-semibold uppercase tracking-wider text-gk-dim"
       >
         <HeaderCell width={refsW}>
-          <span className="truncate">Branch / Tag</span>
+          <span className="truncate">Ветка / тег</span>
           <ResizeHandle
             width={refsW}
             onResize={setRefsW}
@@ -154,7 +159,7 @@ export default function CommitGraph({
           />
         </HeaderCell>
         <HeaderCell width={width}>
-          <span className="truncate">Graph</span>
+          <span className="truncate">Граф</span>
           <ResizeHandle
             width={width}
             onResize={setGraphW}
@@ -167,7 +172,7 @@ export default function CommitGraph({
             className="-right-1"
           />
         </HeaderCell>
-        <div style={{ minWidth: MESSAGE_MIN_WIDTH }} className="flex-1 truncate px-4">Commit message</div>
+        <div style={{ minWidth: MESSAGE_MIN_WIDTH }} className="flex-1 truncate px-4">Сообщение коммита</div>
         <HeaderCell width={authorW}>
           <ResizeHandle
             width={authorW}
@@ -180,7 +185,7 @@ export default function CommitGraph({
             }}
             className="-left-1"
           />
-          <span className="truncate">Author</span>
+          <span className="truncate">Автор</span>
         </HeaderCell>
         <HeaderCell width={dateW}>
           <ResizeHandle
@@ -194,7 +199,7 @@ export default function CommitGraph({
             }}
             className="-left-1"
           />
-          <span className="truncate">Date / Time</span>
+          <span className="truncate">Дата / время</span>
         </HeaderCell>
       </div>
 
@@ -241,7 +246,7 @@ export default function CommitGraph({
               onDropOnBranch?.(locals.map((name) => ({ name, hash: node.hash })), e.clientX, e.clientY, payload);
             }}
             onSelect={(e) => {
-              if ((e?.ctrlKey || e?.metaKey) && onCompare && !node.wip) onCompare(node.hash);
+              if (isMod(e) && onCompare && !node.wip) onCompare(node.hash);
               else onSelect(node.hash);
             }}
             onDoubleClick={() => onActivate?.(node)}
@@ -386,7 +391,7 @@ function Row({
 
       <div style={{ width: cols.refs }} className="@container relative flex shrink-0 items-center justify-end gap-1 overflow-hidden pl-2">
         {marked && (
-          <span title="Отмечен для сравнения — Ctrl+клик по другому коммиту" className="shrink-0 rounded bg-gk-blue/20 px-1.5 text-[10px] font-medium text-gk-blue">
+          <span title={kb('Отмечен для сравнения — Ctrl+клик по другому коммиту')} className="shrink-0 rounded bg-gk-blue/20 px-1.5 text-[10px] font-medium text-gk-blue">
             A
           </span>
         )}
@@ -456,7 +461,7 @@ function Row({
           <div
             style={{ width: cols.date }}
             title={`${fullDate(node.date)} · ${relativeTime(node.date)}`}
-            className="relative shrink-0 truncate px-3 text-right font-mono text-[12.5px] tabular-nums text-gk-muted"
+            className="relative shrink-0 overflow-hidden whitespace-nowrap px-2.5 text-right font-mono text-[12.5px] tabular-nums text-gk-muted"
           >
             {shortDate(node.date)}
           </div>

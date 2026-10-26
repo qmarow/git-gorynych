@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { ArrowDownToLine, ArrowUpToLine, ChevronDown, ChevronUp, Columns2, FileText, Highlighter, Loader2, Rows3, Space, X } from 'lucide-react';
 import { FILE_STATUS } from '../lib/format.js';
 import { inlineHighlights } from '../lib/inlineDiff.js';
+import { kb } from '../lib/platform.js';
 
 const readPref = (key, def) => {
   try {
@@ -198,10 +199,10 @@ export default function DiffView({
           <span className="mr-1 text-[11px] text-gk-dim">
             {target.index + 1} / {target.list.length}
           </span>
-          <IconBtn title="Предыдущий файл (Alt+↑)" disabled={!onPrev} onClick={onPrev}>
+          <IconBtn title={kb('Предыдущий файл (Alt+↑)')} disabled={!onPrev} onClick={onPrev}>
             <ChevronUp size={15} />
           </IconBtn>
-          <IconBtn title="Следующий файл (Alt+↓)" disabled={!onNext} onClick={onNext}>
+          <IconBtn title={kb('Следующий файл (Alt+↓)')} disabled={!onNext} onClick={onNext}>
             <ChevronDown size={15} />
           </IconBtn>
           <IconBtn title="Закрыть (Esc)" onClick={onClose}>

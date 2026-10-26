@@ -21,11 +21,12 @@ import {
   Undo2,
 } from 'lucide-react';
 import BranchPicker from './BranchPicker.jsx';
+import { isMod, kb } from '../lib/platform.js';
 
 export const PULL_MODES = [
-  { id: 'merge', label: 'Pull (fast-forward if possible)' },
-  { id: 'ff-only', label: 'Pull (fast-forward only)' },
-  { id: 'rebase', label: 'Pull (rebase)' },
+  { id: 'merge', label: 'Pull — перемотать, иначе слить (merge)' },
+  { id: 'ff-only', label: 'Pull — только перемотка (fast-forward)' },
+  { id: 'rebase', label: 'Pull — перебазировать (rebase)' },
 ];
 
 export default function Toolbar({
@@ -83,11 +84,11 @@ export default function Toolbar({
   return (
     <div className="glass relative z-20 flex h-14 shrink-0 items-center border-b border-gk-border bg-gk-panel px-3">
       <div className="flex min-w-0 items-center gap-1">
-        <Selector label="repository" value={repo.name} title={repo.path} icon={FolderGit2} onClick={onOpenRepository} />
+        <Selector label="репозиторий" value={repo.name} title={repo.path} icon={FolderGit2} onClick={onOpenRepository} />
         <span className="text-gk-dim">/</span>
         <BranchSelector
           repo={repo}
-          label={repo.detached ? 'detached' : 'branch'}
+          label={repo.detached ? 'detached HEAD' : 'ветка'}
           value={branchLabel}
           disabled={busy}
           onCheckout={onCheckout}
@@ -100,7 +101,7 @@ export default function Toolbar({
       <div className="flex flex-1 items-center justify-center gap-1">
         <ActionButton
           icon={Undo2}
-          label="Undo"
+          label="Отменить"
           title={repo.history?.undo ? `Отменить: ${repo.history.undo}` : 'Нечего отменять'}
           disabled={blocked || !repo.history?.undo}
           loading={busyAction === 'undo'}
@@ -108,7 +109,7 @@ export default function Toolbar({
         />
         <ActionButton
           icon={Redo2}
-          label="Redo"
+          label="Повторить"
           title={repo.history?.redo ? `Повторить: ${repo.history.redo}` : 'Нечего повторять'}
           disabled={blocked || !repo.history?.redo}
           loading={busyAction === 'redo'}
@@ -137,7 +138,7 @@ export default function Toolbar({
         <Divider />
         <ActionButton
           icon={GitBranch}
-          label="Branch"
+          label="Ветка"
           title="Создать ветку"
           disabled={blocked || !repo.headHash}
           loading={busyAction === 'createBranch'}
@@ -154,7 +155,7 @@ export default function Toolbar({
         <ActionButton
           icon={PackageOpen}
           label="Pop"
-          title={repo.stashes[0] ? `Применить ${repo.stashes[0].id}: ${repo.stashes[0].message}` : 'Нет сташей'}
+          title={repo.stashes[0] ? `Применить ${repo.stashes[0].id}: ${repo.stashes[0].message}` : 'Нет спрятанных изменений'}
           disabled={blocked || repo.stashes.length === 0}
           loading={busyAction === 'stashPop'}
           onClick={onPop}
@@ -182,12 +183,12 @@ export default function Toolbar({
         <AccessChip repo={repo} access={access} onClick={onAccessClick} />
         <IconButton
           icon={Search}
-          title="Поиск коммитов (Ctrl+F)"
+          title={kb('Поиск коммитов (Ctrl+F)')}
           onClick={onSearch}
           iconClass={searchOpen ? 'text-gk-blue' : ''}
         />
         <IconButton icon={RefreshCw} title="Обновить" onClick={onRefresh} iconClass={loading ? 'animate-spin' : ''} />
-        <IconButton icon={Settings} title="Настройки (Ctrl+,)" onClick={onSettings} />
+        <IconButton icon={Settings} title={kb('Настройки (Ctrl+,)')} onClick={onSettings} />
       </div>
     </div>
   );
@@ -326,13 +327,19 @@ function BranchSelector({ repo, label, value, disabled, onCheckout, onCreate, on
   // Ctrl+B — открыть список веток откуда угодно
   useEffect(() => {
     const onKey = (e) => {
-      if (!(e.ctrlKey && !e.shiftKey && !e.altKey && e.code === 'KeyB')) return;
+      if (!(isMod(e) && !e.shiftKey && !e.altKey && e.code === 'KeyB')) return;
       if (document.querySelector('.fixed.inset-0')) return; // открыт диалог
       e.preventDefault();
       setOpen((v) => !v);
     };
+    // Пункт меню «Переключить ветку…»
+    const onOpen = () => !document.querySelector('.fixed.inset-0') && setOpen(true);
     window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
+    window.addEventListener('gitidea:branch-picker', onOpen);
+    return () => {
+      window.removeEventListener('keydown', onKey);
+      window.removeEventListener('gitidea:branch-picker', onOpen);
+    };
   }, []);
 
   // Во время операции (checkout и т.п.) список закрываем
@@ -346,7 +353,7 @@ function BranchSelector({ repo, label, value, disabled, onCheckout, onCreate, on
         label={label}
         value={value}
         icon={GitBranch}
-        title={`Переключить ветку (Ctrl+B)`}
+        title={kb('Переключить ветку (Ctrl+B)')}
         disabled={disabled}
         active={open}
         onClick={() => setOpen((v) => !v)}

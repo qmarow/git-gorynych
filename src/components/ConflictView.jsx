@@ -19,6 +19,7 @@ import {
   Trash2,
   X,
 } from 'lucide-react';
+import { isMod, kb } from '../lib/platform.js';
 
 const api = window.api;
 const LEFT = '#2f9bff'; // сторона ours (stage 2)
@@ -149,7 +150,7 @@ export default function ConflictView({ repoPath, path, fileIndex, fileCount, onP
   useEffect(() => {
     const onKey = (e) => {
       if (document.querySelector('.fixed.inset-0')) return;
-      if (e.ctrlKey && (e.key === 's' || e.key === 'ы')) {
+      if (isMod(e) && (e.code === 'KeyS' || e.key === 's' || e.key === 'ы')) {
         e.preventDefault();
         save();
       } else if (e.altKey && e.key === 'ArrowDown') {
@@ -201,10 +202,10 @@ export default function ConflictView({ repoPath, path, fileIndex, fileCount, onP
             >
               Решено {decidedCount} из {blocks.length}
             </span>
-            <IconBtn title="Предыдущий нерешённый (Alt+↑)" onClick={() => nextUnresolved(-1)}>
+            <IconBtn title={kb('Предыдущий нерешённый (Alt+↑)')} onClick={() => nextUnresolved(-1)}>
               <ChevronUp size={15} />
             </IconBtn>
-            <IconBtn title="Следующий нерешённый (Alt+↓)" onClick={() => nextUnresolved(1)}>
+            <IconBtn title={kb('Следующий нерешённый (Alt+↓)')} onClick={() => nextUnresolved(1)}>
               <ChevronDown size={15} />
             </IconBtn>
             <IconBtn title={preview ? 'Показать блоки' : 'Предпросмотр итогового файла'} onClick={() => setPreview((v) => !v)} active={preview}>

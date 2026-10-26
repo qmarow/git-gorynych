@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   AlertTriangle,
+  RefreshCw,
   ArrowDownToLine,
   Archive,
   BookOpen,
@@ -53,6 +54,7 @@ import Sidebar from './components/Sidebar.jsx';
 import CommitGraph from './components/CommitGraph.jsx';
 import CommitDetails from './components/CommitDetails.jsx';
 import Toasts from './components/Toasts.jsx';
+import TooltipLayer from './components/TooltipLayer.jsx';
 import DiffView from './components/DiffView.jsx';
 import ConflictView from './components/ConflictView.jsx';
 import CiView from './components/CiView.jsx';
@@ -75,6 +77,7 @@ import {
 } from './lib/appearance.js';
 import { ACTIVE_STATUSES } from './components/PipelineStatus.jsx';
 import StatusBar from './components/StatusBar.jsx';
+import { IS_MAC, isMod, kb } from './lib/platform.js';
 import { DEFAULT_SYNC_MODE, SYNC_MODES, nextDelay, resetSyncStatus, setSyncStatus } from './lib/syncStatus.js';
 import InitRepoDialog, { plural } from './components/InitRepoDialog.jsx';
 import CloneDialog from './components/CloneDialog.jsx';
@@ -514,35 +517,45 @@ export default function App() {
     openTab(r.path);
   };
 
-  const openFileMenu = (x, y) =>
-    setMenu({
-      x,
-      y,
-      items: [
-        { label: 'Открыть репозиторий…', icon: FolderOpen, hint: 'Ctrl+O', onClick: openRepository },
-        { label: 'Создать репозиторий…', icon: GitBranch, hint: 'Ctrl+N', onClick: () => createRepository() },
-        { label: 'Клонировать репозиторий…', icon: CloudDownload, hint: 'Ctrl+Shift+O', onClick: () => setDialog({ type: 'clone' }) },
-        {
-          label: 'Подключить папку к GitLab / GitHub…',
-          icon: Link2,
-          onClick: () => createRepository(undefined, 'connect'),
-        },
-        { separator: true },
-        {
-          label: 'Закрыть вкладку',
-          icon: X,
-          hint: 'Ctrl+W',
-          disabled: !activePath,
-          onClick: () => activePath && closeTab(activePath),
-        },
-        { label: 'Выход', icon: LogOut, onClick: () => api?.window.close() },
-      ],
-    });
+  const fileMenuItems = () => [
+    { id: 'open', label: 'Открыть репозиторий…', icon: FolderOpen, hint: 'Ctrl+O', onClick: openRepository },
+    { id: 'init', label: 'Создать репозиторий…', icon: GitBranch, hint: 'Ctrl+N', onClick: () => createRepository() },
+    { id: 'clone', label: 'Клонировать репозиторий…', icon: CloudDownload, hint: 'Ctrl+Shift+O', onClick: () => setDialog({ type: 'clone' }) },
+    {
+      id: 'connect',
+      label: 'Подключить папку к GitLab / GitHub…',
+      icon: Link2,
+      onClick: () => createRepository(undefined, 'connect'),
+    },
+    { separator: true },
+    {
+      id: 'close-tab',
+      label: 'Закрыть вкладку',
+      icon: X,
+      hint: 'Ctrl+W',
+      disabled: !activePath,
+      onClick: () => activePath && closeTab(activePath),
+    },
+    // На macOS «Завершить» — в меню приложения (⌘Q)
+    ...(IS_MAC ? [] : [{ id: 'quit', label: 'Выход', icon: LogOut, onClick: () => api?.window.close() }]),
+  ];
 
   // Ctrl+O — открыть, Ctrl+W — закрыть вкладку, Ctrl+Tab / Ctrl+Shift+Tab — переключить
   useEffect(() => {
     const onKey = (e) => {
-      if (!e.ctrlKey || e.altKey) return;
+      // Ctrl+Tab — и на Mac Control: ⌘Tab занят системой
+      if (e.key === 'Tab' && e.ctrlKey && !e.altKey && !e.metaKey) {
+        e.preventDefault();
+        cycleTab(e.shiftKey ? -1 : 1);
+        return;
+      }
+      // Ctrl+Alt+F (⌘⌥F) — фильтр веток и тегов слева
+      if (isMod(e) && e.altKey && !e.shiftKey && e.code === 'KeyF') {
+        e.preventDefault();
+        window.dispatchEvent(new Event('gitidea:focus-filter'));
+        return;
+      }
+      if (!isMod(e) || e.altKey) return;
       const key = e.key.toLowerCase();
       if (e.code === 'Comma' && !e.shiftKey) {
         e.preventDefault();
@@ -564,9 +577,6 @@ export default function App() {
       } else if ((key === 'w' || key === 'ц') && activePath) {
         e.preventDefault();
         closeTab(activePath);
-      } else if (key === 'tab') {
-        e.preventDefault();
-        cycleTab(e.shiftKey ? -1 : 1);
       }
     };
     window.addEventListener('keydown', onKey);
@@ -682,7 +692,7 @@ export default function App() {
         setDialog((d) => d ?? { type: 'guide' });
         return;
       }
-      if (!e.ctrlKey || e.altKey) return;
+      if (!isMod(e) || e.altKey) return;
       const t = e.target;
       if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable)) return;
       if (document.querySelector('.fixed.inset-0')) return;
@@ -864,11 +874,11 @@ export default function App() {
       const info = repo.localBranches.find((b) => b.name === ref.name);
       return [
         { header: `Ветка ${ref.name}` },
-        { label: `Checkout ${ref.name}`, icon: LogIn, disabled: op || isCur, onClick: () => checkout({ branch: ref.name }) },
+        { label: `Переключиться на ${ref.name}`, icon: LogIn, disabled: op || isCur, onClick: () => checkout({ branch: ref.name }) },
         ...(info?.upstream && !info.gone
           ? [
               {
-                label: info.behind ? `Update (Pull) — ↓${info.behind}` : 'Update (Pull)',
+                label: info.behind ? `Обновить ветку (Pull) — ↓${info.behind}` : 'Обновить ветку (Pull)',
                 icon: ArrowDownToLine,
                 disabled: (isCur && op) || !info.behind || (!isCur && info.ahead > 0),
                 title: !info.behind
@@ -883,20 +893,20 @@ export default function App() {
             ]
           : []),
         {
-          label: `Merge ${ref.name} into ${curLabel}`,
+          label: `Влить ${ref.name} в ${curLabel} (Merge)`,
           icon: GitMerge,
           disabled: op || !cur || isCur,
           onClick: () => run('merge', { ref: ref.name }, { label: 'Merge', success: `${ref.name} слита в ${cur}` }),
         },
         {
-          label: `Rebase ${curLabel} onto ${ref.name}…`,
+          label: `Перебазировать ${curLabel} на ${ref.name} (Rebase)…`,
           icon: Layers,
           disabled: op || !cur || isCur,
           title: 'С предпросмотром: итоговый граф, конфликты и изменения видны до применения',
           onClick: () => openRebase(ref.name),
         },
         {
-          label: `Delete ${ref.name}`,
+          label: `Удалить ветку ${ref.name}`,
           icon: Trash2,
           danger: true,
           disabled: isCur,
@@ -929,19 +939,19 @@ export default function App() {
       return [
         { header: `На сервере: ${ref.name}` },
         {
-          label: `Checkout ${ref.name}`,
+          label: `Переключиться на ${ref.name}`,
           icon: Cloud,
           disabled: op,
           onClick: () => checkout({ remoteBranch: { name, fullName: ref.name } }),
         },
         {
-          label: `Merge ${ref.name} into ${curLabel}`,
+          label: `Влить ${ref.name} в ${curLabel} (Merge)`,
           icon: GitMerge,
           disabled: op || !cur,
           onClick: () => run('merge', { ref: ref.name }, { label: 'Merge', success: `${ref.name} слита в ${cur}` }),
         },
         {
-          label: `Rebase ${curLabel} onto ${ref.name}…`,
+          label: `Перебазировать ${curLabel} на ${ref.name} (Rebase)…`,
           icon: Layers,
           disabled: op || !cur,
           title: 'С предпросмотром: итоговый граф, конфликты и изменения видны до применения',
@@ -960,7 +970,7 @@ export default function App() {
       return [
         { header: `Тег ${ref.name}` },
         {
-          label: `Delete tag ${ref.name}`,
+          label: `Удалить тег ${ref.name}`,
           icon: Trash2,
           danger: true,
           onClick: () =>
@@ -1011,7 +1021,7 @@ export default function App() {
     if (!info) return null;
     if (name === repoRef.current.currentBranch && info.ahead > 0) return pull();
     return run('updateBranch', { branch: name }, {
-      label: `Update ${name}`,
+      label: `Обновление ${name}`,
       progress: `Обновляем ${name}…`,
       success: (d) =>
         d.count ? `${d.branch}: +${d.count} ${plural(d.count, 'коммит', 'коммита', 'коммитов')} из ${d.upstream}${d.current ? '' : ' (без переключения)'}` : `${d.branch} уже актуальна`,
@@ -1043,7 +1053,7 @@ export default function App() {
 
     items.push(
       {
-        label: 'Checkout this commit',
+        label: 'Переключиться на этот коммит',
         icon: GitCommitHorizontal,
         hint: 'detached',
         disabled: op || (isHead && repo.detached),
@@ -1053,22 +1063,22 @@ export default function App() {
             success: `HEAD на ${short(node.hash)} (detached) — Undo вернёт на ветку`,
           }),
       },
-      { label: 'Create branch here…', icon: GitBranch, onClick: () => openBranchDialog(node) },
+      { label: 'Создать ветку здесь…', icon: GitBranch, onClick: () => openBranchDialog(node) },
       {
-        label: 'Create tag here…',
+        label: 'Создать тег здесь…',
         icon: Tag,
         onClick: () => setDialog({ type: 'tag', hash: node.hash, label: `${short(node.hash)} — ${node.message}` }),
       },
       { separator: true },
       {
-        label: `Cherry pick commit`,
+        label: 'Перенести коммит (Cherry-pick)',
         icon: Cherry,
         disabled: op || isHead || !repo.headHash,
         onClick: () =>
           run('cherryPick', { hash: node.hash }, { label: 'Cherry-pick', success: `Коммит ${short(node.hash)} применён к ${curLabel}` }),
       },
       {
-        label: 'Revert commit',
+        label: 'Обратить изменения коммита (Revert)',
         icon: RotateCcw,
         disabled: op || !repo.headHash,
         onClick: () =>
@@ -1082,13 +1092,13 @@ export default function App() {
         onClick: () => openRevertTo(node),
       },
       {
-        label: `Reset ${curLabel} to this commit`,
+        label: `Сбросить ${curLabel} к этому коммиту (Reset)`,
         icon: History,
         disabled: op || isHead || !repo.headHash,
         submenu: [
-          { label: 'Soft — оставить все изменения в индексе', icon: Archive, onClick: () => resetTo(node, 'soft') },
-          { label: 'Mixed — оставить изменения в рабочей папке', icon: FileDiff, onClick: () => resetTo(node, 'mixed') },
-          { label: 'Hard — удалить все изменения', icon: Trash2, danger: true, onClick: () => resetTo(node, 'hard') },
+          { label: 'Мягко (Soft) — оставить все изменения в индексе', icon: Archive, onClick: () => resetTo(node, 'soft') },
+          { label: 'Смешанно (Mixed) — оставить изменения в рабочей папке', icon: FileDiff, onClick: () => resetTo(node, 'mixed') },
+          { label: 'Жёстко (Hard) — удалить все изменения', icon: Trash2, danger: true, onClick: () => resetTo(node, 'hard') },
         ],
       },
       { separator: true },
@@ -1105,9 +1115,9 @@ export default function App() {
 
     items.push(
       { separator: true },
-      { label: 'Copy commit SHA', icon: Copy, onClick: () => copy(node.hash, 'SHA') },
+      { label: 'Скопировать хэш коммита (SHA)', icon: Copy, onClick: () => copy(node.hash, 'Хэш коммита') },
       {
-        label: 'Copy commit message',
+        label: 'Скопировать сообщение коммита',
         icon: FileText,
         onClick: () => copy(node.description ? `${node.message}\n\n${node.description}` : node.message, 'Текст коммита'),
       },
@@ -1146,10 +1156,10 @@ export default function App() {
     if (!cur || !repo.headHash) return [];
     const isHead = node.hash === repo.headHash;
     if (headAncestors.has(node.hash)) {
-      if (isHead) return node.parents[0] ? [{ label: 'Изменить последний коммит (rebase)…', icon: Layers, disabled: op, onClick: () => openRebase(node.parents[0]) }] : [];
+      if (isHead) return node.parents[0] ? [{ label: 'Изменить последний коммит (Rebase)…', icon: Layers, disabled: op, onClick: () => openRebase(node.parents[0]) }] : [];
       return [
         {
-          label: `Интерактивный rebase ${cur}`,
+          label: `Интерактивный rebase ветки ${cur}`,
           icon: Layers,
           disabled: op,
           title: 'Изменить порядок, сообщения, объединить или удалить коммиты — с предпросмотром до применения',
@@ -1160,7 +1170,7 @@ export default function App() {
         },
       ];
     }
-    return [{ label: `Rebase ${cur} на этот коммит…`, icon: Layers, disabled: op, title: 'С предпросмотром результата до применения', onClick: () => openRebase(node.hash) }];
+    return [{ label: `Перебазировать ${cur} на этот коммит (Rebase)…`, icon: Layers, disabled: op, title: 'С предпросмотром результата до применения', onClick: () => openRebase(node.hash) }];
   };
 
   const commitTime = (h) => Date.parse(allCommits.find((c) => c.hash === h)?.date ?? '') || 0;
@@ -1438,25 +1448,24 @@ export default function App() {
       }
       if (isAncestorLoaded(t.hash, src.hash)) {
         items.push({
-          label: `Перемотать ${t.name} вперёд`,
+          label: `Перемотать ${t.name} вперёд (Fast-forward)`,
           icon: FastForward,
-          hint: 'fast-forward',
           disabled: op,
           title: 'Ветка просто передвинется вперёд — без merge-коммита и без переключения',
           onClick: () => run('fastForward', { branch: t.name, to: ref }, { label: 'Fast-forward', success: (d) => `${d.branch} перемотана до ${short(d.to)} — Undo вернёт` }),
         });
       }
       items.push({
-        label: `Слить в ${t.name}`,
+        label: `Влить в ${t.name} (Merge)`,
         icon: GitMerge,
-        hint: isCur ? 'merge' : 'с переключением',
+        hint: isCur ? undefined : 'с переключением',
         disabled: op,
         onClick: () =>
           run('mergeInto', { ref, target: t.name, smart: workflow.smartSwitch }, { label: 'Merge', success: `${srcLabel} слита в ${t.name} — Undo вернёт` }),
       });
       if (src.kind === 'commit') {
         items.push({
-          label: `Cherry-pick в ${t.name}`,
+          label: `Перенести коммит в ${t.name} (Cherry-pick)`,
           icon: Cherry,
           hint: isCur ? 'один коммит' : 'с переключением',
           disabled: op,
@@ -1468,7 +1477,7 @@ export default function App() {
         });
       }
       items.push({
-        label: `Rebase ${t.name} на ${srcLabel}…`,
+        label: `Перебазировать ${t.name} на ${srcLabel} (Rebase)…`,
         icon: Layers,
         hint: isCur ? 'с предпросмотром' : 'с переключением',
         disabled: op,
@@ -1505,11 +1514,11 @@ export default function App() {
     const op = Boolean(repo.operation);
     return [
       { header: `Изменения: ${repo.wipFiles.length}` },
-      { label: 'Stash all changes', icon: Archive, disabled: op || !repo.headHash, onClick: stash },
-      { label: 'Stage all changes', icon: GitCommitHorizontal, onClick: () => stageFiles('all') },
+      { label: 'Спрятать все изменения (Stash)', icon: Archive, disabled: op || !repo.headHash, onClick: stash },
+      { label: 'Добавить все изменения в индекс (Stage)', icon: GitCommitHorizontal, onClick: () => stageFiles('all') },
       { separator: true },
       {
-        label: 'Discard all changes',
+        label: 'Отменить все изменения (Discard)',
         icon: Eraser,
         danger: true,
         disabled: op,
@@ -1524,6 +1533,79 @@ export default function App() {
       },
     ];
   };
+
+  // Главное меню: в своём заголовке (Windows/Linux) и в системной строке меню (macOS)
+  const appMenus = () => ({
+    File: fileMenuItems(),
+    Edit: [
+      {
+        id: 'undo',
+        label: repo?.history?.undo ? `Отменить: ${repo.history.undo}` : 'Отменить',
+        icon: Undo2,
+        hint: 'Ctrl+Z',
+        disabled: !repo?.history?.undo || Boolean(busyAction),
+        onClick: undo,
+      },
+      {
+        id: 'redo',
+        label: repo?.history?.redo ? `Повторить: ${repo.history.redo}` : 'Повторить',
+        icon: Redo2,
+        hint: IS_MAC ? 'Ctrl+Shift+Z' : 'Ctrl+Y',
+        disabled: !repo?.history?.redo || Boolean(busyAction),
+        onClick: redo,
+      },
+      { separator: true },
+      { id: 'find', label: 'Найти коммит…', icon: Search, hint: 'Ctrl+F', disabled: !repo, onClick: () => setSearchOpen(true) },
+      {
+        id: 'switch-branch',
+        label: 'Переключить ветку…',
+        icon: GitBranch,
+        hint: 'Ctrl+B',
+        disabled: !repo,
+        onClick: () => window.dispatchEvent(new Event('gitidea:branch-picker')),
+      },
+      { id: 'new-branch', label: 'Новая ветка…', icon: GitBranch, disabled: !repo?.headHash, onClick: () => openBranchDialog() },
+      { separator: true },
+      { id: 'stash', label: 'Спрятать изменения (Stash)', icon: Archive, disabled: !repo?.wipFiles.length || Boolean(busyAction), onClick: stash },
+      { id: 'pop', label: 'Вернуть последний stash (Pop)', icon: PackageOpen, disabled: !repo?.stashes.length || Boolean(busyAction), onClick: stashPop },
+    ],
+    View: [
+      { id: 'settings', label: 'Оформление…', icon: Palette, hint: 'Ctrl+,', onClick: () => openSettings('appearance') },
+      { id: 'sync-settings', label: 'Синхронизация…', icon: RefreshCw, onClick: () => openSettings('sync') },
+      { id: 'integrations', label: 'Подключения (GitLab)…', icon: Plug, onClick: () => openSettings('integrations') },
+    ],
+    Actions: buildActionsMenu(),
+    Help: [
+      { id: 'guide', label: 'Руководство', icon: BookOpen, hint: 'F1', onClick: () => setDialog({ type: 'guide' }) },
+      { id: 'keys', label: 'Горячие клавиши', icon: Keyboard, onClick: () => setDialog({ type: 'guide', section: 'keys' }) },
+      { id: 'about', label: 'О программе', icon: Info, onClick: () => setDialog({ type: 'about' }) },
+    ],
+  });
+  const appMenusRef = useRef(appMenus);
+  appMenusRef.current = appMenus;
+
+  // macOS: системное меню. Отправляем только подписи/состояние, и только когда что-то поменялось
+  const sentMenu = useRef('');
+  useEffect(() => {
+    if (!IS_MAC || !api?.menu) return;
+    const plain = (items) =>
+      items.map((it) =>
+        it.separator ? { separator: true } : it.header ? { header: it.header } : { id: it.id ?? null, label: it.label, hint: it.hint ?? null, disabled: Boolean(it.disabled) },
+      );
+    const model = Object.fromEntries(Object.entries(appMenus()).map(([k, v]) => [k, plain(v)]));
+    const json = JSON.stringify(model);
+    if (json === sentMenu.current) return;
+    sentMenu.current = json;
+    api.menu.set(model);
+  });
+  useEffect(() => {
+    if (!api?.menu?.onInvoke) return undefined;
+    return api.menu.onInvoke(({ menu, index, id }) => {
+      const menus = appMenusRef.current();
+      const item = id ? Object.values(menus).flat().find((x) => x.id === id) : menus[menu]?.[index];
+      if (item && !item.disabled) item.onClick?.();
+    });
+  }, []);
 
   const openMenu = (node, x, y) => setMenu({ x, y, items: node.wip ? buildWipMenu() : buildCommitMenu(node) });
   const closeMenu = useCallback(() => setMenu(null), []);
@@ -1804,8 +1886,8 @@ export default function App() {
   const HUNK_TEXT = {
     revert: { label: 'Отмена фрагмента', ok: (d) => `${d.hunks === d.total ? 'Изменения коммита отменены' : 'Фрагмент отменён'} в ${d.path} — без коммита, Undo вернёт` },
     discard: { label: 'Отмена фрагмента', ok: (d) => `${d.hunks === d.total ? 'Изменения' : 'Фрагмент'} в ${d.path} отменён — Undo вернёт` },
-    stage: { label: 'Stage фрагмента', ok: null },
-    unstage: { label: 'Unstage фрагмента', ok: null },
+    stage: { label: 'Добавление фрагмента в индекс', ok: null },
+    unstage: { label: 'Удаление фрагмента из индекса', ok: null },
     apply: { label: 'Фрагмент из stash', ok: (d) => `${d.hunks === d.total ? 'Изменения' : 'Фрагмент'} из stash применён к ${d.path} — Undo вернёт` },
   };
   const applyHunks = (op, mode, file, hash, hunks) =>
@@ -1817,10 +1899,10 @@ export default function App() {
       return [{ id: 'revert', label: 'Отменить в рабочей папке', icon: Undo2, title: 'Убрать изменения этого фрагмента из файла в рабочей папке — без коммита. Undo вернёт.' }];
     if (t.kind === 'unstaged')
       return [
-        { id: 'stage', label: 'Stage', icon: Plus, title: 'Добавить только этот фрагмент в коммит' },
+        { id: 'stage', label: 'В индекс', icon: Plus, title: 'Добавить только этот фрагмент в коммит (Stage)' },
         { id: 'discard', label: 'Отменить', icon: Undo2, danger: true, title: 'Выбросить этот фрагмент изменений. Undo вернёт.' },
       ];
-    if (t.kind === 'staged') return [{ id: 'unstage', label: 'Unstage', icon: Minus, title: 'Убрать этот фрагмент из коммита (останется в рабочей папке)' }];
+    if (t.kind === 'staged') return [{ id: 'unstage', label: 'Из индекса', icon: Minus, title: 'Убрать этот фрагмент из коммита (Unstage) (останется в рабочей папке)' }];
     if (t.kind === 'stash' && t.file.status !== 'D')
       return [{ id: 'apply', label: 'Применить', icon: ArchiveRestore, title: 'Перенести только этот фрагмент из stash в файл в рабочей папке. Stash не меняется, Undo вернёт.' }];
     return null;
@@ -1876,8 +1958,8 @@ export default function App() {
       items.push(
         { label: 'Показать изменения', icon: FileDiff, onClick: () => openFile(file, kind, list) },
         kind === 'unstaged'
-          ? { label: 'Stage', icon: Plus, onClick: () => stageFiles([file.path]) }
-          : { label: 'Unstage', icon: Minus, onClick: () => unstageFiles(file.oldPath ? [file.path, file.oldPath] : [file.path]) },
+          ? { label: 'Добавить в индекс (Stage)', icon: Plus, onClick: () => stageFiles([file.path]) }
+          : { label: 'Убрать из индекса (Unstage)', icon: Minus, onClick: () => unstageFiles(file.oldPath ? [file.path, file.oldPath] : [file.path]) },
       );
       if (kind === 'unstaged' && !file.untracked && file.status !== 'U') {
         items.push({
@@ -2253,6 +2335,9 @@ export default function App() {
     syncKick.current?.();
   };
 
+  // CI/CD занимает центр (а не diff, конфликт, сравнение или rebase поверх него)
+  const ciCentered = Boolean(ciView) && !(conflictPath || diffTarget || compareView || rebaseView);
+
   /* ---------- Разметка ---------- */
 
   return (
@@ -2266,64 +2351,7 @@ export default function App() {
         onSelectTab={(path) => path !== activePath && showTab(path)}
         onCloseTab={closeTab}
         onOpenRepository={openRepository}
-        onFileMenu={openFileMenu}
-        onEditMenu={(x, y) =>
-          setMenu({
-            x,
-            y,
-            items: [
-              {
-                label: repo?.history?.undo ? `Отменить: ${repo.history.undo}` : 'Отменить',
-                icon: Undo2,
-                hint: 'Ctrl+Z',
-                disabled: !repo?.history?.undo || Boolean(busyAction),
-                onClick: undo,
-              },
-              {
-                label: repo?.history?.redo ? `Повторить: ${repo.history.redo}` : 'Повторить',
-                icon: Redo2,
-                hint: 'Ctrl+Y',
-                disabled: !repo?.history?.redo || Boolean(busyAction),
-                onClick: redo,
-              },
-              { separator: true },
-              { label: 'Найти коммит…', icon: Search, hint: 'Ctrl+F', disabled: !repo, onClick: () => setSearchOpen(true) },
-              {
-                label: 'Переключить ветку…',
-                icon: GitBranch,
-                hint: 'Ctrl+B',
-                disabled: !repo,
-                onClick: () => window.dispatchEvent(new KeyboardEvent('keydown', { ctrlKey: true, code: 'KeyB', key: 'b' })),
-              },
-              { label: 'Новая ветка…', icon: GitBranch, disabled: !repo?.headHash, onClick: () => openBranchDialog() },
-              { separator: true },
-              { label: 'Stash — спрятать изменения', icon: Archive, disabled: !repo?.wipFiles.length || Boolean(busyAction), onClick: stash },
-              { label: 'Pop — вернуть последний stash', icon: PackageOpen, disabled: !repo?.stashes.length || Boolean(busyAction), onClick: stashPop },
-            ],
-          })
-        }
-        onActionsMenu={(x, y) => setMenu({ x, y, items: buildActionsMenu() })}
-        onHelpMenu={(x, y) =>
-          setMenu({
-            x,
-            y,
-            items: [
-              { label: 'Руководство', icon: BookOpen, hint: 'F1', onClick: () => setDialog({ type: 'guide' }) },
-              { label: 'Горячие клавиши', icon: Keyboard, onClick: () => setDialog({ type: 'guide', section: 'keys' }) },
-              { label: 'О программе', icon: Info, onClick: () => setDialog({ type: 'about' }) },
-            ],
-          })
-        }
-        onViewMenu={(x, y) =>
-          setMenu({
-            x,
-            y,
-            items: [
-              { label: 'Оформление…', icon: Palette, hint: 'Ctrl+,', onClick: () => openSettings('appearance') },
-              { label: 'Подключения (GitLab)…', icon: Plug, onClick: () => openSettings('integrations') },
-            ],
-          })
-        }
+        onMenu={(name, x, y) => setMenu({ x, y, items: appMenus()[name] ?? [] })}
       />
 
       {loadError && <ErrorBanner error={loadError} onClose={() => setLoadError(null)} />}
@@ -2606,7 +2634,8 @@ export default function App() {
                 />
               )}
             </main>
-            <div style={{ width: detailsW }} className="relative flex shrink-0">
+            {/* Пока в центре CI/CD — у него свой инспектор задания справа; панель коммита прячем, чтобы не было двух правых панелей */}
+            {!ciCentered && <div style={{ width: detailsW }} className="relative flex shrink-0">
               <ResizeHandle
                 width={detailsW}
                 direction={-1}
@@ -2646,7 +2675,7 @@ export default function App() {
                 onGuardSettings={() => setDialog({ type: 'settings', tab: 'guard' })}
                 onCommitSettings={() => setDialog({ type: 'settings', tab: 'commit' })}
               />
-            </div>
+            </div>}
           </div>
         </>
       ) : (
@@ -2760,7 +2789,7 @@ export default function App() {
           setDialog(null);
           dialog.onNo();
         }}>
-          <p className="leading-relaxed">{dialog.body}</p>
+          <p className="leading-relaxed">{typeof dialog.body === 'string' ? kb(dialog.body) : dialog.body}</p>
         </ConfirmDialog>
       )}
       {dialog?.type === 'actions' && (
@@ -2894,13 +2923,14 @@ export default function App() {
           onConfirm={dialog.onConfirm}
           onClose={() => setDialog(null)}
         >
-          <p className="leading-relaxed">{dialog.body}</p>
+          <p className="leading-relaxed">{typeof dialog.body === 'string' ? kb(dialog.body) : dialog.body}</p>
         </ConfirmDialog>
       )}
 
       {menu && <ContextMenu x={menu.x} y={menu.y} items={menu.items} onClose={closeMenu} />}
 
       <Toasts toasts={toasts} onClose={closeToast} />
+      <TooltipLayer />
     </div>
   );
 }
@@ -2988,7 +3018,7 @@ function Welcome({ loading, onOpen, onCreate, onConnect, onClone, onGuide }) {
         Клонировать репозиторий по ссылке
       </button>
       <p className="max-w-sm animate-fade-in text-center text-xs text-gk-dim">
-        Ctrl+O — открыть · Ctrl+N — создать. Если в выбранной папке нет Git, приложение предложит его инициализировать.
+        {kb('Ctrl+O — открыть · Ctrl+N — создать.')} Если в выбранной папке нет Git, приложение предложит его инициализировать.
       </p>
       <button onClick={onGuide} className="-mt-2 flex animate-fade-in items-center gap-1.5 text-[12.5px] text-gk-blue hover:underline">
         <BookOpen size={13} /> Как пользоваться программой (F1)

@@ -20,6 +20,8 @@ import {
 } from '../lib/commitMsg.js';
 import { DEFAULT_COMMIT_PREFS, setCommitPrefs, useCommitPrefs } from '../lib/commitPrefs.js';
 import { Switch } from './Guard.jsx';
+import { isMod, kb } from '../lib/platform.js';
+import { plural } from '../lib/format.js';
 
 /*
  * Черновик сообщения живёт вне компонента: панель WIP пересоздаётся при выборе другого коммита,
@@ -116,7 +118,7 @@ export default function CommitForm({ repoPath, branch, stagedFiles, busy, onComm
   return (
     <div className="space-y-2 border-t border-gk-border p-3">
       <div className="flex items-center gap-1">
-        <div className="flex-1 text-[11px] font-semibold uppercase tracking-wider text-gk-muted">Commit</div>
+        <div className="flex-1 text-[11px] font-semibold uppercase tracking-wider text-gk-muted">Коммит</div>
         <button
           onClick={(e) => {
             loadGitTemplate();
@@ -212,7 +214,7 @@ export default function CommitForm({ repoPath, branch, stagedFiles, busy, onComm
           ref={summaryRef}
           value={summary}
           onChange={(e) => setDraft((d) => ({ ...d, summary: e.target.value }))}
-          onKeyDown={(e) => e.key === 'Enter' && e.ctrlKey && submit()}
+          onKeyDown={(e) => e.key === 'Enter' && isMod(e) && submit()}
           onFocus={(e) => {
             // Курсор в конце, а номер стоит в конце — встаём перед « (PROJ-1)»
             const el = e.currentTarget;
@@ -225,8 +227,8 @@ export default function CommitForm({ repoPath, branch, stagedFiles, busy, onComm
             });
           }}
           maxLength={200}
-          placeholder={parts.type ? 'Кратко: что сделано' : 'Summary'}
-          aria-label="Summary"
+          placeholder={parts.type ? 'Кратко: что сделано' : 'Заголовок коммита'}
+          aria-label="Заголовок коммита"
           className={`${inputCls} pr-10`}
         />
         {len > 0 && (
@@ -244,23 +246,23 @@ export default function CommitForm({ repoPath, branch, stagedFiles, busy, onComm
         ref={descRef}
         value={description}
         onChange={(e) => setDraft((d) => ({ ...d, description: e.target.value }))}
-        onKeyDown={(e) => e.key === 'Enter' && e.ctrlKey && submit()}
+        onKeyDown={(e) => e.key === 'Enter' && isMod(e) && submit()}
         rows={description.split('\n').length > 3 ? 6 : 3}
-        placeholder={gitTpl?.hint && prefs.useGitTemplate ? gitTpl.hint : 'Description'}
-        aria-label="Description"
+        placeholder={gitTpl?.hint && prefs.useGitTemplate ? gitTpl.hint : 'Описание'}
+        aria-label="Описание"
         className={`${inputCls} resize-y`}
       />
       <button
         onClick={submit}
         disabled={!canCommit}
-        title="Ctrl+Enter"
+        title={kb('Ctrl+Enter')}
         className="w-full rounded py-2 text-[13px] font-semibold transition-colors enabled:bg-gk-green enabled:text-gk-ink enabled:shadow-lg enabled:shadow-gk-green/20 enabled:hover:brightness-110 disabled:bg-gk-hover disabled:text-gk-dim"
       >
         {stagedFiles.length === 0
-          ? 'Stage files/changes to commit'
+          ? 'Добавьте файлы в индекс, чтобы закоммитить'
           : !subject
             ? 'Введите сообщение коммита'
-            : `Commit changes to ${stagedFiles.length} file${stagedFiles.length > 1 ? 's' : ''}`}
+            : `Закоммитить ${stagedFiles.length} ${plural(stagedFiles.length, 'файл', 'файла', 'файлов')}`}
       </button>
 
       {pop?.kind === 'scope' && (
@@ -555,7 +557,7 @@ function TemplatesMenu({ prefs, gitTpl, ticket, description, onInsert }) {
             const body = ticket ? current.split(ticket).join('{ticket}') : current;
             setEdit({ name: current.split('\n')[0].slice(0, 40), body });
           }}
-          title={current ? 'Сохранить то, что сейчас в Description' : 'Сначала напишите Description'}
+          title={current ? 'Сохранить то, что сейчас в описании' : 'Сначала напишите описание'}
           className="flex w-full items-center gap-2 rounded px-1.5 py-1 text-left text-gk-muted hover:bg-gk-hover hover:text-gk-text disabled:opacity-40 disabled:hover:bg-transparent"
         >
           <Save size={13} /> Сохранить текущее описание как шаблон
@@ -586,7 +588,7 @@ function TemplateEditor({ value, onSave, onCancel, inline }) {
       <textarea
         value={body}
         onChange={(e) => setBody(e.target.value)}
-        onKeyDown={(e) => e.key === 'Enter' && e.ctrlKey && ok && onSave({ ...value, name: name.trim(), body })}
+        onKeyDown={(e) => e.key === 'Enter' && isMod(e) && ok && onSave({ ...value, name: name.trim(), body })}
         rows={6}
         placeholder={'Что сделано:\n- \n\nКак проверить:\n\nЗадача: {ticket}'}
         className="w-full resize-y rounded-md bg-gk-bg px-2 py-1 font-mono text-[12px] leading-relaxed text-gk-text outline-none ring-1 ring-gk-border placeholder:text-gk-dim focus:ring-gk-blue"
@@ -647,9 +649,9 @@ export function CommitSettings({ repoPath, branch }) {
         <label className="flex cursor-pointer items-start gap-3">
           <Switch checked={prefs.chips} onChange={(v) => setCommitPrefs({ chips: v })} />
           <span>
-            <span className="block font-medium text-gk-text">Панель типов над Summary</span>
+            <span className="block font-medium text-gk-text">Панель типов над заголовком коммита</span>
             <span className="mt-0.5 block leading-relaxed text-gk-muted">
-              Чипсы <Mono>feat</Mono> <Mono>fix</Mono> <Mono>refactor</Mono> и др. ставят префикс в начало Summary, повторный клик убирает его.
+              Чипсы <Mono>feat</Mono> <Mono>fix</Mono> <Mono>refactor</Mono> и др. ставят префикс в начало заголовка, повторный клик убирает его.
               Рядом — <Mono>(scope)</Mono> с подсказками по папкам staged-файлов и <Mono>!</Mono> для несовместимых изменений.
             </span>
           </span>
@@ -719,7 +721,7 @@ export function CommitSettings({ repoPath, branch }) {
           <span>
             <span className="block font-medium text-gk-text">Брать шаблон из git config (commit.template)</span>
             <span className="mt-0.5 block leading-relaxed text-gk-muted">
-              Как в обычном <Mono>git commit</Mono>: текст шаблона предзаполняет Description, строки с <Mono>#</Mono> становятся подсказкой.
+              Как в обычном <Mono>git commit</Mono>: текст шаблона предзаполняет описание, строки с <Mono>#</Mono> становятся подсказкой.
             </span>
             <span className="mt-1 block text-[11.5px]">
               {gitTpl === undefined ? (

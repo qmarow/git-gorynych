@@ -23,7 +23,7 @@ export function SyncBadges({ branch, current, busy, actions }) {
             if (canUpdate && !busy) actions?.update?.(branch.name);
           }}
           onDoubleClick={(e) => e.stopPropagation()}
-          title={canUpdate ? `Update (Pull): обновить ${branch.name}${current ? '' : ' без переключения'}` : `${branch.name} разошлась с сервером — переключитесь и сделайте Pull`}
+          title={canUpdate ? `Обновить ${branch.name} (Pull)${current ? '' : ' без переключения'}` : `${branch.name} разошлась с сервером — переключитесь и сделайте Pull`}
           aria-label={`Обновить ${branch.name}`}
           className={`hidden rounded p-0.5 text-gk-blue hover:bg-gk-blue/15 ${canUpdate && !busy ? 'group-hover:inline-flex' : ''}`}
         >
@@ -180,7 +180,7 @@ function CommitsPopover({ anchor, branch, direction, current, busy, actions, onE
               }}
               className="flex items-center gap-1.5 rounded-md bg-gk-blue/15 px-2 py-1 text-[12px] font-medium text-gk-blue hover:bg-gk-blue/25 disabled:opacity-40"
             >
-              <ArrowDownToLine size={13} /> Update (Pull)
+              <ArrowDownToLine size={13} /> Обновить (Pull)
             </button>
           ) : (
             <span className="text-[11.5px] leading-snug text-gk-yellow">

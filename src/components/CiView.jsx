@@ -33,6 +33,7 @@ import GitLabPanel from './GitLabPanel.jsx';
 import CiEditor from './ci/CiEditor.jsx';
 import JobForm from './ci/JobForm.jsx';
 import { ChoiceDialog, DraftBar, DraftDiff, LintPanel } from './ci/DraftTools.jsx';
+import { kb } from '../lib/platform.js';
 
 const api = window.api;
 
@@ -1142,12 +1143,15 @@ function JobDetails({ job, allJobs, onSelectJob, onClose, onShowLine, editState,
                   {s.inherited && <span className="rounded bg-white/5 px-1.5">из {s.inherited}</span>}
                 </div>
                 <Code>
-                  {s.lines.map((line, i) => (
-                    <div key={i} className="flex gap-2">
-                      <span className="select-none text-gk-dim">$</span>
-                      <span className="min-w-0 whitespace-pre-wrap break-all">{line}</span>
-                    </div>
-                  ))}
+                  {/* Команды не переносим — длинные строки прокручиваются по горизонтали */}
+                  <div className="w-max min-w-full">
+                    {s.lines.map((line, i) => (
+                      <div key={i} className="flex gap-2">
+                        <span className="select-none text-gk-dim">$</span>
+                        <span className="whitespace-pre">{line}</span>
+                      </div>
+                    ))}
+                  </div>
                 </Code>
               </div>
             ))}
@@ -1270,7 +1274,7 @@ function FileEditor({ files, active, onActive, jump, errors, gitDirty, drafts, t
           </button>
         ))}
         <div className="flex-1" />
-        <span className="shrink-0 font-sans text-[11px] text-gk-dim">Tab — отступ · Ctrl+/ — комментарий · Ctrl+S — сохранить</span>
+        <span className="shrink-0 font-sans text-[11px] text-gk-dim">{kb('Tab — отступ · Ctrl+/ — комментарий · Ctrl+S — сохранить')}</span>
       </div>
       <CiEditor
         key={file.path}
@@ -1410,12 +1414,30 @@ function KV({ k, v, note }) {
   return (
     <div className="flex gap-2">
       <span className="w-24 shrink-0 text-gk-dim">{k}</span>
-      <span className="min-w-0 flex-1 whitespace-pre-wrap break-words font-mono text-[11.5px] text-gk-text/90">
-        {v}
+      <span className="min-w-0 flex-1 whitespace-pre-wrap break-words font-mono text-[11.5px] text-gk-text/90 [overflow-wrap:anywhere]">
+        {typeof v === 'string' ? softBreaks(v) : v}
         {note && <span className="ml-1.5 font-sans text-[11px] text-gk-dim">{note}</span>}
       </span>
     </div>
   );
+}
+
+// Мягкие переносы после / _ - . : = , — длинные пути и URL переносятся по смысловым границам,
+// а не посреди слова («htm|l»). Совсем длинный кусок без разделителей — overflow-wrap: anywhere
+function softBreaks(text) {
+  const str = String(text ?? '');
+  if (str.length < 24) return str;
+  const out = [];
+  let buf = '';
+  for (const ch of str) {
+    buf += ch;
+    if ('/_-.:=,&?'.includes(ch)) {
+      out.push(buf, <wbr key={out.length} />);
+      buf = '';
+    }
+  }
+  if (buf) out.push(buf);
+  return out;
 }
 
 function VariablesTable({ variables }) {
@@ -1424,9 +1446,9 @@ function VariablesTable({ variables }) {
       {variables.map((v) => (
         <div key={v.name} className="flex gap-2 border-b border-gk-border/60 px-2 py-1 last:border-0" title={v.description ?? undefined}>
           <Variable size={11} className="mt-0.5 shrink-0 text-gk-dim" />
-          <span className="w-40 shrink-0 truncate font-mono text-[11.5px] text-gk-blue">{v.name}</span>
-          <span className="min-w-0 flex-1 break-all font-mono text-[11.5px] text-gk-text/85">
-            {v.value === '' ? <span className="italic text-gk-dim">пусто</span> : v.value}
+          <span className="w-[38%] max-w-40 shrink-0 font-mono text-[11.5px] text-gk-blue [overflow-wrap:anywhere]">{softBreaks(v.name)}</span>
+          <span className="min-w-0 flex-1 break-words font-mono text-[11.5px] text-gk-text/85 [overflow-wrap:anywhere]">
+            {v.value === '' ? <span className="italic text-gk-dim">пусто</span> : softBreaks(v.value)}
             {v.description && <span className="ml-1.5 font-sans text-[11px] text-gk-dim">— {v.description}</span>}
           </span>
         </div>
@@ -1454,7 +1476,7 @@ function WhenChip({ when, big }) {
 function Code({ children, className = '' }) {
   return (
     <div className={`overflow-x-auto rounded-md bg-black/30 px-2.5 py-1.5 font-mono text-[11.5px] leading-[1.6] text-gk-text/90 ${className}`}>
-      {typeof children === 'string' ? <span className="whitespace-pre-wrap break-all">{children}</span> : children}
+      {typeof children === 'string' ? <span className="block w-max min-w-full whitespace-pre">{children}</span> : children}
     </div>
   );
 }

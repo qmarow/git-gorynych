@@ -394,3 +394,23 @@ textarea {
     transition-duration: 0.01ms !important;
   }
 }
+
+/* Подсказки data-tip (TooltipLayer): узкие, с переносом, всегда внутри окна */
+.gk-tooltip {
+  max-width: 280px;
+  box-sizing: border-box;
+  white-space: pre-line;
+  word-break: break-word;
+  overflow-wrap: anywhere;
+  backdrop-filter: blur(14px) saturate(1.2);
+}
+
+/* Мягкое затухание текста у верхнего и нижнего края прокручиваемой области:
+   строки не «режутся» о шапку и футер, а плавно уходят */
+.scroll-fade {
+  box-sizing: border-box;
+  padding-top: 16px;
+  padding-bottom: 24px;
+  -webkit-mask-image: linear-gradient(to bottom, transparent 0, #000 14px, #000 calc(100% - 20px), transparent 100%);
+  mask-image: linear-gradient(to bottom, transparent 0, #000 14px, #000 calc(100% - 20px), transparent 100%);
+}

@@ -112,10 +112,10 @@ function CommitPanel({ commit, files, activeFile, onOpenFile, onSelectCommit, on
     <>
       <div className="flex h-9 shrink-0 items-center gap-2 border-b border-gk-border px-3 text-xs text-gk-muted">
         <GitCommitHorizontal size={14} />
-        <span>commit:</span>
+        <span>коммит:</span>
         <span className="select-text font-mono text-gk-text">{commit.hash.slice(0, 7)}</span>
         <button
-          title="Копировать SHA"
+          title="Скопировать хэш коммита (SHA)"
           onClick={() => navigator.clipboard?.writeText(commit.hash)}
           className="ml-auto rounded p-1 hover:bg-gk-hover hover:text-gk-text"
         >
@@ -139,13 +139,13 @@ function CommitPanel({ commit, files, activeFile, onOpenFile, onSelectCommit, on
             <div className="truncate font-medium text-gk-text" title={commit.author.email}>
               {commit.author.name}
             </div>
-            <div className="text-gk-muted">authored {fullDate(commit.date)}</div>
+            <div className="text-gk-muted">автор · {fullDate(commit.date)}</div>
           </div>
         </div>
 
         {commit.parents.length > 0 && (
           <div className="flex flex-wrap items-center gap-2 text-xs text-gk-muted">
-            <span>parent{commit.parents.length > 1 ? 's' : ''}:</span>
+            <span>{commit.parents.length > 1 ? 'родители:' : 'родитель:'}</span>
             {commit.parents.map((p) => (
               <button key={p} onClick={() => onSelectCommit(p)} className="font-mono text-gk-blue hover:underline">
                 {p.slice(0, 7)}
@@ -261,18 +261,18 @@ function StashPanel({ stash, details, busy, activeFile, onOpenFile, onAction, on
             onClick={() => restore(chosen)}
             title="Восстановить только выбранные файлы в рабочую папку. Stash остаётся в списке, индекс не меняется. Undo вернёт."
           >
-            Apply Selected ({chosen.length})
+            Применить выбранные ({chosen.length})
           </StashButton>
         )}
         <div className="grid grid-cols-3 gap-1.5">
-          <StashButton icon={ArrowDownToLine} disabled={busy} onClick={() => onAction('apply', stash)} title="Применить весь stash, он остаётся в списке. Чтобы взять отдельные файлы — отметьте их ниже.">
-            {chosen.length > 0 ? 'Apply all' : 'Apply'}
+          <StashButton icon={ArrowDownToLine} disabled={busy} onClick={() => onAction('apply', stash)} title="Применить весь stash (Apply), он остаётся в списке. Чтобы взять отдельные файлы — отметьте их ниже.">
+            {chosen.length > 0 ? 'Применить всё' : 'Применить'}
           </StashButton>
-          <StashButton icon={PackageOpen} disabled={busy} onClick={() => onAction('pop', stash)} title="Применить весь stash и удалить из списка">
-            Pop
+          <StashButton icon={PackageOpen} disabled={busy} onClick={() => onAction('pop', stash)} title="Применить весь stash и удалить его из списка (Pop)">
+            Забрать
           </StashButton>
-          <StashButton icon={Trash2} danger disabled={busy} onClick={() => onAction('drop', stash)} title="Удалить stash (можно вернуть через Undo)">
-            Drop
+          <StashButton icon={Trash2} danger disabled={busy} onClick={() => onAction('drop', stash)} title="Удалить stash (Drop) — можно вернуть через Undo">
+            Удалить
           </StashButton>
         </div>
       </div>
@@ -455,33 +455,33 @@ function WipPanel({ repo, busy, activeFile, onOpenFile, onStage, onUnstage, onCo
           </div>
         )}
         <FileGroup
-          title="Unstaged Files"
+          title="Неиндексированные файлы"
           kind="unstaged"
           files={unstagedFiles}
           busy={busy}
           activeFile={activeFile}
           onOpenFile={onOpenFile}
-          actionLabel="Stage all changes"
+          actionLabel="Добавить все"
           actionClass="bg-gk-green/15 text-gk-green hover:bg-gk-green/25"
           onAction={() => onStage('all')}
           onFileAction={(f) => onStage([f.path])}
           fileActionIcon={Plus}
-          fileActionTitle="Stage"
+          fileActionTitle="Добавить в индекс (Stage)"
           onFileMenu={onFileMenu}
         />
         <FileGroup
-          title="Staged Files"
+          title="Индексированные файлы"
           kind="staged"
           files={stagedFiles}
           busy={busy}
           activeFile={activeFile}
           onOpenFile={onOpenFile}
-          actionLabel="Unstage all"
+          actionLabel="Убрать все"
           actionClass="bg-gk-red/15 text-gk-red hover:bg-gk-red/25"
           onAction={() => onUnstage('all')}
           onFileAction={(f) => onUnstage(f.oldPath ? [f.path, f.oldPath] : [f.path])}
           fileActionIcon={Minus}
-          fileActionTitle="Unstage"
+          fileActionTitle="Убрать из индекса (Unstage)"
           onFileMenu={onFileMenu}
           flagged={guardFiles}
         />
@@ -596,33 +596,54 @@ function FileRow({ file, tree, active, selected, lead, children, ...props }) {
       {lead}
       <StatusBadge status={file.status} />
       {renamed ? (
-        <RenamedPath from={file.oldPath} to={file.path} moved={file.moved} />
+        <RenamedPath from={file.oldPath} to={file.path} moved={file.moved} tree={tree} />
       ) : (
-        <span className="min-w-0 truncate">
-          {!tree && dir && <span className="text-gk-muted">{dir}/</span>}
-          <span className="text-gk-text">{name}</span>
-        </span>
+        <FileName name={name} dir={tree ? '' : dir} />
       )}
       {children}
     </div>
   );
 }
 
-// «старый → новый»: общая начальная часть пути пишется один раз, отличающаяся — по обе стороны стрелки
-function RenamedPath({ from, to, moved }) {
-  const a = from.split('/');
-  const b = to.split('/');
-  let common = 0;
-  while (common < a.length - 1 && common < b.length - 1 && a[common] === b[common]) common++;
-  const prefix = a.slice(0, common).join('/');
-  const oldRest = a.slice(common).join('/');
-  const newRest = b.slice(common).join('/');
+/*
+ * Имя файла — всегда целиком и основным цветом; папка — рядом, приглушённо и обрезается с НАЧАЛА:
+ * «Form.jsx  …/shared/components». Длинный путь больше не прячет имя и расширение.
+ */
+function FileName({ name, dir, muted }) {
   return (
-    <span className={`min-w-0 truncate ${moved ? 'opacity-70' : ''}`}>
-      {prefix && <span className="text-gk-muted">{prefix}/</span>}
-      <span className="text-gk-muted line-through decoration-gk-dim/60">{oldRest}</span>
-      <ArrowRight size={11} className="mx-1 inline-block align-[-1px] text-gk-blue" />
-      <span className={moved ? 'italic text-gk-muted' : 'text-gk-text'}>{newRest}</span>
+    <span className="flex min-w-0 flex-1 items-baseline gap-1.5">
+      <span className={`max-w-full shrink-0 truncate ${muted ? 'italic text-gk-muted' : 'text-gk-text'}`}>{name}</span>
+      {dir && <DirPath dir={dir} />}
+    </span>
+  );
+}
+
+// Обрезание с начала: у контейнера direction rtl — многоточие встаёт слева, а сам путь
+// внутри изолирован как LTR, поэтому «/» и стрелки остаются на своих местах
+function DirPath({ dir, children }) {
+  return (
+    <span dir="rtl" className="min-w-0 flex-1 truncate text-left text-[11.5px] text-gk-dim">
+      <span dir="ltr">{children ?? dir}</span>
+    </span>
+  );
+}
+
+// Перенос/переименование: новое имя — основным цветом; рядом — откуда («← старое имя» или «← старая/папка»)
+function RenamedPath({ from, to, moved, tree }) {
+  const split = (p) => {
+    const parts = p.split('/');
+    const name = parts.pop();
+    return [parts.join('/'), name];
+  };
+  const [oldDir, oldName] = split(from);
+  const [newDir, newName] = split(to);
+  const source = oldDir === newDir ? oldName : oldName === newName ? `${oldDir || '/'}/` : from;
+  return (
+    <span className={`flex min-w-0 flex-1 items-baseline gap-1.5 ${moved ? 'opacity-80' : ''}`}>
+      <span className={`max-w-full shrink-0 truncate ${moved ? 'italic text-gk-muted' : 'text-gk-text'}`}>{newName}</span>
+      <DirPath dir={source}>
+        {!tree && newDir && newDir !== oldDir ? `${newDir}/ ` : ''}← <span className="line-through decoration-gk-dim/60">{source}</span>
+      </DirPath>
     </span>
   );
 }
