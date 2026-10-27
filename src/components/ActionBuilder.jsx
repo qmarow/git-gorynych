@@ -17,7 +17,7 @@ import {
   Layers,
   LogIn,
   MessageCircleQuestionMark,
-  PackageOpen,
+  ArchiveRestore,
   Play,
   Plus,
   RefreshCw,
@@ -59,7 +59,7 @@ export const STEP_ICONS = {
   merge: GitMerge,
   deleteBranch: Trash2,
   stash: Archive,
-  stashPop: PackageOpen,
+  stashPop: ArchiveRestore,
   commit: GitCommitHorizontal,
   mergeRequest: GitPullRequest,
   confirm: MessageCircleQuestionMark,
@@ -102,13 +102,13 @@ export default function ActionBuilder({ actions, branches, initialId, onChange, 
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex animate-fade-in items-center justify-center bg-black/50 p-6 backdrop-blur-[3px]" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
+    <div className="fixed inset-0 z-50 flex animate-fade-in items-center justify-center bg-gk-scrim p-6 backdrop-blur-[3px]" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
       <div className="glass-strong flex h-[min(820px,90vh)] w-[min(1080px,100%)] animate-pop-in overflow-hidden rounded-xl border border-gk-border bg-gk-panel-2 shadow-2xl">
         {/* Список действий */}
-        <nav className="flex w-64 shrink-0 flex-col border-r border-gk-border bg-black/10">
+        <nav className="flex w-64 shrink-0 flex-col border-r border-gk-border bg-gk-sink/10">
           <div className="flex items-center gap-2 px-4 pb-3 pt-4">
             <WandSparkles size={16} className="text-gk-green" />
-            <span className="text-[14px] font-semibold text-white">Конструктор действий</span>
+            <span className="text-[14px] font-semibold text-gk-strong">Конструктор действий</span>
           </div>
           <div className="min-h-0 flex-1 overflow-y-auto px-2">
             {actions.length > 0 && <div className="px-2 pb-1 text-[10.5px] font-semibold uppercase tracking-wider text-gk-dim">Мои действия</div>}
@@ -120,7 +120,7 @@ export default function ActionBuilder({ actions, branches, initialId, onChange, 
                   key={a.id}
                   onClick={() => setSelectedId(a.id)}
                   className={`flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-left text-[13px] transition-colors ${
-                    a.id === selectedId ? 'bg-gk-blue/15 text-white' : 'text-gk-muted hover:bg-gk-hover hover:text-gk-text'
+                    a.id === selectedId ? 'bg-gk-blue/15 text-gk-strong' : 'text-gk-muted hover:bg-gk-hover hover:text-gk-text'
                   }`}
                 >
                   <Icon size={14} className={`shrink-0 ${a.id === selectedId ? 'text-gk-blue' : ''}`} />
@@ -195,7 +195,7 @@ function EmptyState({ onCreate, onTemplate }) {
         <WandSparkles size={28} className="text-gk-green" />
       </div>
       <div>
-        <div className="text-[15px] font-semibold text-white">Свои кнопки для частых дел</div>
+        <div className="text-[15px] font-semibold text-gk-strong">Свои кнопки для частых дел</div>
         <p className="mt-1 max-w-md text-[13px] leading-relaxed text-gk-muted">
           Соберите цепочку шагов — например, «создать ветку от main, rebase, push, merge request» — и запускайте её одной кнопкой на панели
           или сочетанием клавиш.
@@ -203,7 +203,7 @@ function EmptyState({ onCreate, onTemplate }) {
       </div>
       <div className="grid w-full max-w-xl grid-cols-2 gap-2">
         {TEMPLATES.slice(0, 4).map((t) => (
-          <button key={t.id} onClick={() => onTemplate(t)} className="rounded-lg border border-gk-border bg-white/[0.02] p-3 text-left hover:border-gk-blue/40 hover:bg-gk-blue/[0.05]">
+          <button key={t.id} onClick={() => onTemplate(t)} className="rounded-lg border border-gk-border bg-gk-fg/[0.02] p-3 text-left hover:border-gk-blue/40 hover:bg-gk-blue/[0.05]">
             <div className="text-[13px] font-medium text-gk-text">{t.title}</div>
             <div className="mt-0.5 text-[11.5px] leading-snug text-gk-dim">{t.description}</div>
           </button>
@@ -246,7 +246,7 @@ function Editor({ action: a, actions, branches, palette, setPalette, onUpdate, o
                       onUpdate({ icon: name });
                       setIconsOpen(false);
                     }}
-                    className={`flex h-6 w-6 items-center justify-center rounded ${a.icon === name ? 'bg-gk-blue/25 text-gk-blue' : 'text-gk-muted hover:bg-white/10 hover:text-gk-text'}`}
+                    className={`flex h-6 w-6 items-center justify-center rounded ${a.icon === name ? 'bg-gk-blue/25 text-gk-blue' : 'text-gk-muted hover:bg-gk-fg/10 hover:text-gk-text'}`}
                   >
                     <I size={13} />
                   </button>
@@ -258,7 +258,7 @@ function Editor({ action: a, actions, branches, palette, setPalette, onUpdate, o
             value={a.name}
             onChange={(e) => onUpdate({ name: e.target.value })}
             placeholder="Название действия"
-            className="min-w-0 flex-1 rounded-md bg-transparent px-2 py-1.5 text-[16px] font-semibold text-white outline-none ring-1 ring-transparent placeholder:text-gk-dim hover:ring-gk-border focus:ring-gk-blue"
+            className="min-w-0 flex-1 rounded-md bg-transparent px-2 py-1.5 text-[16px] font-semibold text-gk-strong outline-none ring-1 ring-transparent placeholder:text-gk-dim hover:ring-gk-border focus:ring-gk-blue"
           />
         </div>
 
@@ -324,7 +324,7 @@ function Editor({ action: a, actions, branches, palette, setPalette, onUpdate, o
         </div>
 
         {/* Переменные */}
-        <div className="mt-5 rounded-lg border border-gk-border bg-white/[0.015] p-3">
+        <div className="mt-5 rounded-lg border border-gk-border bg-gk-fg/[0.015] p-3">
           <div className="mb-1.5 text-[11px] font-semibold uppercase tracking-wider text-gk-muted">Переменные в полях</div>
           <div className="grid grid-cols-2 gap-x-4 gap-y-1">
             {VARIABLES.map(([v, d]) => (
@@ -332,7 +332,7 @@ function Editor({ action: a, actions, branches, palette, setPalette, onUpdate, o
                 key={v}
                 onClick={() => navigator.clipboard?.writeText(v)}
                 title="Скопировать"
-                className="flex items-baseline gap-2 rounded px-1 text-left text-[12px] hover:bg-white/5"
+                className="flex items-baseline gap-2 rounded px-1 text-left text-[12px] hover:bg-gk-fg/5"
               >
                 <code className="shrink-0 font-mono text-gk-blue">{v}</code>
                 <span className="truncate text-gk-dim">{d}</span>
@@ -406,7 +406,7 @@ function StepCard({ step, index, count, branches, dragging, onDragStart, onDragE
       >
         {index + 1}
       </div>
-      <div className={`min-w-0 flex-1 rounded-lg border bg-white/[0.02] px-3 py-2.5 transition-colors ${over ? 'border-gk-blue' : 'border-gk-border'}`}>
+      <div className={`min-w-0 flex-1 rounded-lg border bg-gk-fg/[0.02] px-3 py-2.5 transition-colors ${over ? 'border-gk-blue' : 'border-gk-border'}`}>
         <div className="flex items-center gap-2">
           <Icon size={14} className="shrink-0 text-gk-blue" />
           <span className="text-[13px] font-medium text-gk-text">{t.label}</span>
@@ -597,7 +597,7 @@ function SmallBtn({ children, danger, ...props }) {
       type="button"
       {...props}
       className={`flex h-6 w-6 items-center justify-center rounded transition-colors disabled:opacity-30 ${
-        danger ? 'text-gk-dim hover:bg-gk-red/15 hover:text-gk-red' : 'text-gk-dim enabled:hover:bg-white/10 enabled:hover:text-gk-text'
+        danger ? 'text-gk-dim hover:bg-gk-red/15 hover:text-gk-red' : 'text-gk-dim enabled:hover:bg-gk-fg/10 enabled:hover:text-gk-text'
       }`}
     >
       {children}

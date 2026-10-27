@@ -135,7 +135,7 @@ function Tab({ tab, active, loading, onSelect, onClose }) {
           e.stopPropagation();
           onClose();
         }}
-        className={`-mr-1 flex h-4 w-4 shrink-0 items-center justify-center rounded text-gk-dim transition hover:bg-white/10 hover:text-gk-text ${
+        className={`-mr-1 flex h-4 w-4 shrink-0 items-center justify-center rounded text-gk-dim transition hover:bg-gk-fg/10 hover:text-gk-text ${
           active ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'
         }`}
       >

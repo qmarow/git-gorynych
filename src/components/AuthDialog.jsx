@@ -153,7 +153,7 @@ export default function AuthDialog({ target, error, formError, busy, actionLabel
       {/* Куда входим */}
       <div className="flex items-center gap-2 rounded-md bg-gk-bg px-3 py-2">
         <span className="min-w-0 flex-1">
-          <span className="block truncate font-mono text-[13px] text-white" data-testid="auth-host">
+          <span className="block truncate font-mono text-[13px] text-gk-strong" data-testid="auth-host">
             {target?.hostname ?? target?.host ?? '—'}
           </span>
           <span className="block truncate font-mono text-[11px] text-gk-dim">{target?.url}</span>
@@ -172,7 +172,7 @@ export default function AuthDialog({ target, error, formError, busy, actionLabel
       )}
 
       {/* Способ входа */}
-      <div role="tablist" className="flex gap-1 rounded-lg bg-black/20 p-1">
+      <div role="tablist" className="flex gap-1 rounded-lg bg-gk-sink/20 p-1">
         {TABS.map((t) => {
           const off = proto !== 'local' && t.https !== (proto === 'https');
           return (
@@ -183,7 +183,7 @@ export default function AuthDialog({ target, error, formError, busy, actionLabel
               onClick={() => setTab(t.id)}
               data-tip={off ? (t.https ? 'Адрес remote — SSH: логин, пароль и токен для него не используются' : 'Адрес remote — HTTPS: SSH-ключ для него не используется') : undefined}
               className={`flex flex-1 items-center justify-center gap-1.5 rounded-md px-2 py-1.5 text-[12px] transition-colors ${
-                tab === t.id ? 'bg-gk-hover text-white shadow' : 'text-gk-muted hover:text-gk-text'
+                tab === t.id ? 'bg-gk-hover text-gk-strong shadow' : 'text-gk-muted hover:text-gk-text'
               } ${off ? 'opacity-50' : ''}`}
             >
               <t.icon size={13} />
@@ -297,7 +297,7 @@ export default function AuthDialog({ target, error, formError, busy, actionLabel
                 }}
                 data-testid={`ssh-mode-${id}`}
                 className={`flex items-center gap-1.5 rounded-md border px-2.5 py-1 ${
-                  (sshMode ?? 'existing') === id ? 'border-gk-blue/70 bg-gk-blue/10 text-white' : 'border-gk-border text-gk-muted hover:text-gk-text'
+                  (sshMode ?? 'existing') === id ? 'border-gk-blue/70 bg-gk-blue/10 text-gk-strong' : 'border-gk-border text-gk-muted hover:text-gk-text'
                 }`}
               >
                 <Icon size={12} /> {label}
@@ -351,7 +351,7 @@ export default function AuthDialog({ target, error, formError, busy, actionLabel
                           {keyPath === k.path && <span className="h-1.5 w-1.5 rounded-full bg-gk-blue" />}
                         </span>
                         <span className="flex-1 truncate font-mono text-[12px] text-gk-text">{k.name}</span>
-                        {k.type && <span className="shrink-0 rounded bg-white/5 px-1.5 font-mono text-[10.5px] text-gk-muted">{k.type}</span>}
+                        {k.type && <span className="shrink-0 rounded bg-gk-fg/5 px-1.5 font-mono text-[10.5px] text-gk-muted">{k.type}</span>}
                         {k.comment && <span className="max-w-[40%] shrink truncate text-[11px] text-gk-dim">{k.comment}</span>}
                       </button>
                     ))
@@ -490,7 +490,7 @@ function KeyGenerator({ host, onDefaults, onCreated }) {
   };
 
   return (
-    <div className="space-y-2.5 rounded-lg border border-gk-border bg-white/[0.02] p-3" data-testid="key-generator">
+    <div className="space-y-2.5 rounded-lg border border-gk-border bg-gk-fg/[0.02] p-3" data-testid="key-generator">
       <div className="flex gap-1">
         {KEY_TYPES.map((t) => (
           <button
@@ -498,7 +498,7 @@ function KeyGenerator({ host, onDefaults, onCreated }) {
             onClick={() => setType(t.id)}
             aria-pressed={type === t.id}
             className={`flex flex-1 flex-col items-center rounded-md border px-2 py-1 ${
-              type === t.id ? 'border-gk-blue/70 bg-gk-blue/10 text-white' : 'border-gk-border text-gk-muted hover:text-gk-text'
+              type === t.id ? 'border-gk-blue/70 bg-gk-blue/10 text-gk-strong' : 'border-gk-border text-gk-muted hover:text-gk-text'
             }`}
           >
             <span className="font-mono text-[12px]">{t.label}</span>

@@ -20,9 +20,9 @@ import { CATEGORY_LABELS, DEFAULT_GUARD, DEFAULT_RULES, EXCLUDE_SUGGESTIONS, LEV
 import { plural } from '../lib/format.js';
 
 const TONE = {
-  secret: { chip: 'bg-gk-red/15 text-gk-red', mark: 'bg-gk-red/30 text-white', icon: KeyRound, text: 'text-gk-red' },
-  debug: { chip: 'bg-gk-yellow/15 text-gk-yellow', mark: 'bg-gk-yellow/30 text-white', icon: AlertTriangle, text: 'text-gk-yellow' },
-  other: { chip: 'bg-gk-blue/15 text-gk-blue', mark: 'bg-gk-blue/30 text-white', icon: ShieldAlert, text: 'text-gk-blue' },
+  secret: { chip: 'bg-gk-red/15 text-gk-red', mark: 'bg-gk-red/30 text-gk-strong', icon: KeyRound, text: 'text-gk-red' },
+  debug: { chip: 'bg-gk-yellow/15 text-gk-yellow', mark: 'bg-gk-yellow/30 text-gk-strong', icon: AlertTriangle, text: 'text-gk-yellow' },
+  other: { chip: 'bg-gk-blue/15 text-gk-blue', mark: 'bg-gk-blue/30 text-gk-strong', icon: ShieldAlert, text: 'text-gk-blue' },
 };
 
 export function summarize(findings) {
@@ -99,10 +99,10 @@ export function GuardBanner({ result, state, onOpen, onToggleRepo, onSettings })
 function QuickButtons({ onToggleRepo, onSettings }) {
   return (
     <span className="flex shrink-0 items-center opacity-0 transition-opacity group-hover:opacity-100">
-      <button onClick={onToggleRepo} title="Выключить проверку для этого репозитория" className="rounded p-1 text-gk-dim hover:bg-white/10 hover:text-gk-text">
+      <button onClick={onToggleRepo} title="Выключить проверку для этого репозитория" className="rounded p-1 text-gk-dim hover:bg-gk-fg/10 hover:text-gk-text">
         <ShieldOff size={12} />
       </button>
-      <button onClick={onSettings} title="Настроить правила" className="rounded p-1 text-gk-dim hover:bg-white/10 hover:text-gk-text">
+      <button onClick={onSettings} title="Настроить правила" className="rounded p-1 text-gk-dim hover:bg-gk-fg/10 hover:text-gk-text">
         <Settings2 size={12} />
       </button>
     </span>
@@ -129,11 +129,11 @@ export function GuardDialog({ result, mode, onCancel, onCommitAnyway, onOpenFile
   }, [onCancel]);
 
   return (
-    <div className="fixed inset-0 z-50 flex animate-fade-in items-start justify-center bg-black/45 pt-[8vh] backdrop-blur-[3px]" onMouseDown={(e) => e.target === e.currentTarget && onCancel()}>
+    <div className="fixed inset-0 z-50 flex animate-fade-in items-start justify-center bg-gk-scrim pt-[8vh] backdrop-blur-[3px]" onMouseDown={(e) => e.target === e.currentTarget && onCancel()}>
       <div className="glass-strong flex max-h-[80vh] w-[720px] max-w-[calc(100vw-2rem)] animate-pop-in flex-col overflow-hidden rounded-xl border border-gk-border bg-gk-panel-2">
         <div className="flex shrink-0 items-center gap-2 border-b border-gk-border px-4 py-3">
           {blocked.length ? <Ban size={16} className="text-gk-red" /> : secrets ? <KeyRound size={16} className="text-gk-red" /> : <AlertTriangle size={16} className="text-gk-yellow" />}
-          <h2 className="flex-1 text-[14px] font-semibold text-white">
+          <h2 className="flex-1 text-[14px] font-semibold text-gk-strong">
             {mode === 'commit' ? (blocked.length ? 'Коммит запрещён' : 'Проверьте перед коммитом') : 'Проверка перед коммитом'}
           </h2>
           <button onClick={onCancel} className="rounded p-1 text-gk-dim hover:bg-gk-hover hover:text-gk-text">
@@ -158,7 +158,7 @@ export function GuardDialog({ result, mode, onCancel, onCommitAnyway, onOpenFile
               если потом удалить файл
             </>
           )}
-          . Строку можно пометить комментарием <code className="font-mono text-gk-text">gitidea-ignore</code>, чтобы проверка её пропускала.
+          . Строку можно пометить комментарием <code className="font-mono text-gk-text">gorynych-ignore</code>, чтобы проверка её пропускала.
         </div>
         <div className="min-h-0 flex-1 overflow-y-auto py-1">
           {groups.map(([file, items]) => (
@@ -207,7 +207,7 @@ export function GuardDialog({ result, mode, onCancel, onCommitAnyway, onOpenFile
                 <button
                   onClick={onCommitAnyway}
                   className={`rounded-md px-3 py-1.5 text-[12.5px] ring-1 transition ${
-                    secrets ? 'text-gk-red ring-gk-red/40 hover:bg-gk-red/10' : 'text-gk-text ring-gk-border hover:bg-white/10'
+                    secrets ? 'text-gk-red ring-gk-red/40 hover:bg-gk-red/10' : 'text-gk-text ring-gk-border hover:bg-gk-fg/10'
                   }`}
                 >
                   Всё равно закоммитить
@@ -215,7 +215,7 @@ export function GuardDialog({ result, mode, onCancel, onCommitAnyway, onOpenFile
               )}
             </>
           ) : (
-            <button onClick={onCancel} className="rounded-md bg-white/10 px-3 py-1.5 text-[12.5px] text-gk-text hover:bg-white/15">
+            <button onClick={onCancel} className="rounded-md bg-gk-fg/10 px-3 py-1.5 text-[12.5px] text-gk-text hover:bg-gk-fg/15">
               Закрыть
             </button>
           )}
@@ -261,10 +261,10 @@ export function GuardSettings({ cfg, onChange, repoPath }) {
       </div>
 
       <div className={cfg.enabled ? '' : 'pointer-events-none opacity-45'}>
-        <div className="mb-3 rounded-lg border border-gk-border bg-white/[0.02] px-3 py-2 text-[11.5px] leading-relaxed text-gk-muted">
+        <div className="mb-3 rounded-lg border border-gk-border bg-gk-fg/[0.02] px-3 py-2 text-[11.5px] leading-relaxed text-gk-muted">
           Для каждого правила: <b className="font-medium text-gk-text">Выкл</b> — не проверять, <b className="font-medium text-gk-yellow">Предупреждать</b> — показать и
           спросить, <b className="font-medium text-gk-red">Запрещать</b> — коммит не создаётся, пока строка не исправлена или не помечена{' '}
-          <code className="font-mono text-gk-text">gitidea-ignore</code>.
+          <code className="font-mono text-gk-text">gorynych-ignore</code>.
         </div>
 
         {groups.map(([cat, rules]) => (
@@ -366,7 +366,7 @@ function CategoryHeader({ title, rules, cfg, onSetAll }) {
 }
 
 function LevelPicker({ value, onChange, small }) {
-  const cls = { off: 'bg-white/15 text-gk-text', warn: 'bg-gk-yellow/20 text-gk-yellow', block: 'bg-gk-red/20 text-gk-red' };
+  const cls = { off: 'bg-gk-fg/15 text-gk-text', warn: 'bg-gk-yellow/20 text-gk-yellow', block: 'bg-gk-red/20 text-gk-red' };
   return (
     <div className="flex shrink-0 overflow-hidden rounded-md ring-1 ring-gk-border">
       {LEVELS.map((l) => (
@@ -375,7 +375,7 @@ function LevelPicker({ value, onChange, small }) {
           type="button"
           title={l.hint}
           onClick={() => onChange(l.id)}
-          className={`${small ? 'px-1.5 text-[10.5px]' : 'px-2 text-[11px]'} py-0.5 transition-colors ${value === l.id ? cls[l.id] : 'text-gk-dim hover:bg-white/5 hover:text-gk-text'}`}
+          className={`${small ? 'px-1.5 text-[10.5px]' : 'px-2 text-[11px]'} py-0.5 transition-colors ${value === l.id ? cls[l.id] : 'text-gk-dim hover:bg-gk-fg/5 hover:text-gk-text'}`}
         >
           {l.label}
         </button>
@@ -396,13 +396,13 @@ function RuleRow({ rule, level, onLevel, onEdit, onDelete }) {
         {rule.pattern}
       </code>
       {rule.files && (
-        <span className="shrink-0 rounded bg-white/5 px-1.5 text-[10.5px] text-gk-muted" title="Только в этих файлах">
+        <span className="shrink-0 rounded bg-gk-fg/5 px-1.5 text-[10.5px] text-gk-muted" title="Только в этих файлах">
           .{rule.files.split(/[,\s]+/).join(' .')}
         </span>
       )}
       {onEdit && (
         <span className="flex shrink-0 opacity-0 transition-opacity group-hover:opacity-100">
-          <button onClick={onEdit} title="Изменить" className="rounded p-1 text-gk-dim hover:bg-white/10 hover:text-gk-text">
+          <button onClick={onEdit} title="Изменить" className="rounded p-1 text-gk-dim hover:bg-gk-fg/10 hover:text-gk-text">
             <Pencil size={12} />
           </button>
           <button onClick={onDelete} title="Удалить" className="rounded p-1 text-gk-dim hover:bg-gk-red/15 hover:text-gk-red">
@@ -432,10 +432,10 @@ function ExcludeEditor({ value, onChange }) {
       {value.length > 0 && (
         <div className="mb-2 flex flex-wrap gap-1.5">
           {value.map((g) => (
-            <span key={g} className="flex items-center gap-1 rounded-md bg-white/[0.06] py-0.5 pl-2 pr-1 font-mono text-[11.5px] text-gk-text ring-1 ring-gk-border">
+            <span key={g} className="flex items-center gap-1 rounded-md bg-gk-fg/[0.06] py-0.5 pl-2 pr-1 font-mono text-[11.5px] text-gk-text ring-1 ring-gk-border">
               <FolderX size={11} className="text-gk-dim" />
               {g}
-              <button onClick={() => onChange(value.filter((x) => x !== g))} title="Убрать" className="rounded p-0.5 text-gk-dim hover:bg-white/10 hover:text-gk-red">
+              <button onClick={() => onChange(value.filter((x) => x !== g))} title="Убрать" className="rounded p-0.5 text-gk-dim hover:bg-gk-fg/10 hover:text-gk-red">
                 <X size={11} />
               </button>
             </span>
@@ -450,13 +450,13 @@ function ExcludeEditor({ value, onChange }) {
         className="flex gap-2"
       >
         <input value={draft} onChange={(e) => setDraft(e.target.value)} placeholder="**/vendor/**" spellCheck={false} className={`${inputCls} font-mono`} />
-        <button disabled={!draft.trim()} className="shrink-0 rounded-md bg-white/10 px-3 text-[12px] text-gk-text hover:bg-white/15 disabled:opacity-40">
+        <button disabled={!draft.trim()} className="shrink-0 rounded-md bg-gk-fg/10 px-3 text-[12px] text-gk-text hover:bg-gk-fg/15 disabled:opacity-40">
           Добавить
         </button>
       </form>
       <div className="mt-2 flex flex-wrap gap-1">
         {EXCLUDE_SUGGESTIONS.filter((g) => !value.includes(g)).map((g) => (
-          <button key={g} onClick={() => add(g)} className="rounded-full bg-white/[0.04] px-2 py-0.5 font-mono text-[11px] text-gk-dim hover:bg-gk-blue/15 hover:text-gk-blue">
+          <button key={g} onClick={() => add(g)} className="rounded-full bg-gk-fg/[0.04] px-2 py-0.5 font-mono text-[11px] text-gk-dim hover:bg-gk-blue/15 hover:text-gk-blue">
             + {g}
           </button>
         ))}
@@ -517,7 +517,7 @@ function RuleForm({ rule, onSave, onCancel }) {
                 <Check size={11} className="inline" /> сработает:
               </span>
               {sample.slice(0, hit.start)}
-              <mark className="rounded-[3px] bg-gk-yellow/30 px-0.5 text-white">{sample.slice(hit.start, hit.end)}</mark>
+              <mark className="rounded-[3px] bg-gk-yellow/30 px-0.5 text-gk-strong">{sample.slice(hit.start, hit.end)}</mark>
               {sample.slice(hit.end)}
             </>
           ) : (
@@ -575,7 +575,7 @@ export function Switch({ checked, onChange, small }) {
         onChange(!checked);
       }}
       style={{ width: w, height: k + 4 }}
-      className={`relative block shrink-0 rounded-full p-0 transition-colors duration-200 ${checked ? 'bg-gk-green' : 'bg-white/15'}`}
+      className={`relative block shrink-0 rounded-full p-0 transition-colors duration-200 ${checked ? 'bg-gk-green' : 'bg-gk-fg/15'}`}
     >
       <span
         className="absolute left-0 top-[2px] block rounded-full bg-white shadow transition-transform duration-200"

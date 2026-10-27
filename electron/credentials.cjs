@@ -190,7 +190,7 @@ const toPosix = (p) => String(p).replace(/\\/g, '/');
 
 /** Скрипт для SSH_ASKPASS: печатает пароль ключа из переменной окружения */
 function askpassScript() {
-  const file = path.join(userDataDir(), 'gitidea-ssh-askpass.sh');
+  const file = path.join(userDataDir(), 'gorynych-ssh-askpass.sh');
   const body = '#!/bin/sh\nprintf \'%s\\n\' "$GITIDEA_SSH_PASS"\n';
   try {
     if (!fs.existsSync(file) || fs.readFileSync(file, 'utf8') !== body) fs.writeFileSync(file, body, { mode: 0o700 });
@@ -345,7 +345,7 @@ const KEY_TYPES = {
 function suggestKeyName(type = 'ed25519', host = null, dir = sshDir(), exists = fs.existsSync) {
   const base = type === 'rsa' ? 'id_rsa' : 'id_ed25519';
   if (!exists(path.join(dir, base)) && !exists(path.join(dir, `${base}.pub`))) return base;
-  const tag = String(host ?? 'gitidea').toLowerCase().replace(/[^a-z0-9.-]+/g, '_').replace(/^[._-]+|[._-]+$/g, '') || 'gitidea';
+  const tag = String(host ?? 'gorynych').toLowerCase().replace(/[^a-z0-9.-]+/g, '_').replace(/^[._-]+|[._-]+$/g, '') || 'gorynych';
   return `${base}_${tag}`;
 }
 

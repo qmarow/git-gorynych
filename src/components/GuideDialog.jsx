@@ -87,12 +87,12 @@ export const SHORTCUTS = [
 
 // Клавиши: на macOS Ctrl → ⌘, Alt → ⌥ (kb)
 const K = ({ children }) => (
-  <kbd className="mx-0.5 inline-block whitespace-nowrap rounded border border-gk-border bg-white/[0.06] px-1.5 py-px font-mono text-[11px] text-gk-text shadow-[inset_0_-1px_0_rgb(255_255_255/0.06)]">
+  <kbd className="mx-0.5 inline-block whitespace-nowrap rounded border border-gk-border bg-gk-fg/[0.06] px-1.5 py-px font-mono text-[11px] text-gk-text shadow-[inset_0_-1px_0_rgb(255_255_255/0.06)]">
     {typeof children === 'string' ? kb(children) : children}
   </kbd>
 );
-const B = ({ children }) => <b className="font-medium text-white">{children}</b>;
-const H = ({ children }) => <h3 className="mb-2 mt-6 text-[14px] font-semibold text-white first:mt-0">{children}</h3>;
+const B = ({ children }) => <b className="font-medium text-gk-strong">{children}</b>;
+const H = ({ children }) => <h3 className="mb-2 mt-6 text-[14px] font-semibold text-gk-strong first:mt-0">{children}</h3>;
 const P = ({ children }) => <p className="mb-2.5 leading-relaxed">{children}</p>;
 const Steps = ({ items }) => (
   <ol className="mb-3 space-y-1.5">
@@ -135,7 +135,7 @@ const SECTIONS = [
     body: () => (
       <>
         <P>
-          <B>GitIdea</B> — программа для работы с Git-репозиториями: история в виде графа, коммиты, ветки, синхронизация с сервером,
+          <B>git-Горыныч</B> — программа для работы с Git-репозиториями: история в виде графа, коммиты, ветки, синхронизация с сервером,
           безопасная отмена любых действий и работа с CI/CD GitLab.
         </P>
         <H>Открыть проект</H>
@@ -391,8 +391,14 @@ const SECTIONS = [
         />
         <H>Слить и удалить</H>
         <P>
-          Правый клик по коммиту, на котором стоит ветка: <B>Влить … в … (Merge)</B> — слить в текущую, <B>Перебазировать … на … (Rebase)</B> —
-          перенести текущую ветку поверх неё с предпросмотром, <B>Удалить ветку …</B>. Удалённую ветку возвращает <K>Ctrl+Z</K>.
+          <B>Правый клик по метке ветки</B> (в графе или в списке слева) — меню только этой ветки: переключиться, <B>Влить … в …</B>
+          (Merge), <B>Перебазировать … на …</B> (Rebase, с предпросмотром), <B>Сбросить … к …</B> (Reset), <B>Переименовать…</B>,
+          <B>Удалить ветку…</B> и <B>Удалить … с сервера…</B>. Ветка и её копия на сервере на одном коммите — одно меню, без дублей.
+          Удалённую или переименованную ветку возвращает <K>Ctrl+Z</K>.
+        </P>
+        <P>
+          Правый клик по строке коммита — меню коммита; ветки на нём собраны в подменю <B>Ветка … ›</B>. Английский термин Git (Merge,
+          Rebase, Cherry-pick…) стоит справа в строке меню. Клик по хэшу в шапке меню копирует его.
         </P>
         <P>
           Быстрее — мышью: перетащите ветку или коммит на ветку, в которую нужно слить (раздел «Перетаскивание»). Переключаться заранее не
@@ -601,7 +607,7 @@ const SECTIONS = [
     id: 'guard',
     title: 'Проверка перед коммитом',
     icon: ShieldAlert,
-    keywords: 'guard pre-commit console.log debugger print todo секрет токен ключ пароль aws bearer правило уровень запрещать предупреждать исключения шаблоны gitidea-ignore репозиторий выключить webstorm vs code откат индекс staged синхронизация',
+    keywords: 'guard pre-commit console.log debugger print todo секрет токен ключ пароль aws bearer правило уровень запрещать предупреждать исключения шаблоны gorynych-ignore репозиторий выключить webstorm vs code откат индекс staged синхронизация',
     body: () => (
       <>
         <P>
@@ -610,7 +616,7 @@ const SECTIONS = [
         </P>
         <List
           items={[
-            <>забытую отладку: console.log, debugger, print(), breakpoint(), var_dump, .only в тестах, «TODO: remove», маркеры конфликта;</>, // gitidea-ignore
+            <>забытую отладку: console.log, debugger, print(), breakpoint(), var_dump, .only в тестах, «TODO: remove», маркеры конфликта;</>, // gorynych-ignore
             <>похожее на секреты: ключи sk-…, токены GitHub/GitLab/Slack, Bearer, AWS_…, JWT, приватные ключи, пароли в коде.</>,
           ]}
         />
@@ -648,7 +654,7 @@ const SECTIONS = [
           ]}
         />
         <P>
-          Отдельную строку проверка пропустит, если в ней есть комментарий <code className="font-mono text-gk-text">gitidea-ignore</code> — так
+          Отдельную строку проверка пропустит, если в ней есть комментарий <code className="font-mono text-gk-text">gorynych-ignore</code> — так
           можно оставить нужный console.log или тестовый ключ, даже когда правило запрещает коммит. Кнопка «Вернуть всё по умолчанию» сбрасывает
           настройки.
         </P>
@@ -781,14 +787,14 @@ const SECTIONS = [
         <List
           items={[
             <>
-              <B>Вернуть проект к этому коммиту…</B> — новый коммит, который делает все файлы как в выбранном. История не переписывается,
-              безопасно даже для отправленных веток.
+              <B>Восстановить файлы из коммита…</B> (меню коммита или значок в шапке панели коммита справа) — новый коммит, в котором все
+              файлы как в выбранном. История не переписывается, ветка не переключается — безопасно даже для отправленных веток.
             </>,
             <>
-              <B>Обратить изменения коммита (Revert)</B> — новый коммит, отменяющий один конкретный коммит.
+              <B>Обратить изменения коммита</B> (Revert) — новый коммит, отменяющий один конкретный коммит.
             </>,
             <>
-              <B>Сбросить … к этому коммиту (Reset)</B> — переносит ветку назад: мягко (Soft), смешанно (Mixed) или жёстко (Hard). Hard удаляет незакоммиченные правки — программа
+              <B>Сбросить … к этому коммиту</B> (Reset) — переносит ветку назад: мягко (Soft), смешанно (Mixed) или жёстко (Hard). Hard удаляет незакоммиченные правки — программа
               спросит подтверждение.
             </>,
           ]}
@@ -908,6 +914,10 @@ const SECTIONS = [
               <B>Stash</B> на панели — спрятать всё; <B>Pop</B> — вернуть последнее спрятанное.
             </>,
             <>
+              Названия в списке единого вида: своё сообщение, «Правки в &lt;ветка&gt;» для Stash без сообщения или имя ветки с пометкой
+              <B>авто</B>; справа — когда спрятано. Одинаковые правки дважды не хранятся: при повторном Stash старая копия убирается.
+            </>,
+            <>
               Раздел <B>Stash</B> слева: клик — посмотреть содержимое; кнопки и правый клик — <B>Применить</B> (Apply, stash остаётся),
               <B>Забрать</B> (Pop — применить и удалить), <B>Удалить</B> (Drop; <K>Ctrl+Z</K> вернёт).
             </>,
@@ -1003,12 +1013,16 @@ const SECTIONS = [
     id: 'look',
     title: 'Оформление',
     icon: Palette,
-    keywords: 'тема фон прозрачность оформление настройки анимации',
+    keywords: 'тема светлая тёмная белая как в системе фон прозрачность оформление настройки анимации',
     body: () => (
       <>
         <P>
           <K>Ctrl+,</K> или шестерёнка справа вверху → <B>Оформление</B>: тема, фон (градиенты, своя картинка или прозрачность Windows 11),
           прозрачность панелей, размытие, анимация фона. Изменения видны сразу и сохраняются.
+        </P>
+        <P>
+          <B>Светлая</B> тема — белые панели и тёмный текст; цвета веток в графе, подсветка кода и диффы подобраны под светлый фон.
+          <B> Как в системе</B> — светлая или тёмная по настройке Windows/macOS: тема переключится сама, когда система сменит режим.
         </P>
       </>
     ),
@@ -1125,13 +1139,13 @@ export default function GuideDialog({ initialSection = 'start', onClose }) {
   const index = SECTIONS.indexOf(section);
 
   return (
-    <div className="fixed inset-0 z-50 flex animate-fade-in items-center justify-center bg-black/50 p-6 backdrop-blur-[3px]" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
+    <div className="fixed inset-0 z-50 flex animate-fade-in items-center justify-center bg-gk-scrim p-6 backdrop-blur-[3px]" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
       <div className="glass-strong flex h-[min(760px,88vh)] w-[min(980px,100%)] animate-pop-in overflow-hidden rounded-xl border border-gk-border bg-gk-panel-2 shadow-2xl">
         {/* Разделы */}
-        <nav className="flex w-60 shrink-0 flex-col border-r border-gk-border bg-black/10">
+        <nav className="flex w-60 shrink-0 flex-col border-r border-gk-border bg-gk-sink/10">
           <div className="flex items-center gap-2 px-4 pb-2 pt-4">
             <BookOpen size={16} className="text-gk-green" />
-            <span className="text-[14px] font-semibold text-white">Руководство</span>
+            <span className="text-[14px] font-semibold text-gk-strong">Руководство</span>
           </div>
           <div className="px-3 pb-2">
             <div className="flex items-center gap-1.5 rounded-md bg-gk-bg px-2 ring-1 ring-gk-border focus-within:ring-gk-blue">
@@ -1152,7 +1166,7 @@ export default function GuideDialog({ initialSection = 'start', onClose }) {
                 key={s.id}
                 onClick={() => setActive(s.id)}
                 className={`flex w-full items-center gap-2.5 rounded-md px-2.5 py-1.5 text-left text-[13px] transition-colors ${
-                  s.id === active ? 'bg-gk-blue/15 text-white' : 'text-gk-muted hover:bg-gk-hover hover:text-gk-text'
+                  s.id === active ? 'bg-gk-blue/15 text-gk-strong' : 'text-gk-muted hover:bg-gk-hover hover:text-gk-text'
                 }`}
               >
                 <s.icon size={14} className={`shrink-0 ${s.id === active ? 'text-gk-blue' : ''}`} />
@@ -1166,7 +1180,7 @@ export default function GuideDialog({ initialSection = 'start', onClose }) {
         <div className="flex min-w-0 flex-1 flex-col">
           <div className="flex h-12 shrink-0 items-center gap-2.5 border-b border-gk-border px-5">
             <section.icon size={17} className="text-gk-blue" />
-            <h2 className="flex-1 text-[15px] font-semibold text-white">{section.title}</h2>
+            <h2 className="flex-1 text-[15px] font-semibold text-gk-strong">{section.title}</h2>
             <button onClick={onClose} title="Закрыть (Esc)" className="rounded p-1 text-gk-dim hover:bg-gk-hover hover:text-gk-text">
               <X size={16} />
             </button>

@@ -88,7 +88,7 @@ export default function GitLabSchedules({ repoPath, opts, branches, currentBranc
             return (
               <div
                 key={s.id}
-                className={`group animate-slide-up rounded-lg border bg-white/[0.02] px-3 py-2.5 transition-colors ${s.active ? 'border-gk-border' : 'border-gk-border/50 opacity-70'}`}
+                className={`group animate-slide-up rounded-lg border bg-gk-fg/[0.02] px-3 py-2.5 transition-colors ${s.active ? 'border-gk-border' : 'border-gk-border/50 opacity-70'}`}
                 style={{ animationDelay: `${i * 30}ms` }}
               >
                 <div className="flex items-center gap-2.5">
@@ -99,7 +99,7 @@ export default function GitLabSchedules({ repoPath, opts, branches, currentBranc
                       <span>{human ?? <span className="font-mono">{s.cron}</span>}</span>
                       <span className="font-mono text-gk-dim">{s.cron}</span>
                       <span className="text-gk-dim">{s.timezone}</span>
-                      <span className="rounded bg-white/5 px-1.5 font-mono text-[10.5px]">{s.ref}</span>
+                      <span className="rounded bg-gk-fg/5 px-1.5 font-mono text-[10.5px]">{s.ref}</span>
                     </div>
                   </div>
                   <div className="shrink-0 text-right text-[11px] text-gk-dim">
@@ -215,11 +215,11 @@ function ScheduleForm({ repoPath, opts, schedule, branches, currentBranch, onClo
   const timezones = [...new Set([s.timezone, tz, ...TIMEZONES])];
 
   return (
-    <div className="fixed inset-0 z-40 flex animate-fade-in items-start justify-center bg-black/45 pt-[10vh] backdrop-blur-[3px]" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
+    <div className="fixed inset-0 z-40 flex animate-fade-in items-start justify-center bg-gk-scrim pt-[10vh] backdrop-blur-[3px]" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
       <form onSubmit={submit} className="glass-strong w-[520px] max-w-[calc(100vw-2rem)] animate-pop-in rounded-xl border border-gk-border bg-gk-panel-2">
         <div className="flex items-center gap-2 border-b border-gk-border px-4 py-3">
           <CalendarClock size={16} className="text-gk-blue" />
-          <h2 className="flex-1 text-[14px] font-semibold text-white">{editing ? 'Изменить расписание' : 'Новое расписание'}</h2>
+          <h2 className="flex-1 text-[14px] font-semibold text-gk-strong">{editing ? 'Изменить расписание' : 'Новое расписание'}</h2>
           <button type="button" onClick={onClose} className="rounded p-1 text-gk-dim hover:bg-gk-hover hover:text-gk-text">
             <X size={16} />
           </button>
@@ -236,7 +236,7 @@ function ScheduleForm({ repoPath, opts, schedule, branches, currentBranch, onClo
                   key={p.cron}
                   onClick={() => set({ cron: p.cron })}
                   className={`rounded-full px-2.5 py-1 text-[11.5px] transition-colors ${
-                    s.cron === p.cron ? 'bg-gk-blue/20 text-gk-blue ring-1 ring-gk-blue/40' : 'bg-white/5 text-gk-muted hover:text-gk-text'
+                    s.cron === p.cron ? 'bg-gk-blue/20 text-gk-blue ring-1 ring-gk-blue/40' : 'bg-gk-fg/5 text-gk-muted hover:text-gk-text'
                   }`}
                 >
                   {p.label}
@@ -331,7 +331,7 @@ function Toggle({ checked, onChange, disabled }) {
       disabled={disabled}
       title={checked ? 'Включено — выключить' : 'Выключено — включить'}
       onClick={onChange}
-      className={`relative block h-[18px] w-8 shrink-0 rounded-full p-0 transition-colors duration-200 disabled:opacity-50 ${checked ? 'bg-gk-green' : 'bg-white/15'}`}
+      className={`relative block h-[18px] w-8 shrink-0 rounded-full p-0 transition-colors duration-200 disabled:opacity-50 ${checked ? 'bg-gk-green' : 'bg-gk-fg/15'}`}
     >
       <span
         className="absolute left-0 top-[2px] block h-[14px] w-[14px] rounded-full bg-white shadow transition-transform duration-200"

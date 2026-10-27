@@ -91,7 +91,7 @@ export default function GitLabPanel({
         <div className="w-full max-w-[520px] animate-slide-up">
           <div className="mb-1 flex items-center gap-2">
             <span className="h-2.5 w-2.5 rounded-full bg-[#fc6d26]" />
-            <h3 className="text-[15px] font-semibold text-white">Подключите GitLab</h3>
+            <h3 className="text-[15px] font-semibold text-gk-strong">Подключите GitLab</h3>
           </div>
           <p className="mb-5 text-[13px] leading-relaxed text-gk-muted">
             Чтобы видеть статусы пайплайнов прямо в графе, читать логи заданий, перезапускать и отменять их, нужен личный токен
@@ -113,7 +113,7 @@ export default function GitLabPanel({
             key={t.id}
             onClick={() => setTab(t.id)}
             className={`flex items-center gap-1.5 rounded px-2.5 py-1 text-[12px] transition-colors ${
-              tab === t.id ? 'bg-gk-hover text-white' : 'text-gk-muted hover:text-gk-text'
+              tab === t.id ? 'bg-gk-hover text-gk-strong' : 'text-gk-muted hover:text-gk-text'
             }`}
           >
             <t.icon size={13} />
@@ -254,7 +254,7 @@ function PipelinesTab({ repoPath, opts, currentBranch, commitsBySha, initialPipe
                   <div className="truncate text-[12.5px] text-gk-text">{commit?.message ?? p.name ?? p.sha.slice(0, 8)}</div>
                   <div className="mt-0.5 flex items-center gap-1.5 text-[11px] text-gk-dim">
                     <span className="font-mono text-gk-muted">#{p.id}</span>
-                    <span className="max-w-[120px] truncate rounded bg-white/5 px-1">{p.ref}</span>
+                    <span className="max-w-[120px] truncate rounded bg-gk-fg/5 px-1">{p.ref}</span>
                     <span className="truncate">{SOURCE_LABELS[p.source] ?? p.source}</span>
                     <span className="ml-auto shrink-0">{relativeTime(p.createdAt)}</span>
                   </div>
@@ -396,7 +396,7 @@ function PipelineDetail({ repoPath, opts, pipelineId, commitsBySha, onLocate, no
                 В GitLab
               </ActionButton>
             </div>
-            <div className="mt-2 text-[15px] font-medium text-white">{commit?.message ?? p.name ?? 'Пайплайн'}</div>
+            <div className="mt-2 text-[15px] font-medium text-gk-strong">{commit?.message ?? p.name ?? 'Пайплайн'}</div>
             <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-[12px] text-gk-muted">
               <span className="flex items-center gap-1">
                 <GitBranch size={12} /> {p.ref}
@@ -437,7 +437,7 @@ function PipelineDetail({ repoPath, opts, pipelineId, commitsBySha, onLocate, no
                 {state.data.stages.map((stage, si) => (
                   <div
                     key={stage.name}
-                    className="w-56 shrink-0 animate-slide-up rounded-lg border border-gk-border bg-white/[0.02]"
+                    className="w-56 shrink-0 animate-slide-up rounded-lg border border-gk-border bg-gk-fg/[0.02]"
                     style={{ animationDelay: `${si * 40}ms` }}
                   >
                     <div className="flex items-center gap-2 border-b border-gk-border px-3 py-2">
@@ -506,7 +506,7 @@ function JobRow({ job, selected, canWrite, busy, onOpen, onAction }) {
       <StatusIcon status={job.allowFailure && job.status === 'failed' ? 'warning' : job.status} size={15} />
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-1">
-          {job.kind === 'bridge' && <Zap size={11} className="shrink-0 text-[#c084fc]" />}
+          {job.kind === 'bridge' && <Zap size={11} className="shrink-0 text-gk-purple" />}
           <span className="truncate text-[12.5px] text-gk-text">{job.name}</span>
         </div>
         <div className="truncate text-[10.5px] text-gk-dim">
@@ -528,7 +528,7 @@ function JobRow({ job, selected, canWrite, busy, onOpen, onAction }) {
             e.stopPropagation();
             onAction(a.type, a.label);
           }}
-          className={`flex h-6 w-6 shrink-0 items-center justify-center rounded text-gk-muted transition-opacity hover:bg-white/10 hover:text-gk-text ${
+          className={`flex h-6 w-6 shrink-0 items-center justify-center rounded text-gk-muted transition-opacity hover:bg-gk-fg/10 hover:text-gk-text ${
             a.type === 'job.play' || isBusy(a.type) ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'
           }`}
         >
@@ -601,7 +601,7 @@ function JobLog({ repoPath, opts, job: initialJob, canWrite, onClose, onAction }
           <ArrowLeft size={15} />
         </IconBtn>
         <StatusPill status={job.allowFailure && job.status === 'failed' ? 'warning' : job.status} />
-        <span className="min-w-0 shrink truncate text-[13px] font-semibold text-white" title={job.name}>
+        <span className="min-w-0 shrink truncate text-[13px] font-semibold text-gk-strong" title={job.name}>
           {job.name}
         </span>
         <span className="min-w-0 flex-1 truncate text-[11px] text-gk-dim">
@@ -653,7 +653,7 @@ function JobLog({ repoPath, opts, job: initialJob, canWrite, onClose, onAction }
       <div
         ref={scrollRef}
         onScroll={onScroll}
-        className="min-h-0 flex-1 overflow-auto bg-[color-mix(in_srgb,var(--gk-base)_80%,black)] py-2 font-mono text-[12px] leading-[1.6] text-[#d7dae0]"
+        className="min-h-0 flex-1 overflow-auto bg-[var(--gk-log-bg)] py-2 font-mono text-[12px] leading-[1.6] text-[#d7dae0]"
       >
         {state.loading && !state.data && (
           <div className="flex items-center gap-2 px-4 py-6 font-sans text-[13px] text-gk-muted">
@@ -692,7 +692,7 @@ function LogNodes({ nodes, wrap, isCollapsed, toggle }) {
       <LogLine key={`l${node.n}-${i}`} n={node.n} segs={node.segs} wrap={wrap} />
     ) : (
       <div key={`s${node.key}`}>
-        <div onClick={() => toggle(node)} className="group flex cursor-pointer hover:bg-white/[0.04]">
+        <div onClick={() => toggle(node)} className="group flex cursor-pointer hover:bg-gk-fg/[0.04]">
           <span className="w-12 shrink-0 select-none pr-3 text-right text-[#4b5263]">{node.n || ''}</span>
           <span className="flex w-4 shrink-0 items-center text-gk-dim group-hover:text-gk-text">
             {isCollapsed(node) ? <ChevronRight size={12} /> : <ChevronDown size={12} />}
@@ -712,7 +712,7 @@ function LogNodes({ nodes, wrap, isCollapsed, toggle }) {
 
 function LogLine({ n, segs, wrap }) {
   return (
-    <div className="flex hover:bg-white/[0.03]">
+    <div className="flex hover:bg-gk-fg/[0.03]">
       <span className="w-12 shrink-0 select-none pr-3 text-right text-[#4b5263]">{n}</span>
       <span className="w-4 shrink-0" />
       <span className={`min-w-0 flex-1 pr-4 ${wrap ? 'whitespace-pre-wrap break-all' : 'whitespace-pre'}`}>
@@ -778,7 +778,7 @@ function RunnersTab({ repoPath, opts }) {
             return (
               <div
                 key={r.id}
-                className="animate-slide-up rounded-lg border border-gk-border bg-white/[0.02] px-3 py-2.5"
+                className="animate-slide-up rounded-lg border border-gk-border bg-gk-fg/[0.02] px-3 py-2.5"
                 style={{ animationDelay: `${i * 30}ms` }}
               >
                 <div className="flex items-center gap-2">
@@ -825,10 +825,10 @@ function Loading({ text }) {
 function ListSkeleton() {
   return Array.from({ length: 6 }, (_, i) => (
     <div key={i} className="flex gap-2.5 border-b border-gk-border/50 px-3 py-2.5">
-      <span className="h-4 w-4 animate-pulse rounded-full bg-white/10" />
+      <span className="h-4 w-4 animate-pulse rounded-full bg-gk-fg/10" />
       <div className="flex-1 space-y-1.5">
-        <div className="h-3 w-3/4 animate-pulse rounded bg-white/10" />
-        <div className="h-2.5 w-1/2 animate-pulse rounded bg-white/5" />
+        <div className="h-3 w-3/4 animate-pulse rounded bg-gk-fg/10" />
+        <div className="h-2.5 w-1/2 animate-pulse rounded bg-gk-fg/5" />
       </div>
     </div>
   ));
@@ -852,7 +852,7 @@ function ActionButton({ icon: Icon, busy, children, ...props }) {
     <button
       {...props}
       disabled={busy || props.disabled}
-      className="flex h-7 items-center gap-1.5 rounded-md bg-gk-hover px-2.5 text-[12px] text-gk-text transition-colors hover:bg-[#343a47] disabled:opacity-50"
+      className="flex h-7 items-center gap-1.5 rounded-md bg-gk-hover px-2.5 text-[12px] text-gk-text transition-colors hover:bg-gk-fg/10 disabled:opacity-50"
     >
       {busy ? <Loader2 size={12} className="animate-spin" /> : <Icon size={12} />}
       {children}

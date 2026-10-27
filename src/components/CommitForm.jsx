@@ -22,6 +22,7 @@ import { DEFAULT_COMMIT_PREFS, setCommitPrefs, useCommitPrefs } from '../lib/com
 import { Switch } from './Guard.jsx';
 import { isMod, kb } from '../lib/platform.js';
 import { plural } from '../lib/format.js';
+import { readable } from '../lib/scheme.js';
 
 /*
  * Черновик сообщения живёт вне компонента: панель WIP пересоздаётся при выборе другого коммита,
@@ -144,7 +145,7 @@ export default function CommitForm({ repoPath, branch, stagedFiles, busy, onComm
             CC_TYPES.map((t) => (
               <Chip
                 key={t.id}
-                color={t.color}
+                color={readable(t.color)}
                 active={parts.type === t.id}
                 title={`${t.id}: ${t.hint}${parts.type === t.id ? ' — клик уберёт' : ''}`}
                 onClick={() => applySummary(toggleType(summary, t.id, ctx))}
@@ -160,7 +161,7 @@ export default function CommitForm({ repoPath, branch, stagedFiles, busy, onComm
                 title={parts.type ? 'Scope — область изменений: feat(api): …' : 'Сначала выберите тип коммита'}
                 className={`h-[22px] rounded-md px-1.5 font-mono text-[11px] ring-1 transition-colors disabled:opacity-35 ${
                   parts.scope && parts.scope !== ticket
-                    ? 'bg-white/[0.06] text-gk-text ring-white/20'
+                    ? 'bg-gk-fg/[0.06] text-gk-text ring-gk-fg/20'
                     : 'text-gk-dim ring-gk-border enabled:hover:text-gk-text'
                 }`}
               >
@@ -188,7 +189,7 @@ export default function CommitForm({ repoPath, branch, stagedFiles, busy, onComm
                 }}
                 title={ticketOn ? `Убрать ${ticket} из сообщения` : `Добавить номер задачи из ветки ${branch}`}
                 className={`flex h-[22px] items-center gap-1 rounded-l-md border pl-1.5 pr-1 font-mono text-[11px] transition-colors ${
-                  ticketOn ? 'border-gk-blue/40 bg-gk-blue/15 text-gk-blue' : 'border-dashed border-white/20 text-gk-muted hover:border-gk-blue/50 hover:text-gk-blue'
+                  ticketOn ? 'border-gk-blue/40 bg-gk-blue/15 text-gk-blue' : 'border-dashed border-gk-fg/20 text-gk-muted hover:border-gk-blue/50 hover:text-gk-blue'
                 }`}
               >
                 {ticketOn ? <Check size={11} strokeWidth={3} /> : <Plus size={11} strokeWidth={3} />}
@@ -199,7 +200,7 @@ export default function CommitForm({ repoPath, branch, stagedFiles, busy, onComm
                 title="Как добавлять номер задачи"
                 aria-label="Формат номера задачи"
                 className={`flex h-[22px] items-center rounded-r-md border border-l-0 px-0.5 transition-colors ${
-                  ticketOn ? 'border-gk-blue/40 text-gk-blue hover:bg-gk-blue/10' : 'border-white/20 text-gk-dim hover:text-gk-text'
+                  ticketOn ? 'border-gk-blue/40 text-gk-blue hover:bg-gk-blue/10' : 'border-gk-fg/20 text-gk-dim hover:text-gk-text'
                 }`}
               >
                 <ChevronDown size={12} />
@@ -322,7 +323,7 @@ function Chip({ color, active, title, onClick, children }) {
       aria-pressed={active}
       style={active ? { backgroundColor: `${color}26`, color, boxShadow: `inset 0 0 0 1px ${color}66` } : { '--c': color }}
       className={`h-[22px] rounded-md px-1.5 font-mono text-[11px] transition-colors ${
-        active ? 'font-semibold' : 'text-gk-muted ring-1 ring-gk-border hover:bg-white/[0.04] hover:text-[var(--c)]'
+        active ? 'font-semibold' : 'text-gk-muted ring-1 ring-gk-border hover:bg-gk-fg/[0.04] hover:text-[var(--c)]'
       }`}
     >
       {children}
@@ -535,7 +536,7 @@ function TemplatesMenu({ prefs, gitTpl, ticket, description, onInsert }) {
               <span className="block truncate text-[10.5px] text-gk-dim">{t.body.replace(/\s*\n\s*/g, ' · ')}</span>
             </button>
             <span className="flex shrink-0 gap-0.5 pr-2 opacity-0 transition-opacity group-hover:opacity-100">
-              <button onClick={() => setEdit(t)} title="Изменить" className="rounded p-1 text-gk-muted hover:bg-white/10 hover:text-gk-text">
+              <button onClick={() => setEdit(t)} title="Изменить" className="rounded p-1 text-gk-muted hover:bg-gk-fg/10 hover:text-gk-text">
                 <Pencil size={12} />
               </button>
               <button
@@ -680,7 +681,7 @@ export function CommitSettings({ repoPath, branch }) {
             </label>
           ))}
         </div>
-        <div className="ml-11 space-y-1.5 rounded-lg border border-gk-border bg-white/[0.02] p-3">
+        <div className="ml-11 space-y-1.5 rounded-lg border border-gk-border bg-gk-fg/[0.02] p-3">
           <div className="text-[11.5px] text-gk-muted">
             Своё правило — регулярное выражение, номер берётся из первой группы. Пусто — встроенное распознавание.
           </div>
@@ -755,23 +756,23 @@ export function CommitSettings({ repoPath, branch }) {
             </button>
             <button
               onClick={() => setEdit({ name: '', body: '' })}
-              className="flex items-center gap-1 rounded bg-gk-hover px-1.5 py-0.5 text-[11.5px] text-gk-text hover:bg-white/10"
+              className="flex items-center gap-1 rounded bg-gk-hover px-1.5 py-0.5 text-[11.5px] text-gk-text hover:bg-gk-fg/10"
             >
               <Plus size={11} /> Новый
             </button>
           </div>
           {edit && !edit.id && (
-            <div className="rounded-lg border border-gk-blue/30 bg-white/[0.02] p-2.5">
+            <div className="rounded-lg border border-gk-blue/30 bg-gk-fg/[0.02] p-2.5">
               <TemplateEditor inline value={edit} onSave={saveTpl} onCancel={() => setEdit(null)} />
             </div>
           )}
           {prefs.templates.map((t) =>
             edit?.id === t.id ? (
-              <div key={t.id} className="rounded-lg border border-gk-blue/30 bg-white/[0.02] p-2.5">
+              <div key={t.id} className="rounded-lg border border-gk-blue/30 bg-gk-fg/[0.02] p-2.5">
                 <TemplateEditor inline value={edit} onSave={saveTpl} onCancel={() => setEdit(null)} />
               </div>
             ) : (
-              <div key={t.id} className="group flex items-start gap-2 rounded-lg border border-gk-border bg-white/[0.02] px-3 py-2">
+              <div key={t.id} className="group flex items-start gap-2 rounded-lg border border-gk-border bg-gk-fg/[0.02] px-3 py-2">
                 <div className="min-w-0 flex-1">
                   <div className="font-medium text-gk-text">{t.name}</div>
                   <pre className="mt-0.5 max-h-20 overflow-hidden whitespace-pre-wrap font-mono text-[11px] leading-snug text-gk-dim">{t.body}</pre>
@@ -809,5 +810,5 @@ function H3({ children }) {
 }
 
 function Mono({ children }) {
-  return <code className="rounded bg-white/[0.06] px-1 font-mono text-[11.5px] text-gk-text">{children}</code>;
+  return <code className="rounded bg-gk-fg/[0.06] px-1 font-mono text-[11.5px] text-gk-text">{children}</code>;
 }

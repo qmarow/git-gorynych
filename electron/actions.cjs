@@ -355,7 +355,7 @@ async function createBranch(cwd, { name, start, checkout: doCheckout = true }) {
 /* =================== Умное переключение веток (Workspace Context) =================== */
 
 // Незакоммиченные изменения прячутся в stash с именем ветки и сами возвращаются, когда вы снова на неё переключитесь
-const AUTO_STASH = 'gitidea-auto: ';
+const AUTO_STASH = 'gorynych-auto: '; // прежние «gitidea-auto:» тоже распознаются
 
 async function autoStashes(cwd) {
   const out = await git(cwd, ['stash', 'list', '--format=%gd%x1f%H%x1f%gs']).catch(() => '');
@@ -364,10 +364,48 @@ async function autoStashes(cwd) {
     .filter(Boolean)
     .map((line) => {
       const [id, hash, subject] = line.split('\x1f');
-      const m = /gitidea-auto: (.+)$/.exec(subject ?? '');
+      const m = /(?:gorynych|gitidea)-auto: (.+)$/.exec(subject ?? '');
       return m ? { id, hash, branch: m[1].trim() } : null;
     })
     .filter(Boolean);
+}
+
+/**
+ * «Отпечаток» stash: базовый коммит + содержимое рабочей папки, индекса и неотслеживаемых файлов.
+ * Одинаковый отпечаток — тот же самый набор правок, хранить его дважды незачем.
+ */
+async function stashSignature(cwd, ref) {
+  const main = (await git(cwd, ['rev-parse', `${ref}^1`, `${ref}^{tree}`, `${ref}^2^{tree}`]).catch(() => '')).trim();
+  if (!main) return null;
+  const untracked = (await git(cwd, ['rev-parse', '--verify', '--quiet', `${ref}^3^{tree}`]).catch(() => '')).trim();
+  return `${main.replace(/\s+/g, ' ')} ${untracked}`;
+}
+
+/**
+ * Только что созданный stash@{0} уже лежит в списке (тот же отпечаток) — убираем СТАРЫЕ копии, новый остаётся сверху.
+ * onlyAutoFor — для авто-stash сравниваем только с авто-stash той же ветки, ручные не трогаем.
+ * → сколько копий убрано
+ */
+async function dropOlderDuplicates(cwd, { onlyAutoFor = null } = {}) {
+  const out = await git(cwd, ['stash', 'list', '--format=%gd%x1f%gs']).catch(() => '');
+  const list = out
+    .split('\n')
+    .filter(Boolean)
+    .map((l) => {
+      const [id, subject] = l.split('\x1f');
+      return { id, subject: subject ?? '' };
+    });
+  if (list.length < 2) return 0;
+  const top = await stashSignature(cwd, 'stash@{0}');
+  if (!top) return 0;
+  const dupes = [];
+  for (const st of list.slice(1, 30)) {
+    if (onlyAutoFor && /(?:gorynych|gitidea)-auto: (.+)$/.exec(st.subject)?.[1]?.trim() !== onlyAutoFor) continue;
+    if ((await stashSignature(cwd, st.id)) === top) dupes.push(st.id);
+  }
+  // С конца, чтобы номера stash@{N} не съезжали
+  for (const id of dupes.reverse()) await git(cwd, ['stash', 'drop', '-q', id]);
+  return dupes.length;
 }
 
 async function popStash(cwd, id) {
@@ -394,6 +432,8 @@ async function smartCheckout(cwd, target) {
       throw new GitError('В рабочей папке есть неразрешённые конфликты', { code: 'CONFLICT', hint: 'Сначала решите их, затем переключайтесь.' });
     }
     await git(cwd, ['stash', 'push', '--include-untracked', '-m', `${AUTO_STASH}${from}`]);
+    // Те же правки уже были спрятаны для этой ветки (например, после неудачного возврата) — не плодим копии
+    await dropOlderDuplicates(cwd, { onlyAutoFor: from }).catch(() => 0);
     const hash = (await git(cwd, ['rev-parse', 'stash@{0}'])).trim();
     autoStash = { branch: from, hash, files: new Set(files.map((f) => f.path)).size };
   }
@@ -473,8 +513,10 @@ async function stashPush(cwd, { message } = {}) {
   const args = ['stash', 'push', '--include-untracked'];
   if (message && message.trim()) args.push('-m', message.trim());
   await git(cwd, args);
+  // Повторный Stash тех же правок (например, после Pop без изменений) — старая копия не нужна
+  const duplicates = await dropOlderDuplicates(cwd).catch(() => 0);
   const hash = (await git(cwd, ['rev-parse', 'stash@{0}'])).trim();
-  return { hash, files: files.length };
+  return { hash, files: files.length, duplicates };
 }
 
 async function stashPop(cwd) {
@@ -535,6 +577,20 @@ async function deleteTag(cwd, { name }) {
   const [type, peeled, obj, contents] = info.split('\x1f');
   await git(cwd, ['tag', '-d', name]);
   return { name, hash: type === 'tag' ? peeled : obj.trim(), message: type === 'tag' ? contents.trim() : null };
+}
+
+/** Переименовать локальную ветку (git branch -m). Ветка на сервере не трогается; upstream сохраняется. */
+async function renameBranch(cwd, { from, to }) {
+  const next = String(to ?? '').trim();
+  if (!from || !next) throw new GitError('Укажите новое имя ветки', { code: 'BAD_ARGS' });
+  if (next === from) throw new GitError('Имя не изменилось', { code: 'BAD_ARGS' });
+  if (!(await branchTip(cwd, from))) throw new GitError(`Ветка «${from}» не найдена`, { code: 'NOT_FOUND_REF' });
+  await git(cwd, ['check-ref-format', '--branch', next]).catch(() => {
+    throw new GitError(`Недопустимое имя ветки: «${next}»`, { code: 'INVALID_NAME', hint: 'Без пробелов, «..», «~», «^», «:», «?», «*», «[» и «\\».' });
+  });
+  if (await branchTip(cwd, next)) throw new GitError(`Ветка «${next}» уже есть`, { code: 'BRANCH_EXISTS' });
+  await git(cwd, ['branch', '-m', from, next]);
+  return { from, to: next };
 }
 
 async function deleteBranch(cwd, { name, force = false }) {
@@ -1110,6 +1166,14 @@ const HANDLERS = {
       await git(cwd, ['stash', 'drop', '-q', 'stash@{0}']);
     },
   },
+  renameBranch: {
+    async undo(cwd, e) {
+      await git(cwd, ['branch', '-m', e.to, e.from]);
+    },
+    async redo(cwd, e) {
+      await git(cwd, ['branch', '-m', e.from, e.to]);
+    },
+  },
   deleteBranch: {
     async undo(cwd, e) {
       await git(cwd, ['branch', e.name, e.hash]);
@@ -1138,7 +1202,7 @@ const HANDLERS = {
       await stashPop(cwd);
     },
     async redo(cwd, e) {
-      const res = await stashPush(cwd, {});
+      const res = await stashPush(cwd, { message: e.message });
       e.hash = res.hash;
     },
   },
@@ -1225,7 +1289,7 @@ const ACTIONS = {
   },
   async stash(cwd, p) {
     const res = await stashPush(cwd, p);
-    record(cwd, { type: 'stash', label: 'Stash', hash: res.hash });
+    record(cwd, { type: 'stash', label: 'Stash', hash: res.hash, message: p?.message ?? null });
     return res;
   },
   async stashApplyAt(cwd, p) {
@@ -1272,6 +1336,11 @@ const ACTIONS = {
   async deleteRemoteBranch(cwd, p) {
     const res = await deleteRemoteBranch(cwd, p);
     record(cwd, { type: 'deleteRemoteBranch', label: `Удаление ${res.remote}/${res.branch} с сервера`, ...res });
+    return res;
+  },
+  async renameBranch(cwd, p) {
+    const res = await renameBranch(cwd, p);
+    record(cwd, { type: 'renameBranch', label: `Переименование ${res.from} → ${res.to}`, ...res });
     return res;
   },
   async deleteBranch(cwd, p) {

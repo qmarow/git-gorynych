@@ -1,4 +1,4 @@
-const { app, BrowserWindow, Menu, ipcMain, dialog, shell, clipboard } = require('electron');
+const { app, BrowserWindow, Menu, ipcMain, dialog, shell, clipboard, nativeTheme } = require('electron');
 const fs = require('node:fs');
 const path = require('node:path');
 const os = require('node:os');
@@ -22,28 +22,38 @@ const { serializeError, GitError } = require('./errors.cjs');
 const DEV_SERVER_URL = process.env.VITE_DEV_SERVER_URL;
 let mainWindow = null;
 
-/* ---------- Переименование GitKraken Clone → GitIdea ---------- */
+/* ---------- Название и папка данных ---------- */
 
-// Electron хранит данные в папке с названием программы. После переименования один раз переносим
-// из старой папки настройки, токены GitLab, вкладки, фоны и состояние интерфейса. Существующие файлы
-// не перезаписываются, поэтому повторный запуск ничего не портит.
+const APP_NAME = 'git-Горыныч';
+app.setName(APP_NAME);
+// Папка данных — латиницей: в ней лежат скрипты askpass, которые запускает git, а кириллица в пути
+// на Windows ломает часть сборок Git/ssh. Задаём до первого обращения к userData.
+if (!process.env.GK_TEST_USERDATA) app.setPath('userData', path.join(app.getPath('appData'), 'git-Gorynych'));
+
+// После переименования один раз переносим настройки, токены GitLab, вкладки, фоны и состояние интерфейса
+// из папки прежнего названия (GitIdea, а до него GitKraken Clone). Существующие файлы не перезаписываются,
+// поэтому повторный запуск ничего не портит.
 function migrateUserData() {
-  try {
-    const now = app.getPath('userData');
-    const old = path.join(app.getPath('appData'), 'GitKraken Clone');
-    const marker = path.join(now, '.migrated-from-gitkraken-clone');
-    if (path.resolve(now) === path.resolve(old) || !fs.existsSync(old) || fs.existsSync(marker)) return;
-    fs.mkdirSync(now, { recursive: true });
-    fs.cpSync(old, now, {
-      recursive: true,
-      force: false,
-      errorOnExist: false,
-      // файлы блокировки Chromium старого профиля не нужны
-      filter: (src) => !/[\\/](lockfile|LOCK|SingletonLock|SingletonCookie|SingletonSocket)$/.test(src),
-    });
-    fs.writeFileSync(marker, new Date().toISOString());
-  } catch (error) {
-    console.warn('Не удалось перенести настройки из GitKraken Clone:', error.message);
+  const now = app.getPath('userData');
+  const marker = path.join(now, '.migrated');
+  if (fs.existsSync(marker)) return;
+  for (const name of ['GitIdea', 'GitKraken Clone']) {
+    const old = path.join(app.getPath('appData'), name);
+    if (path.resolve(now) === path.resolve(old) || !fs.existsSync(old)) continue;
+    try {
+      fs.mkdirSync(now, { recursive: true });
+      fs.cpSync(old, now, {
+        recursive: true,
+        force: false,
+        errorOnExist: false,
+        // файлы блокировки Chromium старого профиля не нужны
+        filter: (src) => !/[\\/](lockfile|LOCK|SingletonLock|SingletonCookie|SingletonSocket)$/.test(src),
+      });
+      fs.writeFileSync(marker, `${name}\n${new Date().toISOString()}`);
+      return;
+    } catch (error) {
+      console.warn(`Не удалось перенести настройки из ${name}:`, error.message);
+    }
   }
 }
 migrateUserData();
@@ -130,7 +140,14 @@ function windowMaterial(appearance) {
   return appearance.material === 'mica' ? 'mica' : 'acrylic';
 }
 
+// Светлая/тёмная схема для системных частей окна: Mica/Acrylic, меню, диалоги, полосы прокрутки
+function applyNativeTheme(appearance) {
+  const scheme = appearance?.scheme;
+  nativeTheme.themeSource = scheme === 'light' ? 'light' : scheme === 'system' ? 'system' : 'dark';
+}
+
 function applyWindowMaterial(appearance) {
+  applyNativeTheme(appearance);
   if (!mainWindow || process.platform !== 'win32' || !mainWindow.setBackgroundMaterial) return false;
   const material = windowMaterial(appearance);
   mainWindow.setBackgroundColor(material ? '#00000000' : appearance?.base || '#0e1117');
@@ -145,6 +162,7 @@ const IS_MAC = process.platform === 'darwin';
 function createWindow() {
   const appearance = readSettings().appearance ?? {};
   const material = windowMaterial(appearance);
+  applyNativeTheme(appearance);
   mainWindow = new BrowserWindow({
     width: 1200,
     height: 800,
@@ -232,17 +250,17 @@ function buildMacMenu(model) {
     {
       label: app.name,
       submenu: [
-        model ? { label: 'О программе GitIdea', click: () => send(null, -1, 'about') } : { role: 'about' },
+        model ? { label: `О программе ${APP_NAME}`, click: () => send(null, -1, 'about') } : { role: 'about' },
         { type: 'separator' },
         { label: 'Настройки…', accelerator: 'Cmd+,', registerAccelerator: false, enabled: Boolean(model), click: () => send(null, -1, 'settings') },
         { type: 'separator' },
         { role: 'services' },
         { type: 'separator' },
-        { role: 'hide', label: 'Скрыть GitIdea' },
+        { role: 'hide', label: `Скрыть ${APP_NAME}` },
         { role: 'hideOthers', label: 'Скрыть остальные' },
         { role: 'unhide', label: 'Показать все' },
         { type: 'separator' },
-        { role: 'quit', label: 'Завершить GitIdea' },
+        { role: 'quit', label: `Завершить ${APP_NAME}` },
       ],
     },
     { label: 'Файл', submenu: fromModel('File', m.File) },
@@ -635,7 +653,7 @@ if (DEV_SERVER_URL && process.env.GK_DEV_RESTART === '1') {
 /* ---------- Жизненный цикл ---------- */
 
 app.whenReady().then(() => {
-  if (process.platform === 'win32') app.setAppUserModelId('com.ironxenot.gitidea');
+  if (process.platform === 'win32') app.setAppUserModelId('com.ironxenot.gitgorynych');
   if (IS_MAC) buildMacMenu(null); // до загрузки интерфейса — системные пункты; дальше меню присылает интерфейс
   createWindow();
   app.on('activate', () => {

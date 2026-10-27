@@ -6,6 +6,7 @@ import {
   ArrowRight,
   ArrowDownToLine,
   Copy,
+  FolderSync,
   FileText,
   GitCommitHorizontal,
   History,
@@ -13,7 +14,6 @@ import {
   ListTree,
   Loader2,
   Minus,
-  PackageOpen,
   Plus,
   Square,
   SquareCheck,
@@ -21,8 +21,10 @@ import {
   Trash2,
 } from 'lucide-react';
 import { FILE_STATUS, avatarColor, fullDate, initials, plural, relativeTime } from '../lib/format.js';
+import { describeStash } from '../lib/stashName.js';
 import { GuardBanner } from './Guard.jsx';
 import CommitForm from './CommitForm.jsx';
+import { readable } from '../lib/scheme.js';
 
 export default function CommitDetails({
   commit,
@@ -114,10 +116,28 @@ function CommitPanel({ commit, files, activeFile, onOpenFile, onSelectCommit, on
         <GitCommitHorizontal size={14} />
         <span>коммит:</span>
         <span className="select-text font-mono text-gk-text">{commit.hash.slice(0, 7)}</span>
+        {/* Восстановление файлов — компактной иконкой в шапке, а не большой кнопкой посреди панели */}
+        {onRevertTo && (
+          <button
+            onClick={() => onRevertTo(commit)}
+            disabled={busy || commit.isHead}
+            aria-label="Восстановить файлы из коммита…"
+            data-testid="restore-files"
+            data-tip={
+              commit.isHead
+                ? 'Это текущий коммит — восстанавливать нечего'
+                : 'Восстановить файлы из коммита… (checkout files)\nНовый коммит, в котором все файлы проекта — как в этом. История не переписывается, ветка не переключается.'
+            }
+            className="ml-auto rounded p-1 hover:bg-gk-yellow/10 hover:text-gk-yellow disabled:opacity-40 disabled:hover:bg-transparent disabled:hover:text-gk-muted"
+          >
+            <FolderSync size={13} />
+          </button>
+        )}
         <button
-          title="Скопировать хэш коммита (SHA)"
+          data-tip="Скопировать хэш коммита (SHA)"
+          aria-label="Скопировать хэш коммита"
           onClick={() => navigator.clipboard?.writeText(commit.hash)}
-          className="ml-auto rounded p-1 hover:bg-gk-hover hover:text-gk-text"
+          className={`${onRevertTo ? '' : 'ml-auto '}rounded p-1 hover:bg-gk-hover hover:text-gk-text`}
         >
           <Copy size={13} />
         </button>
@@ -125,7 +145,7 @@ function CommitPanel({ commit, files, activeFile, onOpenFile, onSelectCommit, on
 
       <div className="max-h-[45%] shrink-0 space-y-3 overflow-y-auto border-b border-gk-border p-3">
         <div>
-          <h2 className="select-text text-[14px] font-semibold leading-snug text-white">{commit.message}</h2>
+          <h2 className="select-text text-[14px] font-semibold leading-snug text-gk-strong">{commit.message}</h2>
           {commit.description && (
             <p className="mt-1.5 select-text whitespace-pre-wrap text-xs leading-relaxed text-gk-muted">
               {commit.description}
@@ -154,21 +174,6 @@ function CommitPanel({ commit, files, activeFile, onOpenFile, onSelectCommit, on
           </div>
         )}
 
-        {onRevertTo && (
-          <button
-            onClick={() => onRevertTo(commit)}
-            disabled={busy || commit.isHead}
-            title={
-              commit.isHead
-                ? 'Это текущий коммит'
-                : 'Создать новый коммит, который вернёт все файлы к состоянию этого коммита. История не переписывается.'
-            }
-            className="flex w-full items-center justify-center gap-2 rounded-md bg-white/[0.05] py-1.5 text-xs text-gk-text ring-1 ring-gk-border transition hover:bg-gk-yellow/10 hover:text-gk-yellow hover:ring-gk-yellow/40 disabled:opacity-40 disabled:hover:bg-white/[0.05] disabled:hover:text-gk-text disabled:hover:ring-gk-border"
-          >
-            <History size={13} />
-            Вернуть проект к этому коммиту…
-          </button>
-        )}
       </div>
 
       <div className="flex h-9 shrink-0 items-center gap-2 border-b border-gk-border px-3 text-xs">
@@ -217,8 +222,9 @@ function CommitPanel({ commit, files, activeFile, onOpenFile, onSelectCommit, on
 
 function StashPanel({ stash, details, busy, activeFile, onOpenFile, onAction, onRestoreFiles, onFileMenu }) {
   const files = Array.isArray(details?.files) ? details.files : [];
-  const message = stash.message.replace(/^(WIP on|On) [^:]+:\s*/, '');
-  const branch = /^(?:WIP on|On) ([^:]+):/.exec(stash.message)?.[1];
+  const described = describeStash(stash);
+  const message = described.title;
+  const branch = described.branch;
   const keyOf = (f) => `${f.untracked ? 'u' : 't'}:${f.path}`;
   const [picked, setPicked] = useState(() => new Set());
   const chosen = files.filter((f) => picked.has(keyOf(f)));
@@ -246,7 +252,7 @@ function StashPanel({ stash, details, busy, activeFile, onOpenFile, onAction, on
 
       <div className="shrink-0 space-y-2.5 border-b border-gk-border p-3">
         <div className="pb-0.5">
-          <h2 className="select-text text-[14px] font-semibold leading-snug text-white">{message || 'Без названия'}</h2>
+          <h2 className="select-text text-[14px] font-semibold leading-snug text-gk-strong">{message || 'Без названия'}</h2>
           {stash.date && (
             <div className="mt-1 text-xs text-gk-muted" title={fullDate(stash.date)}>
               спрятано {relativeTime(stash.date)} · {fullDate(stash.date)}
@@ -268,7 +274,7 @@ function StashPanel({ stash, details, busy, activeFile, onOpenFile, onAction, on
           <StashButton icon={ArrowDownToLine} disabled={busy} onClick={() => onAction('apply', stash)} title="Применить весь stash (Apply), он остаётся в списке. Чтобы взять отдельные файлы — отметьте их ниже.">
             {chosen.length > 0 ? 'Применить всё' : 'Применить'}
           </StashButton>
-          <StashButton icon={PackageOpen} disabled={busy} onClick={() => onAction('pop', stash)} title="Применить весь stash и удалить его из списка (Pop)">
+          <StashButton icon={ArchiveRestore} disabled={busy} onClick={() => onAction('pop', stash)} title="Применить весь stash и удалить его из списка (Pop)">
             Забрать
           </StashButton>
           <StashButton icon={Trash2} danger disabled={busy} onClick={() => onAction('drop', stash)} title="Удалить stash (Drop) — можно вернуть через Undo">
@@ -377,7 +383,7 @@ function StashButton({ icon: Icon, danger, accent, children, ...props }) {
           ? 'text-gk-red ring-gk-border hover:bg-gk-red/10'
           : accent
             ? 'bg-gk-green/15 font-medium text-gk-green ring-gk-green/40 hover:bg-gk-green/25'
-            : 'text-gk-text ring-gk-border hover:bg-white/10'
+            : 'text-gk-text ring-gk-border hover:bg-gk-fg/10'
       }`}
     >
       <Icon size={13} className="shrink-0" />
@@ -613,9 +619,19 @@ function FileName({ name, dir, muted }) {
   return (
     <span className="flex min-w-0 flex-1 items-baseline gap-1.5">
       <span className={`max-w-full shrink-0 truncate ${muted ? 'italic text-gk-muted' : 'text-gk-text'}`}>{name}</span>
-      {dir && <DirPath dir={dir} />}
+      {dir && <DirPath dir={compactDir(dir)} />}
     </span>
   );
+}
+
+/**
+ * Длинная папка — первая папка, «…» и две последние: «frontend/…/components/Profile».
+ * Конец пути (где лежит файл) виден всегда; полный путь — в подсказке строки.
+ */
+export function compactDir(dir) {
+  const parts = String(dir).split('/').filter(Boolean);
+  if (parts.length <= 3) return parts.join('/');
+  return `${parts[0]}/…/${parts.slice(-2).join('/')}`;
 }
 
 // Обрезание с начала: у контейнера direction rtl — многоточие встаёт слева, а сам путь
@@ -673,7 +689,8 @@ export function DiffStat({ file }) {
 }
 
 function StatusBadge({ status }) {
-  const { color, label } = FILE_STATUS[status] ?? FILE_STATUS.M;
+  const { color: raw, label } = FILE_STATUS[status] ?? FILE_STATUS.M;
+  const color = readable(raw);
   return (
     <span
       title={label}

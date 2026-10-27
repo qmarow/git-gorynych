@@ -31,13 +31,13 @@ export function Modal({ title, icon: Icon, iconClass = 'text-gk-blue', onClose, 
 
   return (
     <div
-      className="fixed inset-0 z-40 flex animate-fade-in items-start justify-center bg-[#0b0d12]/55 pt-[12vh] backdrop-blur-[3px]"
+      className="fixed inset-0 z-40 flex animate-fade-in items-start justify-center bg-gk-scrim pt-[12vh] backdrop-blur-[3px]"
       onMouseDown={(e) => e.target === e.currentTarget && onClose()}
     >
       <div style={{ width }} className="glass-strong flex max-h-[84vh] max-w-[calc(100vw-2rem)] animate-pop-in flex-col rounded-xl border border-gk-border bg-gk-panel-2">
         <div className="flex shrink-0 items-center gap-2 border-b border-gk-border px-4 py-3">
           {Icon && <Icon size={16} className={iconClass} />}
-          <h2 className="flex-1 text-[14px] font-semibold text-white">{title}</h2>
+          <h2 className="flex-1 text-[14px] font-semibold text-gk-strong">{title}</h2>
           <button onClick={onClose} className="rounded p-1 text-gk-dim hover:bg-gk-hover hover:text-gk-text">
             <X size={15} />
           </button>
@@ -52,7 +52,7 @@ export function Modal({ title, icon: Icon, iconClass = 'text-gk-blue', onClose, 
 
 export function Button({ variant = 'default', className = '', ...props }) {
   const styles = {
-    default: 'bg-gk-hover text-gk-text hover:bg-[#343a47]',
+    default: 'bg-gk-hover text-gk-text hover:bg-gk-fg/10',
     primary: 'bg-gk-green text-gk-ink font-semibold shadow-lg shadow-gk-green/20 hover:brightness-110',
     blue: 'bg-gk-blue text-white font-semibold hover:brightness-110',
     danger: 'bg-gk-red/90 text-white font-semibold hover:bg-gk-red',
@@ -340,8 +340,8 @@ export function DeleteRemoteDialog({ remote, branch, locals = [], busy, error, o
     >
       <div className="space-y-3 text-[13px] leading-relaxed">
         <p>
-          Ветка <b className="font-mono font-medium text-white">{branch}</b> будет удалена на сервере{' '}
-          <b className="font-medium text-white">{remote}</b> (<code className="font-mono text-[12px] text-gk-muted">git push {remote} --delete {branch}</code>).
+          Ветка <b className="font-mono font-medium text-gk-strong">{branch}</b> будет удалена на сервере{' '}
+          <b className="font-medium text-gk-strong">{remote}</b> (<code className="font-mono text-[12px] text-gk-muted">git push {remote} --delete {branch}</code>).
         </p>
         <div className="rounded-lg border border-gk-red/30 bg-gk-red/[0.07] px-3 py-2 text-[12.5px] text-gk-text">
           Её больше не увидят все, кто работает с репозиторием. Открытые merge request из этой ветки закроются или станут недоступны.
@@ -404,7 +404,7 @@ export function TagDialog({ hash, label, busy, error, onClose, onSubmit }) {
         На коммите <span className="font-mono text-gk-text">{label}</span>
       </div>
       <label className="flex cursor-pointer items-center gap-2 text-xs">
-        <input type="checkbox" checked={annotated} onChange={(e) => setAnnotated(e.target.checked)} className="accent-[#3cf0a0]" />
+        <input type="checkbox" checked={annotated} onChange={(e) => setAnnotated(e.target.checked)} className="accent-gk-green" />
         Аннотированный тег (с сообщением)
       </label>
       {annotated && (
@@ -458,7 +458,7 @@ export function BranchDialog({ startHash, startLabel, busy, error, onClose, onSu
         От коммита <span className="font-mono text-gk-text">{startLabel}</span>
       </div>
       <label className="flex cursor-pointer items-center gap-2 text-xs">
-        <input type="checkbox" checked={checkout} onChange={(e) => setCheckout(e.target.checked)} className="accent-[#3cf0a0]" />
+        <input type="checkbox" checked={checkout} onChange={(e) => setCheckout(e.target.checked)} className="accent-gk-green" />
         Переключиться на новую ветку
       </label>
       {error && <ErrorBox error={error} />}
@@ -534,6 +534,55 @@ export function SwitchToDialog({ node, locals = [], remotes = [], onBranch, onCr
           ))}
         </div>
       )}
+    </Modal>
+  );
+}
+
+/* =================== Переименование ветки =================== */
+
+export function RenameBranchDialog({ from, upstream, busy, error, onClose, onSubmit }) {
+  const [name, setName] = useState(from);
+  const inputRef = useRef(null);
+  useEffect(() => {
+    inputRef.current?.focus();
+    inputRef.current?.select();
+  }, []);
+  const next = name.trim();
+  const valid = next && next !== from;
+  const submit = () => valid && !busy && onSubmit(next);
+  return (
+    <Modal
+      title={`Переименовать ветку ${from}`}
+      icon={GitBranch}
+      onClose={onClose}
+      footer={
+        <>
+          <Button onClick={onClose}>Отмена</Button>
+          <Button variant="primary" disabled={!valid || busy} onClick={submit}>
+            {busy && <Loader2 size={13} className="animate-spin" />} Переименовать
+          </Button>
+        </>
+      }
+    >
+      <input
+        ref={inputRef}
+        value={name}
+        onChange={(e) => setName(e.target.value.replace(/\s/g, '-'))}
+        onKeyDown={(e) => e.key === 'Enter' && submit()}
+        aria-label="Новое имя ветки"
+        spellCheck={false}
+        className="w-full rounded bg-gk-bg px-3 py-2 font-mono outline-none ring-1 ring-gk-border placeholder:text-gk-dim focus:ring-gk-blue"
+      />
+      <p className="text-xs leading-relaxed text-gk-muted">
+        Меняется только локальная ветка (<span className="font-mono">git branch -m</span>), Undo вернёт прежнее имя.
+        {upstream && (
+          <>
+            {' '}
+            Ветка на сервере <span className="font-mono text-gk-text">{upstream}</span> останется с прежним именем, а локальная продолжит за ней следить.
+          </>
+        )}
+      </p>
+      {error && <ErrorBox error={error} />}
     </Modal>
   );
 }

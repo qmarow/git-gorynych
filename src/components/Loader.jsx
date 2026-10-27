@@ -41,9 +41,8 @@ export function GraphLoader({ size = 64 }) {
           cy={y(n.r)}
           r={5}
           className="loader-node"
-          style={{ animationDelay: `${n.delay}s` }}
           fill={LANES[n.l]}
-          stroke="#0e1117"
+          style={{ animationDelay: `${n.delay}s`, stroke: 'var(--gk-base)' }}
           strokeWidth={2}
         />
       ))}
@@ -51,14 +50,14 @@ export function GraphLoader({ size = 64 }) {
   );
 }
 
-export function Splash({ title = 'GitIdea', subtitle }) {
+export function Splash({ title = 'git-Горыныч', subtitle }) {
   return (
     <div className="fixed inset-0 z-[60] flex animate-fade-in items-center justify-center">
       <div className="app-backdrop" />
       <div className="glass-strong flex w-72 animate-pop-in flex-col items-center gap-4 rounded-2xl border border-gk-border bg-gk-panel px-8 py-8">
         <GraphLoader size={72} />
         <div className="text-center">
-          <div className="text-[15px] font-semibold tracking-wide text-white">{title}</div>
+          <div className="text-[15px] font-semibold tracking-wide text-gk-strong">{title}</div>
           <div className="mt-1 h-4 text-xs text-gk-muted">{subtitle}</div>
         </div>
         <ProgressBar />
@@ -73,7 +72,7 @@ export function LoadingOverlay({ label, title = 'Открываем репози
       <div className="glass-strong flex animate-pop-in items-center gap-4 rounded-xl border border-gk-border bg-gk-panel-2 px-6 py-4">
         <GraphLoader size={40} />
         <div>
-          <div className="text-[13px] font-medium text-white">{title}</div>
+          <div className="text-[13px] font-medium text-gk-strong">{title}</div>
           <div className="mt-0.5 max-w-64 truncate text-xs text-gk-muted">{label}</div>
           <ProgressBar className="mt-2 w-48" />
         </div>
@@ -84,7 +83,7 @@ export function LoadingOverlay({ label, title = 'Открываем репози
 
 function ProgressBar({ className = 'w-full' }) {
   return (
-    <div className={`h-1 overflow-hidden rounded-full bg-white/5 ${className}`}>
+    <div className={`h-1 overflow-hidden rounded-full bg-gk-fg/5 ${className}`}>
       <div className="loader-bar h-full w-1/3 rounded-full bg-gradient-to-r from-gk-green via-gk-blue to-[#8e00c2]" />
     </div>
   );

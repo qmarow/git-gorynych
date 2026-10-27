@@ -5,7 +5,7 @@ const { GitError } = require('./errors.cjs');
 
 const MAX_LINE = 4000; // минифицированные файлы: проверяем только начало строки
 const MAX_FINDINGS = 300;
-const IGNORE_MARK = /gitidea-ignore|guard-ignore/i;
+const IGNORE_MARK = /gorynych-ignore|gitidea-ignore|guard-ignore/i;
 
 function compile(rules) {
   const ok = [];

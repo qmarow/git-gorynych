@@ -30,8 +30,8 @@ class ErrorBoundary extends Component {
       <div className="flex h-full items-center justify-center p-8">
         <div className="app-backdrop" />
         <div className="glass-strong w-full max-w-xl rounded-xl border border-gk-border bg-gk-panel-2 p-5">
-          <div className="text-[15px] font-semibold text-white">Интерфейс упал с ошибкой</div>
-          <pre className="mt-3 max-h-72 select-text overflow-auto whitespace-pre-wrap rounded bg-black/30 p-3 font-mono text-xs text-gk-red">
+          <div className="text-[15px] font-semibold text-gk-strong">Интерфейс упал с ошибкой</div>
+          <pre className="mt-3 max-h-72 select-text overflow-auto whitespace-pre-wrap rounded bg-gk-sink/30 p-3 font-mono text-xs text-gk-red">
             {String(error?.stack || error)}
           </pre>
           <div className="mt-4 flex gap-2">
@@ -43,7 +43,7 @@ class ErrorBoundary extends Component {
             </button>
             <button
               onClick={() => navigator.clipboard?.writeText(String(error?.stack || error))}
-              className="rounded bg-white/10 px-3 py-1.5 text-[13px] text-gk-text"
+              className="rounded bg-gk-fg/10 px-3 py-1.5 text-[13px] text-gk-text"
             >
               Скопировать ошибку
             </button>

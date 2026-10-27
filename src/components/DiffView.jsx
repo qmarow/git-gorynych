@@ -3,6 +3,7 @@ import { ArrowDownToLine, ArrowUpToLine, ChevronDown, ChevronUp, Columns2, FileT
 import { FILE_STATUS } from '../lib/format.js';
 import { inlineHighlights } from '../lib/inlineDiff.js';
 import { kb } from '../lib/platform.js';
+import { readable } from '../lib/scheme.js';
 
 const readPref = (key, def) => {
   try {
@@ -113,7 +114,8 @@ export default function DiffView({
   const parts = file.path.split('/');
   const name = parts.pop();
   const dir = parts.join('/');
-  const status = FILE_STATUS[file.status] ?? FILE_STATUS.M;
+  const raw = FILE_STATUS[file.status] ?? FILE_STATUS.M;
+  const status = { ...raw, color: readable(raw.color) };
 
   return (
     <div className="flex min-h-0 flex-1 animate-fade-in flex-col bg-gk-bg">
@@ -131,7 +133,7 @@ export default function DiffView({
             <span className="text-gk-dim">{file.oldPath} → </span>
           )}
           {dir && <span className="text-gk-muted">{dir}/</span>}
-          <span className="font-medium text-white">{name}</span>
+          <span className="font-medium text-gk-strong">{name}</span>
           <span className="ml-2 rounded bg-gk-hover px-1.5 py-0.5 text-[10px] uppercase tracking-wider text-gk-muted">
             {MODE_LABELS[target.mode]?.(target)}
           </span>
@@ -150,7 +152,7 @@ export default function DiffView({
             onClick={a.onClick}
             title={a.title}
             className={`ml-1 flex h-6 shrink-0 items-center gap-1 rounded px-2 text-[11.5px] ring-1 ring-gk-border transition-colors ${
-              a.danger ? 'text-gk-red hover:bg-gk-red/10' : 'text-gk-muted hover:bg-white/10 hover:text-gk-text'
+              a.danger ? 'text-gk-red hover:bg-gk-red/10' : 'text-gk-muted hover:bg-gk-fg/10 hover:text-gk-text'
             }`}
           >
             {a.icon && <a.icon size={12} />} {a.label}
@@ -372,7 +374,7 @@ function SplitDiff({ hunks, highlights, hunkProps, markers }) {
 
 function SplitCell({ cell, segs, side, border, mark }) {
   if (!cell) {
-    return <div className={`bg-white/[0.02] ${border ? 'border-l border-gk-border' : ''}`} />;
+    return <div className={`bg-gk-fg/[0.02] ${border ? 'border-l border-gk-border' : ''}`} />;
   }
   const line = cell.line;
   const s = LINE_STYLES[line.t];
@@ -396,8 +398,8 @@ function SplitCell({ cell, segs, side, border, mark }) {
 function Segments({ segs, type }) {
   const cls =
     type === '-'
-      ? 'rounded-[3px] bg-gk-red/35 text-white shadow-[inset_0_-1px_0_rgb(242_93_93/0.6)]'
-      : 'rounded-[3px] bg-gk-green/30 text-white shadow-[inset_0_-1px_0_rgb(60_240_160/0.6)]';
+      ? 'rounded-[3px] bg-gk-red/35 text-gk-strong shadow-[inset_0_-1px_0_rgb(242_93_93/0.6)]'
+      : 'rounded-[3px] bg-gk-green/30 text-gk-strong shadow-[inset_0_-1px_0_rgb(60_240_160/0.6)]';
   return segs.map((seg, i) =>
     seg.changed ? (
       <mark key={i} className={`${cls} px-[1px]`} title={/^\s+$/.test(seg.text) ? 'Изменились пробелы' : undefined}>
@@ -426,7 +428,7 @@ function HunkHeader({ hunk, index, actions, busy, onRun }) {
               title={a.title}
               onClick={() => onRun(a, hunk, index)}
               className={`flex items-center gap-1 rounded px-1.5 py-px font-sans text-[11px] opacity-70 ring-1 transition group-hover/hunk:opacity-100 disabled:opacity-40 ${
-                a.danger ? 'text-gk-red ring-gk-red/30 hover:bg-gk-red/15' : 'text-gk-text ring-gk-border hover:bg-white/10'
+                a.danger ? 'text-gk-red ring-gk-red/30 hover:bg-gk-red/15' : 'text-gk-text ring-gk-border hover:bg-gk-fg/10'
               }`}
             >
               {running ? <Loader2 size={11} className="animate-spin" /> : a.icon && <a.icon size={11} />}

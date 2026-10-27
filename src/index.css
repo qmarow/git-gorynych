@@ -8,6 +8,14 @@
   --color-gk-titlebar: rgb(12 14 19 / 0.72);
   --color-gk-border: rgb(255 255 255 / 0.07);
   --color-gk-hover: rgb(255 255 255 / 0.06);
+  /* Семантические цвета, которые меняются между светлой и тёмной схемой:
+     strong — заголовки и выделенный текст; fg — подсветка поверх панелей (hover, рамки, плашки);
+     sink — «утопленные» места (поля, код, тени прокрутки); scrim — затемнение под модальными окнами */
+  --color-gk-strong: #ffffff;
+  --color-gk-fg: rgb(255 255 255);
+  --color-gk-sink: rgb(0 0 0);
+  --color-gk-scrim: rgb(5 7 12 / 0.5);
+  --color-gk-purple: #c084fc;
   --color-gk-ink: #0f1217;
   --color-gk-text: #d6dae1;
   --color-gk-muted: #848c99;
@@ -87,6 +95,28 @@ body,
   --bg-image: none;
   --bg-image-blur: 8px;
   --bg-image-dim: 0.45;
+  --gk-fg-rgb: 255 255 255;
+  --gk-dim-rgb: 0 0 0;
+  --gk-log-bg: color-mix(in srgb, var(--gk-base) 80%, black);
+  /* Подсветка YAML/Groovy */
+  --syn-key: #7ab8ff;
+  --syn-string: #9be29b;
+  --syn-number: #f5b971;
+  --syn-keyword: #c792ea;
+  --syn-variable: #ffcb6b;
+  --syn-anchor: #c792ea;
+  color-scheme: dark;
+}
+/* Светлая схема: поля ввода, полосы прокрутки и выпадающие списки браузера — светлые */
+html[data-scheme='light'] {
+  color-scheme: light;
+  --gk-log-bg: #1e222a; /* лог CI остаётся «терминальным»: ANSI-цвета рассчитаны на тёмный фон */
+  --syn-key: #0b5cc4;
+  --syn-string: #1a7f37;
+  --syn-number: #b35900;
+  --syn-keyword: #8a3ab9;
+  --syn-variable: #9a6700;
+  --syn-anchor: #8a3ab9;
 }
 html {
   background: var(--gk-base);
@@ -174,8 +204,8 @@ html[data-bg='aurora'] .app-backdrop::after {
 html[data-bg='grid'] .app-backdrop {
   background-color: var(--gk-base);
   background-image:
-    linear-gradient(rgb(255 255 255 / 0.035) 1px, transparent 1px),
-    linear-gradient(90deg, rgb(255 255 255 / 0.035) 1px, transparent 1px);
+    linear-gradient(rgb(var(--gk-fg-rgb) / 0.035) 1px, transparent 1px),
+    linear-gradient(90deg, rgb(var(--gk-fg-rgb) / 0.035) 1px, transparent 1px);
   background-size: 36px 36px;
 }
 html[data-bg='grid'] .app-backdrop::before {
@@ -215,7 +245,7 @@ html[data-bg='image'] .app-backdrop::before {
 }
 html[data-bg='image'] .app-backdrop::after {
   inset: 0;
-  background: rgb(0 0 0 / var(--bg-image-dim));
+  background: rgb(var(--gk-dim-rgb) / var(--bg-image-dim));
 }
 
 html[data-bg='system'] .app-backdrop {
@@ -240,7 +270,7 @@ html[data-motion='off'] .app-backdrop::after {
 }
 .glass-strong {
   backdrop-filter: blur(calc(var(--gk-blur) + 8px)) saturate(170%);
-  box-shadow: 0 0 0 1px rgb(255 255 255 / 0.04) inset, 0 20px 50px -12px rgb(0 0 0 / 0.65);
+  box-shadow: 0 0 0 1px rgb(var(--gk-fg-rgb) / 0.04) inset, 0 20px 50px -12px rgb(0 0 0 / 0.65);
 }
 
 /* SVG-анимации графа */
@@ -294,7 +324,7 @@ html[data-motion='off'] .app-backdrop::after {
 }
 
 .skeleton {
-  background: linear-gradient(90deg, rgb(255 255 255 / 0.03) 25%, rgb(255 255 255 / 0.09) 50%, rgb(255 255 255 / 0.03) 75%);
+  background: linear-gradient(90deg, rgb(var(--gk-fg-rgb) / 0.03) 25%, rgb(var(--gk-fg-rgb) / 0.09) 50%, rgb(var(--gk-fg-rgb) / 0.03) 75%);
   background-size: 200% 100%;
   animation: var(--animate-shimmer);
 }
@@ -329,7 +359,7 @@ button:not(:disabled):active {
 .gk-range::-webkit-slider-runnable-track {
   height: 4px;
   border-radius: 999px;
-  background: linear-gradient(90deg, var(--color-gk-green) var(--pct, 50%), rgb(255 255 255 / 0.12) var(--pct, 50%));
+  background: linear-gradient(90deg, var(--color-gk-green) var(--pct, 50%), rgb(var(--gk-fg-rgb) / 0.12) var(--pct, 50%));
 }
 .gk-range::-webkit-slider-thumb {
   -webkit-appearance: none;
@@ -338,7 +368,7 @@ button:not(:disabled):active {
   margin-top: -5px;
   border-radius: 50%;
   background: #fff;
-  box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-gk-green) 35%, transparent), 0 2px 6px rgb(0 0 0 / 0.4);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-gk-green) 35%, transparent), 0 1px 2px rgb(0 0 0 / 0.25), 0 2px 6px rgb(0 0 0 / 0.3);
   transition: transform 0.15s ease;
 }
 .gk-range:active::-webkit-slider-thumb {
@@ -354,7 +384,7 @@ button:not(:disabled):active {
   border-radius: 999px;
 }
 .sidebar-scroll:hover::-webkit-scrollbar-thumb {
-  background: rgb(255 255 255 / 0.16);
+  background: rgb(var(--gk-fg-rgb) / 0.16);
 }
 
 /* Тонкие тёмные скроллбары */
@@ -369,13 +399,13 @@ button:not(:disabled):active {
   background: transparent;
 }
 ::-webkit-scrollbar-thumb {
-  background: rgb(255 255 255 / 0.12);
+  background: rgb(var(--gk-fg-rgb) / 0.12);
   border-radius: 6px;
   border: 2px solid transparent;
   background-clip: padding-box;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: rgb(255 255 255 / 0.2);
+  background: rgb(var(--gk-fg-rgb) / 0.2);
   background-clip: padding-box;
 }
 
@@ -418,4 +448,9 @@ textarea {
   padding-bottom: 24px;
   -webkit-mask-image: linear-gradient(to bottom, transparent 0, #000 14px, #000 calc(100% - 20px), transparent 100%);
   mask-image: linear-gradient(to bottom, transparent 0, #000 14px, #000 calc(100% - 20px), transparent 100%);
+}
+
+/* ================= Светлая схема: мягче тени ================= */
+html[data-scheme='light'] .glass-strong {
+  box-shadow: 0 0 0 1px rgb(16 24 40 / 0.06) inset, 0 18px 44px -14px rgb(16 24 40 / 0.28);
 }

@@ -23,8 +23,8 @@ export const DEFAULT_RULES = [
   { id: 'pdb', category: 'debug', label: 'breakpoint() / pdb', files: 'py', pattern: '\\b(?:breakpoint\\s*\\(\\)|pdb\\.set_trace\\s*\\(|import\\s+i?pdb)' },
   { id: 'php-dump', category: 'debug', label: 'var_dump / dd()', files: 'php', pattern: '\\b(?:var_dump|print_r|dd|dump)\\s*\\(' },
   { id: 'test-only', category: 'debug', label: '.only в тестах', files: 'js,jsx,ts,tsx,mjs,cjs', pattern: '\\b(?:it|describe|test)\\.only\\s*\\(' },
-  { id: 'todo-remove', category: 'debug', label: 'TODO: remove', flags: 'i', pattern: '\\b(?:TODO|FIXME|XXX|HACK)\\b.*\\b(?:remove|delete|убрать|удалить|temp|временн)' }, // gitidea-ignore
-  { id: 'do-not-commit', category: 'debug', label: 'DO NOT COMMIT', flags: 'i', pattern: '\\b(?:DO\\s*NOT\\s*COMMIT|NOCOMMIT|НЕ\\s*КОММИТИТЬ)\\b' }, // gitidea-ignore
+  { id: 'todo-remove', category: 'debug', label: 'TODO: remove', flags: 'i', pattern: '\\b(?:TODO|FIXME|XXX|HACK)\\b.*\\b(?:remove|delete|убрать|удалить|temp|временн)' }, // gorynych-ignore
+  { id: 'do-not-commit', category: 'debug', label: 'DO NOT COMMIT', flags: 'i', pattern: '\\b(?:DO\\s*NOT\\s*COMMIT|NOCOMMIT|НЕ\\s*КОММИТИТЬ)\\b' }, // gorynych-ignore
 ];
 
 export const CATEGORY_LABELS = { secret: 'Похоже на секрет', debug: 'Забытая отладка', other: 'Свои правила' };
@@ -33,7 +33,7 @@ export const CATEGORY_LABELS = { secret: 'Похоже на секрет', debug
 export const LEVELS = [
   { id: 'off', label: 'Выкл', hint: 'Правило не проверяется' },
   { id: 'warn', label: 'Предупреждать', hint: 'Показать и спросить, коммитить ли всё равно' },
-  { id: 'block', label: 'Запрещать', hint: 'Коммит не создаётся, пока строка не исправлена или не помечена gitidea-ignore' },
+  { id: 'block', label: 'Запрещать', hint: 'Коммит не создаётся, пока строка не исправлена или не помечена gorynych-ignore' },
 ];
 
 // Частые исключения — подсказки в настройках

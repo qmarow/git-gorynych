@@ -5,6 +5,15 @@ import { useCallback, useEffect, useRef, useState } from 'react';
  * null — «по умолчанию» (например, авто-ширина графа).
  */
 export function useStoredWidth(key, fallback, min, max) {
+  // Задавал ли пользователь ширину сам (иначе можно подобрать её по содержимому)
+  const [stored, setStored] = useState(() => {
+    try {
+      const raw = localStorage.getItem(`width:${key}`);
+      return raw !== null && raw !== 'auto';
+    } catch {
+      return false;
+    }
+  });
   const [width, setWidthState] = useState(() => {
     try {
       const raw = localStorage.getItem(`width:${key}`);
@@ -20,6 +29,7 @@ export function useStoredWidth(key, fallback, min, max) {
     (value) => {
       const next = value === null ? fallback : Math.round(Math.min(max, Math.max(min, value)));
       setWidthState(next);
+      setStored(value !== null);
       return next;
     },
     [fallback, min, max],
@@ -32,11 +42,12 @@ export function useStoredWidth(key, fallback, min, max) {
       } catch {
         /* хранилище недоступно — ширина просто не запомнится */
       }
+      setStored(value !== null);
     },
     [key],
   );
 
-  return [width, setWidth, persist];
+  return [width, setWidth, persist, stored];
 }
 
 /**

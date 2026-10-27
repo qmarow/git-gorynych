@@ -130,9 +130,9 @@ export default function SearchBar({ commits, filter, onChange, matches, current,
                   <button
                     key={name}
                     onClick={() => toggleAuthor(name)}
-                    className={`flex w-full items-center gap-2 rounded px-2 py-1.5 text-left text-xs hover:bg-gk-hover ${on ? 'text-white' : 'text-gk-text'}`}
+                    className={`flex w-full items-center gap-2 rounded px-2 py-1.5 text-left text-xs hover:bg-gk-hover ${on ? 'text-gk-strong' : 'text-gk-text'}`}
                   >
-                    <input type="checkbox" readOnly checked={on} className="pointer-events-none accent-[#2f9bff]" />
+                    <input type="checkbox" readOnly checked={on} className="pointer-events-none accent-gk-blue" />
                     <span
                       style={{ backgroundColor: avatarColor(name) }}
                       className="flex h-4 w-4 shrink-0 items-center justify-center rounded-full text-[7px] font-bold text-white"

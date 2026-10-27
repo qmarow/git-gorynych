@@ -24,7 +24,7 @@ export function RunnerCard({ run, onClose, onRetry }) {
     <div className="glass-strong fixed bottom-10 right-4 z-40 w-[340px] animate-slide-up overflow-hidden rounded-xl border border-gk-border bg-gk-panel-2 shadow-2xl">
       <div className="flex items-center gap-2 border-b border-gk-border px-3 py-2">
         <Icon size={14} className="shrink-0 text-gk-blue" />
-        <span className="min-w-0 flex-1 truncate text-[13px] font-semibold text-white">{run.action.name}</span>
+        <span className="min-w-0 flex-1 truncate text-[13px] font-semibold text-gk-strong">{run.action.name}</span>
         <span className="shrink-0 text-[11px] text-gk-dim">
           {doneCount}/{run.steps.length}
         </span>
@@ -34,7 +34,7 @@ export function RunnerCard({ run, onClose, onRetry }) {
           </button>
         )}
       </div>
-      <div className="h-0.5 bg-white/5">
+      <div className="h-0.5 bg-gk-fg/5">
         <div
           className={`h-full transition-[width] duration-500 ${run.error ? 'bg-gk-red' : 'bg-gk-green'}`}
           style={{ width: `${(doneCount / Math.max(1, run.steps.length)) * 100}%` }}
@@ -77,7 +77,7 @@ export function RunnerCard({ run, onClose, onRetry }) {
           {failed >= 0 && (
             <button
               onClick={() => onRetry(failed)}
-              className="mt-2 flex items-center gap-1.5 rounded-md bg-white/10 px-2.5 py-1 text-[12px] text-gk-text hover:bg-white/15"
+              className="mt-2 flex items-center gap-1.5 rounded-md bg-gk-fg/10 px-2.5 py-1 text-[12px] text-gk-text hover:bg-gk-fg/15"
             >
               <RotateCcw size={12} /> Повторить с шага {failed + 1}
             </button>
@@ -104,7 +104,7 @@ export function RunDialog({ action, inputs, branches, onRun, onClose }) {
   }, [onClose]);
 
   return (
-    <div className="fixed inset-0 z-50 flex animate-fade-in items-start justify-center bg-black/45 pt-[14vh] backdrop-blur-[3px]" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
+    <div className="fixed inset-0 z-50 flex animate-fade-in items-start justify-center bg-gk-scrim pt-[14vh] backdrop-blur-[3px]" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
       <form
         onSubmit={(e) => {
           e.preventDefault();
@@ -114,7 +114,7 @@ export function RunDialog({ action, inputs, branches, onRun, onClose }) {
       >
         <div className="flex items-center gap-2 border-b border-gk-border px-4 py-3">
           <Icon size={16} className="text-gk-blue" />
-          <h2 className="flex-1 text-[14px] font-semibold text-white">{action.name}</h2>
+          <h2 className="flex-1 text-[14px] font-semibold text-gk-strong">{action.name}</h2>
           <button type="button" onClick={onClose} className="rounded p-1 text-gk-dim hover:bg-gk-hover hover:text-gk-text">
             <X size={16} />
           </button>

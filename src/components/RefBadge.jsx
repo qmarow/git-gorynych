@@ -7,22 +7,18 @@ import { Check, Cloud, CloudOff, Laptop, LogIn, Tag } from 'lucide-react';
  * ноутбук с облаком — локальная и серверная ветки на одном коммите (синхронизированы).
  */
 export function RefKindIcon({ local, remote, tag, size = 12, className = '' }) {
-  // Все варианты одной ширины — имена веток в списках стоят ровно
-  const box = { width: size + 6, height: size };
+  // Локальная и серверная на одном коммите — две маленькие иконки рядом (ноутбук + облако), как в GitKraken.
+  // Раньше облако накладывалось на ноутбук, и при размере 12px это читалось как папка.
   const label = tag ? 'тег' : local && remote ? 'локальная и на сервере' : remote ? 'на сервере' : 'локальная';
+  const small = Math.round(size * 0.9);
   return (
-    <span className={`relative inline-flex shrink-0 items-center ${className}`} style={box} aria-label={label}>
+    <span className={`inline-flex shrink-0 items-center gap-px ${className}`} aria-label={label} data-kind={tag ? 'tag' : local && remote ? 'both' : remote ? 'remote' : 'local'}>
       {tag ? (
         <Tag size={size} />
       ) : local && remote ? (
         <>
-          <Laptop size={size} className="absolute left-0 top-0" />
-          <Cloud
-            size={Math.round(size * 0.75)}
-            strokeWidth={2.6}
-            className="absolute -top-[3px] right-0"
-            style={{ filter: 'drop-shadow(0 0 1.5px rgb(0 0 0 / 0.9))' }}
-          />
+          <Laptop size={size} />
+          <Cloud size={small} className="opacity-90" />
         </>
       ) : remote ? (
         <Cloud size={size} />
@@ -135,7 +131,7 @@ function Row({ g, currentBranch, actions }) {
           <button
             title={localRef ? `Checkout ${localRef.name}` : `Checkout ${remoteRef?.name} (создаст локальную ветку)`}
             onClick={() => actions?.checkout?.(primary)}
-            className="rounded p-1 text-gk-muted hover:bg-white/10 hover:text-gk-text"
+            className="rounded p-1 text-gk-muted hover:bg-gk-fg/10 hover:text-gk-text"
           >
             <LogIn size={13} />
           </button>

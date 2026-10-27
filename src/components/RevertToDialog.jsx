@@ -62,10 +62,10 @@ export default function RevertToDialog({ repoPath, commit, busy, onClose, onConf
       }
     >
       {/* Целевой коммит */}
-      <div className="flex items-start gap-3 rounded-lg bg-white/[0.04] p-3 ring-1 ring-gk-border">
+      <div className="flex items-start gap-3 rounded-lg bg-gk-fg/[0.04] p-3 ring-1 ring-gk-border">
         <span className="mt-0.5 rounded bg-gk-yellow/15 px-1.5 py-0.5 font-mono text-[11px] text-gk-yellow">{short}</span>
         <div className="min-w-0">
-          <div className="truncate text-[13px] font-medium text-white">{commit.message}</div>
+          <div className="truncate text-[13px] font-medium text-gk-strong">{commit.message}</div>
           <div className="text-xs text-gk-muted">
             {commit.author?.name} · {fullDate(commit.date)} ({relativeTime(commit.date)})
           </div>
@@ -103,7 +103,7 @@ export default function RevertToDialog({ repoPath, commit, busy, onClose, onConf
               </p>
 
               {preview.ancestor && preview.count > 0 && (
-                <div className="rounded-lg bg-black/20 p-2.5 ring-1 ring-gk-border">
+                <div className="rounded-lg bg-gk-sink/20 p-2.5 ring-1 ring-gk-border">
                   <div className="mb-1.5 text-xs text-gk-muted">
                     Будут отменены изменения {preview.count} {plural(preview.count, 'коммита', 'коммитов', 'коммитов')}:
                   </div>
@@ -162,7 +162,7 @@ export default function RevertToDialog({ repoPath, commit, busy, onClose, onConf
 
           {preview.hasUpstream && !blocked && (
             <label className="flex cursor-pointer items-center gap-2 text-xs text-gk-muted">
-              <input type="checkbox" checked={push} onChange={(e) => setPush(e.target.checked)} className="accent-[#3cf0a0]" />
+              <input type="checkbox" checked={push} onChange={(e) => setPush(e.target.checked)} className="accent-gk-green" />
               <CloudUpload size={13} />
               Сразу отправить на сервер (push)
             </label>

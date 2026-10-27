@@ -179,7 +179,7 @@ export default function JobForm({ job, stages, allJobs, mode, presetStage, busy,
               f.needs.map((n) => (
                 <span key={n} className="flex items-center gap-1 rounded bg-gk-blue/15 px-1.5 py-0.5 font-mono text-[11px] text-gk-blue">
                   {n}
-                  <button type="button" onClick={() => set({ needs: f.needs.filter((x) => x !== n) })} className="hover:text-white">
+                  <button type="button" onClick={() => set({ needs: f.needs.filter((x) => x !== n) })} className="hover:text-gk-strong">
                     <X size={10} />
                   </button>
                 </span>

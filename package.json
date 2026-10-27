@@ -1,8 +1,8 @@
 {
-  "name": "gitidea",
-  "productName": "GitIdea",
+  "name": "git-gorynych",
+  "productName": "git-Горыныч",
   "version": "0.1.0",
-  "description": "GitIdea — desktop Git client (Electron + React + Tailwind)",
+  "description": "git-Горыныч — desktop Git client (Electron + React + Tailwind)",
   "author": "ironxenot",
   "private": true,
   "type": "module",
@@ -30,8 +30,8 @@
     "wait-on": "^8.0.3"
   },
   "build": {
-    "appId": "com.ironxenot.gitidea",
-    "productName": "GitIdea",
+    "appId": "com.ironxenot.gitgorynych",
+    "productName": "git-Горыныч",
     "directories": {
       "output": "release",
       "buildResources": "build"
@@ -51,10 +51,10 @@
           ]
         }
       ],
-      "artifactName": "${productName}-Setup-${version}.${ext}"
+      "artifactName": "git-Gorynych-Setup-${version}.${ext}"
     },
     "portable": {
-      "artifactName": "${productName}-Portable-${version}.${ext}"
+      "artifactName": "git-Gorynych-Portable-${version}.${ext}"
     },
     "nsis": {
       "oneClick": false,
@@ -62,7 +62,7 @@
       "allowToChangeInstallationDirectory": true,
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
-      "shortcutName": "GitIdea"
+      "shortcutName": "git-Горыныч"
     }
   }
 }

@@ -1,9 +1,11 @@
+import { setScheme } from './scheme.js';
+
 // Оформление: темы, фоны, прозрачность панелей. Применяется через CSS-переменные на <html>.
 
 export const THEMES = [
   {
     id: 'kraken',
-    name: 'GitIdea',
+    name: 'Тёмная',
     base: '#0e1117',
     surface: [20, 23, 31],
     panel: [24, 27, 36],
@@ -18,6 +20,28 @@ export const THEMES = [
     red: '#f25d5d',
     yellow: '#f2ca33',
     glow: ['#3cf0a0', '#2f9bff', '#8e00c2'],
+  },
+  {
+    id: 'light',
+    name: 'Светлая',
+    scheme: 'light',
+    base: '#eceff4',
+    surface: [246, 247, 250],
+    panel: [255, 255, 255],
+    panel2: [233, 236, 242],
+    titlebar: [226, 230, 237],
+    text: '#232936',
+    muted: '#596274',
+    dim: '#8a92a2',
+    ink: '#ffffff',
+    green: '#0c9a63',
+    blue: '#1767d6',
+    red: '#d23a3a',
+    yellow: '#b07c00',
+    purple: '#7a3bd9',
+    glow: ['#7fdcbc', '#9cc3ff', '#d7b6ff'],
+    // Цвета дорожек темнее, чтобы линии графа не терялись на белом
+    lanes: ['#0b8fb0', '#0b5fdb', '#7e17b8', '#b5179e', '#c8105f', '#c41b1b', '#e0531f', '#b38400', '#4a9612', '#0e9c78'],
   },
   {
     id: 'midnight',
@@ -139,6 +163,20 @@ export const BACKGROUNDS = [
   { id: 'system', name: 'Windows', hint: 'Сквозь окно видно рабочий стол (Mica / Acrylic, Windows 11)' },
 ];
 
+/** «Как в системе»: светлая или тёмная тема по настройке Windows/macOS */
+export const AUTO_THEME = { id: 'auto', name: 'Как в системе', light: 'light', dark: 'kraken' };
+
+const systemPrefersLight = () => {
+  try {
+    return window.matchMedia('(prefers-color-scheme: light)').matches;
+  } catch {
+    return false;
+  }
+};
+
+/** id темы, которая реально применяется (для «Как в системе» — светлая или тёмная) */
+export const resolveThemeId = (id) => (id === AUTO_THEME.id ? (systemPrefersLight() ? AUTO_THEME.light : AUTO_THEME.dark) : id);
+
 export const DEFAULT_APPEARANCE = {
   theme: 'kraken',
   background: 'glow',
@@ -160,7 +198,7 @@ const clamp = (v, min, max) => Math.min(max, Math.max(min, v));
 
 export function normalizeAppearance(value) {
   const v = { ...DEFAULT_APPEARANCE, ...(value && typeof value === 'object' ? value : {}) };
-  if (!THEMES.some((t) => t.id === v.theme)) v.theme = DEFAULT_APPEARANCE.theme;
+  if (v.theme !== AUTO_THEME.id && !THEMES.some((t) => t.id === v.theme)) v.theme = DEFAULT_APPEARANCE.theme;
   if (!BACKGROUNDS.some((b) => b.id === v.background)) v.background = DEFAULT_APPEARANCE.background;
   v.transparency = clamp(Number(v.transparency) || 0, 0, 100);
   v.blur = clamp(Number(v.blur) || 0, 0, 40);
@@ -174,7 +212,9 @@ export function normalizeAppearance(value) {
 /** Применить оформление к документу. imageUrl — data: URL своей картинки (если выбран фон «Картинка») */
 export function applyAppearance(value, { imageUrl, systemSupported = true } = {}) {
   const a = normalizeAppearance(value);
-  const t = THEMES.find((x) => x.id === a.theme);
+  const t = themeById(resolveThemeId(a.theme));
+  const light = t.scheme === 'light';
+  const fg = t.fg ?? (light ? [16, 24, 40] : [255, 255, 255]);
   const root = document.documentElement;
   const k = a.transparency / 100;
   // Чем выше прозрачность, тем меньше альфа у панелей. При 50% — как было изначально.
@@ -191,16 +231,26 @@ export function applyAppearance(value, { imageUrl, systemSupported = true } = {}
     '--color-gk-blue': t.blue,
     '--color-gk-red': t.red,
     '--color-gk-yellow': t.yellow,
+    '--color-gk-purple': t.purple ?? (light ? '#7a3bd9' : '#c084fc'),
+    // Светлая/тёмная схема: подсветка поверх панелей, рамки, заголовки, «утопленные» места
+    '--color-gk-strong': t.strong ?? (light ? '#0d1220' : '#ffffff'),
+    '--color-gk-fg': `rgb(${fg.join(' ')})`,
+    '--gk-fg-rgb': fg.join(' '),
+    '--color-gk-sink': light ? 'rgb(84 94 122)' : 'rgb(0 0 0)',
+    '--color-gk-scrim': light ? 'rgb(28 36 56 / 0.28)' : 'rgb(5 7 12 / 0.5)',
+    '--color-gk-border': rgba(fg, light ? 0.11 : 0.07),
+    '--color-gk-hover': rgba(fg, light ? 0.055 : 0.06),
+    '--gk-dim-rgb': light ? '255 255 255' : '0 0 0',
     // Непрозрачные подложки для всплывающих окон и логов
     '--gk-base': t.base,
     '--gk-solid': rgba(t.surface, 1),
     '--gk-solid-2': rgba(t.panel, 1),
     '--gk-blur': `${a.blur}px`,
-    '--glow-1': rgba(hexToRgb(t.glow[0]), 0.42),
-    '--glow-2': rgba(hexToRgb(t.glow[1]), 0.45),
-    '--glow-3': rgba(hexToRgb(t.glow[2]), 0.25),
-    '--glow-1-soft': rgba(hexToRgb(t.glow[0]), 0.15),
-    '--glow-2-soft': rgba(hexToRgb(t.glow[1]), 0.18),
+    '--glow-1': rgba(hexToRgb(t.glow[0]), light ? 0.5 : 0.42),
+    '--glow-2': rgba(hexToRgb(t.glow[1]), light ? 0.5 : 0.45),
+    '--glow-3': rgba(hexToRgb(t.glow[2]), light ? 0.35 : 0.25),
+    '--glow-1-soft': rgba(hexToRgb(t.glow[0]), light ? 0.2 : 0.15),
+    '--glow-2-soft': rgba(hexToRgb(t.glow[1]), light ? 0.22 : 0.18),
     '--bg-image-blur': `${a.imageBlur}px`,
     '--bg-image-dim': String(a.imageDim / 100),
   };
@@ -209,8 +259,27 @@ export function applyAppearance(value, { imageUrl, systemSupported = true } = {}
   const bg = (a.background === 'image' && !imageUrl) || (a.background === 'system' && !systemSupported) ? 'glow' : a.background;
   root.dataset.bg = bg;
   root.dataset.motion = a.motion ? 'on' : 'off';
-  root.dataset.theme = a.theme;
+  root.dataset.theme = t.id;
+  root.dataset.scheme = light ? 'light' : 'dark';
+  setScheme(light ? 'light' : 'dark', t.lanes);
   return a;
+}
+
+/**
+ * Сообщить схеме (scheme.js) цвета текущей темы. Вызывается прямо во время рендера App,
+ * чтобы граф и бейджи в этом же рендере взяли цвета новой темы.
+ */
+export function syncScheme(value) {
+  const t = themeById(resolveThemeId(normalizeAppearance(value).theme));
+  setScheme(t.scheme === 'light' ? 'light' : 'dark', t.lanes);
+  return t;
+}
+
+/** Что сообщить окну Electron: цвет подложки и светлая/тёмная схема системных элементов */
+export function nativeAppearance(value) {
+  const a = normalizeAppearance(value);
+  const t = themeById(resolveThemeId(a.theme));
+  return { ...a, base: t.base, scheme: a.theme === AUTO_THEME.id ? 'system' : t.scheme === 'light' ? 'light' : 'dark' };
 }
 
 const CACHE_KEY = 'appearance';

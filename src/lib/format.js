@@ -21,22 +21,15 @@ export function relativeTime(iso) {
   return date.toLocaleDateString('ru-RU');
 }
 
-export function fullDate(iso) {
-  return new Date(iso).toLocaleString('ru-RU', {
-    day: '2-digit',
-    month: '2-digit',
-    year: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
-  });
-}
-
-// Компактно для колонки графа: 22.09.21 01:59
+// Единый вид даты во всём интерфейсе — в таблице коммитов, в панели коммита и в подсказках: 22.09.2021 01:59
 export function shortDate(iso) {
   const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return '';
   const p = (n) => String(n).padStart(2, '0');
-  return `${p(d.getDate())}.${p(d.getMonth() + 1)}.${String(d.getFullYear()).slice(2)} ${p(d.getHours())}:${p(d.getMinutes())}`;
+  return `${p(d.getDate())}.${p(d.getMonth() + 1)}.${d.getFullYear()} ${p(d.getHours())}:${p(d.getMinutes())}`;
 }
+
+export const fullDate = shortDate;
 
 // Детерминированный цвет аватара по имени
 const AVATAR_COLORS = ['#0669f7', '#8e00c2', '#d90171', '#15a0bf', '#f25d2e', '#2ece9d', '#c517b6'];

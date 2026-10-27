@@ -127,7 +127,7 @@ export default function CiEditor({ value, onChange, lang, errors, jump, onSave, 
   return (
     <div className="relative flex min-h-0 flex-1 overflow-hidden bg-[color-mix(in_srgb,var(--gk-base)_70%,transparent)] font-mono text-[12.5px]">
       {/* Номера строк */}
-      <div className="relative w-14 shrink-0 overflow-hidden border-r border-gk-border/60 bg-black/10 text-right">
+      <div className="relative w-14 shrink-0 overflow-hidden border-r border-gk-border/60 bg-gk-sink/10 text-right">
         <div ref={gutterRef} className="absolute inset-x-0 top-0 pt-2 will-change-transform">
           {lines.map((_, i) => {
             const n = i + 1;
@@ -187,7 +187,7 @@ const Line = memo(function Line({ text, lang, active, error, jumped }) {
   return (
     <div
       style={{ height: LINE_H, lineHeight: `${LINE_H}px` }}
-      className={`whitespace-pre text-gk-text/90 ${error ? 'bg-gk-red/12' : jumped ? 'bg-gk-blue/15' : active ? 'bg-white/[0.035]' : ''}`}
+      className={`whitespace-pre text-gk-text/90 ${error ? 'bg-gk-red/12' : jumped ? 'bg-gk-blue/15' : active ? 'bg-gk-fg/[0.035]' : ''}`}
     >
       {highlight(text, lang) || ' '}
     </div>

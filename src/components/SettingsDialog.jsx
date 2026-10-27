@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Archive, Check, GitBranch, GitCommitHorizontal, RefreshCw, Image as ImageIcon, Loader2, Palette, Plug, RotateCcw, ShieldCheck, Sparkles, X } from 'lucide-react';
-import { BACKGROUNDS, THEMES, themeById } from '../lib/appearance.js';
+import { AUTO_THEME, BACKGROUNDS, THEMES, resolveThemeId, themeById } from '../lib/appearance.js';
 import { TokenSetup } from './TokenSetup.jsx';
 import { GuardSettings, Switch } from './Guard.jsx';
 import { CommitSettings } from './CommitForm.jsx';
@@ -47,19 +47,19 @@ export default function SettingsDialog({
 
   return (
     <div
-      className="fixed inset-0 z-40 flex animate-fade-in items-start justify-center bg-black/40 pt-[7vh] backdrop-blur-[3px]"
+      className="fixed inset-0 z-40 flex animate-fade-in items-start justify-center bg-gk-scrim pt-[7vh] backdrop-blur-[3px]"
       onMouseDown={(e) => e.target === e.currentTarget && onClose()}
     >
       <div className="glass-strong flex max-h-[84vh] w-[760px] max-w-[calc(100vw-2rem)] animate-pop-in overflow-hidden rounded-xl border border-gk-border bg-gk-panel-2">
         {/* Разделы */}
-        <nav className="flex w-48 shrink-0 flex-col gap-0.5 border-r border-gk-border bg-black/10 p-2">
+        <nav className="flex w-48 shrink-0 flex-col gap-0.5 border-r border-gk-border bg-gk-sink/10 p-2">
           <div className="px-2 pb-2 pt-1 text-[11px] font-semibold uppercase tracking-wider text-gk-dim">Настройки</div>
           {TABS.map((t) => (
             <button
               key={t.id}
               onClick={() => setTab(t.id)}
               className={`flex items-center gap-2 rounded-md px-2.5 py-1.5 text-left text-[13px] transition-colors ${
-                tab === t.id ? 'bg-gk-hover text-white' : 'text-gk-muted hover:bg-gk-hover/60 hover:text-gk-text'
+                tab === t.id ? 'bg-gk-hover text-gk-strong' : 'text-gk-muted hover:bg-gk-hover/60 hover:text-gk-text'
               }`}
             >
               <t.icon size={14} className={tab === t.id ? 'text-gk-green' : ''} />
@@ -70,7 +70,7 @@ export default function SettingsDialog({
 
         <div className="flex min-w-0 flex-1 flex-col">
           <div className="flex shrink-0 items-center border-b border-gk-border px-4 py-3">
-            <h2 className="flex-1 text-[14px] font-semibold text-white">{TABS.find((t) => t.id === tab)?.label}</h2>
+            <h2 className="flex-1 text-[14px] font-semibold text-gk-strong">{TABS.find((t) => t.id === tab)?.label}</h2>
             {tab === 'appearance' && (
               <button
                 onClick={onReset}
@@ -109,7 +109,7 @@ export default function SettingsDialog({
 /* =================== Оформление =================== */
 
 function AppearanceTab({ appearance: a, meta, imageUrl, onChange, onPickImage }) {
-  const theme = themeById(a.theme);
+  const theme = themeById(resolveThemeId(a.theme));
   const [picking, setPicking] = useState(false);
   const [pickError, setPickError] = useState(null);
 
@@ -128,15 +128,26 @@ function AppearanceTab({ appearance: a, meta, imageUrl, onChange, onPickImage })
       <section>
         <SectionTitle>Тема</SectionTitle>
         <div className="grid grid-cols-[repeat(auto-fill,minmax(150px,1fr))] gap-2.5">
-          {THEMES.map((t) => (
+          {[AUTO_THEME, ...THEMES].map((t) => (
             <button
               key={t.id}
+              data-theme-id={t.id}
               onClick={() => onChange({ theme: t.id })}
+              title={t.id === AUTO_THEME.id ? 'Светлая или тёмная — как в настройках Windows/macOS, переключается сама' : t.hint}
               className={`group rounded-lg p-1.5 text-left transition-all duration-200 ${
-                a.theme === t.id ? 'bg-white/[0.06] ring-2 ring-gk-green' : 'ring-1 ring-gk-border hover:-translate-y-0.5 hover:ring-white/20'
+                a.theme === t.id ? 'bg-gk-fg/[0.06] ring-2 ring-gk-green' : 'ring-1 ring-gk-border hover:-translate-y-0.5 hover:ring-gk-fg/20'
               }`}
             >
-              <ThemePreview theme={t} />
+              {t.id === AUTO_THEME.id ? (
+                <div className="relative h-[72px] overflow-hidden rounded-md">
+                  <ThemePreview theme={themeById(AUTO_THEME.dark)} />
+                  <div className="absolute inset-0 [clip-path:polygon(62%_0,100%_0,100%_100%,38%_100%)]">
+                    <ThemePreview theme={themeById(AUTO_THEME.light)} />
+                  </div>
+                </div>
+              ) : (
+                <ThemePreview theme={t} />
+              )}
               <div className="mt-1.5 flex items-center gap-1.5 px-0.5">
                 <span className="flex-1 truncate text-[12.5px] text-gk-text">{t.name}</span>
                 {a.theme === t.id && <Check size={13} className="text-gk-green" />}
@@ -162,7 +173,7 @@ function AppearanceTab({ appearance: a, meta, imageUrl, onChange, onPickImage })
                   else onChange({ background: b.id });
                 }}
                 className={`rounded-lg p-1.5 text-left transition-all duration-200 disabled:cursor-not-allowed disabled:opacity-40 ${
-                  a.background === b.id ? 'bg-white/[0.06] ring-2 ring-gk-green' : 'ring-1 ring-gk-border enabled:hover:ring-white/20'
+                  a.background === b.id ? 'bg-gk-fg/[0.06] ring-2 ring-gk-green' : 'ring-1 ring-gk-border enabled:hover:ring-gk-fg/20'
                 }`}
               >
                 <BackgroundPreview id={b.id} theme={theme} imageUrl={imageUrl} />
@@ -174,12 +185,12 @@ function AppearanceTab({ appearance: a, meta, imageUrl, onChange, onPickImage })
         <p className="mt-2 text-[11.5px] text-gk-dim">{BACKGROUNDS.find((b) => b.id === a.background)?.hint}</p>
 
         {a.background === 'image' && (
-          <div className="mt-3 animate-fade-in space-y-3 rounded-lg border border-gk-border bg-white/[0.02] p-3">
+          <div className="mt-3 animate-fade-in space-y-3 rounded-lg border border-gk-border bg-gk-fg/[0.02] p-3">
             <div className="flex items-center gap-2">
               <button
                 onClick={pick}
                 disabled={picking}
-                className="flex items-center gap-1.5 rounded-md bg-gk-hover px-3 py-1.5 text-[12.5px] text-gk-text hover:bg-white/10 disabled:opacity-50"
+                className="flex items-center gap-1.5 rounded-md bg-gk-hover px-3 py-1.5 text-[12.5px] text-gk-text hover:bg-gk-fg/10 disabled:opacity-50"
               >
                 {picking ? <Loader2 size={13} className="animate-spin" /> : <ImageIcon size={13} />}
                 {meta.hasImage ? 'Выбрать другую картинку…' : 'Выбрать картинку…'}
@@ -192,7 +203,7 @@ function AppearanceTab({ appearance: a, meta, imageUrl, onChange, onPickImage })
         )}
 
         {a.background === 'system' && (
-          <div className="mt-3 animate-fade-in rounded-lg border border-gk-border bg-white/[0.02] p-3">
+          <div className="mt-3 animate-fade-in rounded-lg border border-gk-border bg-gk-fg/[0.02] p-3">
             <div className="mb-2 text-[12px] text-gk-muted">Материал окна</div>
             <div className="flex gap-2">
               {[
@@ -204,7 +215,7 @@ function AppearanceTab({ appearance: a, meta, imageUrl, onChange, onPickImage })
                   onClick={() => onChange({ material: m.id })}
                   title={m.hint}
                   className={`flex-1 rounded-md px-3 py-2 text-left text-[12.5px] transition-colors ${
-                    a.material === m.id ? 'bg-gk-green/15 text-gk-green ring-1 ring-gk-green/40' : 'bg-gk-hover text-gk-text hover:bg-white/10'
+                    a.material === m.id ? 'bg-gk-green/15 text-gk-green ring-1 ring-gk-green/40' : 'bg-gk-hover text-gk-text hover:bg-gk-fg/10'
                   }`}
                 >
                   <div className="font-medium">{m.name}</div>
@@ -219,7 +230,7 @@ function AppearanceTab({ appearance: a, meta, imageUrl, onChange, onPickImage })
       {/* Прозрачность */}
       <section>
         <SectionTitle>Прозрачность и стекло</SectionTitle>
-        <div className="space-y-3 rounded-lg border border-gk-border bg-white/[0.02] p-3">
+        <div className="space-y-3 rounded-lg border border-gk-border bg-gk-fg/[0.02] p-3">
           <Slider
             label="Прозрачность панелей"
             value={a.transparency}
@@ -255,7 +266,7 @@ function BranchesTab({ workflow, onChange }) {
           </span>
         </span>
       </label>
-      <div className="ml-11 rounded-lg border border-gk-border bg-white/[0.02] p-3 text-gk-muted">
+      <div className="ml-11 rounded-lg border border-gk-border bg-gk-fg/[0.02] p-3 text-gk-muted">
         <div className="mb-1.5 flex items-center gap-1.5 font-medium text-gk-text">
           <Archive size={13} className="text-gk-yellow" /> Как это выглядит
         </div>
@@ -315,7 +326,7 @@ function SyncTab({ sync, hasRemotes, workflow, onWorkflowChange }) {
               key={m.id}
               onClick={() => sync.onMode(m.id)}
               className={`rounded-lg px-3 py-2 text-left ring-1 transition-colors ${
-                sync.mode === m.id ? 'bg-gk-green/10 ring-gk-green/60' : 'ring-gk-border hover:bg-white/[0.03] hover:ring-white/20'
+                sync.mode === m.id ? 'bg-gk-green/10 ring-gk-green/60' : 'ring-gk-border hover:bg-gk-fg/[0.03] hover:ring-gk-fg/20'
               }`}
             >
               <span className="flex items-center gap-1.5 font-medium text-gk-text">
@@ -341,7 +352,7 @@ function SyncTab({ sync, hasRemotes, workflow, onWorkflowChange }) {
       </section>
 
       {sync.enabled && hasRemotes && (
-        <section className="rounded-lg border border-gk-border bg-white/[0.02] p-3 text-[12px]">
+        <section className="rounded-lg border border-gk-border bg-gk-fg/[0.02] p-3 text-[12px]">
           <div className="mb-1 font-medium text-gk-text">Сейчас</div>
           {st.error ? (
             <div className="text-gk-yellow">
@@ -402,7 +413,7 @@ function Toggle({ checked, onChange }) {
         onChange(!checked);
       }}
       className={`relative block h-[18px] w-8 shrink-0 rounded-full p-0 transition-colors duration-200 ${
-        checked ? 'bg-gk-green' : 'bg-white/15'
+        checked ? 'bg-gk-green' : 'bg-gk-fg/15'
       }`}
     >
       <span
@@ -448,6 +459,7 @@ function BackgroundPreview({ id, theme: t, imageUrl }) {
   const glowA = `${t.glow[0]}88`;
   const glowB = `${t.glow[1]}88`;
   const glowC = `${t.glow[2]}66`;
+  const line = t.scheme === 'light' ? 'rgb(16 24 40 / 0.09)' : 'rgb(255 255 255 / 0.07)';
   let style = base;
   let inner = null;
   if (id === 'glow') {
@@ -466,7 +478,7 @@ function BackgroundPreview({ id, theme: t, imageUrl }) {
   } else if (id === 'grid') {
     style = {
       ...base,
-      backgroundImage: `radial-gradient(ellipse at 50% -20%, ${glowA}, transparent 60%), linear-gradient(rgb(255 255 255 / 0.07) 1px, transparent 1px), linear-gradient(90deg, rgb(255 255 255 / 0.07) 1px, transparent 1px)`,
+      backgroundImage: `radial-gradient(ellipse at 50% -20%, ${glowA}, transparent 60%), linear-gradient(${line} 1px, transparent 1px), linear-gradient(90deg, ${line} 1px, transparent 1px)`,
       backgroundSize: '100% 100%, 9px 9px, 9px 9px',
     };
   } else if (id === 'gradient') {
@@ -491,7 +503,7 @@ function BackgroundPreview({ id, theme: t, imageUrl }) {
     };
   }
   return (
-    <div className="relative h-[54px] overflow-hidden rounded-md ring-1 ring-black/30" style={style}>
+    <div className="relative h-[54px] overflow-hidden rounded-md ring-1 ring-gk-sink/30" style={style}>
       {inner}
     </div>
   );
@@ -506,7 +518,7 @@ function IntegrationsTab({ repo, onForgeChanged }) {
     <div className="space-y-2">
       <div className="flex items-center gap-2">
         <span className="h-2.5 w-2.5 rounded-full bg-[#fc6d26]" />
-        <span className="text-[13px] font-semibold text-white">GitLab</span>
+        <span className="text-[13px] font-semibold text-gk-strong">GitLab</span>
         {repo.forge?.path && <span className="truncate font-mono text-[11px] text-gk-dim">{repo.forge.path}</span>}
       </div>
       <p className="text-[12px] leading-relaxed text-gk-muted">

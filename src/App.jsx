@@ -41,12 +41,13 @@ import {
   Redo2,
   Search,
   Undo2,
-  PackageOpen,
   RotateCcw,
   Tag,
   Trash2,
   X,
   SquareTerminal,
+  FolderSync,
+  Pencil,
 } from 'lucide-react';
 import ContextMenu from './components/ContextMenu.jsx';
 import TitleBar from './components/TitleBar.jsx';
@@ -70,11 +71,13 @@ import { STEP_TYPES, defaultBranchOf, expandParams, hotkeyFromEvent, inputsOf, r
 import SettingsDialog from './components/SettingsDialog.jsx';
 import {
   DEFAULT_APPEARANCE,
+  AUTO_THEME,
   applyAppearance,
   cacheAppearance,
+  nativeAppearance,
   normalizeAppearance,
   readCachedAppearance,
-  themeById,
+  syncScheme,
 } from './lib/appearance.js';
 import { ACTIVE_STATUSES } from './components/PipelineStatus.jsx';
 import StatusBar from './components/StatusBar.jsx';
@@ -84,6 +87,7 @@ import InitRepoDialog, { plural } from './components/InitRepoDialog.jsx';
 import CloneDialog from './components/CloneDialog.jsx';
 import AuthDialog from './components/AuthDialog.jsx';
 import NewTabPage from './components/NewTabPage.jsx';
+import { describeStash } from './lib/stashName.js';
 import RevertToDialog from './components/RevertToDialog.jsx';
 import SearchBar, { EMPTY_FILTER, isFilterActive, matchCommit } from './components/SearchBar.jsx';
 import { GraphLoader, LoadingOverlay, Splash } from './components/Loader.jsx';
@@ -98,6 +102,7 @@ import {
   ErrorDialog,
   Modal,
   PushRejectedDialog,
+  RenameBranchDialog,
   SwitchToDialog,
   TagDialog,
 } from './components/Dialogs.jsx';
@@ -168,7 +173,7 @@ export default function App() {
   const [loading, setLoading] = useState(false);
   const [loadingLabel, setLoadingLabel] = useState('');
   const [booting, setBooting] = useState(true);
-  const [sidebarW, setSidebarW, saveSidebarW] = useStoredWidth('panel.sidebar', 240, 170, 480);
+  const [sidebarW, setSidebarW, saveSidebarW] = useStoredWidth('panel.sidebar', 256, 170, 480);
   const [detailsW, setDetailsW, saveDetailsW] = useStoredWidth('panel.details', 300, 250, 680);
   const [loadError, setLoadError] = useState(null);
   const [selectedHash, setSelectedHash] = useState(null);
@@ -887,7 +892,11 @@ export default function App() {
       },
     });
 
-  const stash = () => run('stash', {}, { label: 'Stash', success: (d) => `Спрятано изменений: ${d.files}` });
+  const stash = () =>
+    run('stash', {}, {
+      label: 'Stash',
+      success: (d) => `Спрятано изменений: ${d.files}${d.duplicates ? ' — прежняя копия с теми же правками убрана' : ''}`,
+    });
   const stashPop = () => run('stashPop', {}, { label: 'Pop', success: 'Stash применён' });
 
   const createBranch = async (params) => {
@@ -1019,49 +1028,142 @@ export default function App() {
     });
   };
 
-  // Пункты меню одной ветки/тега — для меню коммита, поповера «+N» и списка веток слева
-  const buildRefItems = (ref) => {
+  /**
+   * Ветка как «группа», как в GitKraken: локальная и её серверная копия на том же коммите — одно целое.
+   * ref: { type: 'local' | 'remote' | 'tag', name } → { local, remote, synced, info, tracker } | { tag }
+   */
+  const refGroup = (ref) => {
+    const remoteHash = (full) => repo.remotes.flatMap((r) => r.branches).find((b) => b.fullName === full)?.hash ?? null;
+    if (ref.type === 'tag') return { tag: ref.name };
+    if (ref.type === 'local') {
+      const info = repo.localBranches.find((b) => b.name === ref.name) ?? null;
+      const up = info?.upstream && !info.gone ? info.upstream : null;
+      const synced = Boolean(up && remoteHash(up) === info.hash);
+      return { local: ref.name, remote: synced ? up : null, upstream: up, synced, info };
+    }
+    if (ref.name.endsWith('/HEAD')) return null;
+    const tracker = repo.localBranches.find((b) => b.upstream === ref.name) ?? null;
+    if (tracker && tracker.hash === remoteHash(ref.name)) {
+      return { local: tracker.name, remote: ref.name, upstream: ref.name, synced: true, info: tracker };
+    }
+    return { local: null, remote: ref.name, upstream: ref.name, synced: false, tracker };
+  };
+
+  // Группы веток на коммите: без дублей local + origin, текущая ветка — первой
+  const refGroupsOf = (node) => {
+    const seen = new Set();
+    const groups = [];
+    const ordered = [...node.refs].sort((a, b) => (a.type === 'local' ? 0 : a.type === 'remote' ? 1 : 2) - (b.type === 'local' ? 0 : b.type === 'remote' ? 1 : 2));
+    for (const ref of ordered) {
+      const g = refGroup(ref);
+      if (!g) continue;
+      const key = g.tag ? `t:${g.tag}` : g.local ? `l:${g.local}` : `r:${g.remote}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      groups.push(g);
+    }
+    return groups;
+  };
+
+  /**
+   * Меню одной ветки или тега. inCommit — подменю внутри меню коммита: там уже есть Rebase и Reset к этому коммиту,
+   * поэтому их не повторяем.
+   */
+  const buildRefItems = (ref, { inCommit = false } = {}) => {
+    const g = ref.group ?? refGroup(ref);
+    if (!g) return [];
     const cur = repo.currentBranch;
     const curLabel = cur ?? 'HEAD';
     const op = Boolean(repo.operation);
-    if (ref.type === 'local') {
-      const isCur = ref.name === cur;
-      const info = repo.localBranches.find((b) => b.name === ref.name);
+    const copyName = (name) => ({ label: 'Скопировать название', icon: Copy, onClick: () => copy(name, 'Название') });
+
+    if (g.tag) {
       return [
-        { header: `Ветка ${ref.name}` },
-        { label: `Переключиться на ${ref.name}`, icon: LogIn, disabled: op || isCur, onClick: () => checkout({ branch: ref.name }) },
-        ...(info?.upstream && !info.gone
-          ? [
-              {
-                label: info.behind ? `Обновить ветку (Pull) — ↓${info.behind}` : 'Обновить ветку (Pull)',
-                icon: ArrowDownToLine,
-                disabled: (isCur && op) || !info.behind || (!isCur && info.ahead > 0),
-                title: !info.behind
-                  ? `Новых коммитов в ${info.upstream} нет`
-                  : !isCur && info.ahead > 0
-                    ? `В ${ref.name} есть свои коммиты (↑${info.ahead}) — переключитесь на неё и сделайте Pull`
-                    : isCur
-                      ? `Забрать ${info.behind} ${plural(info.behind, 'коммит', 'коммита', 'коммитов')} из ${info.upstream}`
-                      : `Перемотать ${ref.name} до ${info.upstream} без переключения ветки`,
-                onClick: () => updateBranch(ref.name),
-              },
-            ]
-          : []),
+        ...(inCommit ? [] : [{ header: `Тег ${g.tag}` }]),
+        copyName(g.tag),
+        { separator: true },
         {
-          label: `Влить ${ref.name} в ${curLabel} (Merge)`,
+          label: `Удалить тег ${g.tag}…`,
+          icon: Trash2,
+          danger: true,
+          onClick: () =>
+            confirm({
+              title: 'Удалить тег',
+              body: `Удалить локальный тег «${g.tag}»?`,
+              confirmLabel: 'Удалить',
+              danger: true,
+              onConfirm: () => run('deleteTag', { name: g.tag }, { label: 'Удаление тега', success: `Тег ${g.tag} удалён` }),
+            }),
+        },
+      ];
+    }
+
+    if (g.local) {
+      const name = g.local;
+      const isCur = name === cur;
+      const info = g.info;
+      const items = [];
+      if (!inCommit) items.push({ header: g.synced ? `Ветка ${name} = ${g.remote}` : `Ветка ${name}` });
+      // Для текущей ветки «переключиться», «влить в себя» и «перебазировать на себя» не имеют смысла — не показываем
+      if (!isCur) items.push({ label: `Переключиться на ${name}`, icon: LogIn, hint: 'Checkout', disabled: op, onClick: () => checkout({ branch: name }) });
+      if (g.upstream) {
+        items.push({
+          label: info?.behind ? `Обновить ветку — ↓${info.behind}` : 'Обновить ветку',
+          icon: ArrowDownToLine,
+          hint: 'Pull',
+          disabled: (isCur && op) || !info?.behind || (!isCur && info.ahead > 0),
+          title: !info?.behind
+            ? `Новых коммитов в ${g.upstream} нет`
+            : !isCur && info.ahead > 0
+              ? `В ${name} есть свои коммиты (↑${info.ahead}) — переключитесь на неё и сделайте Pull`
+              : isCur
+                ? `Забрать ${info.behind} ${plural(info.behind, 'коммит', 'коммита', 'коммитов')} из ${g.upstream}`
+                : `Перемотать ${name} до ${g.upstream} без переключения ветки`,
+          onClick: () => updateBranch(name),
+        });
+      }
+      if (!isCur) {
+        items.push({
+          label: `Влить ${name} в ${curLabel}`,
           icon: GitMerge,
-          disabled: op || !cur || isCur,
-          onClick: () => run('merge', { ref: ref.name }, { label: 'Merge', success: `${ref.name} слита в ${cur}` }),
-        },
-        {
-          label: `Перебазировать ${curLabel} на ${ref.name} (Rebase)…`,
+          hint: 'Merge',
+          disabled: op || !cur,
+          onClick: () => run('merge', { ref: name }, { label: 'Merge', success: `${name} слита в ${cur}` }),
+        });
+      }
+      if (!inCommit && !isCur) {
+        items.push({
+          label: `Перебазировать ${curLabel} на ${name}…`,
           icon: Layers,
-          disabled: op || !cur || isCur,
+          hint: 'Rebase',
+          disabled: op || !cur,
           title: 'С предпросмотром: итоговый граф, конфликты и изменения видны до применения',
-          onClick: () => openRebase(ref.name),
-        },
+          onClick: () => openRebase(name),
+        });
+        if (info?.hash) {
+          const target = { hash: info.hash, message: name };
+          items.push({
+            label: `Сбросить ${curLabel} к ${name}`,
+            icon: History,
+            hint: 'Reset',
+            disabled: op || !cur || !repo.headHash || info.hash === repo.headHash,
+            submenu: resetSubmenu(target),
+          });
+        }
+      }
+      items.push(
+        { separator: true },
         {
-          label: `Удалить ветку ${ref.name}`,
+          label: 'Переименовать…',
+          icon: Pencil,
+          hint: 'Rename',
+          disabled: op,
+          onClick: () => setDialog({ type: 'renameBranch', from: name, upstream: g.upstream, busy: false, error: null }),
+        },
+        copyName(name),
+        { separator: true },
+        {
+          label: `Удалить ветку ${name}…`,
           icon: Trash2,
           danger: true,
           disabled: isCur,
@@ -1069,77 +1171,101 @@ export default function App() {
           onClick: () =>
             confirm({
               title: 'Удалить ветку',
-              body: `Удалить локальную ветку «${ref.name}»? Remote-ветка не затрагивается.`,
+              body: `Удалить локальную ветку «${name}»? ${g.upstream ? `Ветка ${g.upstream} на сервере не затрагивается.` : ''} Вернуть можно кнопкой Undo.`,
               confirmLabel: 'Удалить',
               danger: true,
-              onConfirm: () => deleteBranch(ref.name),
+              onConfirm: () => deleteBranch(name),
             }),
         },
-        ...(info?.upstream && !info.gone
-          ? [
-              {
-                label: `Удалить ${info.upstream} с сервера…`,
-                icon: CloudOff,
-                danger: true,
-                title: 'Удалить ветку на сервере (git push --delete). Локальная ветка останется.',
-                onClick: () => askDeleteRemote(info.upstream),
-              },
-            ]
-          : []),
-      ];
-    }
-    if (ref.type === 'remote') {
-      const slash = ref.name.indexOf('/');
-      const name = ref.name.slice(slash + 1);
-      return [
-        { header: `На сервере: ${ref.name}` },
-        {
-          label: `Переключиться на ${ref.name}`,
-          icon: Cloud,
-          disabled: op,
-          onClick: () => checkout({ remoteBranch: { name, fullName: ref.name } }),
-        },
-        {
-          label: `Влить ${ref.name} в ${curLabel} (Merge)`,
-          icon: GitMerge,
-          disabled: op || !cur,
-          onClick: () => run('merge', { ref: ref.name }, { label: 'Merge', success: `${ref.name} слита в ${cur}` }),
-        },
-        {
-          label: `Перебазировать ${curLabel} на ${ref.name} (Rebase)…`,
-          icon: Layers,
-          disabled: op || !cur,
-          title: 'С предпросмотром: итоговый граф, конфликты и изменения видны до применения',
-          onClick: () => openRebase(ref.name),
-        },
-        {
-          label: `Удалить ${ref.name} с сервера…`,
+      );
+      // Серверная копия — один пункт, без отдельной секции «На сервере»
+      if (g.upstream) {
+        items.push({
+          label: `Удалить ${g.upstream} с сервера…`,
           icon: CloudOff,
           danger: true,
-          title: 'Удалить ветку на сервере (git push --delete) — для всех, кто работает с репозиторием',
-          onClick: () => askDeleteRemote(ref.name),
-        },
-      ];
+          title: 'Удалить ветку на сервере (git push --delete). Локальная ветка останется.',
+          onClick: () => askDeleteRemote(g.upstream),
+        });
+      }
+      return items;
     }
-    if (ref.type === 'tag') {
-      return [
-        { header: `Тег ${ref.name}` },
-        {
-          label: `Удалить тег ${ref.name}`,
-          icon: Trash2,
-          danger: true,
-          onClick: () =>
-            confirm({
-              title: 'Удалить тег',
-              body: `Удалить локальный тег «${ref.name}»?`,
-              confirmLabel: 'Удалить',
-              danger: true,
-              onConfirm: () => run('deleteTag', { name: ref.name }, { label: 'Удаление тега', success: `Тег ${ref.name} удалён` }),
-            }),
-        },
-      ];
-    }
-    return [];
+
+    // Только на сервере: переключение создаёт локальную ветку (или переходит на уже существующую) — без detached HEAD
+    const full = g.remote;
+    const short = full.slice(full.indexOf('/') + 1);
+    const existing = g.tracker ?? repo.localBranches.find((b) => b.name === short) ?? null;
+    return [
+      ...(inCommit ? [] : [{ header: `На сервере: ${full}` }]),
+      existing
+        ? {
+            label: `Переключиться на ${existing.name}`,
+            icon: LogIn,
+            hint: 'Checkout',
+            disabled: op || existing.name === cur,
+            title: `Локальная ветка ${existing.name} уже есть, но стоит на другом коммите — после переключения заберите изменения через Pull`,
+            onClick: () => checkout({ branch: existing.name }),
+          }
+        : {
+            label: `Создать локальную ${short} и переключиться`,
+            icon: LogIn,
+            hint: 'Checkout',
+            disabled: op,
+            title: `git switch --track ${full}`,
+            onClick: () => checkout({ remoteBranch: { name: short, fullName: full } }),
+          },
+      {
+        label: `Влить ${full} в ${curLabel}`,
+        icon: GitMerge,
+        hint: 'Merge',
+        disabled: op || !cur,
+        onClick: () => run('merge', { ref: full }, { label: 'Merge', success: `${full} слита в ${cur}` }),
+      },
+      ...(inCommit
+        ? []
+        : [
+            {
+              label: `Перебазировать ${curLabel} на ${full}…`,
+              icon: Layers,
+              hint: 'Rebase',
+              disabled: op || !cur,
+              title: 'С предпросмотром: итоговый граф, конфликты и изменения видны до применения',
+              onClick: () => openRebase(full),
+            },
+          ]),
+      copyName(full),
+      { separator: true },
+      {
+        label: `Удалить ${full} с сервера…`,
+        icon: CloudOff,
+        danger: true,
+        title: 'Удалить ветку на сервере (git push --delete) — для всех, кто работает с репозиторием',
+        onClick: () => askDeleteRemote(full),
+      },
+    ];
+  };
+
+  // Сброс текущей ветки к коммиту: три режима; Hard — с подтверждением (поэтому «…»)
+  const resetSubmenu = (node) => [
+    { label: 'Мягко — оставить все изменения в индексе', icon: Archive, hint: 'soft', onClick: () => resetTo(node, 'soft') },
+    { label: 'Смешанно — оставить изменения в рабочей папке', icon: FileDiff, hint: 'mixed', onClick: () => resetTo(node, 'mixed') },
+    { label: 'Жёстко — удалить все изменения…', icon: Trash2, hint: 'hard', danger: true, onClick: () => resetTo(node, 'hard') },
+  ];
+
+  const renameBranch = async (to) => {
+    const d = dialog;
+    if (d?.type !== 'renameBranch') return;
+    setDialog({ ...d, busy: true, error: null });
+    const res = await run('renameBranch', { from: d.from, to }, {
+      label: 'Переименование',
+      success: (r) => `Ветка ${r.from} переименована в ${r.to} — Undo вернёт`,
+      onError: (error) => {
+        if (!['INVALID_NAME', 'BRANCH_EXISTS', 'BAD_ARGS'].includes(error.code)) return false;
+        setDialog((cur) => (cur?.type === 'renameBranch' ? { ...cur, busy: false, error } : cur));
+        return true;
+      },
+    });
+    if (res.ok) setDialog(null);
   };
 
   // Удаление ветки на сервере: подтверждение → git push --delete (с индикатором в окне)
@@ -1204,7 +1330,26 @@ export default function App() {
     const curLabel = cur ?? 'HEAD';
     const isHead = node.hash === repo.headHash;
     const op = Boolean(repo.operation);
-    const items = [{ header: `${short(node.hash)} · ${node.message}` }];
+    // Шапка «abc1234 · сообщение» — клик копирует хэш
+    const items = [{ header: node.message, code: short(node.hash), onCopy: () => copy(node.hash, 'Хэш коммита'), copyTip: 'Скопировать хэш коммита (SHA)' }];
+
+    // Ветки на коммите: каждая — подменю «Ветка X ›», local + origin на одном коммите — одна группа
+    const groups = refGroupsOf(node);
+    const others = groups.filter((g) => !(g.local && g.local === cur));
+    const branchOnly = others.filter((g) => !g.tag);
+    // Быстрый переход на ветку этого коммита — если она одна (вместо detached HEAD)
+    if (branchOnly.length === 1 && !(groups.some((g) => g.local === cur))) {
+      const g = branchOnly[0];
+      const target = g.local ?? g.remote.slice(g.remote.indexOf('/') + 1);
+      items.push({
+        label: `Переключиться на ${target}`,
+        icon: g.local ? LogIn : Cloud,
+        // Только на сервере — создастся локальная ветка, а не detached HEAD
+        hint: g.local ? 'Checkout' : 'новая локальная',
+        disabled: op,
+        onClick: () => (g.local ? checkout({ branch: g.local }) : refActions.checkout({ type: 'remote', name: g.remote })),
+      });
+    }
 
     items.push(
       {
@@ -1226,35 +1371,35 @@ export default function App() {
       },
       { separator: true },
       {
-        label: 'Перенести коммит (Cherry-pick)',
+        label: `Перенести коммит в ${curLabel}`,
         icon: Cherry,
+        hint: 'Cherry-pick',
         disabled: op || isHead || !repo.headHash,
         onClick: () =>
           run('cherryPick', { hash: node.hash }, { label: 'Cherry-pick', success: `Коммит ${short(node.hash)} применён к ${curLabel}` }),
       },
       {
-        label: 'Обратить изменения коммита (Revert)',
+        label: 'Обратить изменения коммита',
         icon: RotateCcw,
+        hint: 'Revert',
         disabled: op || !repo.headHash,
         onClick: () =>
           run('revert', { hash: node.hash }, { label: 'Revert', success: `Создан revert-коммит для ${short(node.hash)}` }),
       },
       {
-        label: 'Вернуть проект к этому коммиту…',
-        icon: History,
+        label: 'Восстановить файлы из коммита…',
+        icon: FolderSync,
+        hint: 'checkout files',
         disabled: op || isHead || !repo.headHash,
-        title: 'Новый коммит, который делает все файлы как в этом коммите. История не переписывается.',
+        title: 'Новый коммит, в котором все файлы проекта — как в этом коммите. История не переписывается, ветка не переключается.',
         onClick: () => openRevertTo(node),
       },
       {
-        label: `Сбросить ${curLabel} к этому коммиту (Reset)`,
+        label: `Сбросить ${curLabel} к этому коммиту`,
         icon: History,
+        hint: 'Reset',
         disabled: op || isHead || !repo.headHash,
-        submenu: [
-          { label: 'Мягко (Soft) — оставить все изменения в индексе', icon: Archive, onClick: () => resetTo(node, 'soft') },
-          { label: 'Смешанно (Mixed) — оставить изменения в рабочей папке', icon: FileDiff, onClick: () => resetTo(node, 'mixed') },
-          { label: 'Жёстко (Hard) — удалить все изменения', icon: Trash2, danger: true, onClick: () => resetTo(node, 'hard') },
-        ],
+        submenu: resetSubmenu(node),
       },
       { separator: true },
       ...rebaseItems(node),
@@ -1262,15 +1407,23 @@ export default function App() {
       ...compareItems(node),
     );
 
-    for (const ref of node.refs) {
-      if (ref.type === 'local' && ref.name === cur) continue;
-      const refItems = buildRefItems(ref);
-      if (refItems.length) items.push({ separator: true }, ...refItems);
+    if (others.length) {
+      items.push({ separator: true });
+      for (const g of others) {
+        const sub = buildRefItems({ group: g }, { inCommit: true });
+        if (!sub.length) continue;
+        items.push({
+          label: g.tag ? `Тег ${g.tag}` : g.local ? `Ветка ${g.local}` : `Ветка ${g.remote}`,
+          icon: g.tag ? Tag : g.local ? GitBranch : Cloud,
+          hint: g.tag ? null : g.synced ? `= ${g.remote.slice(0, g.remote.indexOf('/'))}` : g.local ? 'локальная' : 'на сервере',
+          submenu: sub,
+        });
+      }
     }
 
     items.push(
       { separator: true },
-      { label: 'Скопировать хэш коммита (SHA)', icon: Copy, onClick: () => copy(node.hash, 'Хэш коммита') },
+      { label: 'Скопировать хэш коммита', icon: Copy, hint: 'SHA', onClick: () => copy(node.hash, 'Хэш коммита') },
       {
         label: 'Скопировать сообщение коммита',
         icon: FileText,
@@ -1311,11 +1464,12 @@ export default function App() {
     if (!cur || !repo.headHash) return [];
     const isHead = node.hash === repo.headHash;
     if (headAncestors.has(node.hash)) {
-      if (isHead) return node.parents[0] ? [{ label: 'Изменить последний коммит (Rebase)…', icon: Layers, disabled: op, onClick: () => openRebase(node.parents[0]) }] : [];
+      if (isHead) return node.parents[0] ? [{ label: 'Изменить последний коммит…', icon: Layers, hint: 'Rebase', disabled: op, onClick: () => openRebase(node.parents[0]) }] : [];
       return [
         {
-          label: `Интерактивный rebase ветки ${cur}`,
+          label: `Изменить коммиты ветки ${cur}`,
           icon: Layers,
+          hint: 'Rebase -i',
           disabled: op,
           title: 'Изменить порядок, сообщения, объединить или удалить коммиты — с предпросмотром до применения',
           submenu: [
@@ -1325,7 +1479,7 @@ export default function App() {
         },
       ];
     }
-    return [{ label: `Перебазировать ${cur} на этот коммит (Rebase)…`, icon: Layers, disabled: op, title: 'С предпросмотром результата до применения', onClick: () => openRebase(node.hash) }];
+    return [{ label: `Перебазировать ${cur} на этот коммит…`, icon: Layers, hint: 'Rebase', disabled: op, title: 'С предпросмотром результата до применения', onClick: () => openRebase(node.hash) }];
   };
 
   const commitTime = (h) => Date.parse(allCommits.find((c) => c.hash === h)?.date ?? '') || 0;
@@ -1347,12 +1501,12 @@ export default function App() {
     items.push({
       label: compareMark === node.hash ? 'Снять отметку для сравнения' : 'Отметить для сравнения',
       icon: Flag,
-      hint: 'Ctrl+клик',
+      hint: kb('Ctrl+клик'),
       onClick: () => {
         if (compareMark === node.hash) setCompareMark(null);
         else {
           setCompareMark(node.hash);
-          notify({ type: 'info', title: `${short(node.hash)} отмечен для сравнения`, hint: 'Ctrl+клик или правый клик по другому коммиту → «Сравнить с отмеченным»' });
+          notify({ type: 'info', title: `${short(node.hash)} отмечен для сравнения`, hint: kb('Ctrl+клик или правый клик по другому коммиту → «Сравнить с отмеченным»') });
         }
       },
     });
@@ -1722,7 +1876,7 @@ export default function App() {
       { id: 'new-branch', label: 'Новая ветка…', icon: GitBranch, disabled: !repo?.headHash, onClick: () => openBranchDialog() },
       { separator: true },
       { id: 'stash', label: 'Спрятать изменения (Stash)', icon: Archive, disabled: !repo?.wipFiles.length || Boolean(busyAction), onClick: stash },
-      { id: 'pop', label: 'Вернуть последний stash (Pop)', icon: PackageOpen, disabled: !repo?.stashes.length || Boolean(busyAction), onClick: stashPop },
+      { id: 'pop', label: 'Вернуть последний stash (Pop)', icon: ArchiveRestore, disabled: !repo?.stashes.length || Boolean(busyAction), onClick: stashPop },
     ],
     View: [
       { id: 'settings', label: 'Оформление…', icon: Palette, hint: 'Ctrl+,', onClick: () => openSettings('appearance') },
@@ -1844,15 +1998,27 @@ export default function App() {
     });
   }, []);
 
+  // «Как в системе»: следим за светлой/тёмной темой Windows/macOS и перерисовываемся при её смене
+  const [systemSchemeTick, setSystemSchemeTick] = useState(0);
+  // Цвета графа и бейджей для этого же рендера (scheme.js) — до того, как отрисуются дочерние компоненты
+  syncScheme(appearance);
+  useEffect(() => {
+    if (appearance.theme !== AUTO_THEME.id || !window.matchMedia) return undefined;
+    const mq = window.matchMedia('(prefers-color-scheme: light)');
+    const onChange = () => setSystemSchemeTick((n) => n + 1);
+    mq.addEventListener('change', onChange);
+    return () => mq.removeEventListener('change', onChange);
+  }, [appearance.theme]);
+
   useEffect(() => {
     applyAppearance(appearance, { imageUrl: bgImage, systemSupported: appearanceMeta.supportsMaterial });
     cacheAppearance(appearance);
-  }, [appearance, bgImage, appearanceMeta.supportsMaterial]);
+  }, [appearance, bgImage, appearanceMeta.supportsMaterial, systemSchemeTick]);
 
   const persistAppearance = (next) => {
     clearTimeout(saveAppearanceTimer.current);
     saveAppearanceTimer.current = setTimeout(() => {
-      api?.appearance?.set({ ...next, base: themeById(next.theme).base });
+      api?.appearance?.set(nativeAppearance(next));
     }, 250);
   };
 
@@ -2215,7 +2381,7 @@ export default function App() {
 
   /* ---------- Stash: просмотр и действия ---------- */
 
-  const stashTitle = (st) => st.message.replace(/^(WIP on|On) [^:]+:\s*/, '') || st.id;
+  const stashTitle = (st) => describeStash(st).title;
 
   const stashAction = (action, st) => {
     if (action === 'drop') {
@@ -2943,7 +3109,7 @@ export default function App() {
       {dialog?.type === 'about' && (
         <Modal title="О программе" icon={Info} onClose={() => setDialog(null)} width={400}>
           <div className="space-y-2 text-[13px]">
-            <div className="text-[15px] font-semibold text-white">GitIdea</div>
+            <div className="text-[15px] font-semibold text-gk-strong">git-Горыныч</div>
             <div className="text-gk-muted">Версия 0.1.0 · Electron + React + Tailwind CSS</div>
             <div className="text-[12px] leading-relaxed text-gk-dim">
               Граф коммитов, ветки, stash, конфликты, CI/CD и пайплайны GitLab — в одном окне.
@@ -3049,6 +3215,16 @@ export default function App() {
           onClose={() => setDialog(null)}
           onRecheck={checkAccess}
           onCredentials={api?.creds ? () => openAuth({ actionLabel: 'Сохранить и проверить' }) : null}
+        />
+      )}
+      {dialog?.type === 'renameBranch' && (
+        <RenameBranchDialog
+          from={dialog.from}
+          upstream={dialog.upstream}
+          busy={dialog.busy}
+          error={dialog.error}
+          onClose={() => setDialog(null)}
+          onSubmit={renameBranch}
         />
       )}
       {dialog?.type === 'switchTo' && (
@@ -3237,8 +3413,8 @@ function Welcome({ loading, onOpen, onCreate, onConnect, onClone, onGuide }) {
         <AppLogo size={96} className="animate-pop-in drop-shadow-[0_10px_30px_rgba(60,240,160,0.18)]" />
       )}
       <div className="animate-slide-up text-center">
-        <div className="mb-1 text-[11px] font-semibold uppercase tracking-[0.25em] text-gk-dim">GitIdea</div>
-        <h1 className="text-lg font-semibold text-white">Откройте репозиторий</h1>
+        <div className="mb-1 text-[11px] font-semibold uppercase tracking-[0.25em] text-gk-dim">git-Горыныч</div>
+        <h1 className="text-lg font-semibold text-gk-strong">Откройте репозиторий</h1>
         <p className="mt-1 text-gk-muted">Выберите папку с локальным Git-репозиторием</p>
       </div>
       <button

@@ -1,4 +1,4 @@
-# GitIdea
+# git-Горыныч
 
 Десктопный Git-клиент в стиле GitKraken: Electron + React (Vite) + Tailwind CSS v4 + Lucide Icons.
 
@@ -19,14 +19,16 @@ npm run electron:dev
 ## Сборка .exe
 
 ```powershell
-npm run electron:build            # установщик NSIS -> release/GitIdea-Setup-0.1.0.exe
+npm run electron:build            # установщик NSIS -> release/git-Gorynych-Setup-0.1.0.exe
 npm run electron:build:portable   # один portable .exe без установки
 npm run electron:preview          # собрать фронт и открыть как в проде, без упаковки
 ```
 
 Если сборка падает на распаковке `winCodeSign` с ошибкой про симлинки, включите «Режим разработчика» в Параметры → Система → Для разработчиков, или запустите терминал от администратора.
 
-Иконка приложения: положите `build/icon.ico` (256×256) — electron-builder подхватит её автоматически.
+Иконка приложения — `build/icon.ico` (исходник `build/icon.svg`), electron-builder подхватывает её автоматически.
+
+Настройки хранятся в `%APPDATA%\git-Gorynych`. При первом запуске после переименования они один раз копируются из папки `GitIdea` (или ещё более старой `GitKraken Clone`).
 
 ## Структура
 

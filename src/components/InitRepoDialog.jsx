@@ -194,13 +194,13 @@ export default function InitRepoDialog({
     >
       <div className="-mx-4 -my-4 max-h-[62vh] space-y-4 overflow-y-auto px-4 py-4">
         {/* Папка */}
-        <div className="flex items-start gap-3 rounded-lg bg-white/[0.04] p-3 ring-1 ring-gk-border">
+        <div className="flex items-start gap-3 rounded-lg bg-gk-fg/[0.04] p-3 ring-1 ring-gk-border">
           <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-gk-green/10 text-gk-green">
             <FolderOpen size={18} />
           </span>
           <div className="min-w-0 flex-1">
             <div className="flex items-center gap-2">
-              <span className="truncate text-[14px] font-semibold text-white">{info.name}</span>
+              <span className="truncate text-[14px] font-semibold text-gk-strong">{info.name}</span>
               {info.typeLabels.map((t) => (
                 <span key={t} className="shrink-0 rounded bg-gk-blue/15 px-1.5 py-0.5 text-[10px] font-medium text-gk-blue">
                   {t}
@@ -223,7 +223,7 @@ export default function InitRepoDialog({
 
         {/* Подсказки */}
         {/* Режим */}
-        <div className="grid grid-cols-2 gap-1 rounded-lg bg-black/20 p-1 ring-1 ring-gk-border">
+        <div className="grid grid-cols-2 gap-1 rounded-lg bg-gk-sink/20 p-1 ring-1 ring-gk-border">
           {[
             { id: 'init', icon: FolderGit2, title: 'Новый репозиторий', sub: 'git init с нуля' },
             { id: 'connect', icon: Link2, title: 'Подключить существующий', sub: 'уже создан на GitLab / GitHub' },
@@ -233,7 +233,7 @@ export default function InitRepoDialog({
               onClick={() => setMode(m.id)}
               disabled={busy}
               className={`flex items-center gap-2.5 rounded-md px-3 py-2 text-left transition-colors ${
-                mode === m.id ? 'bg-white/10 text-white ring-1 ring-white/10' : 'text-gk-muted hover:bg-white/5 hover:text-gk-text'
+                mode === m.id ? 'bg-gk-fg/10 text-gk-strong ring-1 ring-gk-fg/10' : 'text-gk-muted hover:bg-gk-fg/5 hover:text-gk-text'
               }`}
             >
               <m.icon size={16} className={mode === m.id ? 'text-gk-green' : ''} />
@@ -330,7 +330,7 @@ export default function InitRepoDialog({
                       setTemplates((list) => (on ? list.filter((k) => k !== key) : [...list, key]));
                     }}
                     className={`rounded-full px-2.5 py-1 text-[11px] transition-colors ${
-                      on ? 'bg-gk-green/20 text-gk-green ring-1 ring-gk-green/40' : 'bg-white/5 text-gk-muted hover:text-gk-text'
+                      on ? 'bg-gk-green/20 text-gk-green ring-1 ring-gk-green/40' : 'bg-gk-fg/5 text-gk-muted hover:text-gk-text'
                     }`}
                   >
                     {on && '✓ '}
@@ -399,7 +399,7 @@ export default function InitRepoDialog({
                 </button>
               </div>
             ) : (
-              <div id="init-identity" className="space-y-2 rounded-lg bg-white/[0.03] p-3 ring-1 ring-gk-border">
+              <div id="init-identity" className="space-y-2 rounded-lg bg-gk-fg/[0.03] p-3 ring-1 ring-gk-border">
                 {needIdentity && (
                   <div className="flex items-start gap-2 text-xs text-gk-yellow">
                     <User size={13} className="mt-0.5 shrink-0" />
@@ -427,7 +427,7 @@ export default function InitRepoDialog({
                     type="checkbox"
                     checked={globalIdentity}
                     onChange={(e) => setGlobalIdentity(e.target.checked)}
-                    className="accent-[#3cf0a0]"
+                    className="accent-gk-green"
                   />
                   Использовать для всех репозиториев на этом компьютере
                 </label>
@@ -516,7 +516,7 @@ function ConnectSection({ url, setUrl, probe, probeData, onProbe, remoteBranch, 
       )}
 
       {probeData && (
-        <div className="ml-6 space-y-2 rounded-lg bg-white/[0.04] p-3 text-xs ring-1 ring-gk-border">
+        <div className="ml-6 space-y-2 rounded-lg bg-gk-fg/[0.04] p-3 text-xs ring-1 ring-gk-border">
           <div className="flex items-center gap-2 text-gk-green">
             <Check size={14} />
             <span className="font-medium">Доступ есть{probeData.host ? ` · ${probeData.host}` : ''}</span>
@@ -611,7 +611,7 @@ function Switch({ checked, disabled, onChange }) {
       aria-checked={checked}
       disabled={disabled}
       onClick={() => onChange(!checked)}
-      className={`relative h-5 w-9 rounded-full transition-colors disabled:opacity-40 ${checked ? 'bg-gk-green' : 'bg-white/15'}`}
+      className={`relative h-5 w-9 rounded-full transition-colors disabled:opacity-40 ${checked ? 'bg-gk-green' : 'bg-gk-fg/15'}`}
     >
       <span
         className={`absolute top-0.5 h-4 w-4 rounded-full bg-white shadow transition-[left] duration-150 ${checked ? 'left-[18px]' : 'left-0.5'}`}

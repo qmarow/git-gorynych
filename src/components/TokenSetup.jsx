@@ -11,7 +11,7 @@ const SCOPE_LABELS = {
 };
 
 const createTokenUrl = (base, scope) =>
-  `${base}/-/user_settings/personal_access_tokens?name=${encodeURIComponent('GitIdea')}&scopes=${scope}`;
+  `${base}/-/user_settings/personal_access_tokens?name=${encodeURIComponent('git-Горыныч')}&scopes=${scope}`;
 
 /**
  * Подключение GitLab по личному токену доступа. Токен уходит в main-процесс,
@@ -71,7 +71,7 @@ export function TokenSetup({ repoPath, forge, remoteName, onChanged, autoFocus =
             {(t.user?.name ?? t.user?.username ?? '?').slice(0, 1).toUpperCase()}
           </span>
           <div className="min-w-0 flex-1">
-            <div className="flex items-center gap-1.5 text-[13px] text-white">
+            <div className="flex items-center gap-1.5 text-[13px] text-gk-strong">
               <ShieldCheck size={14} className="shrink-0 text-gk-green" />
               <span className="truncate">{t.user?.name ?? 'Подключено'}</span>
               {t.user?.username && <span className="truncate text-gk-muted">@{t.user.username}</span>}
@@ -204,7 +204,7 @@ export function IntegrationsDialog({ repo, onForgeChanged, onClose }) {
       <div className="space-y-2">
         <div className="flex items-center gap-2">
           <span className="h-2.5 w-2.5 rounded-full bg-[#fc6d26]" />
-          <span className="text-[13px] font-semibold text-white">GitLab</span>
+          <span className="text-[13px] font-semibold text-gk-strong">GitLab</span>
           {repo?.forge?.path && <span className="truncate font-mono text-[11px] text-gk-dim">{repo.forge.path}</span>}
         </div>
         <p className="text-[12px] leading-relaxed text-gk-muted">

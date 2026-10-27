@@ -4,6 +4,8 @@ import { hasRefDrag, readRefDrag, startRefDrag } from '../lib/dnd.js';
 import { SyncBadges } from './BranchSync.jsx';
 import { kb } from '../lib/platform.js';
 import { RefKindIcon } from './RefBadge.jsx';
+import { describeStash, shortAgo } from '../lib/stashName.js';
+import { fullDate, relativeTime } from '../lib/format.js';
 import {
   Archive,
   Check,
@@ -16,6 +18,8 @@ import {
   FolderOpen,
   FolderTree,
   Laptop,
+  Link2,
+  Server,
   Tag,
   Workflow,
 } from 'lucide-react';
@@ -95,9 +99,12 @@ export default function Sidebar({
   const match = (name) => name.toLowerCase().includes(filter.toLowerCase());
   const folders = useFolders();
   // Правки, спрятанные «умным переключением» под именем ветки
-  const autoStash = (msg) => /gitidea-auto: (.+)$/.exec(msg ?? '')?.[1]?.trim() ?? null;
+  const autoStash = (msg) => /(?:gorynych|gitidea)-auto: (.+)$/.exec(msg ?? '')?.[1]?.trim() ?? null;
   const waiting = new Map();
+  const waitingAt = new Map(); // ветка → когда спрятано последний раз
   for (const st of repo.stashes) {
+    const ab = autoStash(st.message);
+    if (ab && st.date && !(waitingAt.get(ab) > st.date)) waitingAt.set(ab, st.date);
     const b = autoStash(st.message);
     if (b) waiting.set(b, (waiting.get(b) ?? 0) + 1);
   }
@@ -120,21 +127,31 @@ export default function Sidebar({
   return (
     <aside className="glass flex w-full min-w-0 flex-col border-r border-gk-border bg-gk-panel">
       <div className="border-b border-gk-border p-2">
-        <label className="flex items-center gap-2 rounded bg-gk-bg px-2 py-1.5 ring-1 ring-gk-border focus-within:ring-gk-blue">
+        <label className="@container flex items-center gap-1.5 rounded bg-gk-bg px-2 py-1.5 ring-1 ring-gk-border focus-within:ring-gk-blue">
           <Filter size={13} className="text-gk-dim" />
           <input
             value={filter}
             onChange={(e) => setFilter(e.target.value)}
             ref={filterRef}
-            placeholder={kb('Фильтр веток и тегов (Ctrl+Alt+F)')}
+            placeholder="Фильтр веток и тегов…"
+            title={kb('Фильтр веток и тегов (Ctrl+Alt+F)')}
             onKeyDown={(e) => {
               if (e.key === 'Escape') {
                 setFilter('');
                 e.currentTarget.blur();
               }
             }}
-            className="w-full bg-transparent text-xs outline-none placeholder:text-gk-dim"
+            className="peer min-w-0 flex-1 bg-transparent text-xs outline-none placeholder:text-gk-dim"
           />
+          {/* Сочетание клавиш — отдельным бейджем, пока поле пустое и не в фокусе */}
+          {!filter && (
+            <kbd
+              data-testid="filter-kbd"
+              className="pointer-events-none hidden shrink-0 rounded border border-gk-border bg-gk-fg/[0.04] px-1 font-sans text-[10px] leading-[16px] text-gk-dim @[220px]:inline peer-focus:!hidden"
+            >
+              {kb('Ctrl+Alt+F')}
+            </kbd>
+          )}
           <button
             type="button"
             onClick={folders.toggleGrouping}
@@ -180,11 +197,19 @@ export default function Sidebar({
                 <span className="w-3.5 shrink-0">
                   {branch.name === repo.currentBranch && <Check size={13} className="text-gk-green" />}
                 </span>
-                <RefKindIcon local remote={syncedLocal(branch)} size={12} className={syncedLocal(branch) ? 'text-gk-muted' : 'text-gk-dim'} />
+                <span className="flex w-[25px] shrink-0">
+                  <RefKindIcon local remote={syncedLocal(branch)} size={12} className={syncedLocal(branch) ? 'text-gk-muted' : 'text-gk-dim'} />
+                </span>
                 <span className="truncate">{label}</span>
                 <span className="ml-auto flex items-center gap-1.5 text-[11px] text-gk-muted">
                   {waiting.has(branch.name) && (
-                    <span title="Здесь ждут спрятанные правки — вернутся, когда вы переключитесь на эту ветку" className="flex items-center text-gk-yellow/90">
+                    <span
+                      data-tip={`Спрятанные правки ветки ${branch.name}${waiting.get(branch.name) > 1 ? ` (${waiting.get(branch.name)})` : ''}${
+                        waitingAt.get(branch.name) ? ` · ${relativeTime(waitingAt.get(branch.name))}` : ''
+                      }\nВернутся сами, когда вы переключитесь на эту ветку (stash «${branch.name}» с пометкой «авто»)`}
+                      data-testid="waiting-stash"
+                      className="flex items-center text-gk-yellow/90"
+                    >
                       <Archive size={11} />
                     </span>
                   )}
@@ -217,34 +242,31 @@ export default function Sidebar({
         </Section>
 
         <Section title="Stash" icon={Archive} count={repo.stashes.length}>
-          {repo.stashes.filter((s) => match(s.message)).map((stash) => (
-            <Item
-              key={stash.hash}
-              title={`${stash.id}\n${stash.message}\nКлик — посмотреть изменения, правый клик — действия`}
-              selected={selectedHash === `stash:${stash.hash}`}
-              onClick={() => onSelect(`stash:${stash.hash}`)}
-              onContextMenu={(e) => {
-                e.preventDefault();
-                onSelect(`stash:${stash.hash}`);
-                onStashMenu?.(stash, e.clientX, e.clientY);
-              }}
-            >
-              <Archive size={13} className="shrink-0 text-gk-yellow/80" />
-              {autoStash(stash.message) ? (
-                <>
-                  <span className="truncate">{autoStash(stash.message)}</span>
-                  <span
-                    title="Спрятано умным переключением — вернётся само, когда вы переключитесь на эту ветку"
-                    className="ml-auto shrink-0 rounded bg-gk-yellow/10 px-1.5 text-[10px] text-gk-yellow"
-                  >
-                    авто
-                  </span>
-                </>
-              ) : (
-                <span className="truncate">{stash.message.replace(/^(WIP on|On) [^:]+:\s*/, '')}</span>
-              )}
-            </Item>
-          ))}
+          {repo.stashes.filter((s) => match(s.message) || match(describeStash(s).title)).map((stash) => {
+            const d = describeStash(stash);
+            return (
+              <Item
+                key={stash.hash}
+                title={`${d.title}${d.detail ? ` — ${d.detail}` : ''}\n${stash.id} · ${stash.date ? fullDate(stash.date) : ''}\n${
+                  d.auto ? 'Вернётся само, когда вы переключитесь на эту ветку\n' : ''
+                }Клик — посмотреть изменения, правый клик — действия`}
+                selected={selectedHash === `stash:${stash.hash}`}
+                onClick={() => onSelect(`stash:${stash.hash}`)}
+                onContextMenu={(e) => {
+                  e.preventDefault();
+                  onSelect(`stash:${stash.hash}`);
+                  onStashMenu?.(stash, e.clientX, e.clientY);
+                }}
+              >
+                <Archive size={13} className="shrink-0 text-gk-yellow/80" />
+                <span className="truncate" data-testid="stash-title">{d.title}</span>
+                {d.auto && (
+                  <span className="shrink-0 rounded bg-gk-yellow/10 px-1.5 text-[10px] text-gk-yellow">авто</span>
+                )}
+                <span className="ml-auto shrink-0 pl-1 text-[10.5px] text-gk-dim">{shortAgo(stash.date)}</span>
+              </Item>
+            );
+          })}
           {repo.stashes.length === 0 && <Empty>Нет спрятанных изменений</Empty>}
         </Section>
 
@@ -372,12 +394,12 @@ function ScrollArea({ children }) {
         {children}
       </div>
       <div
-        className={`pointer-events-none absolute inset-x-0 top-0 h-4 bg-gradient-to-b from-black/35 to-transparent transition-opacity duration-200 ${
+        className={`pointer-events-none absolute inset-x-0 top-0 h-4 bg-gradient-to-b from-gk-sink/35 to-transparent transition-opacity duration-200 ${
           edges.top ? 'opacity-100' : 'opacity-0'
         }`}
       />
       <div
-        className={`pointer-events-none absolute inset-x-0 bottom-0 h-5 bg-gradient-to-t from-black/40 to-transparent transition-opacity duration-200 ${
+        className={`pointer-events-none absolute inset-x-0 bottom-0 h-5 bg-gradient-to-t from-gk-sink/40 to-transparent transition-opacity duration-200 ${
           edges.bottom ? 'opacity-100' : 'opacity-0'
         }`}
       />
@@ -392,7 +414,7 @@ function RemoteGroup({ remote, match, dragProps, menuProps, trackedBy, onDeleteR
     <div>
       <Item onClick={() => folders.toggle(key)}>
         {open ? <ChevronDown size={13} className="text-gk-muted" /> : <ChevronRight size={13} className="text-gk-muted" />}
-        <Folder size={13} className="text-gk-blue" />
+        <Server size={13} className="text-gk-blue" />
         <span className="font-medium">{remote.name}</span>
         <span className="ml-auto text-[10.5px] text-gk-dim">{remote.branches.length}</span>
       </Item>
@@ -420,12 +442,7 @@ function RemoteGroup({ remote, match, dragProps, menuProps, trackedBy, onDeleteR
               onClick={() => onSelect(branch.hash)}
               onDoubleClick={() => onCheckout({ remoteBranch: { name: branch.name, fullName: branch.fullName } })}
             >
-              <RefKindIcon
-                remote
-                local={trackedBy.get(branch.fullName)?.hash === branch.hash}
-                size={12}
-                className="text-gk-blue/80"
-              />
+              <RemoteIcon tracker={trackedBy.get(branch.fullName)} hash={branch.hash} />
               <span className="truncate">{label}</span>
               {onDeleteRemote && (
                 <button
@@ -527,7 +544,7 @@ function BranchTree({ branches, folderKey, folders, filtering, depth, isCurrent,
               {open ? <FolderOpen size={13} className="shrink-0 text-gk-yellow/80" /> : <Folder size={13} className="shrink-0 text-gk-yellow/80" />}
               <span className="truncate font-medium">{g.name}</span>
               {hasCurrent && !open && <span title="Здесь текущая ветка" className="h-1.5 w-1.5 shrink-0 rounded-full bg-gk-green" />}
-              <span className="ml-auto shrink-0 rounded bg-white/5 px-1.5 text-[10.5px] text-gk-dim">{g.items.length}</span>
+              <span className="ml-auto shrink-0 rounded bg-gk-fg/5 px-1.5 text-[10.5px] text-gk-dim">{g.items.length}</span>
             </Item>
             {open && g.items.map((x) => renderBranch(x.branch, x.label, depth + 1))}
           </div>
@@ -563,4 +580,19 @@ function Item({ children, current, selected, indent, depth, dropTarget, title, .
 
 function Empty({ children }) {
   return <div className="py-1 pl-8 text-xs italic text-gk-dim">{children}</div>;
+}
+
+/**
+ * Иконка серверной ветки: всегда облако (папка — только для группировки по «/»).
+ * Цвет — есть ли у неё локальная копия: зелёная — на том же коммите, жёлтая — локальная отличается, серая — локальной нет.
+ */
+function RemoteIcon({ tracker, hash }) {
+  const state = !tracker ? 'none' : tracker.hash === hash ? 'synced' : 'diverged';
+  const cls = state === 'synced' ? 'text-gk-green/80' : state === 'diverged' ? 'text-gk-yellow/80' : 'text-gk-dim';
+  return (
+    <span className="relative flex w-[25px] shrink-0 items-center" data-remote-state={state}>
+      <Cloud size={13} className={cls} />
+      {state !== 'none' && <Link2 size={9} strokeWidth={2.6} className={`absolute left-[13px] top-[5px] ${cls}`} />}
+    </span>
+  );
 }

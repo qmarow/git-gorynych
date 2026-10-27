@@ -1,4 +1,5 @@
 // Статусы пайплайнов и заданий GitLab: иконки в духе GitLab, подписи, форматирование времени
+import { readable } from '../lib/scheme.js';
 
 export const STATUS = {
   success: { label: 'успешно', color: '#3cf0a0' },
@@ -47,7 +48,8 @@ export const FAILURE_REASONS = {
 };
 
 export function statusInfo(status) {
-  return STATUS[status] ?? { label: status ?? '—', color: '#8b93a7' };
+  const info = STATUS[status] ?? { label: status ?? '—', color: '#8b93a7' };
+  return { ...info, color: readable(info.color) };
 }
 
 export function formatDuration(sec) {

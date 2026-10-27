@@ -1,4 +1,4 @@
-import { AlertTriangle, ArrowDown, ArrowUp, Crosshair, FolderGit2, FolderOpen, GitBranch, Loader2, Pencil, RefreshCw, SquareTerminal, WifiOff } from 'lucide-react';
+import { AlertTriangle, ArrowDown, ArrowUp, Crosshair, FolderGit2, GitBranch, Loader2, Pencil, RefreshCw, SquareTerminal, WifiOff } from 'lucide-react';
 import { openFolderLabel, openTerminalLabel } from '../lib/platform.js';
 import { fullDate, relativeTime } from '../lib/format.js';
 import { BACKGROUND_SEC, syncModeById, useSyncStatus } from '../lib/syncStatus.js';
@@ -83,7 +83,7 @@ export default function StatusBar({ repo, onJumpToHead, sync, onOpenFolder, onOp
           {repo.wipFiles.length}
         </span>
       )}
-      {/* Путь к репозиторию: клик — открыть папку, рядом — Проводник/Finder и терминал */}
+      {/* Путь к репозиторию: клик — открыть папку в Проводнике/Finder, рядом — терминал */}
       <span className="flex min-w-0 max-w-[45%] items-center gap-0.5">
         <button
           onClick={onOpenFolder ?? undefined}
@@ -100,16 +100,6 @@ export default function StatusBar({ repo, onJumpToHead, sync, onOpenFolder, onOp
           <FolderGit2 size={12} className="shrink-0" />
           <span className="truncate">{repo.path}</span>
         </button>
-        {onOpenFolder && (
-          <button
-            onClick={onOpenFolder}
-            aria-label={openFolderLabel()}
-            data-tip={openFolderLabel()}
-            className="flex h-5 w-5 shrink-0 items-center justify-center rounded hover:bg-gk-hover hover:text-gk-text"
-          >
-            <FolderOpen size={12} />
-          </button>
-        )}
         {onOpenTerminal && (
           <button
             onClick={onOpenTerminal}

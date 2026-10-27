@@ -34,6 +34,7 @@ import CiEditor from './ci/CiEditor.jsx';
 import JobForm from './ci/JobForm.jsx';
 import { ChoiceDialog, DraftBar, DraftDiff, LintPanel } from './ci/DraftTools.jsx';
 import { kb } from '../lib/platform.js';
+import { readable } from '../lib/scheme.js';
 
 const api = window.api;
 
@@ -370,8 +371,8 @@ export default function CiView({
     <div className="flex min-h-0 flex-1 animate-fade-in flex-col bg-gk-bg">
       {/* Верхняя панель */}
       <div className="glass flex shrink-0 items-center gap-2 border-b border-gk-border bg-gk-panel px-3 py-2">
-        <Workflow size={16} className="shrink-0" style={{ color: SYSTEM_COLORS[current?.system] ?? '#3cf0a0' }} />
-        <div className="shrink-0 text-[13px] font-semibold text-white">CI/CD</div>
+        <Workflow size={16} className="shrink-0" style={{ color: readable(SYSTEM_COLORS[current?.system] ?? '#3cf0a0') }} />
+        <div className="shrink-0 text-[13px] font-semibold text-gk-strong">CI/CD</div>
         {current && <div className="shrink-0 text-[12px] text-gk-muted">{current.title}</div>}
         {currentDirty && !hasDrafts && (
           <span
@@ -427,7 +428,7 @@ export default function CiView({
 
       {/* Файлы CI в репозитории */}
       {mode !== 'pipelines' && systems.length > 0 && (systems.length > 1 || systems[0].files.length > 1) && (
-        <div className="flex shrink-0 items-center gap-1 overflow-x-auto border-b border-gk-border bg-black/10 px-3 py-1.5">
+        <div className="flex shrink-0 items-center gap-1 overflow-x-auto border-b border-gk-border bg-gk-sink/10 px-3 py-1.5">
           {systems.map((sys) =>
             sys.files.map((f) => {
               const active = current?.file === f;
@@ -437,7 +438,7 @@ export default function CiView({
                   title={`${sys.title}: ${f}`}
                   onClick={() => setFile(f)}
                   className={`flex shrink-0 items-center gap-1.5 rounded px-2 py-1 text-[12px] transition-colors ${
-                    active ? 'bg-gk-hover text-white' : 'text-gk-muted hover:bg-gk-hover/60 hover:text-gk-text'
+                    active ? 'bg-gk-hover text-gk-strong' : 'text-gk-muted hover:bg-gk-hover/60 hover:text-gk-text'
                   }`}
                 >
                   <span className="h-2 w-2 rounded-full" style={{ backgroundColor: SYSTEM_COLORS[sys.id] }} />
@@ -524,7 +525,7 @@ export default function CiView({
             {jobForm ? (
               <aside className="flex w-[460px] shrink-0 animate-slide-in-right flex-col border-l border-gk-border bg-gk-panel/85 backdrop-blur-xl">
                 <div className="flex items-center gap-2 border-b border-gk-border px-4 py-3">
-                  <div className="min-w-0 flex-1 truncate text-[14px] font-semibold text-white">
+                  <div className="min-w-0 flex-1 truncate text-[14px] font-semibold text-gk-strong">
                     {jobForm.mode === 'create' ? 'Новое задание' : `Изменить «${job?.name ?? ''}»`}
                   </div>
                   <IconBtn title="Закрыть (Esc)" onClick={() => setJobForm(null)}>
@@ -673,7 +674,7 @@ function Scheme({ data, pipeline, onPipeline, selectedJob, onSelectJob, onShowLi
                 {data.includes.map((inc, i) => (
                   <li key={i}>
                     <div className="flex items-center gap-2">
-                      <span className="shrink-0 rounded bg-white/5 px-1.5 text-[10px] uppercase tracking-wider text-gk-muted">
+                      <span className="shrink-0 rounded bg-gk-fg/5 px-1.5 text-[10px] uppercase tracking-wider text-gk-muted">
                         {inc.type}
                       </span>
                       <span
@@ -700,7 +701,7 @@ function Scheme({ data, pipeline, onPipeline, selectedJob, onSelectJob, onShowLi
                 key={p.id}
                 onClick={() => onPipeline(p.id)}
                 className={`rounded-full px-3 py-1 text-[12px] transition-colors ${
-                  p.id === pipeline?.id ? 'bg-gk-blue/20 text-gk-blue ring-1 ring-gk-blue/40' : 'bg-white/5 text-gk-muted hover:text-gk-text'
+                  p.id === pipeline?.id ? 'bg-gk-blue/20 text-gk-blue ring-1 ring-gk-blue/40' : 'bg-gk-fg/5 text-gk-muted hover:text-gk-text'
                 }`}
               >
                 {p.title}
@@ -752,7 +753,7 @@ function Scheme({ data, pipeline, onPipeline, selectedJob, onSelectJob, onShowLi
                     key={t.id}
                     onClick={() => onShowLine(t.source, t.line)}
                     title="Показать в файле"
-                    className="rounded-md border border-gk-border bg-white/[0.02] px-3 py-2 text-left transition-colors hover:border-white/20"
+                    className="rounded-md border border-gk-border bg-gk-fg/[0.02] px-3 py-2 text-left transition-colors hover:border-gk-fg/20"
                   >
                     <div className="truncate font-mono text-[12px] text-gk-text">{t.name}</div>
                     <div className="mt-0.5 truncate text-[11px] text-gk-dim">
@@ -789,7 +790,7 @@ function StagesBoard({ pipeline, selectedJob, onSelectJob, editable, busy, onAdd
                 </div>
               )}
               <div
-                className="group/stage flex w-60 shrink-0 animate-slide-up flex-col rounded-lg border border-gk-border bg-white/[0.02]"
+                className="group/stage flex w-60 shrink-0 animate-slide-up flex-col rounded-lg border border-gk-border bg-gk-fg/[0.02]"
                 style={{ animationDelay: `${si * 45}ms` }}
               >
                 <StageHeader
@@ -909,7 +910,7 @@ function StageHeader({ stage, editable, busy, canLeft, canRight, onOp }) {
           </MiniBtn>
         </span>
       )}
-      <span className="rounded bg-white/5 px-1.5 text-[10px] text-gk-dim">{stage.jobs.length}</span>
+      <span className="rounded bg-gk-fg/5 px-1.5 text-[10px] text-gk-dim">{stage.jobs.length}</span>
     </div>
   );
 }
@@ -919,7 +920,7 @@ function MiniBtn({ children, danger, ...props }) {
     <button
       {...props}
       className={`flex h-5 w-5 items-center justify-center rounded transition-colors disabled:opacity-30 ${
-        danger ? 'bg-gk-red text-white' : 'text-gk-dim enabled:hover:bg-white/10 enabled:hover:text-gk-text'
+        danger ? 'bg-gk-red text-white' : 'text-gk-dim enabled:hover:bg-gk-fg/10 enabled:hover:text-gk-text'
       }`}
     >
       {children}
@@ -962,7 +963,7 @@ function InlineInput({ initial = '', placeholder, onSubmit, onCancel }) {
 function JobCard({ job, selected, onClick }) {
   const badges = [];
   if (job.manual) badges.push({ icon: Hand, text: 'вручную', cls: 'text-gk-yellow' });
-  if (job.kind === 'trigger') badges.push({ icon: Zap, text: job.trigger ? 'запускает другой пайплайн' : 'внешнее', cls: 'text-[#c084fc]' });
+  if (job.kind === 'trigger') badges.push({ icon: Zap, text: job.trigger ? 'запускает другой пайплайн' : 'внешнее', cls: 'text-gk-purple' });
   if (job.environment?.name) badges.push({ icon: Rocket, text: job.environment.name, cls: 'text-gk-green' });
   if (job.allowFailure) badges.push({ icon: AlertTriangle, text: 'может упасть', cls: 'text-gk-muted' });
   if (job.rules?.length) badges.push({ icon: null, text: `правил: ${job.rules.length}`, cls: 'text-gk-muted' });
@@ -976,11 +977,11 @@ function JobCard({ job, selected, onClick }) {
       className={`group w-full rounded-md border px-2.5 py-2 text-left transition-all duration-200 ${
         selected
           ? 'border-gk-blue/60 bg-gk-blue/10 shadow-lg shadow-gk-blue/10'
-          : 'border-gk-border bg-gk-panel/60 hover:-translate-y-px hover:border-white/20 hover:bg-gk-panel'
+          : 'border-gk-border bg-gk-panel/60 hover:-translate-y-px hover:border-gk-fg/20 hover:bg-gk-panel'
       }`}
     >
       <div className="flex items-center gap-1.5">
-        <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${job.manual ? 'bg-gk-yellow' : job.kind === 'trigger' ? 'bg-[#c084fc]' : 'bg-gk-green'}`} />
+        <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${job.manual ? 'bg-gk-yellow' : job.kind === 'trigger' ? 'bg-gk-purple' : 'bg-gk-green'}`} />
         <span className="min-w-0 flex-1 truncate text-[13px] font-medium text-gk-text" title={job.name}>
           {job.name}
         </span>
@@ -999,7 +1000,7 @@ function JobCard({ job, selected, onClick }) {
       {badges.length > 0 && (
         <div className="mt-1.5 flex flex-wrap gap-1">
           {badges.map((b, i) => (
-            <span key={i} title={b.title} className={`flex items-center gap-1 rounded bg-white/5 px-1.5 py-px text-[10px] ${b.cls}`}>
+            <span key={i} title={b.title} className={`flex items-center gap-1 rounded bg-gk-fg/5 px-1.5 py-px text-[10px] ${b.cls}`}>
               {b.icon && <b.icon size={10} />}
               <span className="max-w-[140px] truncate">{b.text}</span>
             </span>
@@ -1024,7 +1025,7 @@ function JobDetails({ job, allJobs, onSelectJob, onClose, onShowLine, editState,
     <aside className="flex w-[440px] shrink-0 animate-slide-in-right flex-col border-l border-gk-border bg-gk-panel/80 backdrop-blur-xl">
       <div className="flex items-start gap-2 border-b border-gk-border px-4 py-3">
         <div className="min-w-0 flex-1">
-          <div className="break-words text-[14px] font-semibold text-white">{job.name}</div>
+          <div className="break-words text-[14px] font-semibold text-gk-strong">{job.name}</div>
           <div className="mt-0.5 flex flex-wrap items-center gap-x-2 text-[11px] text-gk-dim">
             {job.stage && <span>этап {job.stage}</span>}
             {job.source && (
@@ -1048,7 +1049,7 @@ function JobDetails({ job, allJobs, onSelectJob, onClose, onShowLine, editState,
         </IconBtn>
       </div>
       {editState === 'include' && (
-        <div className="border-b border-gk-border bg-white/[0.02] px-4 py-2 text-[11.5px] text-gk-muted">
+        <div className="border-b border-gk-border bg-gk-fg/[0.02] px-4 py-2 text-[11.5px] text-gk-muted">
           Задание описано в подключаемом файле —{' '}
           <button onClick={() => onShowLine(job.source, job.line)} className="font-mono text-gk-blue hover:underline">
             откройте {job.source}
@@ -1061,11 +1062,11 @@ function JobDetails({ job, allJobs, onSelectJob, onClose, onShowLine, editState,
         <Section title="Когда запускается">
           <div className="flex flex-wrap items-center gap-1.5">
             {job.rules?.length > 0 ? (
-              <span className="rounded bg-white/5 px-1.5 py-0.5 text-[11px] text-gk-muted">по правилам ниже</span>
+              <span className="rounded bg-gk-fg/5 px-1.5 py-0.5 text-[11px] text-gk-muted">по правилам ниже</span>
             ) : job.when ? (
               <WhenChip when={job.when} big />
             ) : (
-              <span className="rounded bg-white/5 px-1.5 py-0.5 text-[11px] text-gk-muted">
+              <span className="rounded bg-gk-fg/5 px-1.5 py-0.5 text-[11px] text-gk-muted">
                 {job.needs?.length ? 'после заданий из «Связи»' : 'автоматически'}
                 {job.condition ? ', если выполнено условие' : ''}
               </span>
@@ -1077,7 +1078,7 @@ function JobDetails({ job, allJobs, onSelectJob, onClose, onShowLine, editState,
           {job.rules?.length > 0 && (
             <ol className="mt-2 space-y-1">
               {job.rules.map((r, i) => (
-                <li key={i} className="flex items-start gap-2 rounded bg-white/[0.03] px-2 py-1.5">
+                <li key={i} className="flex items-start gap-2 rounded bg-gk-fg/[0.03] px-2 py-1.5">
                   <span className="shrink-0 text-gk-dim">{i + 1}.</span>
                   <span className="min-w-0 flex-1 break-words font-mono text-[11.5px] text-gk-text/90">{r.text}</span>
                   {r.when && <WhenChip when={r.when} />}
@@ -1117,7 +1118,7 @@ function JobDetails({ job, allJobs, onSelectJob, onClose, onShowLine, editState,
                       key={n.job}
                       disabled={!target}
                       onClick={() => target && onSelectJob(target.id)}
-                      className="rounded bg-white/5 px-1.5 py-0.5 font-mono text-[11px] text-gk-text enabled:hover:bg-gk-blue/20 enabled:hover:text-gk-blue disabled:text-gk-red"
+                      className="rounded bg-gk-fg/5 px-1.5 py-0.5 font-mono text-[11px] text-gk-text enabled:hover:bg-gk-blue/20 enabled:hover:text-gk-blue disabled:text-gk-red"
                       title={target ? 'Перейти к заданию' : 'Такого задания нет'}
                     >
                       {n.job}
@@ -1140,7 +1141,7 @@ function JobDetails({ job, allJobs, onSelectJob, onClose, onShowLine, editState,
               <div key={label} className="mb-2">
                 <div className="mb-1 flex items-center gap-2 text-[11px] text-gk-dim">
                   <span className="font-mono">{label}</span>
-                  {s.inherited && <span className="rounded bg-white/5 px-1.5">из {s.inherited}</span>}
+                  {s.inherited && <span className="rounded bg-gk-fg/5 px-1.5">из {s.inherited}</span>}
                 </div>
                 <Code>
                   {/* Команды не переносим — длинные строки прокручиваются по горизонтали */}
@@ -1162,7 +1163,7 @@ function JobDetails({ job, allJobs, onSelectJob, onClose, onShowLine, editState,
           <Section title={`Шаги · ${job.steps.length}`}>
             <ol className="space-y-1.5">
               {job.steps.map((st, i) => (
-                <li key={i} className="rounded border border-gk-border bg-white/[0.02] px-2.5 py-1.5">
+                <li key={i} className="rounded border border-gk-border bg-gk-fg/[0.02] px-2.5 py-1.5">
                   <div className="flex items-center gap-2">
                     <span className="w-4 shrink-0 text-right text-[10px] text-gk-dim">{i + 1}</span>
                     <span className="min-w-0 flex-1 truncate text-gk-text" title={st.name}>
@@ -1224,7 +1225,7 @@ function JobDetails({ job, allJobs, onSelectJob, onClose, onShowLine, editState,
               Итоговая конфигурация задания{job.extends?.length ? ' (с учётом extends)' : ''}
             </button>
             {showRaw && (
-              <pre className="mt-2 max-h-80 animate-fade-in overflow-auto rounded-md bg-black/30 p-3 font-mono text-[11px] leading-[1.6]">
+              <pre className="mt-2 max-h-80 animate-fade-in overflow-auto rounded-md bg-gk-sink/30 p-3 font-mono text-[11px] leading-[1.6]">
                 {job.raw.split('\n').map((l, i) => (
                   <div key={i}>{highlight(l, 'yaml')}</div>
                 ))}
@@ -1261,7 +1262,7 @@ function FileEditor({ files, active, onActive, jump, errors, gitDirty, drafts, t
             key={f.path}
             onClick={() => onActive(f.path)}
             className={`flex shrink-0 items-center gap-1 rounded px-2 py-0.5 font-mono text-[11.5px] ${
-              f.path === file.path ? 'bg-gk-hover text-white' : 'text-gk-muted hover:text-gk-text'
+              f.path === file.path ? 'bg-gk-hover text-gk-strong' : 'text-gk-muted hover:text-gk-text'
             }`}
           >
             {i > 0 && <span className="mr-0.5 font-sans text-[10px] text-gk-dim">include</span>}
@@ -1351,7 +1352,7 @@ function NoCi({ gitlab, onPipelines, onCreate }) {
           <button onClick={() => onCreate('gitlab')} className="flex items-center gap-1.5 rounded-md bg-gk-green/15 px-3 py-1.5 text-[12px] text-gk-green hover:bg-gk-green/25">
             <Plus size={12} /> Создать .gitlab-ci.yml
           </button>
-          <button onClick={() => onCreate('github')} className="flex items-center gap-1.5 rounded-md bg-white/5 px-3 py-1.5 text-[12px] text-gk-text hover:bg-white/10">
+          <button onClick={() => onCreate('github')} className="flex items-center gap-1.5 rounded-md bg-gk-fg/5 px-3 py-1.5 text-[12px] text-gk-text hover:bg-gk-fg/10">
             <Plus size={12} /> Создать GitHub Actions
           </button>
           {gitlab && (
@@ -1392,7 +1393,7 @@ function Notice({ tone, icon: Icon, title, children }) {
 
 function Card({ title, icon: Icon, children }) {
   return (
-    <div className="animate-fade-in rounded-lg border border-gk-border bg-white/[0.02] px-3 py-2.5 text-[12px]">
+    <div className="animate-fade-in rounded-lg border border-gk-border bg-gk-fg/[0.02] px-3 py-2.5 text-[12px]">
       <div className="mb-2 flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wider text-gk-dim">
         <Icon size={12} /> {title}
       </div>
@@ -1465,7 +1466,7 @@ function WhenChip({ when, big }) {
         ? 'bg-gk-red/15 text-gk-red'
         : when === 'always'
           ? 'bg-gk-blue/15 text-gk-blue'
-          : 'bg-white/5 text-gk-muted';
+          : 'bg-gk-fg/5 text-gk-muted';
   return (
     <span className={`shrink-0 rounded px-1.5 ${big ? 'py-0.5 text-[11px]' : 'text-[10px]'} ${cls}`} title={`when: ${when}`}>
       {WHEN_LABELS[when] ?? when}
@@ -1475,7 +1476,7 @@ function WhenChip({ when, big }) {
 
 function Code({ children, className = '' }) {
   return (
-    <div className={`overflow-x-auto rounded-md bg-black/30 px-2.5 py-1.5 font-mono text-[11.5px] leading-[1.6] text-gk-text/90 ${className}`}>
+    <div className={`overflow-x-auto rounded-md bg-gk-sink/30 px-2.5 py-1.5 font-mono text-[11.5px] leading-[1.6] text-gk-text/90 ${className}`}>
       {typeof children === 'string' ? <span className="block w-max min-w-full whitespace-pre">{children}</span> : children}
     </div>
   );

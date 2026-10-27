@@ -42,7 +42,7 @@ function BarButton({ children, ...props }) {
   return (
     <button
       {...props}
-      className="flex shrink-0 items-center gap-1 rounded px-2 py-1 text-gk-muted transition-colors enabled:hover:bg-white/10 enabled:hover:text-gk-text disabled:opacity-50"
+      className="flex shrink-0 items-center gap-1 rounded px-2 py-1 text-gk-muted transition-colors enabled:hover:bg-gk-fg/10 enabled:hover:text-gk-text disabled:opacity-50"
     >
       {children}
     </button>
@@ -69,11 +69,11 @@ export function DraftDiff({ repoPath, drafts, onClose, onSave, saving }) {
   }, [onClose]);
 
   return (
-    <div className="fixed inset-0 z-40 flex animate-fade-in items-start justify-center bg-black/45 pt-[6vh] backdrop-blur-[3px]" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
+    <div className="fixed inset-0 z-40 flex animate-fade-in items-start justify-center bg-gk-scrim pt-[6vh] backdrop-blur-[3px]" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
       <div className="glass-strong flex max-h-[84vh] w-[900px] max-w-[calc(100vw-2rem)] animate-pop-in flex-col overflow-hidden rounded-xl border border-gk-border bg-gk-panel-2">
         <div className="flex shrink-0 items-center gap-2 border-b border-gk-border px-4 py-3">
           <FileDiff size={16} className="text-gk-blue" />
-          <h2 className="flex-1 text-[14px] font-semibold text-white">Что изменится</h2>
+          <h2 className="flex-1 text-[14px] font-semibold text-gk-strong">Что изменится</h2>
           <button onClick={onClose} className="rounded p-1 text-gk-dim hover:bg-gk-hover hover:text-gk-text">
             <X size={16} />
           </button>
@@ -166,7 +166,7 @@ export function LintPanel({ result, error, onClose, onShowJob }) {
                       key={`${j.stage}:${j.name}`}
                       onClick={() => onShowJob?.(j.name)}
                       title={`этап ${j.stage}${j.when !== 'on_success' ? ` · ${j.when}` : ''}`}
-                      className={`rounded px-1.5 py-px font-mono text-[11px] ${j.when === 'manual' ? 'bg-gk-yellow/15 text-gk-yellow' : 'bg-white/5 text-gk-text'} hover:bg-white/10`}
+                      className={`rounded px-1.5 py-px font-mono text-[11px] ${j.when === 'manual' ? 'bg-gk-yellow/15 text-gk-yellow' : 'bg-gk-fg/5 text-gk-text'} hover:bg-gk-fg/10`}
                     >
                       {j.name}
                     </button>
@@ -182,7 +182,7 @@ export function LintPanel({ result, error, onClose, onShowJob }) {
             </>
           )}
         </div>
-        <button onClick={onClose} className="rounded p-0.5 text-gk-dim hover:bg-white/10 hover:text-gk-text">
+        <button onClick={onClose} className="rounded p-0.5 text-gk-dim hover:bg-gk-fg/10 hover:text-gk-text">
           <X size={13} />
         </button>
       </div>
@@ -198,9 +198,9 @@ export function ChoiceDialog({ title, text, choices, onClose }) {
     return () => window.removeEventListener('keydown', onKey);
   }, [onClose]);
   return (
-    <div className="fixed inset-0 z-50 flex animate-fade-in items-start justify-center bg-black/45 pt-[16vh] backdrop-blur-[3px]" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
+    <div className="fixed inset-0 z-50 flex animate-fade-in items-start justify-center bg-gk-scrim pt-[16vh] backdrop-blur-[3px]" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
       <div className="glass-strong w-[460px] max-w-[calc(100vw-2rem)] animate-pop-in rounded-xl border border-gk-border bg-gk-panel-2 p-4">
-        <div className="flex items-center gap-2 text-[14px] font-semibold text-white">
+        <div className="flex items-center gap-2 text-[14px] font-semibold text-gk-strong">
           <AlertTriangle size={16} className="text-gk-yellow" /> {title}
         </div>
         <p className="mt-2 text-[12.5px] leading-relaxed text-gk-muted">{text}</p>
@@ -214,7 +214,7 @@ export function ChoiceDialog({ title, text, choices, onClose }) {
                   ? 'bg-gk-green font-semibold text-gk-ink hover:brightness-110'
                   : c.danger
                     ? 'bg-gk-red/90 font-semibold text-white hover:bg-gk-red'
-                    : 'bg-gk-hover text-gk-text hover:bg-white/10'
+                    : 'bg-gk-hover text-gk-text hover:bg-gk-fg/10'
               }`}
             >
               {c.label}

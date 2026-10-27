@@ -20,6 +20,7 @@ import {
   X,
 } from 'lucide-react';
 import { isMod, kb } from '../lib/platform.js';
+import { readable } from '../lib/scheme.js';
 
 const api = window.api;
 const LEFT = '#2f9bff'; // сторона ours (stage 2)
@@ -178,7 +179,7 @@ export default function ConflictView({ repoPath, path, fileIndex, fileCount, onP
         <FileWarning size={16} className="shrink-0 text-gk-red" />
         <div className="min-w-0 flex-1 truncate text-[13px]" title={path}>
           {dir && <span className="text-gk-muted">{dir}/</span>}
-          <span className="font-medium text-white">{name}</span>
+          <span className="font-medium text-gk-strong">{name}</span>
         </div>
 
         {fileCount > 1 && (
@@ -225,7 +226,7 @@ export default function ConflictView({ repoPath, path, fileIndex, fileCount, onP
             onClick={save}
             disabled={!allDecided || saving}
             title={allDecided ? 'Сохранить файл и отметить конфликт решённым (Ctrl+S)' : 'Сначала решите все конфликты в файле'}
-            className="flex items-center gap-1.5 rounded-md bg-gk-green px-3 py-1.5 text-[12px] font-semibold text-gk-ink shadow-lg shadow-gk-green/20 transition hover:brightness-110 disabled:bg-white/10 disabled:text-gk-dim disabled:shadow-none"
+            className="flex items-center gap-1.5 rounded-md bg-gk-green px-3 py-1.5 text-[12px] font-semibold text-gk-ink shadow-lg shadow-gk-green/20 transition hover:brightness-110 disabled:bg-gk-fg/10 disabled:text-gk-dim disabled:shadow-none"
           >
             {saving ? <Loader2 size={13} className="animate-spin" /> : <Check size={14} />}
             {fileCount > 1 ? 'Сохранить и дальше' : 'Сохранить'}
@@ -238,9 +239,9 @@ export default function ConflictView({ repoPath, path, fileIndex, fileCount, onP
 
       {/* Подписи сторон */}
       {data?.kind === 'text' && !preview && (
-        <div className="grid shrink-0 grid-cols-2 gap-3 border-b border-gk-border bg-black/10 px-4 py-2 text-xs">
-          <SideLabel color={LEFT} side={L} onTakeAll={() => pickAll('left')} />
-          <SideLabel color={RIGHT} side={R} onTakeAll={() => pickAll('right')} />
+        <div className="grid shrink-0 grid-cols-2 gap-3 border-b border-gk-border bg-gk-sink/10 px-4 py-2 text-xs">
+          <SideLabel color={readable(LEFT)} side={L} onTakeAll={() => pickAll('left')} />
+          <SideLabel color={readable(RIGHT)} side={R} onTakeAll={() => pickAll('right')} />
         </div>
       )}
 
@@ -331,7 +332,7 @@ function CommonLines({ lines, isFirst, isLast }) {
       {head > 0 && <Code lines={lines.slice(0, head)} />}
       <button
         onClick={() => setOpen(true)}
-        className="my-0.5 w-full rounded bg-white/[0.03] py-1 text-center text-[11px] text-gk-dim hover:bg-white/[0.06] hover:text-gk-muted"
+        className="my-0.5 w-full rounded bg-gk-fg/[0.03] py-1 text-center text-[11px] text-gk-dim hover:bg-gk-fg/[0.06] hover:text-gk-muted"
       >
         ⋯ {lines.length - head - tail} строк без конфликтов — показать
       </button>
@@ -360,15 +361,15 @@ function ConflictCard({ refFn, index, total, block, choice, L, R, onPick, onTogg
       }`}
     >
       {/* Заголовок и быстрые решения */}
-      <div className="flex flex-wrap items-center gap-1.5 border-b border-gk-border bg-black/15 px-3 py-2">
+      <div className="flex flex-wrap items-center gap-1.5 border-b border-gk-border bg-gk-sink/15 px-3 py-2">
         <span className={`text-xs font-semibold ${decided ? 'text-gk-green' : 'text-gk-red'}`}>
           {decided ? '✓' : '●'} Конфликт {index + 1} из {total}
         </span>
         <span className="mr-auto text-[11px] text-gk-dim">строка {block.startLine}</span>
-        <QuickBtn color={LEFT} active={decided && choice.manual == null && choice.ours.every(Boolean) && !choice.theirs.some(Boolean)} onClick={() => onPick('left')}>
+        <QuickBtn color={readable(LEFT)} active={decided && choice.manual == null && choice.ours.every(Boolean) && !choice.theirs.some(Boolean)} onClick={() => onPick('left')}>
           <ArrowLeft size={12} /> {L.title}
         </QuickBtn>
-        <QuickBtn color={RIGHT} active={decided && choice.manual == null && choice.theirs.every(Boolean) && !choice.ours.some(Boolean)} onClick={() => onPick('right')}>
+        <QuickBtn color={readable(RIGHT)} active={decided && choice.manual == null && choice.theirs.every(Boolean) && !choice.ours.some(Boolean)} onClick={() => onPick('right')}>
           {R.title} <ArrowRight size={12} />
         </QuickBtn>
         <QuickBtn onClick={() => onPick('leftRight')} title={`Оставить обе версии: сначала «${L.title}», потом «${R.title}»`}>
@@ -390,7 +391,7 @@ function ConflictCard({ refFn, index, total, block, choice, L, R, onPick, onTogg
       {/* Две версии с выбором строк */}
       <div className="grid grid-cols-2 divide-x divide-gk-border">
         <SideLines
-          color={LEFT}
+          color={readable(LEFT)}
           lines={block.ours}
           selected={choice.ours}
           disabled={choice.manual != null}
@@ -398,7 +399,7 @@ function ConflictCard({ refFn, index, total, block, choice, L, R, onPick, onTogg
           onToggleAll={(v) => onToggleAll('ours', v)}
         />
         <SideLines
-          color={RIGHT}
+          color={readable(RIGHT)}
           lines={block.theirs}
           selected={choice.theirs}
           disabled={choice.manual != null}
@@ -417,7 +418,7 @@ function ConflictCard({ refFn, index, total, block, choice, L, R, onPick, onTogg
       )}
 
       {/* Результат */}
-      <div className="border-t border-gk-border bg-black/20 px-3 py-2">
+      <div className="border-t border-gk-border bg-gk-sink/20 px-3 py-2">
         <div className="mb-1 flex items-center gap-2 text-[11px] text-gk-muted">
           <span className="font-semibold uppercase tracking-wider">Результат</span>
           {choice.manual == null && choice.ours.some(Boolean) && choice.theirs.some(Boolean) && (
@@ -484,7 +485,7 @@ function SideLines({ color, lines, selected, disabled, onToggle, onToggleAll }) 
         {lines.map((line, k) => (
           <label
             key={k}
-            className="flex cursor-pointer items-start gap-2 px-2 font-mono text-[12px] leading-5 hover:bg-white/[0.04]"
+            className="flex cursor-pointer items-start gap-2 px-2 font-mono text-[12px] leading-5 hover:bg-gk-fg/[0.04]"
             style={selected[k] ? { backgroundColor: `${color}26` } : undefined}
           >
             <input
@@ -495,7 +496,7 @@ function SideLines({ color, lines, selected, disabled, onToggle, onToggleAll }) 
               className="mt-[3px] shrink-0"
               style={{ accentColor: color }}
             />
-            <span className={`whitespace-pre [tab-size:4] ${selected[k] ? 'text-white' : 'text-gk-text/80'}`}>{line || ' '}</span>
+            <span className={`whitespace-pre [tab-size:4] ${selected[k] ? 'text-gk-strong' : 'text-gk-text/80'}`}>{line || ' '}</span>
           </label>
         ))}
       </div>
@@ -544,7 +545,7 @@ function SpecialConflict({ data, L, R, busy, onWhole, onMarkResolved, onOpen, on
     text = `${del.title}: ${del.sub}. ${keep.title}: ${keep.sub}. Решите, нужен ли файл.`;
     actions = (
       <>
-        <BigButton color={data.keepSide === 'ours' ? LEFT : RIGHT} disabled={busy} onClick={() => onWhole(data.keepSide)}>
+        <BigButton color={data.keepSide === 'ours' ? readable(LEFT) : readable(RIGHT)} disabled={busy} onClick={() => onWhole(data.keepSide)}>
           <Check size={14} /> Оставить файл (версия «{keep.title}»)
         </BigButton>
         <BigButton danger disabled={busy} onClick={() => onWhole('delete')}>
@@ -557,10 +558,10 @@ function SpecialConflict({ data, L, R, busy, onWhole, onMarkResolved, onOpen, on
     text = 'Объединить картинку или другой бинарный файл построчно нельзя — выберите одну версию целиком.';
     actions = (
       <>
-        <BigButton color={LEFT} disabled={busy} onClick={() => onWhole('ours')}>
+        <BigButton color={readable(LEFT)} disabled={busy} onClick={() => onWhole('ours')}>
           <ArrowLeft size={14} /> Взять «{L.title}» ({L.sub})
         </BigButton>
-        <BigButton color={RIGHT} disabled={busy} onClick={() => onWhole('theirs')}>
+        <BigButton color={readable(RIGHT)} disabled={busy} onClick={() => onWhole('theirs')}>
           Взять «{R.title}» ({R.sub}) <ArrowRight size={14} />
         </BigButton>
       </>
@@ -580,13 +581,13 @@ function SpecialConflict({ data, L, R, busy, onWhole, onMarkResolved, onOpen, on
       : 'Отметьте конфликт решённым — файл будет удалён из репозитория.';
     actions = (
       <>
-        <BigButton color="#3cf0a0" disabled={busy} onClick={onMarkResolved}>
+        <BigButton color={readable('#3cf0a0')} disabled={busy} onClick={onMarkResolved}>
           <Check size={14} /> Отметить решённым
         </BigButton>
-        <BigButton color={LEFT} disabled={busy} onClick={() => onWhole('ours')}>
+        <BigButton color={readable(LEFT)} disabled={busy} onClick={() => onWhole('ours')}>
           Взять «{L.title}» целиком
         </BigButton>
-        <BigButton color={RIGHT} disabled={busy} onClick={() => onWhole('theirs')}>
+        <BigButton color={readable(RIGHT)} disabled={busy} onClick={() => onWhole('theirs')}>
           Взять «{R.title}» целиком
         </BigButton>
       </>
@@ -602,7 +603,7 @@ function SpecialConflict({ data, L, R, busy, onWhole, onMarkResolved, onOpen, on
         <div className="flex items-start gap-2.5">
           <AlertTriangle size={18} className="mt-0.5 shrink-0 text-gk-yellow" />
           <div>
-            <div className="text-[14px] font-semibold text-white">{title}</div>
+            <div className="text-[14px] font-semibold text-gk-strong">{title}</div>
             {text && <p className="mt-1 text-xs leading-relaxed text-gk-muted">{text}</p>}
           </div>
         </div>
@@ -630,7 +631,7 @@ function SideLabel({ color, side, onTakeAll }) {
       <button
         onClick={onTakeAll}
         title={`Во всех конфликтах этого файла взять «${side.title}»`}
-        className="ml-auto shrink-0 rounded px-2 py-0.5 text-[11px] text-gk-muted ring-1 transition hover:bg-white/10 hover:text-gk-text"
+        className="ml-auto shrink-0 rounded px-2 py-0.5 text-[11px] text-gk-muted ring-1 transition hover:bg-gk-fg/10 hover:text-gk-text"
         style={{ '--tw-ring-color': `${color}66` }}
       >
         Взять «{side.title}» везде
@@ -644,7 +645,7 @@ function QuickBtn({ color, active, children, ...props }) {
     <button
       {...props}
       style={active && color ? { backgroundColor: `${color}33`, boxShadow: `inset 0 0 0 1px ${color}` } : undefined}
-      className="flex items-center gap-1 rounded px-2 py-1 text-[11px] text-gk-text ring-1 ring-gk-border transition hover:bg-white/10"
+      className="flex items-center gap-1 rounded px-2 py-1 text-[11px] text-gk-text ring-1 ring-gk-border transition hover:bg-gk-fg/10"
     >
       {color && <span className="h-1.5 w-1.5 rounded-full" style={{ backgroundColor: color }} />}
       {children}
@@ -658,7 +659,7 @@ function BigButton({ color, danger, children, ...props }) {
       {...props}
       style={!danger && color ? { boxShadow: `inset 0 0 0 1px ${color}88`, color } : undefined}
       className={`flex items-center gap-1.5 rounded-md px-3 py-2 text-[12px] font-medium transition disabled:opacity-50 ${
-        danger ? 'text-gk-red ring-1 ring-gk-red/50 hover:bg-gk-red/10' : 'hover:bg-white/10'
+        danger ? 'text-gk-red ring-1 ring-gk-red/50 hover:bg-gk-red/10' : 'hover:bg-gk-fg/10'
       } ${!color && !danger ? 'text-gk-text ring-1 ring-gk-border' : ''}`}
     >
       {children}

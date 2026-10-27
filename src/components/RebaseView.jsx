@@ -19,14 +19,15 @@ import {
 } from 'lucide-react';
 import { FILE_STATUS, plural, relativeTime } from '../lib/format.js';
 import { isMod, kb } from '../lib/platform.js';
+import { readable } from '../lib/scheme.js';
 
 const api = window.api;
 
 export const REBASE_ACTIONS = [
-  { id: 'pick', key: 'P', label: 'Оставить', hint: 'Коммит остаётся как есть', icon: Check, cls: 'text-gk-text', active: 'bg-white/15 text-white' },
+  { id: 'pick', key: 'P', label: 'Оставить', hint: 'Коммит остаётся как есть', icon: Check, cls: 'text-gk-text', active: 'bg-gk-fg/15 text-gk-strong' },
   { id: 'reword', key: 'R', label: 'Изменить сообщение', hint: 'Коммит остаётся, меняется только текст', icon: Pencil, cls: 'text-gk-yellow', active: 'bg-gk-yellow/20 text-gk-yellow' },
-  { id: 'squash', key: 'S', label: 'Объединить с коммитом ниже', hint: 'Изменения и текст присоединяются к коммиту ниже', icon: Combine, cls: 'text-[#c084fc]', active: 'bg-[#c084fc]/20 text-[#c084fc]' },
-  { id: 'fixup', key: 'F', label: 'Влить в коммит ниже без текста', hint: 'Изменения присоединяются к коммиту ниже, его текст не меняется', icon: ArrowDownToLine, cls: 'text-[#c084fc]', active: 'bg-[#c084fc]/20 text-[#c084fc]' },
+  { id: 'squash', key: 'S', label: 'Объединить с коммитом ниже', hint: 'Изменения и текст присоединяются к коммиту ниже', icon: Combine, cls: 'text-gk-purple', active: 'bg-gk-purple/20 text-gk-purple' },
+  { id: 'fixup', key: 'F', label: 'Влить в коммит ниже без текста', hint: 'Изменения присоединяются к коммиту ниже, его текст не меняется', icon: ArrowDownToLine, cls: 'text-gk-purple', active: 'bg-gk-purple/20 text-gk-purple' },
   { id: 'drop', key: 'D', label: 'Удалить', hint: 'Коммит и его изменения пропадут из истории', icon: Trash2, cls: 'text-gk-red', active: 'bg-gk-red/20 text-gk-red' },
 ];
 const ACTION = Object.fromEntries(REBASE_ACTIONS.map((a) => [a.id, a]));
@@ -218,7 +219,7 @@ export default function RebaseView({ repoPath, session, hidden, busy, onClose, o
       <div className="glass flex h-11 shrink-0 items-center gap-2.5 border-b border-gk-border bg-gk-panel px-3">
         <Layers size={16} className="shrink-0 text-gk-blue" />
         <div className="min-w-0 flex-1 truncate text-[13px]">
-          <span className="font-semibold text-white">Интерактивный rebase</span>
+          <span className="font-semibold text-gk-strong">Интерактивный rebase</span>
           {d && (
             <span className="ml-2 text-gk-muted">
               ветка <span className="font-medium text-gk-text">{d.branch}</span>
@@ -424,7 +425,7 @@ function PlanRow({
       }}
       onMouseDown={onSelect}
       className={`group relative mx-2 my-0.5 rounded-md border transition-colors ${
-        selected ? 'border-gk-blue/50 bg-gk-blue/[0.08]' : 'border-transparent hover:bg-white/[0.03]'
+        selected ? 'border-gk-blue/50 bg-gk-blue/[0.08]' : 'border-transparent hover:bg-gk-fg/[0.03]'
       } ${dragOver ? 'border-t-2 border-t-gk-blue' : ''} ${highlighted ? 'ring-1 ring-gk-blue/60' : ''} ${conflict ? 'bg-gk-red/[0.08]' : ''}`}
     >
       <div className="flex items-center gap-2 px-2 py-1.5">
@@ -438,7 +439,7 @@ function PlanRow({
               disabled={isLast && (x.id === 'squash' || x.id === 'fixup')}
               onClick={() => onAction(x.id)}
               className={`flex h-6 w-6 items-center justify-center transition-colors disabled:opacity-25 ${
-                item.action === x.id ? x.active : 'text-gk-dim enabled:hover:bg-white/10 enabled:hover:text-gk-text'
+                item.action === x.id ? x.active : 'text-gk-dim enabled:hover:bg-gk-fg/10 enabled:hover:text-gk-text'
               }`}
             >
               <x.icon size={12} />
@@ -448,7 +449,7 @@ function PlanRow({
         <span className={`w-14 shrink-0 font-mono text-[11.5px] ${dropped ? 'text-gk-dim line-through' : 'text-gk-muted'}`}>{item.hash.slice(0, 7)}</span>
         <div className={`min-w-0 flex-1 ${joined ? 'pl-4' : ''}`}>
           <div className="flex min-w-0 items-center gap-1.5">
-            {joined && <ArrowDown size={12} className="shrink-0 text-[#c084fc]" />}
+            {joined && <ArrowDown size={12} className="shrink-0 text-gk-purple" />}
             <button
               onDoubleClick={onEdit}
               title="Двойной клик — изменить сообщение"
@@ -457,7 +458,7 @@ function PlanRow({
               {subject || <i className="text-gk-dim">пустое сообщение</i>}
             </button>
             {groupMembers.length > 0 && (
-              <span className="shrink-0 rounded bg-[#c084fc]/15 px-1.5 text-[10.5px] text-[#c084fc]" title="Сколько коммитов будет объединено с этим">
+              <span className="shrink-0 rounded bg-gk-purple/15 px-1.5 text-[10.5px] text-gk-purple" title="Сколько коммитов будет объединено с этим">
                 +{groupMembers.length}
               </span>
             )}
@@ -467,7 +468,7 @@ function PlanRow({
           </div>
           <div className="truncate text-[11px] text-gk-dim">
             {meta?.author?.name} · {meta?.author?.date ? relativeTime(meta.author.date) : ''}
-            {joined && joinedInto && <span className="ml-1.5 text-[#c084fc]/80">→ в {joinedInto.slice(0, 7)}</span>}
+            {joined && joinedInto && <span className="ml-1.5 text-gk-purple/80">→ в {joinedInto.slice(0, 7)}</span>}
           </div>
         </div>
         <div className="flex shrink-0 flex-col opacity-0 transition-opacity group-hover:opacity-100">
@@ -479,7 +480,7 @@ function PlanRow({
           </button>
         </div>
         {(item.action === 'reword' || groupMembers.length > 0) && !editing && (
-          <button title="Изменить сообщение" onClick={onEdit} className="shrink-0 rounded p-1 text-gk-dim hover:bg-white/10 hover:text-gk-text">
+          <button title="Изменить сообщение" onClick={onEdit} className="shrink-0 rounded p-1 text-gk-dim hover:bg-gk-fg/10 hover:text-gk-text">
             <Pencil size={12} />
           </button>
         )}
@@ -609,8 +610,8 @@ const NODE = {
   reused: { dot: 'bg-gk-dim', ring: 'ring-gk-dim/40', label: 'без изменений' },
   pick: { dot: 'bg-gk-blue', ring: 'ring-gk-blue/40', label: 'перенесён' },
   reword: { dot: 'bg-gk-yellow', ring: 'ring-gk-yellow/40', label: 'новое сообщение' },
-  squash: { dot: 'bg-[#c084fc]', ring: 'ring-[#c084fc]/40', label: 'объединён' },
-  fixup: { dot: 'bg-[#c084fc]', ring: 'ring-[#c084fc]/40', label: 'объединён' },
+  squash: { dot: 'bg-gk-purple', ring: 'ring-gk-purple/40', label: 'объединён' },
+  fixup: { dot: 'bg-gk-purple', ring: 'ring-gk-purple/40', label: 'объединён' },
 };
 
 // Граф «сейчас → после»: два столбика коммитов над общей основой
@@ -679,7 +680,7 @@ function MiniGraph({ data: d, hoverAfter, onHoverAfter, onLocate }) {
 
 function Column({ title, branch, accent, children }) {
   return (
-    <div className={`rounded-lg border p-2 ${accent ? 'border-gk-blue/30 bg-gk-blue/[0.03]' : 'border-gk-border bg-white/[0.015]'}`}>
+    <div className={`rounded-lg border p-2 ${accent ? 'border-gk-blue/30 bg-gk-blue/[0.03]' : 'border-gk-border bg-gk-fg/[0.015]'}`}>
       <div className="mb-1.5 flex items-center gap-1.5 px-1 text-[11px] font-semibold uppercase tracking-wider text-gk-muted">
         {title}
         <span className="ml-auto truncate rounded bg-gk-green/15 px-1.5 font-mono text-[10px] normal-case tracking-normal text-gk-green">{branch}</span>
@@ -699,7 +700,7 @@ function Node({ hash, subject, dot, note, badge, strike, highlighted, conflict, 
       onMouseEnter={onEnter}
       onMouseLeave={onLeave}
       className={`relative flex items-start gap-2 rounded px-1 py-1 ${onClick ? 'cursor-pointer' : ''} ${
-        highlighted ? 'bg-gk-blue/15' : conflict ? 'bg-gk-red/10' : 'hover:bg-white/[0.04]'
+        highlighted ? 'bg-gk-blue/15' : conflict ? 'bg-gk-red/10' : 'hover:bg-gk-fg/[0.04]'
       }`}
     >
       <span className={`relative z-10 mt-1 h-3 w-3 shrink-0 rounded-full ring-2 ring-gk-bg ${dot}`} style={{ marginLeft: 4 }} />
@@ -743,7 +744,8 @@ function Banner({ tone, icon: Icon, title, children }) {
 }
 
 export function StatusBadge({ status }) {
-  const { color, label } = FILE_STATUS[status] ?? FILE_STATUS.M;
+  const { color: raw, label } = FILE_STATUS[status] ?? FILE_STATUS.M;
+  const color = readable(raw);
   return (
     <span
       title={label}

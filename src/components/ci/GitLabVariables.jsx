@@ -85,7 +85,7 @@ export default function GitLabVariables({ repoPath, opts, canWrite, notify }) {
         <div className="rounded-lg border border-dashed border-gk-border p-6 text-center text-[13px] text-gk-dim">В проекте нет переменных</div>
       ) : (
         <div className="overflow-hidden rounded-lg border border-gk-border">
-          <div className={`${GRID} border-b border-gk-border bg-white/[0.03] px-3 py-1.5 text-[10.5px] font-semibold uppercase tracking-wider text-gk-dim`}>
+          <div className={`${GRID} border-b border-gk-border bg-gk-fg/[0.03] px-3 py-1.5 text-[10.5px] font-semibold uppercase tracking-wider text-gk-dim`}>
             <span>Имя</span>
             <span>Значение</span>
             <span>Окружение</span>
@@ -234,11 +234,11 @@ function VariableForm({ repoPath, opts, original, initial, onClose, onSaved }) {
   };
 
   return (
-    <div className="fixed inset-0 z-40 flex animate-fade-in items-start justify-center bg-black/45 pt-[10vh] backdrop-blur-[3px]" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
+    <div className="fixed inset-0 z-40 flex animate-fade-in items-start justify-center bg-gk-scrim pt-[10vh] backdrop-blur-[3px]" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
       <form onSubmit={submit} className="glass-strong w-[520px] max-w-[calc(100vw-2rem)] animate-pop-in rounded-xl border border-gk-border bg-gk-panel-2">
         <div className="flex items-center gap-2 border-b border-gk-border px-4 py-3">
           <Variable size={16} className="text-gk-blue" />
-          <h2 className="flex-1 text-[14px] font-semibold text-white">{editing ? `Переменная ${original.key}` : 'Новая переменная'}</h2>
+          <h2 className="flex-1 text-[14px] font-semibold text-gk-strong">{editing ? `Переменная ${original.key}` : 'Новая переменная'}</h2>
           <button type="button" onClick={onClose} className="rounded p-1 text-gk-dim hover:bg-gk-hover hover:text-gk-text">
             <X size={16} />
           </button>
@@ -362,7 +362,7 @@ function Check({ checked, onChange, label, hint, disabled }) {
 
 function Flag({ children, title, icon: Icon }) {
   return (
-    <span title={title} className="flex items-center gap-0.5 rounded bg-white/5 px-1.5 text-[10px] text-gk-muted">
+    <span title={title} className="flex items-center gap-0.5 rounded bg-gk-fg/5 px-1.5 text-[10px] text-gk-muted">
       {Icon && <Icon size={9} />}
       {children}
     </span>

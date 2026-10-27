@@ -1,3 +1,5 @@
+import { DEFAULT_LANES, laneColors } from './scheme.js';
+
 export const GRAPH_PADDING = 10;
 
 /**
@@ -18,21 +20,13 @@ export const ROW_HEIGHT = DEFAULT_METRICS.rowH;
 export const LANE_WIDTH = DEFAULT_METRICS.laneW;
 export const NODE_RADIUS = DEFAULT_METRICS.nodeR;
 
-// Цвета дорожек в духе GitKraken
-export const LANE_COLORS = [
-  '#15a0bf',
-  '#0669f7',
-  '#8e00c2',
-  '#c517b6',
-  '#d90171',
-  '#cd0101',
-  '#f25d2e',
-  '#f2ca33',
-  '#7bd938',
-  '#2ece9d',
-];
+// Цвета дорожек зависят от темы (scheme.js): в светлой — темнее, чтобы линии не терялись на белом
+export const LANE_COLORS = DEFAULT_LANES;
 
-export const laneColor = (lane) => LANE_COLORS[lane % LANE_COLORS.length];
+export const laneColor = (lane) => {
+  const lanes = laneColors();
+  return lanes[lane % lanes.length];
+};
 export const laneX = (lane, m = DEFAULT_METRICS) => GRAPH_PADDING + lane * m.laneW + m.laneW / 2;
 export const rowY = (row, m = DEFAULT_METRICS) => row * m.rowH + m.rowH / 2;
 

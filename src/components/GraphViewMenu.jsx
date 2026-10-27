@@ -66,7 +66,7 @@ export default function GraphViewMenu({ x, y, view, onChange, onResetLayout, onC
           >
             <span
               className={`flex h-4 w-4 shrink-0 items-center justify-center rounded border ${
-                shown ? 'border-gk-blue bg-gk-blue/80 text-white' : 'border-gk-border bg-black/20'
+                shown ? 'border-gk-blue bg-gk-blue/80 text-white' : 'border-gk-border bg-gk-sink/20'
               } ${col.locked ? 'opacity-60' : ''}`}
             >
               {shown && <Check size={11} strokeWidth={3} />}
@@ -124,7 +124,7 @@ function Segmented({ options, value, onPick }) {
             role="menuitemradio"
             aria-checked={on}
             onClick={() => onPick(o.id)}
-            className={`flex w-full items-center gap-2.5 px-3 py-[5px] text-left hover:bg-gk-hover ${on ? 'text-white' : 'text-gk-text/85'}`}
+            className={`flex w-full items-center gap-2.5 px-3 py-[5px] text-left hover:bg-gk-hover ${on ? 'text-gk-strong' : 'text-gk-text/85'}`}
           >
             <span
               className={`flex h-4 w-4 shrink-0 items-center justify-center rounded-full border ${on ? 'border-gk-blue' : 'border-gk-border'}`}

@@ -9,7 +9,7 @@ import {
   FolderGit2,
   GitBranch,
   Loader2,
-  PackageOpen,
+  ArchiveRestore,
   Redo2,
   RefreshCw,
   Search,
@@ -165,7 +165,7 @@ export default function Toolbar({
           onClick={onStash}
         />
         <ActionButton
-          icon={PackageOpen}
+          icon={ArchiveRestore}
           label="Pop"
           title={repo.stashes[0] ? `Применить ${repo.stashes[0].id}: ${repo.stashes[0].message}` : 'Нет спрятанных изменений'}
           disabled={blocked || repo.stashes.length === 0}

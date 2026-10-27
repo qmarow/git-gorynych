@@ -11,12 +11,13 @@ import { isMod, kb } from '../lib/platform.js';
 import { CC_TYPES, parseSummary } from '../lib/commitMsg.js';
 import { DEFAULT_VIEW, columnById, moveColumn, useGraphView } from '../lib/graphView.js';
 import GraphViewMenu from './GraphViewMenu.jsx';
+import { isLight, readable } from '../lib/scheme.js';
 
 const HEADER_HEIGHT = 30;
 const OVERSCAN = 15; // запас строк выше и ниже видимой области
 const MAX_AUTO_GRAPH_WIDTH = 400; // авто-ширина графа; вручную можно растянуть шире
 const MESSAGE_MIN_WIDTH = 140;
-const DATE_MIN_WIDTH = 118;
+const DATE_MIN_WIDTH = 132; // «22.09.2021 01:59» целиком
 const INTRO_MS = 1300; // длительность анимации появления графа
 const COLUMN_DRAG_TYPE = 'application/x-gitidea-column';
 const FIT_SAMPLE = 3000; // сколько строк смотреть при подгонке ширины под содержимое
@@ -34,6 +35,42 @@ function textWidth(text, font) {
 }
 const sansFont = () => getComputedStyle(document.body).fontFamily || 'sans-serif';
 const monoFont = () => getComputedStyle(document.documentElement).getPropertyValue('--font-mono').trim() || 'monospace';
+
+/** Ширина колонки по содержимому (px) или null, если мерить нечего */
+function measureColumn(id, sample, gv) {
+  const sans = sansFont();
+  const mono = monoFont();
+  const real = sample.filter((n) => !n.wip);
+  if (id === 'refs') {
+    const labelFont = `500 ${gv.density === 'compact' ? 11.5 : 12}px ${sans}`;
+    let best = 0;
+    for (const n of sample) {
+      if (!n.refs.length) continue;
+      const [g, ...rest] = groupRefs(n.refs);
+      if (!g) continue;
+      const w = textWidth(g.name, labelFont) + 16 + 26 + (g.head ? 19 : 0) + (rest.length ? 36 : 0) + (n.isHead && !n.refs.some((r) => r.head) ? 60 : 0);
+      best = Math.max(best, w);
+    }
+    return best ? Math.ceil(best + 8 + 6 + 8) : null;
+  }
+  if (id === 'author') {
+    const font = `13.5px ${sans}`;
+    const names = new Set(real.map((n) => n.author.name));
+    let best = 0;
+    for (const name of names) best = Math.max(best, textWidth(name, font));
+    return best ? Math.ceil(best + 24 + 4) : null;
+  }
+  if (id === 'date') {
+    const font = `12.5px ${mono}`;
+    let best = 0;
+    for (const n of real) best = Math.max(best, textWidth(gv.dateFormat === 'relative' ? relativeTime(n.date) : shortDate(n.date), font));
+    return best ? Math.ceil(best + 20 + 4) : null;
+  }
+  if (id === 'sha') return Math.max(90, Math.ceil(textWidth('0000000', `12px ${mono}`) + 20 + 8 + 16));
+  return null; // граф — авто по числу дорожек
+}
+
+const clampW = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
 
 export default function CommitGraph({
   commits,
@@ -71,12 +108,18 @@ export default function CommitGraph({
   const closeMenu = useCallback(() => setMenu(null), []);
 
   // Ширины колонок: тянутся мышью за разделители в заголовке и запоминаются
-  const [refsW, setRefsW, saveRefsW] = useStoredWidth('graph.refs', 150, 60, 480);
+  const [refsStoredW, setRefsW, saveRefsW, refsStored] = useStoredWidth('graph.refs', 190, 60, 480);
   const [graphW, setGraphW, saveGraphW] = useStoredWidth('graph.graph', null, 40, 1400); // null = авто
-  const [authorW, setAuthorW, saveAuthorW] = useStoredWidth('graph.author', 140, 60, 420);
+  const [authorStoredW, setAuthorW, saveAuthorW, authorStored] = useStoredWidth('graph.author', 160, 60, 420);
   // Дата не уже DATE_MIN_WIDTH: «26.10.26 22:58» должна помещаться целиком
-  const [dateW, setDateW, saveDateW] = useStoredWidth('graph.date.v2', 142, DATE_MIN_WIDTH, 260);
+  const [dateW, setDateW, saveDateW] = useStoredWidth('graph.date.v3', 150, DATE_MIN_WIDTH, 260);
   const [shaW, setShaW, saveShaW] = useStoredWidth('graph.sha', 104, 90, 180);
+  // Пока ширину не меняли руками — подбираем по содержимому, чтобы имена веток и авторов не обрезались
+  const head = nodes.length > 400 ? nodes.slice(0, 400) : nodes;
+  const autoRefs = useMemo(() => clampW(measureColumn('refs', head, gv) ?? 190, 140, 260), [nodes, gv.density]); // eslint-disable-line react-hooks/exhaustive-deps
+  const autoAuthor = useMemo(() => clampW(measureColumn('author', head, gv) ?? 160, 110, 220), [nodes]); // eslint-disable-line react-hooks/exhaustive-deps
+  const refsW = refsStored ? refsStoredW : autoRefs;
+  const authorW = authorStored ? authorStoredW : autoAuthor;
   const widthApi = {
     refs: [refsW, setRefsW, saveRefsW],
     graph: [graphW, setGraphW, saveGraphW],
@@ -119,10 +162,22 @@ export default function CommitGraph({
 
   // Анимация появления — при открытии репозитория
   useEffect(() => {
-    setIntro(true);
     if (scrollRef.current) scrollRef.current.scrollTop = 0;
+    // Окно не на экране (свёрнуто, за другими окнами) или включено «меньше движения» — без анимации:
+    // браузер может не проиграть её, и узлы с линиями остались бы невидимыми до перерисовки
+    const reduce = typeof window !== 'undefined' && window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+    if (document.visibilityState !== 'visible' || reduce) {
+      setIntro(false);
+      return undefined;
+    }
+    setIntro(true);
     const t = setTimeout(() => setIntro(false), INTRO_MS);
-    return () => clearTimeout(t);
+    const stop = () => document.visibilityState !== 'visible' && setIntro(false);
+    document.addEventListener('visibilitychange', stop);
+    return () => {
+      clearTimeout(t);
+      document.removeEventListener('visibilitychange', stop);
+    };
   }, [introKey]);
 
   useLayoutEffect(() => {
@@ -169,38 +224,7 @@ export default function CommitGraph({
   };
 
   // Двойной клик по разделителю: ширина под содержимое колонки (граф — снова авто)
-  const fitWidth = (id) => {
-    const sample = nodes.length > FIT_SAMPLE ? nodes.slice(0, FIT_SAMPLE) : nodes;
-    const sans = sansFont();
-    const mono = monoFont();
-    const real = sample.filter((n) => !n.wip);
-    if (id === 'refs') {
-      const labelFont = `500 ${gv.density === 'compact' ? 11.5 : 12}px ${sans}`;
-      let best = 0;
-      for (const n of sample) {
-        if (!n.refs.length) continue;
-        const [g, ...rest] = groupRefs(n.refs);
-        const w = textWidth(g.name, labelFont) + 16 + 18 + (g.head ? 19 : 0) + (rest.length ? 36 : 0) + (n.isHead && !n.refs.some((r) => r.head) ? 60 : 0);
-        best = Math.max(best, w);
-      }
-      return best ? Math.ceil(best + 8 + 6 + 8) : null;
-    }
-    if (id === 'author') {
-      const font = `13.5px ${sans}`;
-      const names = new Set(real.map((n) => n.author.name));
-      let best = 0;
-      for (const name of names) best = Math.max(best, textWidth(name, font));
-      return best ? Math.ceil(best + 24 + 4) : null;
-    }
-    if (id === 'date') {
-      const font = `12.5px ${mono}`;
-      let best = 0;
-      for (const n of real) best = Math.max(best, textWidth(gv.dateFormat === 'relative' ? relativeTime(n.date) : shortDate(n.date), font));
-      return best ? Math.ceil(best + 20 + 4) : null;
-    }
-    if (id === 'sha') return Math.max(90, Math.ceil(textWidth('0000000', `12px ${mono}`) + 20 + 8 + 16));
-    return null; // граф — авто по числу дорожек
-  };
+  const fitWidth = (id) => measureColumn(id, nodes.length > FIT_SAMPLE ? nodes.slice(0, FIT_SAMPLE) : nodes, gv);
 
   const resetLayout = () => {
     for (const [, set, save] of Object.values(widthApi)) {
@@ -436,7 +460,7 @@ export default function CommitGraph({
                 className={`graph-edge ${intro && !edge.dashed ? 'is-intro' : ''}`}
                 style={intro ? { animationDelay: introDelay(edge.from.row) } : undefined}
                 fill="none"
-                stroke={edge.color}
+                stroke={laneColor(edge.travel)}
                 strokeOpacity={matchSet ? 0.3 : 1}
                 strokeWidth={gv.density === 'compact' ? 2 : 2.5}
                 strokeLinecap="round"
@@ -502,7 +526,7 @@ function MessageText({ node, strong }) {
   const desc = (node.description ?? '').replace(/\n{3,}/g, '\n\n').trim();
   const full = desc ? `${node.message}\n\n${desc.length > 500 ? `${desc.slice(0, 500)}…` : desc}` : node.message;
   const text = cc.type ? `${cc.subject}${cc.suffix ? ` (${cc.suffix})` : ''}` : node.message;
-  const color = cc.type ? CC_COLORS[cc.type] ?? '#9aa3b2' : null;
+  const color = cc.type ? readable(CC_COLORS[cc.type] ?? '#9aa3b2') : null;
   return (
     <>
       {cc.type && cc.prefix && <span className="mr-1.5 shrink-0 text-gk-muted">[{cc.prefix}]</span>}
@@ -521,7 +545,7 @@ function MessageText({ node, strong }) {
         data-tip={full}
         data-tip-overflow=""
         data-tip-wide=""
-        className={`w-0 flex-1 truncate ${strong ? 'text-white' : ''} ${node.isHead ? 'font-medium' : ''}`}
+        className={`w-0 flex-1 truncate ${strong ? 'text-gk-strong' : ''} ${node.isHead ? 'font-medium' : ''}`}
       >
         {text}
       </span>
@@ -562,7 +586,7 @@ function Row({
   refActions,
 }) {
   const color = laneColor(node.lane);
-  const bandAlpha = selected ? '42' : hovered ? '2a' : '14';
+  const bandAlpha = isLight() ? (selected ? '30' : hovered ? '1e' : '0c') : selected ? '42' : hovered ? '2a' : '14';
   const compact = m.id === 'compact';
   const bandLeft = columns.includes('graph') ? offsets.graph + Math.min(laneX(node.lane, m), cols.graph) : offsets.message;
 
@@ -573,7 +597,7 @@ function Row({
           <div
             key={id}
             style={{ width: cols.refs }}
-            className={`@container relative flex shrink-0 items-center gap-1 overflow-hidden ${
+            className={`@container relative flex shrink-0 items-center gap-1 overflow-hidden hover:overflow-visible ${
               refsSide === 'left' ? 'justify-end pl-2' : 'justify-start pr-2'
             } ${refsSide === 'right' ? '' : refsSide ? '' : 'pl-2'}`}
           >
@@ -612,7 +636,7 @@ function Row({
             {node.wip ? (
               <span className="flex min-w-0 items-center gap-2 italic text-gk-muted">
                 <span className="truncate">{node.message}</span>
-                <span className="flex shrink-0 items-center gap-1 rounded-full bg-white/10 px-2 py-0.5 text-[11px] not-italic text-gk-text">
+                <span className="flex shrink-0 items-center gap-1 rounded-full bg-gk-fg/10 px-2 py-0.5 text-[11px] not-italic text-gk-text">
                   <Pencil size={11} />
                   {wipCount}
                 </span>
@@ -645,7 +669,7 @@ function Row({
                 onDoubleClick={(e) => e.stopPropagation()}
                 onClick={() => onCopySha(node.hash)}
                 data-tip={`${node.hash}\nКлик — скопировать`}
-                className="group/sha flex min-w-0 items-center gap-1 rounded px-1 font-mono text-[12px] tabular-nums text-gk-muted hover:bg-white/5 hover:text-gk-text"
+                className="group/sha flex min-w-0 items-center gap-1 rounded px-1 font-mono text-[12px] tabular-nums text-gk-muted hover:bg-gk-fg/5 hover:text-gk-text"
               >
                 <span className="truncate">{node.hash.slice(0, 7)}</span>
                 {copied ? (
@@ -721,7 +745,10 @@ function Row({
 function groupRefs(refs) {
   const groups = [];
   const used = new Set();
-  for (const ref of refs) {
+  // Сначала локальные ветки: иначе origin/x, стоящий в списке раньше x, не склеится с ней («x +1»)
+  const order = (r) => (r.type === 'local' ? 0 : r.type === 'remote' ? 1 : 2);
+  const sorted = refs.filter((r) => !(r.type === 'remote' && r.name.endsWith('/HEAD'))).sort((a, b) => order(a) - order(b) || (b.head ? 1 : 0) - (a.head ? 1 : 0));
+  for (const ref of sorted) {
     if (used.has(ref)) continue;
     if (ref.type === 'local') {
       // Серверная ветка с тем же именем на этом же коммите — значит, синхронизированы
@@ -740,9 +767,10 @@ function groupRefs(refs) {
 
 function RefLabels({ refs, color, onDragStart, currentBranch, actions, compact = false, connector = true }) {
   const pop = useHoverPopover();
+  const [expanded, setExpanded] = useState(false);
   const badgeRef = useRef(null);
-  if (!refs.length) return null;
   const groups = groupRefs(refs);
+  if (!groups.length) return null;
   const [first, ...rest] = groups;
   const draggable = !first.tag;
   const remoteOnly = first.remote && !first.local;
@@ -757,6 +785,18 @@ function RefLabels({ refs, color, onDragStart, currentBranch, actions, compact =
       <span
         draggable={draggable}
         onDragStart={draggable ? (e) => onDragStart(e, first) : undefined}
+        onContextMenu={(e) => {
+          // Правый клик по метке — меню только этой ветки (а не всего коммита)
+          if (!actions?.menu) return;
+          e.preventDefault();
+          e.stopPropagation();
+          actions.menu(first.tag ? { type: 'tag', name: first.name } : first.local ? { type: 'local', name: first.name } : { type: 'remote', name: first.remoteName }, e.clientX, e.clientY);
+        }}
+        onMouseEnter={(e) => {
+          const label = e.currentTarget.querySelector('[data-ref-name]');
+          setExpanded(Boolean(label && label.scrollWidth > label.clientWidth + 1));
+        }}
+        onMouseLeave={() => setExpanded(false)}
         onDoubleClick={(e) => {
           // Двойной клик по метке — checkout именно этой ветки (remote — создать локальную и следить)
           if (first.tag || !actions?.checkout) return;
@@ -765,14 +805,33 @@ function RefLabels({ refs, color, onDragStart, currentBranch, actions, compact =
         }}
         data-tip={`${first.remoteName && !first.local ? first.remoteName : first.name} — ${refKindLabel(first)}${rest.length ? `\nЕщё ${rest.length}: наведите на «+${rest.length}»` : ''}${draggable ? `\nДвойной клик — ${first.local ? 'переключиться на ветку' : 'создать локальную ветку и переключиться'}\nПеретащите на другую ветку: слить, перемотать, rebase` : ''}`}
         style={style}
-        className={`flex min-w-0 items-center gap-1.5 rounded-l px-2 font-medium ${compact ? 'h-[18px] text-[11.5px]' : 'h-[22px] text-[12px]'} ${remoteOnly ? 'border border-dashed text-white/90' : 'text-white'}`}
+        className={`relative flex min-w-0 items-center gap-1.5 rounded-l px-2 font-medium ${compact ? 'h-[18px] text-[11.5px]' : 'h-[22px] text-[12px]'} ${remoteOnly ? 'border border-dashed text-gk-strong/90' : 'text-gk-strong'}`}
       >
-        {first.head && <Check size={13} strokeWidth={3} className="shrink-0 text-white" />}
+        {first.head && <Check size={13} strokeWidth={3} className="shrink-0 text-gk-strong" />}
         {/* Где живёт ветка: ноутбук — у вас, облако — на сервере, вместе — синхронизированы */}
         <span className="hidden shrink-0 opacity-85 @[96px]:flex">
           <RefKindIcon local={first.local} remote={first.remote} tag={first.tag} size={12} />
         </span>
-        <span className="truncate">{first.name}</span>
+        <span className="truncate" data-ref-name="">
+          {first.name}
+        </span>
+        {/* Имя не влезло — при наведении метка раскрывается целиком поверх соседних колонок */}
+        {expanded && (
+          <span
+            aria-hidden
+            data-testid="ref-expanded"
+            style={
+              remoteOnly
+                ? { backgroundColor: 'var(--gk-solid)', borderColor: `${color}cc`, boxShadow: `inset 0 0 0 999px ${color}1a` }
+                : { backgroundColor: 'var(--gk-solid)', boxShadow: `inset 0 0 0 999px ${first.tag ? `${color}30` : `${color}55`}, inset 0 0 0 1px ${color}aa` }
+            }
+            className={`pointer-events-none absolute left-0 top-0 z-40 flex h-full items-center gap-1.5 whitespace-nowrap rounded px-2 font-medium shadow-lg shadow-gk-sink/40 ${remoteOnly ? 'border border-dashed text-gk-strong/90' : 'text-gk-strong'} ${compact ? 'text-[11.5px]' : 'text-[12px]'}`}
+          >
+            {first.head && <Check size={13} strokeWidth={3} className="shrink-0 text-gk-strong" />}
+            <RefKindIcon local={first.local} remote={first.remote} tag={first.tag} size={12} />
+            {first.name}
+          </span>
+        )}
       </span>
       {rest.length > 0 && (
         <span
@@ -784,7 +843,7 @@ function RefLabels({ refs, color, onDragStart, currentBranch, actions, compact =
             if (e.button === 0) (pop.open ? pop.close() : pop.show(0));
           }}
           style={{ backgroundColor: pop.open ? `${color}66` : `${color}33`, boxShadow: `inset 0 0 0 1px ${color}77` }}
-          className={`flex shrink-0 cursor-pointer items-center rounded px-1.5 text-[11px] text-white/85 transition-colors ${compact ? 'h-[18px]' : 'h-[22px]'}`}
+          className={`flex shrink-0 cursor-pointer items-center rounded px-1.5 text-[11px] text-gk-strong/85 transition-colors ${compact ? 'h-[18px]' : 'h-[22px]'}`}
         >
           +{rest.length}
         </span>
@@ -846,7 +905,7 @@ function useAvatar(email) {
 
 // Текущий коммит (HEAD): спокойное статичное зелёное кольцо
 function HeadRing({ x, y, r }) {
-  return <circle cx={x} cy={y} r={r - 1} fill="none" stroke="#3cf0a0" strokeOpacity={0.85} strokeWidth={1.5} />;
+  return <circle cx={x} cy={y} r={r - 1} fill="none" style={{ stroke: 'var(--color-gk-green)' }} strokeOpacity={0.85} strokeWidth={1.5} />;
 }
 
 function HeadPill({ detached = false, compact = false }) {
@@ -873,7 +932,7 @@ function Node({ node, m, dots, selected, hovered, dim, intro, delay }) {
     const r = dots ? m.dotR + 1.5 : m.nodeR - 1;
     return (
       <g className={cls} style={style}>
-        <circle cx={x} cy={y} r={r} fill="#141821" stroke={color} strokeWidth={2} strokeDasharray={dots ? '3 2' : '4 3'} />
+        <circle cx={x} cy={y} r={r} style={{ fill: 'var(--gk-solid)' }} stroke={color} strokeWidth={2} strokeDasharray={dots ? '3 2' : '4 3'} />
         <circle cx={x} cy={y} r={dots ? 1.75 : 2.5} fill={color} />
       </g>
     );
@@ -887,7 +946,7 @@ function Node({ node, m, dots, selected, hovered, dim, intro, delay }) {
         {node.isHead && <HeadRing x={x} y={y} r={r + 5} />}
         {selected && <circle className="graph-pulse" cx={x} cy={y} r={r + 0.5} fill="none" stroke={color} strokeWidth={2} />}
         {selected && dots && <circle cx={x} cy={y} r={r + 2.5} fill="none" stroke={color} strokeWidth={1.5} />}
-        <circle cx={x} cy={y} r={r} fill={color} stroke="#0e1117" strokeWidth={dots ? 1.5 : 2} />
+        <circle cx={x} cy={y} r={r} fill={color} style={{ stroke: 'var(--gk-base)' }} strokeWidth={dots ? 1.5 : 2} />
       </g>
     );
   }

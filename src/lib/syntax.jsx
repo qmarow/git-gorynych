@@ -4,12 +4,12 @@
 
 const T = {
   comment: 'text-gk-dim italic',
-  key: 'text-[#7ab8ff]',
-  string: 'text-[#9be29b]',
-  number: 'text-[#f5b971]',
-  keyword: 'text-[#c792ea]',
-  variable: 'text-[#ffcb6b]',
-  anchor: 'text-[#c792ea]',
+  key: 'text-[var(--syn-key)]',
+  string: 'text-[var(--syn-string)]',
+  number: 'text-[var(--syn-number)]',
+  keyword: 'text-[var(--syn-keyword)]',
+  variable: 'text-[var(--syn-variable)]',
+  anchor: 'text-[var(--syn-anchor)]',
   punct: 'text-gk-dim',
 };
 

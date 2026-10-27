@@ -181,7 +181,7 @@ export default function CloneDialog({ onClose, onCloned, onAuth }) {
       )}
 
       {probeData && (
-        <div className="ml-6 flex flex-wrap items-center gap-x-4 gap-y-2 rounded-lg bg-white/[0.04] p-3 text-xs ring-1 ring-gk-border">
+        <div className="ml-6 flex flex-wrap items-center gap-x-4 gap-y-2 rounded-lg bg-gk-fg/[0.04] p-3 text-xs ring-1 ring-gk-border">
           <span className="flex items-center gap-1.5 text-gk-green">
             <Check size={14} /> Доступ есть{probeData.host ? ` · ${probeData.host}` : ''}
           </span>
@@ -237,14 +237,14 @@ export default function CloneDialog({ onClose, onCloned, onAuth }) {
           />
         </div>
         <label className="ml-6 flex cursor-pointer items-center gap-2 text-xs text-gk-muted">
-          <input type="checkbox" checked={shallow} disabled={running} onChange={(e) => setShallow(e.target.checked)} className="accent-[#3cf0a0]" />
+          <input type="checkbox" checked={shallow} disabled={running} onChange={(e) => setShallow(e.target.checked)} className="accent-gk-green" />
           Только последние 50 коммитов — быстрее для больших репозиториев
         </label>
       </div>
 
       {/* Прогресс */}
       {job && (
-        <div className="space-y-2 rounded-lg bg-white/[0.04] p-3 ring-1 ring-gk-border">
+        <div className="space-y-2 rounded-lg bg-gk-fg/[0.04] p-3 ring-1 ring-gk-border">
           <div className="flex items-center justify-between text-xs">
             <span className="flex items-center gap-2 text-gk-text">
               <Loader2 size={13} className="animate-spin text-gk-blue" />
@@ -255,7 +255,7 @@ export default function CloneDialog({ onClose, onCloned, onAuth }) {
               {[job.size, job.speed].filter(Boolean).join(' · ')}
             </span>
           </div>
-          <div className="h-1.5 overflow-hidden rounded-full bg-white/10">
+          <div className="h-1.5 overflow-hidden rounded-full bg-gk-fg/10">
             <div
               className="h-full rounded-full bg-gradient-to-r from-gk-blue to-gk-green transition-[width] duration-200"
               style={{ width: `${Math.max(3, job.percent ?? 0)}%` }}

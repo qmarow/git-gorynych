@@ -143,7 +143,7 @@ export default function BranchPicker({ repo, onClose, onCheckout, onCreate, onNe
   return (
     <div
       onKeyDown={onKeyDown}
-      className="absolute left-0 top-full z-40 mt-1 flex max-h-[min(560px,75vh)] w-[380px] origin-top-left animate-pop-in flex-col overflow-hidden rounded-lg border border-white/10 bg-[var(--gk-solid-2)] shadow-2xl shadow-black/60 ring-1 ring-black/40"
+      className="absolute left-0 top-full z-40 mt-1 flex max-h-[min(560px,75vh)] w-[380px] origin-top-left animate-pop-in flex-col overflow-hidden rounded-lg border border-gk-fg/10 bg-[var(--gk-solid-2)] shadow-2xl shadow-gk-sink/60 ring-1 ring-gk-sink/40"
     >
       {/* Поиск */}
       <div className="flex items-center gap-2 border-b border-gk-border px-3 py-2">
@@ -305,7 +305,7 @@ function Row({ icon, name, meta, date, current, active, disabled, onLocate, titl
       onClick={disabled ? undefined : props.onClick}
       className={`group mx-1 flex h-8 cursor-pointer items-center gap-2 rounded px-2 text-[13px] ${
         active ? 'bg-gk-hover' : ''
-      } ${disabled ? 'cursor-not-allowed opacity-40' : ''} ${current ? 'text-white' : 'text-gk-text'}`}
+      } ${disabled ? 'cursor-not-allowed opacity-40' : ''} ${current ? 'text-gk-strong' : 'text-gk-text'}`}
     >
       <span className="flex w-4 shrink-0 justify-center">{icon}</span>
       <span className={`min-w-0 flex-1 truncate ${current ? 'font-semibold' : ''}`}>{name}</span>
@@ -321,7 +321,7 @@ function Row({ icon, name, meta, date, current, active, disabled, onLocate, titl
             e.stopPropagation();
             onLocate();
           }}
-          className="flex h-6 w-6 shrink-0 items-center justify-center rounded text-gk-dim opacity-0 hover:bg-white/10 hover:text-gk-text group-hover:opacity-100"
+          className="flex h-6 w-6 shrink-0 items-center justify-center rounded text-gk-dim opacity-0 hover:bg-gk-fg/10 hover:text-gk-text group-hover:opacity-100"
         >
           <Crosshair size={12} />
         </button>

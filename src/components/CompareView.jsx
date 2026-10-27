@@ -82,7 +82,7 @@ export default function CompareView({ repoPath, a, b, hidden, activePath, onSwap
     <div className={`flex min-h-0 flex-1 animate-fade-in flex-col bg-gk-bg ${hidden ? 'hidden' : ''}`}>
       <div className="glass flex h-11 shrink-0 items-center gap-2 border-b border-gk-border bg-gk-panel px-3">
         <GitCompareArrows size={16} className="shrink-0 text-gk-blue" />
-        <span className="shrink-0 text-[13px] font-semibold text-white">Сравнение</span>
+        <span className="shrink-0 text-[13px] font-semibold text-gk-strong">Сравнение</span>
         <CommitChip label="было" info={d?.a} hash={a} onClick={() => onLocate(a)} />
         <button onClick={onSwap} title="Поменять местами" className="shrink-0 rounded p-1 text-gk-muted hover:bg-gk-hover hover:text-gk-text">
           <ArrowLeftRight size={14} />
@@ -109,9 +109,9 @@ export default function CompareView({ repoPath, a, b, hidden, activePath, onSwap
             <Stat value={`−${d.deletions}`} label={plural(d.deletions, 'строка удалена', 'строки удалено', 'строк удалено')} cls="text-gk-red" />
             <button
               onClick={() => setShowCommits((v) => !v)}
-              className="rounded-lg border border-gk-border bg-white/[0.02] px-3 py-2 text-left transition-colors hover:bg-white/[0.05]"
+              className="rounded-lg border border-gk-border bg-gk-fg/[0.02] px-3 py-2 text-left transition-colors hover:bg-gk-fg/[0.05]"
             >
-              <div className="flex items-center gap-1 text-[18px] font-semibold text-white">
+              <div className="flex items-center gap-1 text-[18px] font-semibold text-gk-strong">
                 {d.onlyA + d.onlyB}
                 {showCommits ? <ChevronDown size={14} className="text-gk-dim" /> : <ChevronRight size={14} className="text-gk-dim" />}
               </div>
@@ -128,7 +128,7 @@ export default function CompareView({ repoPath, a, b, hidden, activePath, onSwap
 
           {/* График по папкам */}
           {dirs.length > 1 && (
-            <div className="mx-3 mb-3 rounded-lg border border-gk-border bg-white/[0.015] p-3">
+            <div className="mx-3 mb-3 rounded-lg border border-gk-border bg-gk-fg/[0.015] p-3">
               <div className="mb-2 flex items-center text-[11px] font-semibold uppercase tracking-wider text-gk-muted">
                 Где больше всего изменений
                 {dirFilter && (
@@ -143,7 +143,7 @@ export default function CompareView({ repoPath, a, b, hidden, activePath, onSwap
                     key={g.dir}
                     onClick={() => setDirFilter((x) => (x === g.dir ? null : g.dir))}
                     className={`grid w-full grid-cols-[minmax(120px,220px)_1fr_auto] items-center gap-3 rounded px-1.5 py-1 text-left text-[12px] transition-colors ${
-                      dirFilter === g.dir ? 'bg-gk-blue/15' : 'hover:bg-white/[0.04]'
+                      dirFilter === g.dir ? 'bg-gk-blue/15' : 'hover:bg-gk-fg/[0.04]'
                     }`}
                   >
                     <span className="flex min-w-0 items-center gap-1.5 text-gk-text">
@@ -163,7 +163,7 @@ export default function CompareView({ repoPath, a, b, hidden, activePath, onSwap
 
           {/* Таблица файлов */}
           <div className="mx-3 mb-4 overflow-hidden rounded-lg border border-gk-border">
-            <div className="flex items-center gap-2 border-b border-gk-border bg-white/[0.03] px-2.5 py-1.5">
+            <div className="flex items-center gap-2 border-b border-gk-border bg-gk-fg/[0.03] px-2.5 py-1.5">
               <div className="flex min-w-0 flex-1 items-center gap-1.5 rounded bg-gk-bg px-2 ring-1 ring-gk-border focus-within:ring-gk-blue">
                 <Search size={12} className="shrink-0 text-gk-dim" />
                 <input
@@ -234,7 +234,7 @@ function CommitChip({ label, info, hash, onClick }) {
     <button
       onClick={onClick}
       title={info ? `${info.subject}\n${info.author}, ${relativeTime(info.date)}` : hash}
-      className="flex min-w-0 max-w-[32%] items-center gap-1.5 rounded-md bg-white/[0.05] px-2 py-1 text-[12px] ring-1 ring-gk-border hover:bg-white/10"
+      className="flex min-w-0 max-w-[32%] items-center gap-1.5 rounded-md bg-gk-fg/[0.05] px-2 py-1 text-[12px] ring-1 ring-gk-border hover:bg-gk-fg/10"
     >
       <span className="shrink-0 text-[10px] uppercase tracking-wider text-gk-dim">{label}</span>
       <span className="shrink-0 font-mono text-gk-blue">{hash.slice(0, 7)}</span>
@@ -243,9 +243,9 @@ function CommitChip({ label, info, hash, onClick }) {
   );
 }
 
-function Stat({ value, label, cls = 'text-white' }) {
+function Stat({ value, label, cls = 'text-gk-strong' }) {
   return (
-    <div className="rounded-lg border border-gk-border bg-white/[0.02] px-3 py-2">
+    <div className="rounded-lg border border-gk-border bg-gk-fg/[0.02] px-3 py-2">
       <div className={`text-[18px] font-semibold ${cls}`}>{value}</div>
       <div className="text-[11.5px] text-gk-muted">{label}</div>
     </div>
@@ -257,7 +257,7 @@ function Bar({ additions, deletions, max, tall }) {
   const total = additions + deletions;
   const width = total ? Math.max(3, (total / max) * 100) : 0;
   return (
-    <div className={`flex w-full overflow-hidden rounded-full bg-white/[0.04] ${tall ? 'h-2.5' : 'h-1.5'}`}>
+    <div className={`flex w-full overflow-hidden rounded-full bg-gk-fg/[0.04] ${tall ? 'h-2.5' : 'h-1.5'}`}>
       <div className="flex h-full transition-[width] duration-500" style={{ width: `${width}%` }}>
         <span className="h-full bg-gk-green/80" style={{ width: total ? `${(additions / total) * 100}%` : 0 }} />
         <span className="h-full bg-gk-red/80" style={{ width: total ? `${(deletions / total) * 100}%` : 0 }} />
@@ -269,7 +269,7 @@ function Bar({ additions, deletions, max, tall }) {
 function CommitList({ title, commits, total, onLocate }) {
   return (
     <div className="overflow-hidden rounded-lg border border-gk-border">
-      <div className="border-b border-gk-border bg-white/[0.03] px-3 py-1.5 text-[11.5px] font-medium text-gk-muted">{title}</div>
+      <div className="border-b border-gk-border bg-gk-fg/[0.03] px-3 py-1.5 text-[11.5px] font-medium text-gk-muted">{title}</div>
       <div className="max-h-56 overflow-y-auto">
         {commits.map((c) => (
           <button key={c.hash} onClick={() => onLocate(c.hash)} className="flex w-full items-center gap-2 px-3 py-1 text-left text-[12px] hover:bg-gk-hover">
