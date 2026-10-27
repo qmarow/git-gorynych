@@ -25,14 +25,38 @@ const NETWORK_TIMEOUT = 5 * 60 * 1000; // запас на окно входа Gi
  * Окно входа Git Credential Manager при этом продолжает работать.
  * Для SSH включаем BatchMode, если пользователь не настроил ssh сам: без него ssh
  * может ждать подтверждения ключа хоста или пароля ключа, которые некуда ввести.
+ * Учётные данные, введённые в окне «Авторизация на сервере», подставляются здесь же (credentials.cjs):
+ * для HTTPS — свой credential helper для хоста, для SSH — GIT_SSH_COMMAND с выбранным ключом.
+ * url — адрес, с которым будет работать git (клонирование, проверка адреса); без него берутся адреса remote репозитория.
  */
-async function networkOptions(cwd) {
+async function networkOptions(cwd, { url } = {}) {
   const env = { GIT_TERMINAL_PROMPT: '0' };
   if (!process.env.GIT_SSH_COMMAND && !process.env.GIT_SSH) {
     const configured = await git(cwd, ['config', '--get', 'core.sshCommand']).catch(() => '');
     if (!configured.trim()) env.GIT_SSH_COMMAND = 'ssh -o BatchMode=yes -o ConnectTimeout=20';
   }
+  try {
+    const urls = url ? [url] : await remoteUrls(cwd);
+    Object.assign(env, require('./credentials.cjs').envFor(urls));
+  } catch {
+    /* хранилище недоступно — работаем как раньше, через системные средства входа */
+  }
   return { env, timeout: NETWORK_TIMEOUT };
+}
+
+/** Адреса remote: сначала того, за которым следит текущая ветка, потом origin, потом остальные */
+async function remoteUrls(cwd) {
+  const out = await git(cwd, ['config', '--get-regexp', '^remote\\..*\\.url$']).catch(() => '');
+  const list = out
+    .split('\n')
+    .map((line) => /^remote\.(.+)\.url (.+)$/.exec(line.trim()))
+    .filter(Boolean)
+    .map((m) => ({ name: m[1], url: m[2] }));
+  if (!list.length) return [];
+  const upstream = (await git(cwd, ['rev-parse', '--abbrev-ref', '--symbolic-full-name', '@{upstream}']).catch(() => '')).trim();
+  const first = upstream.includes('/') ? upstream.slice(0, upstream.indexOf('/')) : 'origin';
+  list.sort((a, b) => (a.name === first ? -1 : b.name === first ? 1 : a.name === 'origin' ? -1 : b.name === 'origin' ? 1 : 0));
+  return list.map((r) => r.url);
 }
 
 const net = async (cwd, args) => git(cwd, args, await networkOptions(cwd));

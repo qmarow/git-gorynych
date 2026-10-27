@@ -82,7 +82,7 @@ async function cloneRepository({ id, url, parent, name, branch, depth }, onProgr
   const { networkOptions } = require('./actions.cjs');
   const remoteUrl = init.validateUrl(url);
   const { target, created } = checkTarget(parent, name || repoNameFromUrl(remoteUrl));
-  const opts = await networkOptions(parent);
+  const opts = await networkOptions(parent, { url: remoteUrl });
 
   const args = ['-c', 'core.quotepath=false', 'clone', '--progress'];
   if (branch) args.push('--branch', branch);

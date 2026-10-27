@@ -46,6 +46,7 @@ import {
   Tag,
   Trash2,
   X,
+  SquareTerminal,
 } from 'lucide-react';
 import ContextMenu from './components/ContextMenu.jsx';
 import TitleBar from './components/TitleBar.jsx';
@@ -77,10 +78,11 @@ import {
 } from './lib/appearance.js';
 import { ACTIVE_STATUSES } from './components/PipelineStatus.jsx';
 import StatusBar from './components/StatusBar.jsx';
-import { IS_MAC, isMod, kb } from './lib/platform.js';
+import { IS_MAC, isMod, kb, openFolderLabel, openTerminalLabel } from './lib/platform.js';
 import { DEFAULT_SYNC_MODE, SYNC_MODES, nextDelay, resetSyncStatus, setSyncStatus } from './lib/syncStatus.js';
 import InitRepoDialog, { plural } from './components/InitRepoDialog.jsx';
 import CloneDialog from './components/CloneDialog.jsx';
+import AuthDialog from './components/AuthDialog.jsx';
 import RevertToDialog from './components/RevertToDialog.jsx';
 import SearchBar, { EMPTY_FILTER, isFilterActive, matchCommit } from './components/SearchBar.jsx';
 import { GraphLoader, LoadingOverlay, Splash } from './components/Loader.jsx';
@@ -95,6 +97,7 @@ import {
   ErrorDialog,
   Modal,
   PushRejectedDialog,
+  SwitchToDialog,
   TagDialog,
 } from './components/Dialogs.jsx';
 
@@ -172,11 +175,17 @@ export default function App() {
   const [access, setAccess] = useState(null);
   const [pullMode, setPullMode] = useState(readPullMode);
   // Поведение: умное переключение веток (по умолчанию включено)
-  const [workflow, setWorkflow] = useState(() => ({ smartSwitch: readPref('smartSwitch', '1') !== '0' }));
+  // и синхронизация индекса с правками из внешних программ (по умолчанию включена)
+  const [workflow, setWorkflow] = useState(() => ({
+    smartSwitch: readPref('smartSwitch', '1') !== '0',
+    syncIndex: readPref('syncIndex', '1') !== '0',
+  }));
   const updateWorkflow = (next) => {
     setWorkflow(next);
     writePref('smartSwitch', next.smartSwitch ? '1' : '0');
+    writePref('syncIndex', next.syncIndex ? '1' : '0');
   };
+  const [fsTick, setFsTick] = useState(0); // счётчик изменений файлов на диске — для повторной проверки перед коммитом
   // Pre-commit Guard: правила и последняя проверка staged-изменений
   const [guardCfg, setGuardCfg] = useState(readGuard);
   const updateGuard = (next) => {
@@ -517,6 +526,23 @@ export default function App() {
     openTab(r.path);
   };
 
+  /* ---------- Папка репозитория: Проводник / Finder и терминал ---------- */
+
+  const openRepoFolder = async (dir = repoRef.current?.path) => {
+    if (!dir || !api?.openFolder) return;
+    const res = await api.openFolder(dir);
+    if (!res.ok) notify({ type: 'error', title: res.error.message, hint: res.error.hint, details: res.error.details });
+  };
+  const openRepoTerminal = async (dir = repoRef.current?.path) => {
+    if (!dir || !api?.openTerminal) return;
+    const res = await api.openTerminal(dir);
+    if (!res.ok) notify({ type: 'error', title: res.error.message, hint: res.error.hint, details: res.error.details });
+  };
+  const repoFolderItems = (dir = repoRef.current?.path) => [
+    { id: 'reveal', label: openFolderLabel(), icon: FolderOpen, disabled: !dir, onClick: () => openRepoFolder(dir) },
+    { id: 'terminal', label: openTerminalLabel(), icon: SquareTerminal, disabled: !dir, onClick: () => openRepoTerminal(dir) },
+  ];
+
   const fileMenuItems = () => [
     { id: 'open', label: 'Открыть репозиторий…', icon: FolderOpen, hint: 'Ctrl+O', onClick: openRepository },
     { id: 'init', label: 'Создать репозиторий…', icon: GitBranch, hint: 'Ctrl+N', onClick: () => createRepository() },
@@ -527,6 +553,8 @@ export default function App() {
       icon: Link2,
       onClick: () => createRepository(undefined, 'connect'),
     },
+    { separator: true },
+    ...repoFolderItems(activePath),
     { separator: true },
     {
       id: 'close-tab',
@@ -604,6 +632,70 @@ export default function App() {
     if (accessKey) checkAccess();
   }, [accessKey, checkAccess]);
 
+  /* ---------- Авторизация на remote-сервере ---------- */
+
+  // { dir, url, target, error, formError, busy, retry } — окно «Авторизация на сервере»
+  const [auth, setAuth] = useState(null);
+  const authRef = useRef(null);
+  authRef.current = auth;
+
+  /**
+   * Открыть окно входа. url — для клонирования (репозитория ещё нет), иначе — remote текущей ветки.
+   * retry() → { ok, error } — операция, которую повторить после входа (без retry — проверить доступ).
+   */
+  const openAuth = useCallback(async ({ url = null, error = null, retry = null, actionLabel = null } = {}) => {
+    if (!api?.creds || authRef.current) return;
+    const dir = url ? null : repoRef.current?.path ?? null;
+    const res = await api.creds.describe(dir, url);
+    if (!res.ok) {
+      if (error) setDialog({ type: 'error', action: 'Авторизация', error });
+      return;
+    }
+    setAuth({ dir, url, target: res.data, error, retry, actionLabel, formError: null, busy: false });
+  }, []);
+
+  const submitAuth = async (data) => {
+    const a = authRef.current;
+    if (!a) return;
+    setAuth({ ...a, busy: true, formError: null });
+    const saved = await api.creds.save(a.dir, a.url, data);
+    if (!saved.ok) {
+      setAuth((cur) => cur && { ...cur, busy: false, formError: saved.error });
+      return;
+    }
+    // Повторяем прерванную операцию; без неё — проверяем доступ (git ls-remote / push --dry-run)
+    let result;
+    if (a.retry) result = await a.retry();
+    else {
+      const acc = await checkAccess();
+      const err = acc?.error ?? acc?.data?.error ?? null;
+      result = err ? { ok: false, error: err } : { ok: true };
+    }
+    if (result?.ok === false && ['AUTH', 'HOST_KEY'].includes(result.error?.code)) {
+      // Сервер снова не пустил — окно остаётся, показываем свежую ошибку
+      setAuth((cur) => cur && { ...cur, busy: false, target: saved.data, error: result.error });
+      return;
+    }
+    setAuth(null);
+    if (result?.ok !== false) {
+      notify({ type: 'success', title: `Вход на ${saved.data.hostname ?? saved.data.host} выполнен — данные сохранены` });
+      if (repoRef.current?.remotes?.length && a.retry) checkAccess();
+    } else if (result?.error && result.error.code !== 'BUSY') {
+      notify({ type: 'error', title: result.error.message, hint: result.error.hint, details: result.error.details });
+    }
+  };
+
+  const forgetAuth = async () => {
+    const a = authRef.current;
+    if (!a) return;
+    const res = await api.creds.clear(a.dir, a.url);
+    if (res.ok) {
+      const fresh = await api.creds.describe(a.dir, a.url);
+      setAuth((cur) => cur && { ...cur, target: fresh.ok ? fresh.data : { ...cur.target, saved: null } });
+      notify({ type: 'info', title: `Данные для ${a.target?.hostname ?? 'сервера'} удалены` });
+    }
+  };
+
   /* ---------- Запуск действий ---------- */
 
   /**
@@ -611,7 +703,8 @@ export default function App() {
    * success — текст (или функция от data) для уведомления об успехе
    * onError — вернуть true, если ошибка обработана сама
    */
-  const run = async (name, payload = {}, { label, success, onError, progress } = {}) => {
+  const run = async (name, payload = {}, options = {}) => {
+    const { label, success, onError, progress, authRetry = false } = options;
     const current = repoRef.current;
     if (!current || busyRef.current) return { ok: false, error: { code: 'BUSY' } };
     busyRef.current = true;
@@ -629,7 +722,14 @@ export default function App() {
       return res;
     }
     if (res.error.code === 'CONFLICT') autoOpenConflict.current = true;
+    // Повтор из окна авторизации: ошибку покажет само окно
+    if (authRetry) return res;
     if (onError?.(res.error)) return res;
+    // Сервер не пустил — сразу окно входа; «Войти и повторить» перезапустит эту же операцию
+    if (res.error.code === 'AUTH' && api?.creds) {
+      openAuth({ error: res.error, retry: () => run(name, payload, { ...options, authRetry: true }) });
+      return res;
+    }
     if (ACCESS_CODES.has(res.error.code)) {
       setDialog({ type: 'error', action: label ?? name, error: res.error });
       if (['AUTH', 'FORBIDDEN', 'NOT_FOUND', 'HOST_KEY'].includes(res.error.code)) checkAccess();
@@ -1222,7 +1322,7 @@ export default function App() {
       alive = false;
       clearTimeout(t);
     };
-  }, [repo, guardCfg]);
+  }, [repo, guardCfg, fsTick]);
 
   // Строки staged-файла с находками — для подсветки в diff
   const guardMarkers = useMemo(() => {
@@ -2033,25 +2133,29 @@ export default function App() {
 
   /* ---------- Двойной клик по коммиту ---------- */
 
-  // Как в GitKraken: есть локальная ветка — checkout ветки, есть только remote — создать локальную,
-  // иначе — checkout самого коммита (detached HEAD)
+  // Как в GitKraken — двойной клик ведёт на ветку, а не в detached HEAD:
+  //  - ровно одна локальная ветка на коммите — checkout этой ветки;
+  //  - локальной нет, есть одна remote — создать локальную отслеживающую (git switch --track);
+  //  - веток несколько или ни одной — спросить (выбор ветки / «Создать ветку здесь» / detached)
   const activateCommit = (node) => {
-    if (node.wip || busyRef.current) return;
+    if (node.wip || busyRef.current) return null;
     const cur = repo.currentBranch;
-    const local = node.refs.find((r) => r.type === 'local' && r.name !== cur);
-    if (local) return checkout({ branch: local.name });
-    if (node.refs.some((r) => r.type === 'local' && r.name === cur)) return null; // уже на этой ветке
-    const remote = node.refs.find((r) => r.type === 'remote');
-    if (remote) {
-      const name = remote.name.slice(remote.name.indexOf('/') + 1);
-      return checkout({ remoteBranch: { name, fullName: remote.name } });
-    }
-    if (node.hash === repo.headHash) return null;
-    return run('checkoutCommit', { hash: node.hash }, {
+    const locals = node.refs.filter((r) => r.type === 'local');
+    if (locals.some((r) => r.name === cur)) return null; // уже на этой ветке
+    const remotes = node.refs.filter((r) => r.type === 'remote' && !r.name.endsWith('/HEAD'));
+    if (locals.length === 1) return checkout({ branch: locals[0].name });
+    if (!locals.length && remotes.length === 1) return refActions.checkout(remotes[0]);
+    if (!locals.length && !remotes.length && node.hash === repo.headHash) return null; // HEAD уже здесь
+    setDialog({ type: 'switchTo', node, locals, remotes });
+    return null;
+  };
+
+  // HEAD прямо на коммит (detached) — только по явному выбору
+  const checkoutDetached = (node) =>
+    run('checkoutCommit', { hash: node.hash }, {
       label: 'Checkout',
       success: `HEAD на ${node.hash.slice(0, 7)} (detached) — Undo вернёт на ветку`,
     });
-  };
 
 
   /* ---------- Stash: просмотр и действия ---------- */
@@ -2182,9 +2286,27 @@ export default function App() {
       api.repo.watch(null);
       return undefined;
     }
-    api.repo.watch(dir);
+    api.repo.watch(dir, { syncIndex: workflow.syncIndex });
     return () => api.repo.watch(null);
-  }, [repo?.path, autoSync]);
+  }, [repo?.path, autoSync, workflow.syncIndex]);
+
+  // Индекс подправлен под правки из внешней программы — коротко сообщаем, что произошло
+  useEffect(() => {
+    if (!api?.repo.onIndexSynced) return undefined;
+    return api.repo.onIndexSynced((ev) => {
+      if (ev.path !== repoRef.current?.path || !ev.synced?.length) return;
+      const reset = ev.synced.filter((f) => f.action === 'reset').map((f) => f.file);
+      const added = ev.synced.filter((f) => f.action === 'add').map((f) => f.file);
+      const names = (list) => list.slice(0, 3).map((f) => f.split('/').pop()).join(', ') + (list.length > 3 ? ` и ещё ${list.length - 3}` : '');
+      notify({
+        type: 'info',
+        title: reset.length
+          ? `${names(reset)} — откат к последнему коммиту из другой программы, изменение убрано из индекса`
+          : `${names(added)} — правки из другой программы добавлены в индекс`,
+        hint: reset.length && added.length ? `Обновлены в индексе: ${names(added)}` : 'Отключить: Настройки → Синхронизация',
+      });
+    });
+  }, [notify]);
 
   useEffect(() => {
     if (!api?.repo.onChanged) return undefined;
@@ -2202,6 +2324,8 @@ export default function App() {
           return;
         }
         if (repoRef.current?.path !== ev.path) return;
+        // Любое изменение на диске — повод заново проверить staged-изменения (плашка «подозрительное место»)
+        setFsTick((n) => n + 1);
         if (pendingFull || !api.repo.status) {
           pendingFull = false;
           loadRepo(ev.path, { silent: true });
@@ -2365,6 +2489,19 @@ export default function App() {
             access={access}
             pullMode={pullMode}
             onOpenRepository={openRepository}
+            onRepoMenu={(x, y) =>
+              setMenu({
+                x,
+                y,
+                items: [
+                  { header: repo.path },
+                  ...repoFolderItems(repo.path),
+                  { label: 'Скопировать путь', icon: Copy, onClick: () => copy(repo.path, 'Путь') },
+                  { separator: true },
+                  { label: 'Открыть другой репозиторий…', icon: FolderOpen, hint: 'Ctrl+O', onClick: openRepository },
+                ],
+              })
+            }
             onRefresh={refresh}
             onUndo={undo}
             onRedo={redo}
@@ -2711,6 +2848,11 @@ export default function App() {
             setDiffTarget(null);
             setSelectedHash(repo.headHash);
           }}
+          onOpenFolder={api?.openFolder ? () => openRepoFolder(repo.path) : null}
+          onOpenTerminal={api?.openTerminal ? () => openRepoTerminal(repo.path) : null}
+          onPathMenu={(x, y) =>
+            setMenu({ x, y, items: [...repoFolderItems(repo.path), { separator: true }, { label: 'Скопировать путь', icon: Copy, onClick: () => copy(repo.path, 'Путь') }] })
+          }
         />
       )}
 
@@ -2827,7 +2969,30 @@ export default function App() {
         />
       )}
       {dialog?.type === 'access' && (
-        <AccessDialog access={access} onClose={() => setDialog(null)} onRecheck={checkAccess} />
+        <AccessDialog
+          access={access}
+          onClose={() => setDialog(null)}
+          onRecheck={checkAccess}
+          onCredentials={api?.creds ? () => openAuth({ actionLabel: 'Сохранить и проверить' }) : null}
+        />
+      )}
+      {dialog?.type === 'switchTo' && (
+        <SwitchToDialog
+          node={dialog.node}
+          locals={dialog.locals}
+          remotes={dialog.remotes}
+          onClose={() => setDialog(null)}
+          onBranch={(ref) => {
+            setDialog(null);
+            refActions.checkout(ref);
+          }}
+          onCreateBranch={() => openBranchDialog(dialog.node)}
+          onDetached={() => {
+            const node = dialog.node;
+            setDialog(null);
+            checkoutDetached(node);
+          }}
+        />
       )}
       {dialog?.type === 'rejected' && (
         <PushRejectedDialog
@@ -2877,6 +3042,7 @@ export default function App() {
       )}
       {dialog?.type === 'clone' && (
         <CloneDialog
+          onAuth={api?.creds ? (url, error, retry) => openAuth({ url, error, retry }) : null}
           onClose={() => setDialog(null)}
           onCloned={(r) => {
             setDialog(null);
@@ -2914,6 +3080,18 @@ export default function App() {
           error={dialog.error}
           onConfirm={confirmDeleteRemote}
           onClose={() => setDialog(null)}
+        />
+      )}
+      {auth && (
+        <AuthDialog
+          target={auth.target}
+          error={auth.error}
+          formError={auth.formError}
+          busy={auth.busy}
+          actionLabel={auth.actionLabel}
+          onSubmit={submitAuth}
+          onForget={auth.target?.saved ? forgetAuth : null}
+          onClose={() => setAuth(null)}
         />
       )}
       {dialog?.type === 'confirm' && (

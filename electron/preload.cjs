@@ -27,6 +27,19 @@ contextBridge.exposeInMainWorld('api', {
     save: (tabs, active) => ipcRenderer.invoke('tabs:save', tabs, active),
   },
   openExternal: (url) => ipcRenderer.invoke('shell:open-external', url),
+  // Учётные данные для remote: секреты не возвращаются в интерфейс — только что сохранено
+  creds: {
+    describe: (dir, url) => ipcRenderer.invoke('creds:describe', dir, url),
+    save: (dir, url, data) => ipcRenderer.invoke('creds:save', dir, url, data),
+    clear: (dir, url) => ipcRenderer.invoke('creds:clear', dir, url),
+    sshKeys: () => ipcRenderer.invoke('creds:ssh-keys'),
+    pickKey: () => ipcRenderer.invoke('creds:pick-key'),
+    generateKey: (options) => ipcRenderer.invoke('creds:generate-key', options),
+    copyPublicKey: (keyPath) => ipcRenderer.invoke('creds:copy-public-key', keyPath),
+  },
+  // Папка репозитория: в системном файловом менеджере и в терминале
+  openFolder: (dir) => ipcRenderer.invoke('shell:open-folder', dir),
+  openTerminal: (dir) => ipcRenderer.invoke('shell:open-terminal', dir),
   appearance: {
     get: () => ipcRenderer.invoke('appearance:get'),
     set: (value) => ipcRenderer.invoke('appearance:set', value),
@@ -80,7 +93,8 @@ contextBridge.exposeInMainWorld('api', {
     cloneCancel: (id) => ipcRenderer.invoke('repo:clone-cancel', id),
     onCloneProgress: (callback) => subscribe('clone:progress', callback),
     // Автообновление: следить за папкой репозитория (null — перестать)
-    watch: (dir) => ipcRenderer.invoke('repo:watch', dir),
+    watch: (dir, opts) => ipcRenderer.invoke('repo:watch', dir, opts),
+    onIndexSynced: (callback) => subscribe('repo:index-synced', callback),
     onChanged: (callback) => subscribe('repo:changed', callback),
     getLast: () => ipcRenderer.invoke('repo:get-last'),
     load: (dir) => ipcRenderer.invoke('repo:load', dir),

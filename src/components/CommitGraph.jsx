@@ -757,7 +757,13 @@ function RefLabels({ refs, color, onDragStart, currentBranch, actions, compact =
       <span
         draggable={draggable}
         onDragStart={draggable ? (e) => onDragStart(e, first) : undefined}
-        data-tip={`${first.remoteName && !first.local ? first.remoteName : first.name} — ${refKindLabel(first)}${rest.length ? `\nЕщё ${rest.length}: наведите на «+${rest.length}»` : ''}${draggable ? '\nПеретащите на другую ветку: слить, перемотать, rebase' : ''}`}
+        onDoubleClick={(e) => {
+          // Двойной клик по метке — checkout именно этой ветки (remote — создать локальную и следить)
+          if (first.tag || !actions?.checkout) return;
+          e.stopPropagation();
+          actions.checkout(first.local ? { type: 'local', name: first.name } : { type: 'remote', name: first.remoteName });
+        }}
+        data-tip={`${first.remoteName && !first.local ? first.remoteName : first.name} — ${refKindLabel(first)}${rest.length ? `\nЕщё ${rest.length}: наведите на «+${rest.length}»` : ''}${draggable ? `\nДвойной клик — ${first.local ? 'переключиться на ветку' : 'создать локальную ветку и переключиться'}\nПеретащите на другую ветку: слить, перемотать, rebase` : ''}`}
         style={style}
         className={`flex min-w-0 items-center gap-1.5 rounded-l px-2 font-medium ${compact ? 'h-[18px] text-[11.5px]' : 'h-[22px] text-[12px]'} ${remoteOnly ? 'border border-dashed text-white/90' : 'text-white'}`}
       >

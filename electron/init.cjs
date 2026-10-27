@@ -287,7 +287,7 @@ function hostHint(url) {
 }
 
 async function remoteHeads(url, cwd) {
-  const opts = await lazyActions().networkOptions(cwd);
+  const opts = await lazyActions().networkOptions(cwd, { url });
   let out;
   try {
     out = await git(cwd, ['ls-remote', '--symref', url], opts);
@@ -357,7 +357,7 @@ async function probeRemote(dir, { url, branch } = {}) {
 
     // Неглубокая загрузка одной ветки во временный репозиторий — только чтобы увидеть файлы
     await git(tmp, ['init', '-q', '--bare']);
-    const opts = await lazyActions().networkOptions(tmp);
+    const opts = await lazyActions().networkOptions(tmp, { url: remoteUrl });
     await git(tmp, ['fetch', '-q', '--depth', '1', remoteUrl, `refs/heads/${target}:refs/heads/probe`], opts);
     const [subject, author, date, hash] = (await git(tmp, ['log', '-1', '--format=%s%x1f%an%x1f%aI%x1f%H', 'refs/heads/probe']))
       .trim()
@@ -421,7 +421,7 @@ async function connectRepository(dir, opts = {}) {
       throw error;
     }
   };
-  const netOpts = await lazyActions().networkOptions(cwd);
+  const netOpts = await lazyActions().networkOptions(cwd, { url });
 
   await step('git init', async () => {
     try {

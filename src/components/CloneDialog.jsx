@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { Check, CloudDownload, FolderOpen, GitBranch, Link2, Loader2, RefreshCw, X } from 'lucide-react';
+import { Check, CloudDownload, FolderOpen, GitBranch, KeyRound, Link2, Loader2, RefreshCw, X } from 'lucide-react';
 import { Button, ErrorBox, Modal } from './Dialogs.jsx';
 
 const api = window.api;
@@ -24,7 +24,7 @@ const nameFromUrl = (url) =>
 /**
  * Клонирование: адрес → проверка → куда положить → прогресс → открыть во вкладке.
  */
-export default function CloneDialog({ onClose, onCloned }) {
+export default function CloneDialog({ onClose, onCloned, onAuth }) {
   const [url, setUrl] = useState('');
   const [probe, setProbe] = useState({ status: 'idle' });
   const [branch, setBranch] = useState('');
@@ -58,7 +58,22 @@ export default function CloneDialog({ onClose, onCloned }) {
     if (res.ok) {
       setProbe({ status: 'ok', url: target, data: res.data });
       setBranch(res.data.defaultBranch ?? '');
+    } else {
+      setProbe({ status: 'error', url: target, error: res.error });
+      // Сервер просит войти — сразу окно авторизации; после входа проверка адреса повторится
+      if (res.error.code === 'AUTH' && onAuth) onAuth(target, res.error, retryProbe(target));
+    }
+  };
+
+  // Повтор проверки адреса после ввода учётных данных → { ok, error } для окна авторизации
+  const retryProbe = (target) => async () => {
+    setProbe({ status: 'loading', url: target });
+    const res = await api.repo.cloneProbe(target);
+    if (res.ok) {
+      setProbe({ status: 'ok', url: target, data: res.data });
+      setBranch(res.data.defaultBranch ?? '');
     } else setProbe({ status: 'error', url: target, error: res.error });
+    return res;
   };
 
   const chooseParent = async () => {
@@ -88,7 +103,11 @@ export default function CloneDialog({ onClose, onCloned }) {
     jobId.current = null;
     setJob(null);
     if (res.ok) onCloned(res.data);
-    else if (res.error.code !== 'CANCELLED') setError(res.error);
+    else if (res.error.code !== 'CANCELLED') {
+      setError(res.error);
+      if (res.error.code === 'AUTH' && onAuth) onAuth(url.trim(), res.error, start);
+    }
+    return res;
   };
 
   const cancel = () => {
@@ -152,6 +171,14 @@ export default function CloneDialog({ onClose, onCloned }) {
       </p>
 
       {probe.status === 'error' && probe.url === url.trim() && <ErrorBox error={probe.error} />}
+      {onAuth && ((probe.status === 'error' && probe.url === url.trim() && probe.error.code === 'AUTH') || error?.code === 'AUTH') && (
+        <Button
+          onClick={() => (error?.code === 'AUTH' ? onAuth(url.trim(), error, start) : onAuth(url.trim(), probe.error, retryProbe(url.trim())))}
+          data-testid="clone-auth"
+        >
+          <KeyRound size={13} /> Ввести учётные данные
+        </Button>
+      )}
 
       {probeData && (
         <div className="ml-6 flex flex-wrap items-center gap-x-4 gap-y-2 rounded-lg bg-white/[0.04] p-3 text-xs ring-1 ring-gk-border">

@@ -91,7 +91,7 @@ export default function SettingsDialog({
             ) : tab === 'branches' ? (
               <BranchesTab workflow={workflow} onChange={onWorkflowChange} />
             ) : tab === 'sync' ? (
-              <SyncTab sync={sync} hasRemotes={Boolean(repo?.remotes?.length)} />
+              <SyncTab sync={sync} hasRemotes={Boolean(repo?.remotes?.length)} workflow={workflow} onWorkflowChange={onWorkflowChange} />
             ) : tab === 'commit' ? (
               <CommitSettings repoPath={repoPath} branch={repo?.currentBranch} />
             ) : tab === 'guard' ? (
@@ -276,7 +276,7 @@ function BranchesTab({ workflow, onChange }) {
   );
 }
 
-function SyncTab({ sync, hasRemotes }) {
+function SyncTab({ sync, hasRemotes, workflow, onWorkflowChange }) {
   const st = useSyncStatus();
   if (!sync) return null;
   const via = { api: 'GitLab API с ETag — ответ «не изменилось» почти ничего не стоит серверу', 'ls-remote': 'git ls-remote — без токена, работает с любым сервером' };
@@ -292,6 +292,20 @@ function SyncTab({ sync, hasRemotes }) {
           </span>
         </span>
       </label>
+
+      {workflow && (
+        <label className={`flex cursor-pointer items-start gap-3 ${sync.enabled ? '' : 'pointer-events-none opacity-40'}`}>
+          <Switch checked={workflow.syncIndex} onChange={(v) => onWorkflowChange({ ...workflow, syncIndex: v })} />
+          <span>
+            <span className="block font-medium text-gk-text">Синхронизировать индекс с правками из других программ</span>
+            <span className="mt-0.5 block leading-relaxed text-gk-muted">
+              Откатили застейдженный файл в WebStorm или VS Code к последнему коммиту — изменение исчезнет целиком, без «призрака» в
+              Staged и устаревших предупреждений проверки перед коммитом. Поправили снаружи файл, застейдженный целиком, — в индекс попадёт
+              новая версия. Частично застейдженные файлы (по кускам) не трогаются.
+            </span>
+          </span>
+        </label>
+      )}
 
       <section className={sync.enabled ? '' : 'pointer-events-none opacity-40'}>
         <SectionTitle>Как часто проверять сервер</SectionTitle>

@@ -36,6 +36,7 @@ export default function Toolbar({
   access,
   pullMode,
   onOpenRepository,
+  onRepoMenu,
   onRefresh,
   onUndo,
   onRedo,
@@ -84,7 +85,18 @@ export default function Toolbar({
   return (
     <div className="glass relative z-20 flex h-14 shrink-0 items-center border-b border-gk-border bg-gk-panel px-3">
       <div className="flex min-w-0 items-center gap-1">
-        <Selector label="репозиторий" value={repo.name} title={repo.path} icon={FolderGit2} onClick={onOpenRepository} />
+        <Selector
+          label="репозиторий"
+          value={repo.name}
+          data-tip={`${repo.path}\nКлик — открыть другой репозиторий, правый клик — открыть папку или терминал`}
+          icon={FolderGit2}
+          onClick={onOpenRepository}
+          onContextMenu={(e) => {
+            if (!onRepoMenu) return;
+            e.preventDefault();
+            onRepoMenu(e.clientX, e.clientY);
+          }}
+        />
         <span className="text-gk-dim">/</span>
         <BranchSelector
           repo={repo}

@@ -47,11 +47,14 @@ export function kb(text, mac = IS_MAC) {
   });
 }
 
-/** Где хранится зашифрованный токен — по-честному для каждой ОС */
-export function secretStorageText(platform = PLATFORM) {
-  if (platform === 'darwin') return 'Токен шифруется в Связке ключей macOS (Keychain) и хранится только на этом компьютере.';
-  if (platform === 'win32') return 'Токен шифруется средствами Windows (DPAPI) и хранится только на этом компьютере.';
-  return 'Токен шифруется системным хранилищем ключей (GNOME Keyring / KWallet) и хранится только на этом компьютере.';
+/** Где хранится зашифрованный токен — по-честному для каждой ОС. subject — что шифруется (по умолчанию «Токен») */
+export function secretStorageText(platform = PLATFORM, subject = 'Токен') {
+  const plural = /ые$|и$/.test(subject); // «Данные шифруются», «Токен шифруется»
+  const verb = plural ? 'шифруются' : 'шифруется';
+  const kept = plural ? 'хранятся' : 'хранится';
+  if (platform === 'darwin') return `${subject} ${verb} в Связке ключей macOS (Keychain) и ${kept} только на этом компьютере.`;
+  if (platform === 'win32') return `${subject} ${verb} средствами Windows (DPAPI) и ${kept} только на этом компьютере.`;
+  return `${subject} ${verb} системным хранилищем ключей (GNOME Keyring / KWallet) и ${kept} только на этом компьютере.`;
 }
 
 /** Как установить Git — для подсказок «Git не найден» */
@@ -59,4 +62,18 @@ export function installGitHint(platform = PLATFORM) {
   if (platform === 'darwin') return 'установите Git: в Терминале выполните xcode-select --install (или brew install git)';
   if (platform === 'win32') return 'установите Git for Windows (git-scm.com)';
   return 'установите Git из менеджера пакетов (например, sudo apt install git)';
+}
+
+/** Подпись пункта «открыть папку» в системном файловом менеджере */
+export function openFolderLabel(platform = PLATFORM) {
+  if (platform === 'darwin') return 'Показать в Finder';
+  if (platform === 'win32') return 'Открыть в Проводнике';
+  return 'Открыть в файловом менеджере';
+}
+
+/** Подпись пункта «открыть терминал» */
+export function openTerminalLabel(platform = PLATFORM) {
+  if (platform === 'darwin') return 'Открыть в Терминале';
+  if (platform === 'win32') return 'Открыть в терминале (командной строке)';
+  return 'Открыть в терминале';
 }

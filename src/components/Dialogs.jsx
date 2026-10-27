@@ -2,6 +2,9 @@ import { useEffect, useRef, useState } from 'react';
 import {
   AlertTriangle,
   Check,
+  Cloud,
+  GitCommitHorizontal,
+  Laptop,
   ChevronDown,
   ChevronRight,
   CloudOff,
@@ -31,16 +34,17 @@ export function Modal({ title, icon: Icon, iconClass = 'text-gk-blue', onClose, 
       className="fixed inset-0 z-40 flex animate-fade-in items-start justify-center bg-[#0b0d12]/55 pt-[12vh] backdrop-blur-[3px]"
       onMouseDown={(e) => e.target === e.currentTarget && onClose()}
     >
-      <div style={{ width }} className="glass-strong max-w-[calc(100vw-2rem)] animate-pop-in rounded-xl border border-gk-border bg-gk-panel-2">
-        <div className="flex items-center gap-2 border-b border-gk-border px-4 py-3">
+      <div style={{ width }} className="glass-strong flex max-h-[84vh] max-w-[calc(100vw-2rem)] animate-pop-in flex-col rounded-xl border border-gk-border bg-gk-panel-2">
+        <div className="flex shrink-0 items-center gap-2 border-b border-gk-border px-4 py-3">
           {Icon && <Icon size={16} className={iconClass} />}
           <h2 className="flex-1 text-[14px] font-semibold text-white">{title}</h2>
           <button onClick={onClose} className="rounded p-1 text-gk-dim hover:bg-gk-hover hover:text-gk-text">
             <X size={15} />
           </button>
         </div>
-        <div className="space-y-3 px-4 py-4 text-[13px]">{children}</div>
-        {footer && <div className="flex justify-end gap-2 border-t border-gk-border px-4 py-3">{footer}</div>}
+        {/* Длинное содержимое прокручивается, заголовок и кнопки всегда видны */}
+        <div className="min-h-0 space-y-3 overflow-y-auto px-4 py-4 text-[13px]">{children}</div>
+        {footer && <div className="flex shrink-0 justify-end gap-2 border-t border-gk-border px-4 py-3">{footer}</div>}
       </div>
     </div>
   );
@@ -148,7 +152,7 @@ function StatusRow({ label, state, note }) {
   );
 }
 
-export function AccessDialog({ access, onClose, onRecheck }) {
+export function AccessDialog({ access, onClose, onRecheck, onCredentials }) {
   const checking = access?.status === 'checking';
   const data = access?.data;
   const error = access?.error ?? data?.error ?? data?.writeError ?? null;
@@ -160,10 +164,15 @@ export function AccessDialog({ access, onClose, onRecheck }) {
       icon={ok ? ShieldCheck : ShieldAlert}
       iconClass={ok ? 'text-gk-green' : 'text-gk-red'}
       onClose={onClose}
-      width={520}
+      width={620}
       footer={
         <>
-          <Button onClick={onRecheck} disabled={checking}>
+          {onCredentials && data?.protocol !== 'local' && (
+            <Button onClick={onCredentials} disabled={checking} className="mr-auto whitespace-nowrap" data-testid="access-credentials">
+              <KeyRound size={13} /> {data?.canRead === false && error?.code === 'AUTH' ? 'Ввести учётные данные' : 'Ввести учётные данные / Сменить токен'}
+            </Button>
+          )}
+          <Button onClick={onRecheck} disabled={checking} className="whitespace-nowrap">
             {checking ? <Loader2 size={13} className="animate-spin" /> : <RefreshCw size={13} />}
             {checking ? 'Проверка…' : 'Проверить снова'}
           </Button>
@@ -453,6 +462,78 @@ export function BranchDialog({ startHash, startLabel, busy, error, onClose, onSu
         Переключиться на новую ветку
       </label>
       {error && <ErrorBox error={error} />}
+    </Modal>
+  );
+}
+
+/* =================== Двойной клик по коммиту: куда переключиться =================== */
+
+/**
+ * На коммите несколько веток — выбрать, на какую переключиться.
+ * Веток нет — предупредить о detached HEAD и предложить сначала создать ветку.
+ */
+export function SwitchToDialog({ node, locals = [], remotes = [], onBranch, onCreateBranch, onDetached, onClose }) {
+  const short = node.hash.slice(0, 7);
+  const none = !locals.length && !remotes.length;
+  // Remote-ветки, у которых уже есть локальная с тем же именем на этом коммите, не дублируем
+  const localNames = new Set(locals.map((r) => r.name));
+  const remoteOnly = remotes.filter((r) => !localNames.has(r.name.slice(r.name.indexOf('/') + 1)));
+  return (
+    <Modal
+      title={none ? `Коммит ${short} не на ветке` : `Переключиться на ${short}`}
+      icon={none ? AlertTriangle : GitBranch}
+      iconClass={none ? 'text-gk-yellow' : 'text-gk-blue'}
+      onClose={onClose}
+      width={none ? 560 : 460}
+      footer={
+        <>
+          <Button onClick={onClose}>Отмена</Button>
+          <Button onClick={onDetached} data-testid="switch-detached" className="whitespace-nowrap">
+            <GitCommitHorizontal size={13} /> Переключить HEAD (Detached)
+          </Button>
+          {none && (
+            <Button variant="blue" onClick={onCreateBranch} autoFocus className="whitespace-nowrap">
+              <GitBranch size={13} /> Создать ветку здесь…
+            </Button>
+          )}
+        </>
+      }
+    >
+      <div className="truncate rounded-md bg-gk-bg px-3 py-2 text-xs text-gk-muted">
+        <span className="font-mono text-gk-text">{short}</span> · {node.message}
+      </div>
+      {none ? (
+        <p className="text-[12.5px] leading-relaxed text-gk-muted">
+          На этом коммите нет ни одной ветки. Если переключить HEAD прямо на коммит, вы окажетесь в состоянии <b className="text-gk-text">detached HEAD</b>:
+          новые коммиты не попадут ни в одну ветку. Удобнее сначала создать здесь ветку.
+        </p>
+      ) : (
+        <div className="space-y-1">
+          <p className="pb-1 text-[12.5px] text-gk-muted">На коммите несколько веток — на какую переключиться?</p>
+          {locals.map((r) => (
+            <button
+              key={r.name}
+              onClick={() => onBranch(r)}
+              className="flex w-full items-center gap-2 rounded-md border border-gk-border bg-gk-bg/60 px-3 py-2 text-left hover:border-gk-blue/60 hover:bg-gk-hover"
+            >
+              <Laptop size={13} className="shrink-0 text-gk-green" />
+              <span className="flex-1 truncate font-medium text-gk-text">{r.name}</span>
+              <span className="text-[11px] text-gk-dim">локальная</span>
+            </button>
+          ))}
+          {remoteOnly.map((r) => (
+            <button
+              key={r.name}
+              onClick={() => onBranch(r)}
+              className="flex w-full items-center gap-2 rounded-md border border-gk-border bg-gk-bg/60 px-3 py-2 text-left hover:border-gk-blue/60 hover:bg-gk-hover"
+            >
+              <Cloud size={13} className="shrink-0 text-gk-blue" />
+              <span className="flex-1 truncate font-medium text-gk-text">{r.name}</span>
+              <span className="text-[11px] text-gk-dim">создать локальную и следить</span>
+            </button>
+          ))}
+        </div>
+      )}
     </Modal>
   );
 }

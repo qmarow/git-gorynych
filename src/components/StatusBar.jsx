@@ -1,9 +1,10 @@
-import { AlertTriangle, ArrowDown, ArrowUp, Crosshair, FolderGit2, GitBranch, Loader2, Pencil, RefreshCw, WifiOff } from 'lucide-react';
+import { AlertTriangle, ArrowDown, ArrowUp, Crosshair, FolderGit2, FolderOpen, GitBranch, Loader2, Pencil, RefreshCw, SquareTerminal, WifiOff } from 'lucide-react';
+import { openFolderLabel, openTerminalLabel } from '../lib/platform.js';
 import { fullDate, relativeTime } from '../lib/format.js';
 import { BACKGROUND_SEC, syncModeById, useSyncStatus } from '../lib/syncStatus.js';
 
 // Строка состояния: текущая ветка и активный коммит (HEAD). Клик — перейти к HEAD в графе.
-export default function StatusBar({ repo, onJumpToHead, sync }) {
+export default function StatusBar({ repo, onJumpToHead, sync, onOpenFolder, onOpenTerminal, onPathMenu }) {
   const head = repo.commits.find((c) => c.hash === repo.headHash) ?? null;
   const branch = repo.localBranches.find((b) => b.name === repo.currentBranch) ?? null;
 
@@ -82,9 +83,43 @@ export default function StatusBar({ repo, onJumpToHead, sync }) {
           {repo.wipFiles.length}
         </span>
       )}
-      <span className="flex min-w-0 max-w-[40%] items-center gap-1.5" title={repo.path}>
-        <FolderGit2 size={12} className="shrink-0" />
-        <span className="truncate">{repo.path}</span>
+      {/* Путь к репозиторию: клик — открыть папку, рядом — Проводник/Finder и терминал */}
+      <span className="flex min-w-0 max-w-[45%] items-center gap-0.5">
+        <button
+          onClick={onOpenFolder ?? undefined}
+          onContextMenu={(e) => {
+            if (!onPathMenu) return;
+            e.preventDefault();
+            onPathMenu(e.clientX, e.clientY);
+          }}
+          disabled={!onOpenFolder}
+          data-tip={`${repo.path}\nКлик — ${openFolderLabel().toLowerCase()}, правый клик — ещё действия`}
+          data-testid="status-path"
+          className="flex min-w-0 items-center gap-1.5 rounded px-1.5 py-0.5 enabled:hover:bg-gk-hover enabled:hover:text-gk-text"
+        >
+          <FolderGit2 size={12} className="shrink-0" />
+          <span className="truncate">{repo.path}</span>
+        </button>
+        {onOpenFolder && (
+          <button
+            onClick={onOpenFolder}
+            aria-label={openFolderLabel()}
+            data-tip={openFolderLabel()}
+            className="flex h-5 w-5 shrink-0 items-center justify-center rounded hover:bg-gk-hover hover:text-gk-text"
+          >
+            <FolderOpen size={12} />
+          </button>
+        )}
+        {onOpenTerminal && (
+          <button
+            onClick={onOpenTerminal}
+            aria-label={openTerminalLabel()}
+            data-tip={openTerminalLabel()}
+            className="flex h-5 w-5 shrink-0 items-center justify-center rounded hover:bg-gk-hover hover:text-gk-text"
+          >
+            <SquareTerminal size={12} />
+          </button>
+        )}
       </span>
     </footer>
   );

@@ -1,4 +1,4 @@
-const { app, BrowserWindow, Menu, ipcMain, dialog, shell } = require('electron');
+const { app, BrowserWindow, Menu, ipcMain, dialog, shell, clipboard } = require('electron');
 const fs = require('node:fs');
 const path = require('node:path');
 const os = require('node:os');
@@ -14,7 +14,10 @@ const rebasePlan = require('./rebase.cjs');
 const guard = require('./guard.cjs');
 const { watchRepository } = require('./watch.cjs');
 const remoteWatch = require('./remoteWatch.cjs');
-const { serializeError } = require('./errors.cjs');
+const system = require('./system.cjs');
+const indexSync = require('./indexSync.cjs');
+const credentials = require('./credentials.cjs');
+const { serializeError, GitError } = require('./errors.cjs');
 
 const DEV_SERVER_URL = process.env.VITE_DEV_SERVER_URL;
 let mainWindow = null;
@@ -411,6 +414,72 @@ ipcMain.handle('shell:open-external', async (_event, url) => {
   }
 });
 
+/* ---------- Авторизация на remote-сервере: логин/пароль, токен, SSH-ключ ---------- */
+
+// Адрес, к которому нужен доступ: явный url (клонирование) или remote текущей ветки репозитория
+async function credTarget(dir, url) {
+  if (typeof url === 'string' && url.trim()) return { url: url.trim(), remote: null };
+  const root = await git.resolveRepoRoot(dir);
+  // Тот же remote, что и у Pull/Push: upstream текущей ветки, иначе origin, иначе первый
+  const remotes = (await git.git(root, ['remote']).catch(() => '')).split('\n').map((r) => r.trim()).filter(Boolean);
+  const branch = (await git.git(root, ['branch', '--show-current']).catch(() => '')).trim();
+  const upstream = branch
+    ? (await git.git(root, ['for-each-ref', '--format=%(upstream:remotename)', `refs/heads/${branch}`]).catch(() => '')).trim()
+    : '';
+  const remote = remotes.includes(upstream) ? upstream : remotes.includes('origin') ? 'origin' : remotes[0];
+  if (remote) {
+    const raw = (await git.git(root, ['remote', 'get-url', remote]).catch(() => '')).trim();
+    if (raw) return { url: raw, remote };
+  }
+  throw new GitError('У репозитория нет remote', { code: 'NO_REMOTE' });
+}
+const describeTarget = async (dir, url) => {
+  const t = await credTarget(dir, url);
+  const info = credentials.describe(t.url);
+  return { ...info, remote: t.remote, defaultTokenUser: credentials.defaultTokenUser(info.host) };
+};
+ipcMain.handle('creds:describe', safe((dir, url) => describeTarget(dir, url)));
+ipcMain.handle(
+  'creds:save',
+  safe(async (dir, url, data) => {
+    const t = await credTarget(dir, url);
+    credentials.save(t.url, data ?? {});
+    return describeTarget(dir, t.url);
+  }),
+);
+ipcMain.handle('creds:clear', safe(async (dir, url) => credentials.clear((await credTarget(dir, url)).url)));
+ipcMain.handle('creds:ssh-keys', safe(() => credentials.listSshKeys()));
+ipcMain.handle('creds:pick-key', async () => {
+  const { dir } = credentials.listSshKeys();
+  const result = await dialog.showOpenDialog(mainWindow, {
+    title: 'Приватный SSH-ключ',
+    defaultPath: fs.existsSync(dir) ? dir : os.homedir(),
+    properties: ['openFile', 'showHiddenFiles'],
+  });
+  return result.canceled ? null : result.filePaths[0] ?? null;
+});
+ipcMain.handle(
+  'creds:generate-key',
+  safe(async (options) => {
+    const res = await credentials.generateSshKey({ ...(options ?? {}), gitBinary: git.gitInfo?.().binary });
+    clipboard.writeText(res.publicKey);
+    return { ...res, copied: true };
+  }),
+);
+ipcMain.handle(
+  'creds:copy-public-key',
+  safe((keyPath) => {
+    const key = credentials.publicKeyOf(keyPath);
+    if (!key) throw new GitError('Рядом с ключом нет файла .pub', { code: 'NOT_FOUND' });
+    clipboard.writeText(key);
+    return { publicKey: key };
+  }),
+);
+
+// Папка репозитория в Проводнике / Finder и в терминале
+ipcMain.handle('shell:open-folder', safe((dir) => system.openFolder(shell, dir)));
+ipcMain.handle('shell:open-terminal', safe((dir) => system.openTerminal(dir)));
+
 // Клонирование: прогресс приходит событиями clone:progress { id, phase, percent, speed, size }
 ipcMain.handle('repo:clone-probe', safe((url) => cloner.probeClone(url)));
 ipcMain.handle('repo:clone', (event, options) =>
@@ -424,19 +493,44 @@ ipcMain.handle('repo:clone-cancel', (_event, id) => cloner.cancelClone(id));
 
 // Автообновление: следим за активным репозиторием и сообщаем об изменениях
 const watchers = new Map(); // webContents.id -> stop()
-ipcMain.handle('repo:watch', (event, dir) => {
+ipcMain.handle('repo:watch', (event, dir, opts) => {
   const key = event.sender.id;
   watchers.get(key)?.();
   watchers.delete(key);
   if (typeof dir !== 'string' || !dir || !fs.existsSync(dir)) return false;
+  const send = (channel, data) => !event.sender.isDestroyed() && event.sender.send(channel, data);
+  // Синхронизация индекса с правками из внешних программ (откат в IDE и т.п.)
+  const doSync = Boolean(opts?.syncIndex);
+  let root = null;
+  let stopped = false;
+  const sync = async (act) => {
+    root = root ?? (await git.resolveRepoRoot(dir).catch(() => null));
+    if (!root) return null;
+    // Репозиторий занят (действие пользователя или фоновая проверка сервера) — пробуем чуть позже
+    for (let attempt = 0; attempt < 12 && !stopped; attempt++) {
+      const res = await indexSync.syncIndex(root, { act }).catch(() => ({ synced: [] }));
+      if (res) return res;
+      await new Promise((r) => setTimeout(r, 400));
+    }
+    return null;
+  };
+  if (doSync) sync(false); // запомнить исходное состояние индекса
   // Короткая задержка: правки файлов видны почти сразу, но пачка событий при сохранении склеивается
-  const stop = watchRepository(
+  const stopWatch = watchRepository(
     dir,
-    (what) => {
-      if (!event.sender.isDestroyed()) event.sender.send('repo:changed', { path: dir, ...what });
+    async (what) => {
+      if (doSync) {
+        const res = await sync(Boolean(what.worktree));
+        if (res?.synced?.length) send('repo:index-synced', { path: dir, synced: res.synced });
+      }
+      send('repo:changed', { path: dir, ...what });
     },
     { delay: 120 },
   );
+  const stop = () => {
+    stopped = true;
+    stopWatch();
+  };
   watchers.set(key, stop);
   event.sender.once('destroyed', () => {
     watchers.get(key)?.();
