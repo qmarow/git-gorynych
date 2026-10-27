@@ -1,7 +1,22 @@
-export const ROW_HEIGHT = 36;
-export const LANE_WIDTH = 30;
 export const GRAPH_PADDING = 10;
-export const NODE_RADIUS = 14;
+
+/**
+ * Размеры графа для каждой плотности строк: высота строки, радиус узла-аватара,
+ * радиус узла-точки и шаг дорожек. Всё рисование графа берёт числа отсюда,
+ * поэтому смена плотности синхронно меняет и строки, и узлы, и линии.
+ */
+export const DENSITIES = {
+  compact: { id: 'compact', rowH: 26, nodeR: 9, dotR: 4.5, laneW: 22 },
+  standard: { id: 'standard', rowH: 34, nodeR: 13, dotR: 5.5, laneW: 28 },
+  relaxed: { id: 'relaxed', rowH: 42, nodeR: 15, dotR: 6.5, laneW: 32 },
+};
+export const DEFAULT_METRICS = DENSITIES.standard;
+export const metricsFor = (density) => DENSITIES[density] ?? DEFAULT_METRICS;
+
+// Для старого кода: размеры стандартной плотности
+export const ROW_HEIGHT = DEFAULT_METRICS.rowH;
+export const LANE_WIDTH = DEFAULT_METRICS.laneW;
+export const NODE_RADIUS = DEFAULT_METRICS.nodeR;
 
 // Цвета дорожек в духе GitKraken
 export const LANE_COLORS = [
@@ -18,8 +33,8 @@ export const LANE_COLORS = [
 ];
 
 export const laneColor = (lane) => LANE_COLORS[lane % LANE_COLORS.length];
-export const laneX = (lane) => GRAPH_PADDING + lane * LANE_WIDTH + LANE_WIDTH / 2;
-export const rowY = (row) => row * ROW_HEIGHT + ROW_HEIGHT / 2;
+export const laneX = (lane, m = DEFAULT_METRICS) => GRAPH_PADDING + lane * m.laneW + m.laneW / 2;
+export const rowY = (row, m = DEFAULT_METRICS) => row * m.rowH + m.rowH / 2;
 
 function takeFreeLane(lanes) {
   const free = lanes.indexOf(null);
@@ -109,16 +124,16 @@ export function layoutGraph(commits) {
  *  - ветка отходит от родителя: идём вниз по своей дорожке, у родителя поворачиваем к нему;
  *  - мердж: от узла сразу уходим вбок в дорожку второго родителя и спускаемся по ней.
  */
-export function edgePath(edge) {
-  const x1 = laneX(edge.from.lane);
-  const y1 = rowY(edge.from.row);
-  const x2 = laneX(edge.to.lane);
-  const y2 = rowY(edge.to.row);
-  const xt = laneX(edge.travel);
+export function edgePath(edge, m = DEFAULT_METRICS) {
+  const x1 = laneX(edge.from.lane, m);
+  const y1 = rowY(edge.from.row, m);
+  const x2 = laneX(edge.to.lane, m);
+  const y2 = rowY(edge.to.row, m);
+  const xt = laneX(edge.travel, m);
 
   if (x1 === x2 && x1 === xt) return `M ${x1} ${y1} L ${x2} ${y2}`;
 
-  const radius = (dx) => Math.min(10, Math.abs(dx) / 2, (y2 - y1) / 2);
+  const radius = (dx) => Math.min(m.rowH * 0.3, Math.abs(dx) / 2, (y2 - y1) / 2);
   let d = `M ${x1} ${y1}`;
 
   // 1) горизонталь на уровне дочернего узла до дорожки ребра
@@ -139,6 +154,6 @@ export function edgePath(edge) {
   return d;
 }
 
-export function graphWidth(laneCount) {
-  return GRAPH_PADDING * 2 + laneCount * LANE_WIDTH;
+export function graphWidth(laneCount, m = DEFAULT_METRICS) {
+  return GRAPH_PADDING * 2 + laneCount * m.laneW;
 }

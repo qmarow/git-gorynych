@@ -2631,6 +2631,7 @@ export default function App() {
                   matchSet={searchOpen && filterActive ? matchSet : null}
                   pipelines={pipelineMap?.bySha ?? null}
                   onPipelineClick={(p) => openPipelines(p.id)}
+                  onCopySha={(hash) => copy(hash, 'Хэш коммита')}
                 />
               )}
             </main>

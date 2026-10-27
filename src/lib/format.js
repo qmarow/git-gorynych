@@ -16,6 +16,7 @@ export function relativeTime(iso) {
   const hours = Math.round(minutes / 60);
   if (hours < 24) return `${hours} ч назад`;
   const days = Math.round(hours / 24);
+  if (days === 1) return 'вчера';
   if (days < 30) return `${days} дн назад`;
   return date.toLocaleDateString('ru-RU');
 }

@@ -6,6 +6,7 @@ import { kb } from '../lib/platform.js';
  * Подсказки для элементов с атрибутом data-tip (вместо системного title).
  * Системная подсказка не умеет переносить строки по ширине и на краю окна обрезается;
  * эта — до 280px шириной, с переносом и всегда целиком внутри окна (collision detection).
+ * data-tip-overflow — показывать, только когда текст элемента не влез и обрезан многоточием.
  * Один слой на всё приложение: слушаем наведение на документе, а не на каждом элементе.
  */
 const SHOW_DELAY = 450;
@@ -32,9 +33,11 @@ export default function TooltipLayer() {
       if (!el) return;
       const text = el.getAttribute('data-tip');
       if (!text) return;
+      // data-tip-overflow: подсказка только если текст обрезан многоточием
+      if (el.hasAttribute('data-tip-overflow') && el.scrollWidth <= el.clientWidth + 1) return;
       current.current = el;
       const { clientX: x, clientY: y } = e;
-      timer.current = setTimeout(() => setTip({ text: kb(text), x, y, el }), SHOW_DELAY);
+      timer.current = setTimeout(() => setTip({ text: kb(text), x, y, el, wide: el.hasAttribute('data-tip-wide') }), SHOW_DELAY);
     };
     const move = (e) => {
       // Пока подсказка не показана — она появится у последней позиции курсора
@@ -42,7 +45,7 @@ export default function TooltipLayer() {
         clearTimeout(timer.current);
         const el = current.current;
         const { clientX: x, clientY: y } = e;
-        timer.current = setTimeout(() => setTip({ text: kb(el.getAttribute('data-tip') ?? ''), x, y, el }), SHOW_DELAY);
+        timer.current = setTimeout(() => setTip({ text: kb(el.getAttribute('data-tip') ?? ''), x, y, el, wide: el.hasAttribute('data-tip-wide') }), SHOW_DELAY);
       }
     };
     const out = (e) => {
@@ -91,7 +94,7 @@ export default function TooltipLayer() {
       ref={box}
       role="tooltip"
       style={{ left: pos?.left ?? -9999, top: pos?.top ?? -9999, visibility: pos ? 'visible' : 'hidden' }}
-      className="gk-tooltip pointer-events-none fixed z-[100] animate-fade-in rounded-md border border-gk-border bg-gk-panel-2 px-2.5 py-1.5 text-[11.5px] leading-snug text-gk-text shadow-xl"
+      className={`gk-tooltip ${tip.wide ? 'gk-tooltip-wide' : ''} pointer-events-none fixed z-[100] animate-fade-in rounded-md border border-gk-border bg-gk-panel-2 px-2.5 py-1.5 text-[11.5px] leading-snug text-gk-text shadow-xl`}
     >
       {tip.text}
     </div>,

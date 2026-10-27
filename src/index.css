@@ -404,6 +404,11 @@ textarea {
   overflow-wrap: anywhere;
   backdrop-filter: blur(14px) saturate(1.2);
 }
+/* Полный текст коммита: шире и переносы только между словами */
+.gk-tooltip-wide {
+  max-width: min(440px, calc(100vw - 16px));
+  overflow-wrap: break-word;
+}
 
 /* Мягкое затухание текста у верхнего и нижнего края прокручиваемой области:
    строки не «режутся» о шапку и футер, а плавно уходят */
