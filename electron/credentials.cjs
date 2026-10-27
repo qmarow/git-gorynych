@@ -336,23 +336,48 @@ function run(cmd, args) {
   });
 }
 
+const KEY_TYPES = {
+  ed25519: ['-t', 'ed25519'],
+  rsa: ['-t', 'rsa', '-b', '4096'],
+};
+
+/** Имя файла по умолчанию: стандартное (его ssh найдёт и сам), а если занято — с именем сервера */
+function suggestKeyName(type = 'ed25519', host = null, dir = sshDir(), exists = fs.existsSync) {
+  const base = type === 'rsa' ? 'id_rsa' : 'id_ed25519';
+  if (!exists(path.join(dir, base)) && !exists(path.join(dir, `${base}.pub`))) return base;
+  const tag = String(host ?? 'gitidea').toLowerCase().replace(/[^a-z0-9.-]+/g, '_').replace(/^[._-]+|[._-]+$/g, '') || 'gitidea';
+  return `${base}_${tag}`;
+}
+
 /**
- * Создать новый ключ ed25519 в ~/.ssh. → { path, publicKey }
- * Имя не перезаписывает существующие ключи: id_ed25519_gitidea, id_ed25519_gitidea_2, …
+ * Создать новый ключ в ~/.ssh. → { path, publicKey, type, fingerprint? }
+ * type: ed25519 (по умолчанию) | rsa (4096 бит — для старых серверов).
+ * Существующие ключи не перезаписываются: к имени добавляется _2, _3, …
  */
-async function generateSshKey({ comment, passphrase = '', name = 'id_ed25519_gitidea', gitBinary } = {}) {
+async function generateSshKey({ type = 'ed25519', comment, passphrase = '', name, host = null, gitBinary } = {}) {
+  if (!KEY_TYPES[type]) throw new GitError('Неизвестный тип ключа', { code: 'BAD_ARGS' });
   const dir = sshDir();
   fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
-  const base = String(name).replace(/[^\w.-]/g, '_') || 'id_ed25519_gitidea';
+  const wanted = String(name ?? '').trim();
+  if (wanted && (/[\\/]/.test(wanted) || wanted.startsWith('.') || wanted.endsWith('.pub'))) {
+    throw new GitError('Имя файла ключа — без папок, точки в начале и .pub на конце', { code: 'BAD_ARGS' });
+  }
+  const base = wanted.replace(/[^\w.-]/g, '_') || suggestKeyName(type, host, dir);
   let file = path.join(dir, base);
   for (let n = 2; fs.existsSync(file) || fs.existsSync(`${file}.pub`); n++) file = path.join(dir, `${base}_${n}`);
-  const label = String(comment || `${os.userInfo().username}@${os.hostname()} (GitIdea)`).slice(0, 200);
+  const label = String(comment || `${os.userInfo().username}@${os.hostname()}`).replace(/[\r\n]/g, ' ').slice(0, 200);
   let lastError = null;
   for (const cmd of sshKeygenCandidates(gitBinary)) {
     try {
-      await run(cmd, ['-t', 'ed25519', '-f', file, '-N', String(passphrase), '-C', label, '-q']);
+      await run(cmd, [...KEY_TYPES[type], '-f', file, '-N', String(passphrase), '-C', label, '-q']);
+      try {
+        fs.chmodSync(file, 0o600);
+      } catch {
+        /* Windows — права через ACL, ssh-keygen их уже выставил */
+      }
       const publicKey = fs.readFileSync(`${file}.pub`, 'utf8').trim();
-      return { path: file, publicKey };
+      const fingerprint = await run(cmd, ['-l', '-f', `${file}.pub`]).then((o) => o.trim().split(/\s+/)[1] ?? null, () => null);
+      return { path: file, name: path.basename(file), publicKey, type, fingerprint };
     } catch (error) {
       lastError = error;
       if (error.code !== 'ENOENT') break;
@@ -363,6 +388,22 @@ async function generateSshKey({ comment, passphrase = '', name = 'id_ed25519_git
     hint: lastError?.code === 'ENOENT' ? 'Не найдена программа ssh-keygen. Установите OpenSSH или Git for Windows.' : null,
     details: (lastError?.stderr || lastError?.message || '').trim(),
   });
+}
+
+/**
+ * Адрес remote https://host/group/project(.git) → SSH-вариант git@host:group/project.git
+ * (так его показывают GitLab, GitHub, Bitbucket). null — если адрес не https.
+ */
+function sshUrlFor(url) {
+  const t = parseTarget(url);
+  if (t.protocol !== 'https' || !t.hostname) return null;
+  try {
+    const p = new URL(String(url).trim()).pathname.replace(/^\/+|\/+$/g, '').replace(/\.git$/i, '');
+    if (!p) return null;
+    return `git@${t.hostname}:${p}.git`;
+  } catch {
+    return null;
+  }
 }
 
 /** Публичная часть ключа (для копирования в GitLab/GitHub) */
@@ -383,6 +424,8 @@ module.exports = {
   sshCommand,
   listSshKeys,
   generateSshKey,
+  suggestKeyName,
+  sshUrlFor,
   publicKeyOf,
   defaultTokenUser,
   keyOf,

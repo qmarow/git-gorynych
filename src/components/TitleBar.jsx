@@ -16,7 +16,7 @@ const MENU = [
  * Заголовок окна: меню, вкладки репозиториев, кнопки окна.
  * macOS: меню — в системной строке меню, кнопки окна — нативный «светофор» слева (под него отступ).
  */
-export default function TitleBar({ tabs, activePath, loadingPath, onSelectTab, onCloseTab, onOpenRepository, onMenu }) {
+export default function TitleBar({ tabs, activePath, loadingPath, onSelectTab, onCloseTab, onOpenRepository, onNewTab, onMenu }) {
   const [maximized, setMaximized] = useState(false);
   const win = window.api?.window;
 
@@ -61,17 +61,19 @@ export default function TitleBar({ tabs, activePath, loadingPath, onSelectTab, o
             key={tab.path}
             tab={tab}
             active={tab.path === activePath}
-            loading={tab.path === loadingPath}
+            // Репозиторий открывается из «Новой вкладки» — крутилка на ней самой
+            loading={tab.path === loadingPath || (tab.isNew && tab.path === activePath && Boolean(loadingPath))}
             onSelect={() => onSelectTab(tab.path)}
             onClose={() => onCloseTab(tab.path)}
           />
         ))}
         <button
-          title={kb('Открыть репозиторий в новой вкладке (Ctrl+O)')}
-          onClick={onOpenRepository}
+          title={kb('Новая вкладка (Ctrl+T)')}
+          aria-label="Новая вкладка"
+          onClick={onNewTab ?? onOpenRepository}
           className="app-no-drag mb-1 ml-1 flex h-6 w-6 shrink-0 items-center justify-center rounded text-gk-muted transition-colors hover:bg-gk-hover hover:text-gk-text"
         >
-          {loadingPath && !tabs.some((t) => t.path === loadingPath) ? (
+          {loadingPath && !tabs.some((t) => t.path === loadingPath || (t.isNew && t.path === activePath)) ? (
             <Loader2 size={14} className="animate-spin" />
           ) : (
             <Plus size={14} />
@@ -104,7 +106,7 @@ function Tab({ tab, active, loading, onSelect, onClose }) {
     <div
       role="tab"
       aria-selected={active}
-      title={tab.path}
+      title={tab.isNew ? 'Новая вкладка — открыть, клонировать или создать репозиторий' : tab.path}
       onMouseDown={(e) => e.button === 0 && onSelect()}
       onAuxClick={(e) => {
         if (e.button === 1) {
@@ -123,7 +125,7 @@ function Tab({ tab, active, loading, onSelect, onClose }) {
       {loading ? (
         <Loader2 size={13} className="shrink-0 animate-spin text-gk-green" />
       ) : (
-        <FolderGit2 size={13} className={`shrink-0 ${active ? 'text-gk-green' : ''}`} />
+        !tab.isNew && <FolderGit2 size={13} className={`shrink-0 ${active ? 'text-gk-green' : ''}`} />
       )}
       <span className={`truncate ${active ? 'font-medium' : ''}`}>{tab.name}</span>
       <button

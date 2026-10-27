@@ -83,6 +83,7 @@ import { DEFAULT_SYNC_MODE, SYNC_MODES, nextDelay, resetSyncStatus, setSyncStatu
 import InitRepoDialog, { plural } from './components/InitRepoDialog.jsx';
 import CloneDialog from './components/CloneDialog.jsx';
 import AuthDialog from './components/AuthDialog.jsx';
+import NewTabPage from './components/NewTabPage.jsx';
 import RevertToDialog from './components/RevertToDialog.jsx';
 import SearchBar, { EMPTY_FILTER, isFilterActive, matchCommit } from './components/SearchBar.jsx';
 import { GraphLoader, LoadingOverlay, Splash } from './components/Loader.jsx';
@@ -104,6 +105,10 @@ import {
 const api = window.api;
 
 // Ошибки, которые показываем модальным окном с подсказкой, а не всплывашкой
+// Пустые вкладки («Новая вкладка») — path с этим префиксом вместо пути к репозиторию
+const NEW_TAB = 'new-tab:';
+const isNewTab = (p) => typeof p === 'string' && p.startsWith(NEW_TAB);
+
 const ACCESS_CODES = new Set(['AUTH', 'FORBIDDEN', 'NOT_FOUND', 'PROTECTED', 'HOOK_DECLINED', 'HOST_KEY']);
 // Оверлей поверх графа для долгих операций: что показывать, пока операция идёт
 const PROGRESS_TEXT = {
@@ -332,7 +337,38 @@ export default function App() {
     });
   };
 
+  // Пустая вкладка («Новая вкладка») или ни одной: репозитория нет, показываем стартовую страницу
+  const showBlank = (path) => {
+    loadSeq.current++; // отменяем ответы на ещё идущие загрузки
+    setActivePath(path);
+    activeRef.current = path;
+    setRepo(null);
+    repoRef.current = null;
+    setDiffTarget(null);
+    setCiView(null);
+    setCompareView(null);
+    setRebaseView(null);
+    setCompareMark(null);
+    setMenu(null);
+    setAccess(null);
+    setSelectedHash(null);
+    setLoading(false);
+  };
+
+  // «+» рядом с вкладками и Ctrl+T — новая вкладка со списком репозиториев
+  const newTab = () => {
+    rememberActiveTab();
+    const id = `${NEW_TAB}${Date.now()}`;
+    setTabs((t) => [...t, { path: id, name: 'Новая вкладка', isNew: true }]);
+    showBlank(id);
+  };
+
   const showTab = (path) => {
+    if (isNewTab(path)) {
+      rememberActiveTab();
+      showBlank(path);
+      return;
+    }
     rememberActiveTab();
     setDiffTarget(null);
     setCiView(null);
@@ -357,10 +393,18 @@ export default function App() {
   };
 
   const openTab = async (dir) => {
+    // Открываем из «Новой вкладки» — репозиторий займёт её место, как в GitKraken
+    const replacing = isNewTab(activeRef.current) ? activeRef.current : null;
     rememberActiveTab();
     const data = await loadRepo(dir);
     if (!data) return;
-    setTabs((t) => (t.some((x) => x.path === data.path) ? t : [...t, { path: data.path, name: data.name }]));
+    setTabs((t) => {
+      const entry = { path: data.path, name: data.name };
+      // Уже открыт в другой вкладке — пустую просто закрываем
+      if (t.some((x) => x.path === data.path)) return replacing ? t.filter((x) => x.path !== replacing) : t;
+      if (replacing && t.some((x) => x.path === replacing)) return t.map((x) => (x.path === replacing ? entry : x));
+      return [...t, entry];
+    });
     setActivePath(data.path);
     activeRef.current = data.path;
   };
@@ -375,14 +419,7 @@ export default function App() {
     if (rest.length) {
       showTab(rest[Math.min(index, rest.length - 1)].path);
     } else {
-      loadSeq.current++; // отменяем ответы на ещё идущие загрузки
-      setActivePath(null);
-      activeRef.current = null;
-      setRepo(null);
-      repoRef.current = null;
-      setDiffTarget(null);
-      setSelectedHash(null);
-      setLoading(false);
+      showBlank(null);
     }
   };
 
@@ -394,7 +431,8 @@ export default function App() {
 
   // Сохраняем список вкладок
   useEffect(() => {
-    if (tabsLoaded.current) api?.tabs?.save(tabs.map((t) => t.path), activePath);
+    // «Новые вкладки» не сохраняем — после перезапуска открываются только репозитории
+    if (tabsLoaded.current) api?.tabs?.save(tabs.filter((t) => !t.isNew).map((t) => t.path), isNewTab(activePath) ? null : activePath);
   }, [tabs, activePath]);
 
   // Заставка при запуске: восстанавливаем вкладки, показываем лоадер хотя бы ~0.8 с
@@ -544,6 +582,7 @@ export default function App() {
   ];
 
   const fileMenuItems = () => [
+    { id: 'new-tab', label: 'Новая вкладка', icon: Plus, hint: 'Ctrl+T', onClick: newTab },
     { id: 'open', label: 'Открыть репозиторий…', icon: FolderOpen, hint: 'Ctrl+O', onClick: openRepository },
     { id: 'init', label: 'Создать репозиторий…', icon: GitBranch, hint: 'Ctrl+N', onClick: () => createRepository() },
     { id: 'clone', label: 'Клонировать репозиторий…', icon: CloudDownload, hint: 'Ctrl+Shift+O', onClick: () => setDialog({ type: 'clone' }) },
@@ -602,6 +641,9 @@ export default function App() {
       } else if (key === 'n' || key === 'т') {
         e.preventDefault();
         createRepository();
+      } else if ((key === 't' || key === 'е') && !e.shiftKey) {
+        e.preventDefault();
+        newTab();
       } else if ((key === 'w' || key === 'ц') && activePath) {
         e.preventDefault();
         closeTab(activePath);
@@ -683,6 +725,19 @@ export default function App() {
     } else if (result?.error && result.error.code !== 'BUSY') {
       notify({ type: 'error', title: result.error.message, hint: result.error.hint, details: result.error.details });
     }
+  };
+
+  // Remote с https:// на SSH (git@host:path.git) — чтобы входить по ключу
+  const switchRemoteToSsh = async () => {
+    const a = authRef.current;
+    if (!a?.dir) return null;
+    const res = await api.creds.switchToSsh(a.dir);
+    if (res.ok) {
+      setAuth((cur) => cur && { ...cur, target: res.data.target, formError: null });
+      notify({ type: 'success', title: `Remote ${res.data.remote} переведён на SSH`, hint: `${res.data.from} → ${res.data.to}` });
+      loadRepo(a.dir, { silent: true });
+    }
+    return res;
   };
 
   const forgetAuth = async () => {
@@ -2475,6 +2530,7 @@ export default function App() {
         onSelectTab={(path) => path !== activePath && showTab(path)}
         onCloseTab={closeTab}
         onOpenRepository={openRepository}
+        onNewTab={newTab}
         onMenu={(name, x, y) => setMenu({ x, y, items: appMenus()[name] ?? [] })}
       />
 
@@ -2817,14 +2873,33 @@ export default function App() {
           </div>
         </>
       ) : (
-        <Welcome
-          loading={loading}
-          onOpen={openRepository}
-          onCreate={() => createRepository()}
-          onConnect={() => createRepository(undefined, 'connect')}
-          onClone={() => setDialog({ type: 'clone' })}
-          onGuide={() => setDialog({ type: 'guide' })}
-        />
+        activePath && !isNewTab(activePath) ? (
+          // Вкладка репозитория ещё загружается
+          <Welcome loading onOpen={openRepository} onCreate={() => createRepository()} onConnect={() => createRepository(undefined, 'connect')} onClone={() => setDialog({ type: 'clone' })} onGuide={() => setDialog({ type: 'guide' })} />
+        ) : (
+          <NewTabPage
+            key={activePath ?? 'none'}
+            loading={loading}
+            loadingPath={loading ? loadingLabel : null}
+            openPaths={tabs.filter((t) => !t.isNew).map((t) => t.path)}
+            onOpen={openRepository}
+            onOpenPath={(dir) => {
+              const open = tabs.find((t) => !t.isNew && t.path.toLowerCase() === dir.toLowerCase());
+              if (!open) return openTab(dir);
+              // Уже открыт в другой вкладке — переключаемся на неё, пустую закрываем
+              const blank = activePath;
+              setTabs((t) => t.filter((x) => x.path !== blank));
+              showTab(open.path);
+              return null;
+            }}
+            onCreate={() => createRepository()}
+            onConnect={() => createRepository(undefined, 'connect')}
+            onClone={() => setDialog({ type: 'clone' })}
+            onGuide={() => setDialog({ type: 'guide' })}
+            onShortcuts={() => setDialog({ type: 'guide', section: 'keys' })}
+            onSettings={() => setDialog({ type: 'settings', tab: 'appearance' })}
+          />
+        )
       )}
 
       {repo && (
@@ -3092,6 +3167,8 @@ export default function App() {
           onSubmit={submitAuth}
           onForget={auth.target?.saved ? forgetAuth : null}
           onClose={() => setAuth(null)}
+          onKeyDefaults={(type) => api.creds.keyDefaults(auth.dir, auth.url, type)}
+          onSwitchToSsh={auth.dir && !auth.url && api.creds.switchToSsh ? switchRemoteToSsh : null}
         />
       )}
       {dialog?.type === 'confirm' && (

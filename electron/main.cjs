@@ -70,6 +70,44 @@ function writeSettings(patch) {
   }
 }
 
+/* ---------- Недавние репозитории (страница «Новая вкладка») ---------- */
+
+const RECENT_MAX = 30;
+
+/** Список недавних: свежие сверху, без дублей и без удалённых с диска папок */
+function recentRepos() {
+  const s = readSettings();
+  let list = Array.isArray(s.recentRepos) ? s.recentRepos.filter((r) => r && typeof r.path === 'string') : [];
+  // Первый запуск после обновления — берём то, что знали раньше: вкладки и последний репозиторий
+  if (!list.length) {
+    const seed = [...(Array.isArray(s.tabs) ? s.tabs : []), s.lastRepo].filter((p) => typeof p === 'string');
+    list = [...new Set(seed)].map((p) => ({ path: p, name: path.basename(p), openedAt: null }));
+  }
+  const seen = new Set();
+  return list
+    .filter((r) => {
+      const key = process.platform === 'win32' ? r.path.toLowerCase() : r.path;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return fs.existsSync(r.path);
+    })
+    .slice(0, RECENT_MAX)
+    .map((r) => ({ path: r.path, name: r.name || path.basename(r.path), openedAt: r.openedAt ?? null }));
+}
+
+function rememberRecent(dir, name) {
+  const same = (p) => (process.platform === 'win32' ? p.toLowerCase() === dir.toLowerCase() : p === dir);
+  const list = recentRepos().filter((r) => !same(r.path));
+  writeSettings({ recentRepos: [{ path: dir, name: name || path.basename(dir), openedAt: new Date().toISOString() }, ...list].slice(0, RECENT_MAX) });
+}
+
+ipcMain.handle('recent:list', () => recentRepos());
+ipcMain.handle('recent:remove', (_event, dir) => {
+  if (typeof dir !== 'string') return false;
+  writeSettings({ recentRepos: recentRepos().filter((r) => r.path !== dir) });
+  return true;
+});
+
 /* ---------- Оформление ---------- */
 
 // Системный материал окна (Mica/Acrylic) есть в Windows 11 22H2+ (сборка 22621)
@@ -342,6 +380,7 @@ ipcMain.handle(
     const current = data.localBranches.find((b) => b.name === data.currentBranch);
     data.forge = await gitlab.detectRemote(data.path, current?.upstreamRemote).catch(() => null);
     writeSettings({ lastRepo: data.path });
+    rememberRecent(data.path, data.name);
     return data;
   }),
 );
@@ -458,12 +497,34 @@ ipcMain.handle('creds:pick-key', async () => {
   });
   return result.canceled ? null : result.filePaths[0] ?? null;
 });
+// Подсказки для формы нового ключа: имя файла и email автора из git config — как комментарий ключа
+ipcMain.handle(
+  'creds:key-defaults',
+  safe(async (dir, url, type) => {
+    const t = url ? credentials.parseTarget(url) : credentials.parseTarget((await credTarget(dir, null).catch(() => ({ url: '' }))).url);
+    const root = dir ? await git.resolveRepoRoot(dir).catch(() => null) : null;
+    const email = (await git.git(root ?? os.homedir(), ['config', 'user.email']).catch(() => '')).trim();
+    return { name: credentials.suggestKeyName(type === 'rsa' ? 'rsa' : 'ed25519', t.hostname), comment: email || null, dir: credentials.listSshKeys().dir };
+  }),
+);
 ipcMain.handle(
   'creds:generate-key',
   safe(async (options) => {
     const res = await credentials.generateSshKey({ ...(options ?? {}), gitBinary: git.gitInfo?.().binary });
     clipboard.writeText(res.publicKey);
     return { ...res, copied: true };
+  }),
+);
+// Перевести remote с https:// на SSH (git@host:path.git), чтобы входить по ключу
+ipcMain.handle(
+  'creds:switch-to-ssh',
+  safe(async (dir) => {
+    const t = await credTarget(dir, null);
+    const next = credentials.sshUrlFor(t.url);
+    if (!next || !t.remote) throw new GitError('Адрес remote уже не https:// — менять нечего', { code: 'BAD_ARGS' });
+    const root = await git.resolveRepoRoot(dir);
+    await git.git(root, ['remote', 'set-url', t.remote, next]);
+    return { remote: t.remote, from: t.url, to: next, target: await describeTarget(dir, null) };
   }),
 );
 ipcMain.handle(

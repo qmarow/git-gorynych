@@ -26,6 +26,11 @@ contextBridge.exposeInMainWorld('api', {
     get: () => ipcRenderer.invoke('tabs:get'),
     save: (tabs, active) => ipcRenderer.invoke('tabs:save', tabs, active),
   },
+  // Недавние репозитории — для страницы «Новая вкладка»
+  recent: {
+    list: () => ipcRenderer.invoke('recent:list'),
+    remove: (dir) => ipcRenderer.invoke('recent:remove', dir),
+  },
   openExternal: (url) => ipcRenderer.invoke('shell:open-external', url),
   // Учётные данные для remote: секреты не возвращаются в интерфейс — только что сохранено
   creds: {
@@ -35,6 +40,8 @@ contextBridge.exposeInMainWorld('api', {
     sshKeys: () => ipcRenderer.invoke('creds:ssh-keys'),
     pickKey: () => ipcRenderer.invoke('creds:pick-key'),
     generateKey: (options) => ipcRenderer.invoke('creds:generate-key', options),
+    keyDefaults: (dir, url, type) => ipcRenderer.invoke('creds:key-defaults', dir, url, type),
+    switchToSsh: (dir) => ipcRenderer.invoke('creds:switch-to-ssh', dir),
     copyPublicKey: (keyPath) => ipcRenderer.invoke('creds:copy-public-key', keyPath),
   },
   // Папка репозитория: в системном файловом менеджере и в терминале
