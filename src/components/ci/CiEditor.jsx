@@ -132,14 +132,16 @@ export default function CiEditor({ value, onChange, lang, errors, jump, onSave, 
           {lines.map((_, i) => {
             const n = i + 1;
             const err = errorLines.get(n);
+            // Значение — текст (ошибка) или { text, tone: 'red' | 'yellow' }
+            const yellow = typeof err === 'object' && err?.tone === 'yellow';
             return (
               <div
                 key={i}
                 style={{ height: LINE_H, lineHeight: `${LINE_H}px` }}
-                title={err}
-                className={`relative select-none pr-3 ${err ? 'text-gk-red' : n === activeLine ? 'text-gk-text' : 'text-gk-dim'}`}
+                title={typeof err === 'object' ? err?.text : err}
+                className={`relative select-none pr-3 ${err ? (yellow ? 'text-gk-yellow' : 'text-gk-red') : n === activeLine ? 'text-gk-text' : 'text-gk-dim'}`}
               >
-                {err && <span className="absolute left-1.5 top-[7px] h-1.5 w-1.5 rounded-full bg-gk-red" />}
+                {err && <span className={`absolute left-1.5 top-[7px] h-1.5 w-1.5 rounded-full ${yellow ? 'bg-gk-yellow' : 'bg-gk-red'}`} />}
                 {n}
               </div>
             );
@@ -156,7 +158,7 @@ export default function CiEditor({ value, onChange, lang, errors, jump, onSave, 
               text={line}
               lang={lang}
               active={i + 1 === activeLine}
-              error={errorLines.has(i + 1)}
+              error={errorLines.has(i + 1) ? (errorLines.get(i + 1)?.tone === 'yellow' ? 'yellow' : 'red') : null}
               jumped={jump?.line === i + 1}
             />
           ))}
@@ -187,7 +189,7 @@ const Line = memo(function Line({ text, lang, active, error, jumped }) {
   return (
     <div
       style={{ height: LINE_H, lineHeight: `${LINE_H}px` }}
-      className={`whitespace-pre text-gk-text/90 ${error ? 'bg-gk-red/12' : jumped ? 'bg-gk-blue/15' : active ? 'bg-gk-fg/[0.035]' : ''}`}
+      className={`whitespace-pre text-gk-text/90 ${jumped ? 'bg-gk-blue/15' : error === 'yellow' ? 'bg-gk-yellow/10' : error ? 'bg-gk-red/12' : active ? 'bg-gk-fg/[0.035]' : ''}`}
     >
       {highlight(text, lang) || ' '}
     </div>

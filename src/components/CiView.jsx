@@ -12,6 +12,7 @@ import {
   Hand,
   History,
   Layers,
+  ListChecks,
   Loader2,
   Pencil,
   Plus,
@@ -33,6 +34,7 @@ import GitLabPanel from './GitLabPanel.jsx';
 import CiEditor from './ci/CiEditor.jsx';
 import JobForm from './ci/JobForm.jsx';
 import { ChoiceDialog, DraftBar, DraftDiff, LintPanel } from './ci/DraftTools.jsx';
+import CheckView, { CheckBanner, SEVERITY, issueKey } from './ci/CheckView.jsx';
 import { kb } from '../lib/platform.js';
 import { readable } from '../lib/scheme.js';
 
@@ -61,6 +63,7 @@ const WHEN_LABELS = {
 
 const MODES = [
   { id: 'scheme', label: 'Схема', icon: Workflow },
+  { id: 'check', label: 'Проверка', icon: ListChecks },
   { id: 'file', label: 'Файл', icon: FileCode },
   { id: 'history', label: 'История', icon: History },
   { id: 'pipelines', label: 'Пайплайны', icon: Zap, gitlab: true },
@@ -97,6 +100,7 @@ export default function CiView({
   const [jobId, setJobId] = useState(null);
   const [fileTab, setFileTab] = useState(null);
   const [jump, setJump] = useState(null); // { path, line, n } — подсветить строку в файле
+  const [focusIssue, setFocusIssue] = useState(null); // { key, n } — раскрыть проблему на вкладке «Проверка»
   const requested = useRef(0);
 
   // Редактирование: черновики (путь → текст), отпечатки файлов на момент начала правки
@@ -163,6 +167,25 @@ export default function CiView({
   const pipeline = current?.pipelines.find((p) => p.id === pipelineId) ?? current?.pipelines[0] ?? null;
   const allJobs = useMemo(() => (pipeline ? pipeline.stages.flatMap((s) => s.jobs) : []), [pipeline]);
   const job = allJobs.find((j) => j.id === jobId) ?? null;
+  const check = current?.check ?? null;
+  // Проблемы по заданиям — для значков на схеме и в карточке задания
+  const issuesByJob = useMemo(() => {
+    const m = new Map();
+    for (const i of check?.issues ?? []) if (i.job) m.set(i.job, [...(m.get(i.job) ?? []), i]);
+    return m;
+  }, [check]);
+  const jobIssues = (j) => (j ? [...new Set([...(issuesByJob.get(j.id) ?? []), ...(issuesByJob.get(j.name) ?? []), ...(j.jobId ? issuesByJob.get(j.jobId) ?? [] : [])])] : []);
+  const openCheck = (issue) => {
+    setMode('check');
+    setFocusIssue(issue ? { key: issueKey(issue), n: Date.now() } : null);
+  };
+  // Задание по имени/id из проблемы
+  const selectJobByRef = (ref) => {
+    const j = allJobs.find((x) => x.id === ref || x.name === ref || x.jobId === ref);
+    setMode('scheme');
+    setJobForm(null);
+    setJobId(j?.id ?? null);
+  };
 
   /* ---------- Черновики ---------- */
 
@@ -409,6 +432,7 @@ export default function CiView({
               <m.icon size={13} />
               {m.label}
               {m.id === 'file' && hasDrafts && <span className="h-1.5 w-1.5 rounded-full bg-gk-yellow" />}
+              {m.id === 'check' && check && <CheckBadge stats={check.stats} />}
               {m.id === 'history' && baseCurrent?.history.length > 0 && (
                 <span className="text-[10px] text-gk-dim">{baseCurrent.history.length}</span>
               )}
@@ -498,6 +522,15 @@ export default function CiView({
           <Center className="text-gk-red">{state.error.message}</Center>
         ) : !current ? (
           <NoCi gitlab={isGitlab} onPipelines={() => setMode('pipelines')} onCreate={createFromTemplate} />
+        ) : mode === 'check' ? (
+          <CheckView
+            check={check}
+            systemTitle={current.title}
+            draft={hasDrafts && Boolean(preview?.current)}
+            focus={focusIssue}
+            onShowLine={showInFile}
+            onSelectJob={selectJobByRef}
+          />
         ) : mode === 'scheme' ? (
           <>
             <Scheme
@@ -514,6 +547,9 @@ export default function CiView({
                 setJobId((cur) => (cur === id ? null : id));
               }}
               onShowLine={showInFile}
+              check={check}
+              jobIssues={jobIssues}
+              onOpenCheck={openCheck}
               editable={editable}
               busy={editBusy}
               onAddJob={(stage) => {
@@ -568,6 +604,8 @@ export default function CiView({
                   onSelectJob={setJobId}
                   onClose={() => setJobId(null)}
                   onShowLine={showInFile}
+                  issues={jobIssues(job)}
+                  onOpenIssue={openCheck}
                   editState={!editable ? null : job.source === current.file ? 'own' : 'include'}
                   onEdit={() => setJobForm({ mode: 'edit' })}
                 />
@@ -581,6 +619,7 @@ export default function CiView({
             onActive={setFileTab}
             jump={jump}
             errors={current.errors}
+            issues={check?.issues ?? []}
             gitDirty={dirtyPaths}
             drafts={drafts}
             textOf={textOf}
@@ -600,7 +639,7 @@ export default function CiView({
 
 /* =================== Схема =================== */
 
-function Scheme({ data, pipeline, onPipeline, selectedJob, onSelectJob, onShowLine, editable, busy, onAddJob, onStageOp }) {
+function Scheme({ data, pipeline, onPipeline, selectedJob, onSelectJob, onShowLine, check, jobIssues, onOpenCheck, editable, busy, onAddJob, onStageOp }) {
   const [showVars, setShowVars] = useState(false);
   const [showTemplates, setShowTemplates] = useState(false);
   const errors = data.errors.filter((e) => e.severity === 'error');
@@ -609,14 +648,15 @@ function Scheme({ data, pipeline, onPipeline, selectedJob, onSelectJob, onShowLi
   return (
     <div className="min-w-0 flex-1 overflow-auto">
       <div className="space-y-3 p-4">
-        {errors.length > 0 && (
+        {check && <CheckBanner check={check} onOpen={onOpenCheck} />}
+        {!check && errors.length > 0 && (
           <Notice tone="red" icon={CircleX} title="Ошибки в файле — CI, скорее всего, не запустится">
             {errors.map((e, i) => (
               <ProblemLine key={i} problem={e} onShowLine={onShowLine} />
             ))}
           </Notice>
         )}
-        {(data.warnings.length > 0 || yamlWarnings.length > 0) && (
+        {!check && (data.warnings.length > 0 || yamlWarnings.length > 0) && (
           <Notice tone="yellow" icon={AlertTriangle} title="На что обратить внимание">
             {data.warnings.map((w, i) => (
               <div key={i}>{w}</div>
@@ -717,6 +757,7 @@ function Scheme({ data, pipeline, onPipeline, selectedJob, onSelectJob, onShowLi
         ) : pipeline && pipeline.stages.length > 0 ? (
           <StagesBoard
             pipeline={pipeline}
+            jobIssues={jobIssues}
             selectedJob={selectedJob}
             onSelectJob={onSelectJob}
             editable={editable}
@@ -774,7 +815,7 @@ function Scheme({ data, pipeline, onPipeline, selectedJob, onSelectJob, onShowLi
   );
 }
 
-function StagesBoard({ pipeline, selectedJob, onSelectJob, editable, busy, onAddJob, onStageOp }) {
+function StagesBoard({ pipeline, jobIssues, selectedJob, onSelectJob, editable, busy, onAddJob, onStageOp }) {
   const [adding, setAdding] = useState(false);
   const realStages = pipeline.stages.filter((s) => !s.name.startsWith('.'));
   return (
@@ -804,7 +845,7 @@ function StagesBoard({ pipeline, selectedJob, onSelectJob, editable, busy, onAdd
                 <div className="flex flex-1 flex-col gap-2 p-2">
                   {stage.jobs.length === 0 && <div className="px-1 py-2 text-[11px] italic text-gk-dim">нет заданий</div>}
                   {stage.jobs.map((job) => (
-                    <JobCard key={job.id} job={job} selected={selectedJob === job.id} onClick={() => onSelectJob(job.id)} />
+                    <JobCard key={job.id} job={job} issues={jobIssues?.(job) ?? []} selected={selectedJob === job.id} onClick={() => onSelectJob(job.id)} />
                   ))}
                   {editable && !stage.name.startsWith('.') && (
                     <button
@@ -960,7 +1001,9 @@ function InlineInput({ initial = '', placeholder, onSubmit, onCancel }) {
   );
 }
 
-function JobCard({ job, selected, onClick }) {
+function JobCard({ job, issues = [], selected, onClick }) {
+  const errCount = issues.filter((i) => i.severity === 'error').length;
+  const warnCount = issues.filter((i) => i.severity === 'warning').length;
   const badges = [];
   if (job.manual) badges.push({ icon: Hand, text: 'вручную', cls: 'text-gk-yellow' });
   if (job.kind === 'trigger') badges.push({ icon: Zap, text: job.trigger ? 'запускает другой пайплайн' : 'внешнее', cls: 'text-gk-purple' });
@@ -985,6 +1028,19 @@ function JobCard({ job, selected, onClick }) {
         <span className="min-w-0 flex-1 truncate text-[13px] font-medium text-gk-text" title={job.name}>
           {job.name}
         </span>
+        {(errCount > 0 || warnCount > 0) && (
+          <span
+            data-testid="job-issues"
+            title={issues
+              .filter((i) => i.severity !== 'info')
+              .map((i) => `• ${i.title}`)
+              .join('\n')}
+            className={`flex shrink-0 items-center gap-0.5 rounded px-1 text-[10px] font-semibold ${errCount ? 'bg-gk-red/15 text-gk-red' : 'bg-gk-yellow/15 text-gk-yellow'}`}
+          >
+            {errCount ? <CircleX size={10} /> : <AlertTriangle size={10} />}
+            {errCount || warnCount}
+          </span>
+        )}
       </div>
       {where && (
         <div className="mt-1 flex items-center gap-1 truncate text-[11px] text-gk-dim" title={where}>
@@ -1013,7 +1069,7 @@ function JobCard({ job, selected, onClick }) {
 
 /* =================== Детали задания =================== */
 
-function JobDetails({ job, allJobs, onSelectJob, onClose, onShowLine, editState, onEdit }) {
+function JobDetails({ job, allJobs, onSelectJob, onClose, onShowLine, issues = [], onOpenIssue, editState, onEdit }) {
   const [showRaw, setShowRaw] = useState(false);
   const scripts = [
     ['before_script', job.beforeScript],
@@ -1059,6 +1115,25 @@ function JobDetails({ job, allJobs, onSelectJob, onClose, onShowLine, editState,
       )}
 
       <div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-4 py-3 text-[12px]">
+        {issues.length > 0 && (
+          <div data-testid="job-details-issues" className="space-y-1">
+            {issues.map((i) => {
+              const S = SEVERITY[i.severity];
+              return (
+                <button
+                  key={issueKey(i)}
+                  onClick={() => onOpenIssue?.(i)}
+                  title="Открыть на вкладке «Проверка»: когда, как проявится, почему и как исправить"
+                  className={`flex w-full items-start gap-2 rounded-md px-2 py-1.5 text-left transition-colors ${S.bg} hover:brightness-110`}
+                >
+                  <S.icon size={13} className={`mt-0.5 shrink-0 ${S.text}`} />
+                  <span className="min-w-0 flex-1 break-words text-gk-text/90">{i.title}</span>
+                  {i.line && <span className="shrink-0 font-mono text-[10.5px] text-gk-dim">стр. {i.line}</span>}
+                </button>
+              );
+            })}
+          </div>
+        )}
         <Section title="Когда запускается">
           <div className="flex flex-wrap items-center gap-1.5">
             {job.rules?.length > 0 ? (
@@ -1240,18 +1315,33 @@ function JobDetails({ job, allJobs, onSelectJob, onClose, onShowLine, editState,
 
 /* =================== Файл =================== */
 
-function FileEditor({ files, active, onActive, jump, errors, gitDirty, drafts, textOf, onChange, onSave }) {
+function FileEditor({ files, active, onActive, jump, errors, issues = [], gitDirty, drafts, textOf, onChange, onSave }) {
   const file = files.find((f) => f.path === active) ?? files[0];
   const lang = /\.ya?ml$/i.test(file?.path ?? '') ? 'yaml' : 'groovy';
+  // Ошибки YAML и найденные проверкой проблемы этого файла (кроме советов)
+  const problems = useMemo(() => {
+    const list = errors.map((e) => ({ file: e.file, line: e.line, message: e.message, severity: e.severity === 'error' ? 'error' : 'warning' }));
+    for (const i of issues) {
+      if (i.severity === 'info' || i.id === 'yaml-syntax' || i.id === 'yaml-warning') continue;
+      list.push({ file: i.file, line: i.line, message: i.title, severity: i.severity });
+    }
+    return list;
+  }, [errors, issues]);
   const errorLines = useMemo(() => {
     const m = new Map();
-    for (const e of errors) if (e.file === file?.path && e.line) m.set(e.line, e.message);
+    for (const e of problems) {
+      if (e.file !== file?.path || !e.line) continue;
+      const prev = m.get(e.line);
+      const tone = e.severity === 'error' || prev?.tone === 'red' ? 'red' : 'yellow';
+      m.set(e.line, { text: prev ? `${prev.text}\n${e.message}` : e.message, tone });
+    }
     return m;
-  }, [errors, file]);
+  }, [problems, file]);
   const [localJump, setLocalJump] = useState(null);
   if (!file) return <Center>Нет файла</Center>;
   const value = textOf(file.path);
-  const fileErrors = errors.filter((e) => e.file === file.path || (!e.file && file === files[0]));
+  const fileErrors = problems.filter((e) => e.file === file.path || (!e.file && file === files[0]));
+  const anyError = fileErrors.some((e) => e.severity === 'error');
   const effJump = [jump, localJump].filter((j) => j && j.path === file.path).sort((a, b) => b.n - a.n)[0] ?? null;
 
   return (
@@ -1287,15 +1377,18 @@ function FileEditor({ files, active, onActive, jump, errors, gitDirty, drafts, t
         onSave={onSave}
       />
       {fileErrors.length > 0 && (
-        <div className="max-h-28 shrink-0 animate-fade-in overflow-y-auto border-t border-gk-red/30 bg-gk-red/[0.07] py-1 text-[12px]">
+        <div
+          data-testid="file-problems"
+          className={`max-h-28 shrink-0 animate-fade-in overflow-y-auto border-t py-1 text-[12px] ${anyError ? 'border-gk-red/30 bg-gk-red/[0.07]' : 'border-gk-yellow/30 bg-gk-yellow/[0.06]'}`}
+        >
           {fileErrors.map((e, i) => (
             <button
               key={i}
               onClick={() => e.line && setLocalJump({ path: file.path, line: e.line, n: Date.now() })}
-              className="flex w-full items-start gap-2 px-3 py-0.5 text-left hover:bg-gk-red/10"
+              className="flex w-full items-start gap-2 px-3 py-0.5 text-left hover:bg-gk-fg/5"
             >
-              <CircleX size={13} className="mt-0.5 shrink-0 text-gk-red" />
-              {e.line && <span className="shrink-0 font-mono text-gk-red">стр. {e.line}</span>}
+              {e.severity === 'error' ? <CircleX size={13} className="mt-0.5 shrink-0 text-gk-red" /> : <AlertTriangle size={13} className="mt-0.5 shrink-0 text-gk-yellow" />}
+              {e.line && <span className={`shrink-0 font-mono ${e.severity === 'error' ? 'text-gk-red' : 'text-gk-yellow'}`}>стр. {e.line}</span>}
               <span className="min-w-0 text-gk-text">{e.message}</span>
             </button>
           ))}
@@ -1377,6 +1470,12 @@ function ProblemLine({ problem, onShowLine }) {
       )}
     </div>
   );
+}
+
+function CheckBadge({ stats }) {
+  if (stats.error) return <span data-testid="check-badge" className="rounded-full bg-gk-red/20 px-1.5 text-[10px] font-semibold text-gk-red">{stats.error}</span>;
+  if (stats.warning) return <span data-testid="check-badge" className="rounded-full bg-gk-yellow/20 px-1.5 text-[10px] font-semibold text-gk-yellow">{stats.warning}</span>;
+  return <Check data-testid="check-badge" size={11} className="text-gk-green" />;
 }
 
 function Notice({ tone, icon: Icon, title, children }) {

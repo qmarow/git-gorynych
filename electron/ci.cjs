@@ -6,6 +6,7 @@ const YAML = require('./vendor/yaml.cjs');
 const { git, hasHead, safeRelative } = require('./git.cjs');
 const { GitError } = require('./errors.cjs');
 const ciEdit = require('./ciEdit.cjs');
+const { checkCi } = require('./ciCheck.cjs');
 
 const MAX_FILE_SIZE = 512 * 1024;
 const MAX_INCLUDE_DEPTH = 6;
@@ -223,6 +224,8 @@ function loadGitlab(root, mainFile) {
   const errors = [];
   const includes = [];
   const jobs = new Map(); // name -> { config, source, line }
+  const jobDefs = []; // все определения заданий по файлам — для проверки повторов
+  const globalDefs = []; // { key, source } — глобальные ключи по файлам
   let globals = {};
   const seen = new Set();
 
@@ -262,9 +265,11 @@ function loadGitlab(root, mainFile) {
 
     for (const [key, value] of Object.entries(data)) {
       if (GITLAB_GLOBAL.has(key)) {
+        globalDefs.push({ key, source: rel, line: parsed.lines[key] ?? null });
         globals[key] = key === 'variables' || key === 'default' ? deepMerge(globals[key] ?? {}, value ?? {}) : value;
         continue;
       }
+      jobDefs.push({ name: key, source: rel, line: parsed.lines[key] ?? null, value });
       if (!isPlainObject(value)) continue;
       const prev = jobs.get(key);
       jobs.set(key, {
@@ -390,6 +395,8 @@ function loadGitlab(root, mainFile) {
     variables: variablesList(globals.variables),
     pipelines: [{ id: 'main', title: 'Пайплайн', stages: usedStages }],
     templates,
+    // Для проверки конфигурации (ciCheck.cjs); в интерфейс не уходит
+    _raw: { jobs, jobDefs, globalDefs, resolveJob, resolveReferences, globals, declaredStages, stageNames, includes },
   };
 }
 
@@ -1070,11 +1077,14 @@ async function loadCi(root, requestedFile, { skipHistory = false } = {}) {
     f.hash = disk.hash;
     f.draft = Boolean(drafts?.has(normRel(f.path)));
   }
+  // Проверка конфигурации: что сломается и почему
+  const check = await checkCi(root, system.id, result).catch((error) => ({ issues: [], scenarios: [], stats: { error: 0, warning: 0, info: 0 }, failed: String(error?.message ?? error) }));
+  delete result._raw;
   const jobCount = result.pipelines.reduce((n, p) => n + p.stages.reduce((k, s) => k + s.jobs.length, 0), 0);
 
   return {
     systems,
-    current: { system: system.id, title: system.title, file, jobCount, ...result, history, dirty },
+    current: { system: system.id, title: system.title, file, jobCount, ...result, history, dirty, check },
   };
 }
 
