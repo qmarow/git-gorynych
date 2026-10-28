@@ -98,13 +98,21 @@ body,
   --gk-fg-rgb: 255 255 255;
   --gk-dim-rgb: 0 0 0;
   --gk-log-bg: color-mix(in srgb, var(--gk-base) 80%, black);
-  /* Подсветка YAML/Groovy */
+  /* Подсветка синтаксиса: YAML/Groovy в редакторе CI и код в диффах (highlight.js) */
   --syn-key: #7ab8ff;
   --syn-string: #9be29b;
   --syn-number: #f5b971;
   --syn-keyword: #c792ea;
   --syn-variable: #ffcb6b;
   --syn-anchor: #c792ea;
+  --syn-func: #82b1ff;
+  --syn-type: #ffcb6b;
+  --syn-tag: #f07178;
+  --syn-attr: #f5b971;
+  --syn-builtin: #89ddff;
+  --syn-meta: #89ddff;
+  --syn-regex: #f78c6c;
+  --syn-comment: #7f8798;
   color-scheme: dark;
 }
 /* Светлая схема: поля ввода, полосы прокрутки и выпадающие списки браузера — светлые */
@@ -117,6 +125,14 @@ html[data-scheme='light'] {
   --syn-keyword: #8a3ab9;
   --syn-variable: #9a6700;
   --syn-anchor: #8a3ab9;
+  --syn-func: #0550ae;
+  --syn-type: #8a5a00;
+  --syn-tag: #b4232c;
+  --syn-attr: #a14d00;
+  --syn-builtin: #0a6f7f;
+  --syn-meta: #0a6f7f;
+  --syn-regex: #b5470b;
+  --syn-comment: #6e7781;
 }
 html {
   background: var(--gk-base);
@@ -454,3 +470,18 @@ textarea {
 html[data-scheme='light'] .glass-strong {
   box-shadow: 0 0 0 1px rgb(16 24 40 / 0.06) inset, 0 18px 44px -14px rgb(16 24 40 / 0.28);
 }
+
+/* ================= Подсветка синтаксиса кода (src/lib/highlight.js) ================= */
+.tok-keyword { color: var(--syn-keyword); }
+.tok-string { color: var(--syn-string); }
+.tok-number { color: var(--syn-number); }
+.tok-func { color: var(--syn-func); }
+.tok-type { color: var(--syn-type); }
+.tok-tag { color: var(--syn-tag); }
+.tok-attr { color: var(--syn-attr); }
+.tok-builtin { color: var(--syn-builtin); }
+.tok-meta { color: var(--syn-meta); }
+.tok-regex { color: var(--syn-regex); }
+.tok-variable { color: var(--syn-variable); }
+.tok-comment { color: var(--syn-comment); font-style: italic; }
+.tok-punct { color: var(--color-gk-muted); }

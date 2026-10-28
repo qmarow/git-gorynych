@@ -39,5 +39,7 @@ src/App.jsx              трёхпанельный layout
 src/components/          TitleBar, Toolbar, Sidebar, CommitGraph, CommitDetails
 src/lib/graphLayout.js   раскладка коммитов по дорожкам и пути рёбер
 src/lib/format.js        даты, инициалы, цвета
+src/lib/highlight.js     подсветка синтаксиса и поиск в diff
+src/vendor/hljs.js       highlight.js (BSD-3) одним файлом — пересборка: scripts/build-hljs.mjs
 src/data/mockRepo.js     демо-данные до подключения Git
 ```

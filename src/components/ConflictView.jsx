@@ -19,6 +19,8 @@ import {
   Trash2,
   X,
 } from 'lucide-react';
+import { CodeLang, HighlightedLines, TokenText, useLineTokens } from './CodeText.jsx';
+import { detectLanguage } from '../lib/highlight.js';
 import { isMod, kb } from '../lib/platform.js';
 import { readable } from '../lib/scheme.js';
 
@@ -173,6 +175,7 @@ export default function ConflictView({ repoPath, path, fileIndex, fileCount, onP
   const dir = parts.join('/');
 
   return (
+    <CodeLang.Provider value={detectLanguage(path)}>
     <div className="flex min-h-0 flex-1 animate-fade-in flex-col bg-gk-bg">
       {/* Верхняя панель */}
       <div className="glass flex shrink-0 flex-wrap items-center gap-2 border-b border-gk-border bg-gk-panel px-3 py-2">
@@ -281,6 +284,7 @@ export default function ConflictView({ repoPath, path, fileIndex, fileCount, onP
         )}
       </div>
     </div>
+    </CodeLang.Provider>
   );
 }
 
@@ -344,7 +348,7 @@ function CommonLines({ lines, isFirst, isLast }) {
 function Code({ lines }) {
   return (
     <pre className="select-text overflow-x-auto whitespace-pre px-2 font-mono text-[12px] leading-5 text-gk-muted [tab-size:4]">
-      {lines.join('\n') || ' '}
+      <HighlightedLines lines={lines} />
     </pre>
   );
 }
@@ -459,7 +463,7 @@ function ConflictCard({ refFn, index, total, block, choice, L, R, onPick, onTogg
           <div className="text-[12px] italic text-gk-dim">— блок будет удалён —</div>
         ) : (
           <pre className="select-text overflow-x-auto whitespace-pre rounded bg-gk-green/[0.06] px-2 py-1 font-mono text-[12px] leading-5 text-gk-text [tab-size:4]">
-            {result.join('\n')}
+            <HighlightedLines lines={result} />
           </pre>
         )}
       </div>
@@ -469,6 +473,7 @@ function ConflictCard({ refFn, index, total, block, choice, L, R, onPick, onTogg
 
 function SideLines({ color, lines, selected, disabled, onToggle, onToggleAll }) {
   const all = lines.length > 0 && selected.every(Boolean);
+  const tokens = useLineTokens(lines);
   return (
     <div className={`min-w-0 ${disabled ? 'opacity-50' : ''}`}>
       <label className="flex cursor-pointer items-center gap-2 border-b border-gk-border/60 px-2 py-1 text-[11px] text-gk-dim hover:text-gk-muted">
@@ -496,7 +501,9 @@ function SideLines({ color, lines, selected, disabled, onToggle, onToggleAll }) 
               className="mt-[3px] shrink-0"
               style={{ accentColor: color }}
             />
-            <span className={`whitespace-pre [tab-size:4] ${selected[k] ? 'text-gk-strong' : 'text-gk-text/80'}`}>{line || ' '}</span>
+            <span className={`whitespace-pre [tab-size:4] ${selected[k] ? 'text-gk-strong' : 'text-gk-text/80'}`}>
+              <TokenText tokens={tokens?.[k]} text={line} />
+            </span>
           </label>
         ))}
       </div>
@@ -510,7 +517,12 @@ function ResultPreview({ data, choices }) {
   return (
     <div className="px-4 py-3 pb-10 font-mono text-[12px] leading-5">
       {data.segments.map((seg, si) => {
-        if (seg.type === 'common') return <pre key={si} className="select-text whitespace-pre text-gk-muted">{seg.lines.join('\n')}</pre>;
+        if (seg.type === 'common')
+          return (
+            <pre key={si} className="select-text whitespace-pre text-gk-muted">
+              <HighlightedLines lines={seg.lines} />
+            </pre>
+          );
         bi++;
         const ch = choices[bi] ?? emptyChoice(seg);
         if (!ch.decided) {
@@ -523,7 +535,7 @@ function ResultPreview({ data, choices }) {
         const lines = blockResult(seg, ch);
         return (
           <pre key={si} className="select-text whitespace-pre rounded bg-gk-green/10 text-gk-text">
-            {lines.length ? lines.join('\n') : <span className="italic text-gk-dim">(блок удалён)</span>}
+            {lines.length ? <HighlightedLines lines={lines} /> : <span className="italic text-gk-dim">(блок удалён)</span>}
           </pre>
         );
       })}

@@ -37,6 +37,12 @@ contextBridge.exposeInMainWorld('api', {
     describe: (dir, url) => ipcRenderer.invoke('creds:describe', dir, url),
     save: (dir, url, data) => ipcRenderer.invoke('creds:save', dir, url, data),
     clear: (dir, url) => ipcRenderer.invoke('creds:clear', dir, url),
+    describeServer: (input) => ipcRenderer.invoke('creds:describe-server', input),
+    detectServer: (input) => ipcRenderer.invoke('creds:detect-server', input),
+    saveServer: (input, data) => ipcRenderer.invoke('creds:save-server', input, data),
+    servers: () => ipcRenderer.invoke('creds:servers'),
+    forgetServer: (hostname) => ipcRenderer.invoke('creds:forget-server', hostname),
+    setKind: (hostname, kind) => ipcRenderer.invoke('creds:set-kind', hostname, kind),
     sshKeys: () => ipcRenderer.invoke('creds:ssh-keys'),
     pickKey: () => ipcRenderer.invoke('creds:pick-key'),
     generateKey: (options) => ipcRenderer.invoke('creds:generate-key', options),
@@ -109,6 +115,7 @@ contextBridge.exposeInMainWorld('api', {
     // params: { mode: 'commit'|'staged'|'unstaged'|'untracked', hash, parent, path, oldPath, ignoreWhitespace, conflicted }
     fileDiff: (dir, params) => ipcRenderer.invoke('repo:file-diff', dir, params),
     compare: (dir, params) => ipcRenderer.invoke('repo:compare', dir, params),
+    compareSearch: (dir, params) => ipcRenderer.invoke('repo:compare-search', dir, params),
     rebasePreview: (dir, params) => ipcRenderer.invoke('repo:rebase-preview', dir, params),
     // rules: [{ id, label, pattern, flags, files, category }] — проверка staged-изменений перед коммитом
     guardScan: (dir, params) => ipcRenderer.invoke('repo:guard-scan', dir, params),

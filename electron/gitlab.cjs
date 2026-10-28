@@ -4,6 +4,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { git } = require('./git.cjs');
 const { GitError } = require('./errors.cjs');
+const { serverKind } = require('./credentials.cjs');
 
 let electron = null;
 try {
@@ -94,7 +95,9 @@ async function detectRemote(root, preferredRemote) {
   const base = `${parsed.protocol}://${parsed.host}${parsed.port ? `:${parsed.port}` : ''}`;
   const store = readStore();
   const meta = store.hosts[base];
-  const looksLikeGitlab = /gitlab/i.test(parsed.host) || Boolean(meta);
+  // GitLab по имени хоста, по сохранённому токену или по типу, выбранному в окне входа (свой сервер с любым доменом)
+  const kind = serverKind(parsed.host);
+  const looksLikeGitlab = kind === 'gitlab' || Boolean(meta) || (kind === null && /gitlab/i.test(parsed.host));
   return {
     kind: looksLikeGitlab ? 'gitlab' : null,
     remote: name,

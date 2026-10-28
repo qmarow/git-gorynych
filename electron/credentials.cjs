@@ -96,30 +96,294 @@ function parseTarget(url) {
 /** Ключ записи в хранилище: для HTTPS — host с портом, для SSH — имя хоста */
 const keyOf = (t) => (t.protocol === 'https' ? `${t.scheme}://${t.host}` : `ssh://${t.hostname}`);
 
-/** Что сохранено для адреса — без секретов (для интерфейса) */
-function describe(url) {
-  const t = parseTarget(url);
-  if (!t.host) return { ...t, saved: null };
-  const entry = readStore().hosts[keyOf(t)] ?? null;
+/** Сохранённая запись без секретов (для интерфейса) */
+function describeEntry(entry) {
+  if (!entry) return null;
   return {
-    ...t,
-    saved: entry
-      ? {
-          method: entry.method,
-          username: entry.username ?? null,
-          keyPath: entry.keyPath ?? null,
-          hasSecret: Boolean(entry.secret),
-          hasPassphrase: Boolean(entry.passphrase),
-          savedAt: entry.savedAt ?? null,
-          readable: entry.method === 'ssh' ? !entry.passphrase || decrypt(entry.passphrase) !== null : decrypt(entry.secret) !== null,
-        }
-      : null,
+    method: entry.method,
+    username: entry.username ?? null,
+    keyPath: entry.keyPath ?? null,
+    hasSecret: Boolean(entry.secret),
+    hasPassphrase: Boolean(entry.passphrase),
+    savedAt: entry.savedAt ?? null,
+    readable: entry.method === 'ssh' ? !entry.passphrase || decrypt(entry.passphrase) !== null : decrypt(entry.secret) !== null,
   };
 }
 
-/** Логин по умолчанию для токена: GitLab — oauth2, остальные (GitHub, Bitbucket…) — git */
+/** Что сохранено для адреса — без секретов (для интерфейса) */
+function describe(url) {
+  const t = parseTarget(url);
+  if (!t.host) return { ...t, saved: null, kind: null, kindSaved: false, cloud: false, base: null };
+  const store = readStore();
+  return {
+    ...t,
+    ...serverInfo(t.hostname, store),
+    // Адрес сайта сервера: для https — как в remote (со схемой и портом), для SSH — https://имя-хоста
+    base: t.protocol === 'https' ? `${t.scheme}://${t.host}` : store.servers?.[t.hostname]?.base ?? `https://${t.hostname}`,
+    saved: describeEntry(store.hosts[keyOf(t)]),
+  };
+}
+
+/* =================== Серверы: GitHub, GitLab, свои (Self-Managed) =================== */
+
+const SERVER_KINDS = new Set(['github', 'gitlab', 'gitea', 'bitbucket', 'other']);
+// Облачные сервисы: тип известен по домену, выбирать нечего
+const CLOUD = { 'github.com': 'github', 'gitlab.com': 'gitlab', 'bitbucket.org': 'bitbucket', 'codeberg.org': 'gitea' };
+
+/** Тип сервера по имени хоста — догадка без сети. null — не понять (свой сервер с нейтральным именем) */
+function guessKind(hostname) {
+  const h = String(hostname ?? '').toLowerCase();
+  if (CLOUD[h]) return CLOUD[h];
+  if (/gitlab/.test(h)) return 'gitlab';
+  if (/github/.test(h)) return 'github';
+  if (/gitea|forgejo/.test(h)) return 'gitea';
+  if (/bitbucket/.test(h)) return 'bitbucket';
+  return null;
+}
+
+/** Тип сервера: выбранный пользователем (сохранённый) важнее догадки по имени */
+function serverKind(hostname, store = null) {
+  const h = String(hostname ?? '').toLowerCase().replace(/:\d+$/, '');
+  if (!h) return null;
+  let saved = null;
+  try {
+    saved = (store ?? readStore()).servers?.[h]?.kind ?? null;
+  } catch {
+    saved = null;
+  }
+  return SERVER_KINDS.has(saved) ? saved : guessKind(h);
+}
+
+function serverInfo(hostname, store) {
+  const h = String(hostname ?? '').toLowerCase();
+  const saved = store.servers?.[h]?.kind;
+  return { kind: serverKind(h, store), kindSaved: SERVER_KINDS.has(saved), cloud: Boolean(CLOUD[h]) };
+}
+
+/**
+ * Адрес сервера, как его ввёл пользователь: «gitlab.company.ru», «gitlab.company.ru:8443»,
+ * «http://git.local», ссылка на проект или git@host:group/app.git — берём только сервер.
+ * → { base: 'https://host[:port]', scheme, host (с портом), hostname }
+ */
+function parseServer(input) {
+  let raw = String(input ?? '').trim();
+  if (!raw) throw new GitError('Укажите адрес сервера', { code: 'BAD_ARGS', hint: 'Например: gitlab.company.ru' });
+  const scp = /^(?:[^@/\\\s]+@)?([^:/\\\s]+):(?!\/\/|\d+(?:\/|$))/.exec(raw); // git@host:group/app.git
+  if (scp) raw = scp[1];
+  const ssh = /^ssh:\/\/(?:[^@/]+@)?([^:/]+)/i.exec(raw);
+  if (ssh) raw = ssh[1];
+  if (!/^https?:\/\//i.test(raw)) raw = `https://${raw}`;
+  let u;
+  try {
+    u = new URL(raw);
+  } catch {
+    throw new GitError('Не похоже на адрес сервера', { code: 'BAD_ARGS', hint: 'Например: gitlab.company.ru или https://git.company.ru:8443' });
+  }
+  const hostname = u.hostname.toLowerCase();
+  if (!hostname || !/^[a-z0-9.-]+$|^\[[0-9a-f:.]+\]$/i.test(hostname) || /^[.-]|[.-]$/.test(hostname)) {
+    throw new GitError('Не похоже на адрес сервера', { code: 'BAD_ARGS', hint: 'Например: gitlab.company.ru' });
+  }
+  const scheme = u.protocol.slice(0, -1).toLowerCase();
+  const host = u.host.toLowerCase();
+  return { base: `${scheme}://${host}`, scheme, host, hostname };
+}
+
+/** Сервер без привязки к репозиторию: что про него известно и что для него сохранено */
+function describeServer(input) {
+  const s = parseServer(input);
+  const store = readStore();
+  const savedHttps = describeEntry(store.hosts[`${s.scheme}://${s.host}`]);
+  const savedSsh = describeEntry(store.hosts[`ssh://${s.hostname}`]);
+  return {
+    mode: 'server',
+    protocol: 'any', // способ входа выбирает пользователь: https (логин/токен) или SSH-ключ
+    ...s,
+    url: s.base,
+    user: null,
+    ...serverInfo(s.hostname, store),
+    saved: savedHttps ?? savedSsh,
+    savedHttps,
+    savedSsh,
+    defaultTokenUser: defaultTokenUser(s.hostname),
+  };
+}
+
+/** Запомнить тип сервера (и адрес сайта — для SSH-входа, где в адресе его нет) */
+function setServer(hostname, { kind, base } = {}) {
+  const h = String(hostname ?? '').toLowerCase();
+  if (!h) return;
+  if (!SERVER_KINDS.has(kind)) throw new GitError('Неизвестный тип сервера', { code: 'BAD_ARGS' });
+  const store = readStore();
+  store.servers = store.servers && typeof store.servers === 'object' ? store.servers : {};
+  // Облако не запоминаем: github.com и так GitHub
+  if (CLOUD[h] === kind) delete store.servers[h];
+  else store.servers[h] = { kind, base: base ?? store.servers[h]?.base ?? null, savedAt: new Date().toISOString() };
+  writeStore(store);
+}
+
+/** Все серверы, о которых что-то сохранено: тип и способы входа (без секретов) */
+function listServers() {
+  const store = readStore();
+  const map = new Map();
+  const get = (hostname) => {
+    if (!map.has(hostname)) map.set(hostname, { hostname, base: null, logins: [] });
+    return map.get(hostname);
+  };
+  for (const [key, entry] of Object.entries(store.hosts)) {
+    const m = /^(https?|ssh):\/\/(.+)$/.exec(key);
+    if (!m) continue;
+    const protocol = m[1] === 'ssh' ? 'ssh' : 'https';
+    const hostname = m[2].replace(/:\d+$/, '');
+    const srv = get(hostname);
+    if (protocol === 'https') srv.base = srv.base ?? key;
+    srv.logins.push({ protocol, key, ...describeEntry(entry) });
+  }
+  for (const [hostname, info] of Object.entries(store.servers ?? {})) {
+    const srv = get(hostname);
+    srv.base = srv.base ?? info.base ?? null;
+  }
+  return [...map.values()]
+    .map((srv) => ({ ...srv, base: srv.base ?? `https://${srv.hostname}`, ...serverInfo(srv.hostname, store) }))
+    .sort((a, b) => Number(b.cloud) - Number(a.cloud) || a.hostname.localeCompare(b.hostname));
+}
+
+/** Забыть сервер целиком: все способы входа (https с любым портом и SSH) и выбранный тип */
+function forgetServer(hostname) {
+  const h = String(hostname ?? '').toLowerCase();
+  const store = readStore();
+  let removed = 0;
+  for (const key of Object.keys(store.hosts)) {
+    const m = /^(?:https?|ssh):\/\/(.+)$/.exec(key);
+    if (m && m[1].replace(/:\d+$/, '') === h) {
+      delete store.hosts[key];
+      removed++;
+    }
+  }
+  if (store.servers?.[h]) {
+    delete store.servers[h];
+    removed++;
+  }
+  if (removed) writeStore(store);
+  return { removed: removed > 0 };
+}
+
+/** Логин по умолчанию для токена: GitLab — oauth2, Bitbucket — x-token-auth, остальные (GitHub, Gitea…) — git */
 function defaultTokenUser(host) {
-  return /gitlab/i.test(host ?? '') ? 'oauth2' : 'git';
+  const kind = serverKind(host);
+  if (kind === 'gitlab') return 'oauth2';
+  if (kind === 'bitbucket') return 'x-token-auth';
+  return 'git';
+}
+
+/* ---------- Сеть: определить тип сервера и проверить токен ---------- */
+
+const PROBE_TIMEOUT = 6000;
+
+async function httpGet(url, headers = {}, timeout = PROBE_TIMEOUT) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeout);
+  const doFetch = electron?.net?.fetch ? electron.net.fetch.bind(electron.net) : fetch;
+  try {
+    const res = await doFetch(url, { headers: { Accept: 'application/json', ...headers }, signal: controller.signal, redirect: 'follow' });
+    let json = null;
+    try {
+      json = JSON.parse(await res.text());
+    } catch {
+      json = null;
+    }
+    return { status: res.status, json };
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+/**
+ * Узнать по API, что за сервер: GitLab, GitHub Enterprise, Gitea/Forgejo, Bitbucket Data Center.
+ * → { kind, version?, reachable } — kind: null, если сервер не ответил; 'other' — ответил, но не узнан.
+ */
+async function detectServer(input) {
+  const s = parseServer(input);
+  if (CLOUD[s.hostname]) return { ...s, kind: CLOUD[s.hostname], reachable: true, cloud: true };
+  const probes = [
+    // GitLab: без токена /version отвечает 401 {"message":"401 Unauthorized"}, с открытым API — версией
+    ['gitlab', '/api/v4/version', (r) => (r.status === 401 && /401/.test(r.json?.message ?? '')) || (r.status === 200 && r.json?.version && 'revision' in r.json)],
+    ['github', '/api/v3/meta', (r) => r.status === 200 && r.json && ('installed_version' in r.json || 'verifiable_password_authentication' in r.json)],
+    ['gitea', '/api/v1/version', (r) => r.status === 200 && typeof r.json?.version === 'string'],
+    ['bitbucket', '/rest/api/1.0/application-properties', (r) => r.status === 200 && /bitbucket/i.test(r.json?.displayName ?? '')],
+  ];
+  let reachable = false;
+  let lastError = null;
+  const results = await Promise.all(
+    probes.map(async ([kind, apiPath, test]) => {
+      try {
+        const r = await httpGet(`${s.base}${apiPath}`);
+        reachable = true;
+        return test(r) ? { kind, version: r.json?.version ?? r.json?.installed_version ?? null } : null;
+      } catch (error) {
+        lastError = error;
+        return null;
+      }
+    }),
+  );
+  const hit = results.find(Boolean);
+  if (hit) return { ...s, kind: hit.kind, version: hit.version ?? null, reachable: true };
+  return {
+    ...s,
+    kind: reachable ? 'other' : null,
+    reachable,
+    error: reachable ? null : lastError?.name === 'AbortError' ? `${s.host} не ответил за ${PROBE_TIMEOUT / 1000} с` : `Нет связи с ${s.host}`,
+  };
+}
+
+/**
+ * Проверить токен через API сервера (если тип это позволяет). → { user } при успехе,
+ * { unverified: причина } — проверить не удалось (сеть, неизвестный тип); неверный токен — GitError AUTH.
+ */
+async function verifyToken({ base, hostname, kind, token }) {
+  let url;
+  let headers;
+  if (kind === 'gitlab') {
+    url = `${base}/api/v4/user`;
+    headers = { 'PRIVATE-TOKEN': token };
+  } else if (kind === 'github') {
+    url = hostname === 'github.com' ? 'https://api.github.com/user' : `${base}/api/v3/user`;
+    headers = { Authorization: `token ${token}` };
+  } else if (kind === 'gitea') {
+    url = `${base}/api/v1/user`;
+    headers = { Authorization: `token ${token}` };
+  } else {
+    return { unverified: 'Для этого типа сервера токен проверится при первой операции с репозиторием' };
+  }
+  let r;
+  try {
+    r = await httpGet(url, headers);
+  } catch (error) {
+    return { unverified: error.name === 'AbortError' ? 'Сервер не ответил вовремя' : `Нет связи с ${hostname}` };
+  }
+  if (r.status === 401 || r.status === 403) {
+    throw new GitError(`Сервер ${hostname} не принял токен`, {
+      code: 'AUTH',
+      hint: 'Проверьте, что токен скопирован целиком, не истёк и создан на этом же сервере.',
+    });
+  }
+  if (r.status === 200) return { user: r.json?.username ?? r.json?.login ?? null };
+  return { unverified: `Сервер ответил кодом ${r.status} — возможно, это не ${kind === 'github' ? 'GitHub' : kind === 'gitea' ? 'Gitea' : 'GitLab'}` };
+}
+
+/**
+ * Вход на сервер без репозитория: data как в save() + kind (тип сервера).
+ * Для https-способов сохраняется под https://host, для SSH-ключа — под ssh://имя-хоста.
+ */
+async function saveServer(input, data = {}) {
+  const s = parseServer(input);
+  const kind = data.kind ?? serverKind(s.hostname) ?? 'other';
+  let verified = null;
+  if (data.method === 'token' && String(data.secret ?? '').trim()) {
+    verified = await verifyToken({ ...s, kind, token: String(data.secret).trim() });
+  }
+  setServer(s.hostname, { kind, base: s.base });
+  save(data.method === 'ssh' ? `ssh://git@${s.hostname}` : s.base, data);
+  return { target: describeServer(s.base), verified };
 }
 
 /**
@@ -144,6 +408,8 @@ function save(url, data = {}) {
       hint: 'Адрес remote — https://. Войдите логином и паролем или токеном, либо смените адрес remote на SSH.',
     });
   }
+  // Тип сервера, выбранный в окне входа, — до логина по умолчанию: он от типа зависит
+  if (data.kind && SERVER_KINDS.has(data.kind)) setServer(t.hostname, { kind: data.kind, base: t.protocol === 'https' ? `${t.scheme}://${t.host}` : undefined });
   const store = readStore();
   const key = keyOf(t);
   const prev = store.hosts[key]?.method === method ? store.hosts[key] : null;
@@ -429,4 +695,14 @@ module.exports = {
   publicKeyOf,
   defaultTokenUser,
   keyOf,
+  guessKind,
+  serverKind,
+  parseServer,
+  describeServer,
+  setServer,
+  listServers,
+  forgetServer,
+  detectServer,
+  verifyToken,
+  saveServer,
 };

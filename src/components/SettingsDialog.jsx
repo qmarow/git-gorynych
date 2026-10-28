@@ -1,10 +1,13 @@
 import { useEffect, useState } from 'react';
-import { Archive, Check, GitBranch, GitCommitHorizontal, RefreshCw, Image as ImageIcon, Loader2, Palette, Plug, RotateCcw, ShieldCheck, Sparkles, X } from 'lucide-react';
+import { Archive, Check, Cloud, FileKey, GitBranch, GitCommitHorizontal, KeyRound, LogIn, RefreshCw, Image as ImageIcon, Loader2, Palette, Pencil, Plug, RotateCcw, Server, ShieldCheck, Sparkles, Trash2, UserRound, X } from 'lucide-react';
 import { AUTO_THEME, BACKGROUNDS, THEMES, resolveThemeId, themeById } from '../lib/appearance.js';
 import { TokenSetup } from './TokenSetup.jsx';
 import { GuardSettings, Switch } from './Guard.jsx';
 import { CommitSettings } from './CommitForm.jsx';
 import { BACKGROUND_SEC, BACKOFF_SEC, SYNC_MODES, useSyncStatus } from '../lib/syncStatus.js';
+import { kindInfo, kindLabel } from '../lib/servers.js';
+
+const api = typeof window !== 'undefined' ? window.api : null;
 
 const TABS = [
   { id: 'appearance', label: 'Оформление', icon: Palette },
@@ -35,15 +38,18 @@ export default function SettingsDialog({
   guard,
   onGuardChange,
   repoPath,
+  servers,
+  paused = false,
   onClose,
 }) {
   const [tab, setTab] = useState(initialTab);
 
+  // Поверх настроек открыто окно входа — Esc закрывает только его
   useEffect(() => {
-    const onKey = (e) => e.key === 'Escape' && onClose();
+    const onKey = (e) => e.key === 'Escape' && !paused && onClose();
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [onClose]);
+  }, [onClose, paused]);
 
   return (
     <div
@@ -97,7 +103,7 @@ export default function SettingsDialog({
             ) : tab === 'guard' ? (
               <GuardSettings cfg={guard} onChange={onGuardChange} repoPath={repoPath} />
             ) : (
-              <IntegrationsTab repo={repo} onForgeChanged={onForgeChanged} />
+              <IntegrationsTab repo={repo} onForgeChanged={onForgeChanged} servers={servers} />
             )}
           </div>
         </div>
@@ -511,22 +517,141 @@ function BackgroundPreview({ id, theme: t, imageUrl }) {
 
 /* =================== Подключения =================== */
 
-function IntegrationsTab({ repo, onForgeChanged }) {
-  if (!repo) return <p className="text-[13px] text-gk-muted">Откройте репозиторий, чтобы подключить GitLab для него.</p>;
-  const current = repo.localBranches.find((b) => b.name === repo.currentBranch);
+function IntegrationsTab({ repo, onForgeChanged, servers }) {
+  const current = repo?.localBranches.find((b) => b.name === repo.currentBranch);
   return (
-    <div className="space-y-2">
+    <div className="space-y-6">
+      {servers && <ServersSection {...servers} />}
+      <section className="space-y-2">
+        <div className="flex items-center gap-2">
+          <span className="h-2.5 w-2.5 rounded-full bg-[#fc6d26]" />
+          <span className="text-[13px] font-semibold text-gk-strong">Пайплайны GitLab</span>
+          {repo?.forge?.path && <span className="truncate font-mono text-[11px] text-gk-dim">{repo.forge.path}</span>}
+        </div>
+        <p className="text-[12px] leading-relaxed text-gk-muted">
+          Статусы пайплайнов в графе, логи заданий, перезапуск и отмена, переменные CI/CD и раннеры проекта.
+        </p>
+        {repo ? (
+          <div className="pt-1">
+            <TokenSetup repoPath={repo.path} forge={repo.forge} remoteName={current?.upstreamRemote} onChanged={onForgeChanged} />
+          </div>
+        ) : (
+          <p className="text-[12px] text-gk-dim">Откройте репозиторий, чтобы подключить пайплайны для него.</p>
+        )}
+      </section>
+    </div>
+  );
+}
+
+const LOGIN_ICONS = { password: UserRound, token: KeyRound, ssh: FileKey };
+const LOGIN_NAMES = { password: 'логин и пароль', token: 'токен', ssh: 'SSH-ключ' };
+
+/** Git-серверы, для которых сохранён вход: GitHub, GitLab, свои (Self-Managed) — тип, способы входа, «Забыть» */
+function ServersSection({ tick, onAdd, onForget }) {
+  const [list, setList] = useState(null);
+  const [confirm, setConfirm] = useState(null); // hostname, который подтверждаем удалить
+
+  useEffect(() => {
+    let alive = true;
+    api?.creds?.servers?.().then((res) => alive && setList(res?.ok ? res.data : []));
+    return () => {
+      alive = false;
+    };
+  }, [tick]);
+
+  return (
+    <section className="space-y-2" data-testid="servers-section">
       <div className="flex items-center gap-2">
-        <span className="h-2.5 w-2.5 rounded-full bg-[#fc6d26]" />
-        <span className="text-[13px] font-semibold text-gk-strong">GitLab</span>
-        {repo.forge?.path && <span className="truncate font-mono text-[11px] text-gk-dim">{repo.forge.path}</span>}
+        <Server size={14} className="text-gk-muted" />
+        <span className="flex-1 text-[13px] font-semibold text-gk-strong">Git-серверы</span>
+        <button
+          onClick={() => onAdd('')}
+          data-testid="server-add"
+          className="flex items-center gap-1.5 rounded-md bg-gk-blue px-2.5 py-1 text-[12px] font-semibold text-white hover:brightness-110"
+        >
+          <LogIn size={12} /> Войти на сервер…
+        </button>
       </div>
       <p className="text-[12px] leading-relaxed text-gk-muted">
-        Статусы пайплайнов в графе, логи заданий, перезапуск и отмена, переменные CI/CD и раннеры проекта.
+        GitHub, GitLab или свой сервер компании (Self-Managed) по домену. Сохранённый вход используется для clone, pull и push — окно
+        входа больше не появится.
       </p>
-      <div className="pt-1">
-        <TokenSetup repoPath={repo.path} forge={repo.forge} remoteName={current?.upstreamRemote} onChanged={onForgeChanged} />
-      </div>
-    </div>
+      {list === null ? (
+        <div className="flex items-center gap-2 text-[12px] text-gk-dim">
+          <Loader2 size={12} className="animate-spin" /> Загружаем…
+        </div>
+      ) : list.length === 0 ? (
+        <p className="rounded-lg border border-dashed border-gk-border px-3 py-2.5 text-[12px] text-gk-dim">
+          Пока ни одного. Вход сохраняется сам, когда сервер впервые попросит авторизацию, — или нажмите «Войти на сервер…».
+        </p>
+      ) : (
+        <ul className="divide-y divide-gk-border overflow-hidden rounded-lg border border-gk-border">
+          {list.map((srv) => (
+            <li key={srv.hostname} className="group flex items-center gap-3 bg-gk-fg/[0.02] px-3 py-2" data-testid="server-row">
+              {srv.cloud ? <Cloud size={15} className="shrink-0" style={{ color: kindInfo(srv.kind)?.color }} /> : <Server size={15} className="shrink-0" style={{ color: kindInfo(srv.kind)?.color ?? undefined }} />}
+              <div className="min-w-0 flex-1">
+                <div className="flex items-baseline gap-2">
+                  <span className="truncate font-mono text-[12.5px] text-gk-strong">{srv.hostname}</span>
+                  <span className="shrink-0 text-[11px] text-gk-dim">{srv.kind ? kindLabel(srv.kind, srv.cloud) : 'тип не выбран'}</span>
+                </div>
+                <div className="mt-0.5 flex flex-wrap gap-x-3 gap-y-0.5 text-[11px] text-gk-muted">
+                  {srv.logins.length === 0 && <span className="text-gk-dim">вход не сохранён</span>}
+                  {srv.logins.map((l) => {
+                    const Icon = LOGIN_ICONS[l.method] ?? KeyRound;
+                    return (
+                      <span key={l.key} className="flex items-center gap-1" data-tip={l.protocol === 'ssh' ? `Для адресов git@${srv.hostname}:…` : `Для адресов ${l.key}/…`}>
+                        <Icon size={11} className={l.readable === false ? 'text-gk-yellow' : 'text-gk-dim'} />
+                        {LOGIN_NAMES[l.method]}
+                        {l.username && l.method !== 'ssh' ? ` · ${l.username}` : ''}
+                        {l.keyPath ? ` · ${l.keyPath.split(/[\\/]/).pop()}` : ''}
+                        {l.readable === false && <span className="text-gk-yellow">— введите заново</span>}
+                      </span>
+                    );
+                  })}
+                </div>
+              </div>
+              {confirm === srv.hostname ? (
+                <span className="flex shrink-0 items-center gap-1.5 text-[11.5px]">
+                  <span className="text-gk-muted">Забыть?</span>
+                  <button
+                    onClick={() => {
+                      setConfirm(null);
+                      onForget(srv.hostname);
+                    }}
+                    data-testid="server-forget-confirm"
+                    className="rounded bg-gk-red px-2 py-0.5 font-semibold text-white"
+                  >
+                    Да
+                  </button>
+                  <button onClick={() => setConfirm(null)} className="rounded px-1.5 py-0.5 text-gk-muted hover:bg-gk-hover">
+                    Нет
+                  </button>
+                </span>
+              ) : (
+                <span className="flex shrink-0 items-center gap-0.5 opacity-70 group-hover:opacity-100">
+                  <button
+                    onClick={() => onAdd(srv.base)}
+                    data-tip="Изменить вход или тип сервера"
+                    aria-label={`Изменить ${srv.hostname}`}
+                    className="rounded p-1 text-gk-dim hover:bg-gk-hover hover:text-gk-text"
+                  >
+                    <Pencil size={13} />
+                  </button>
+                  <button
+                    onClick={() => setConfirm(srv.hostname)}
+                    data-tip="Забыть сервер: удалить сохранённые логины, токены и выбранный тип"
+                    aria-label={`Забыть ${srv.hostname}`}
+                    data-testid="server-forget"
+                    className="rounded p-1 text-gk-dim hover:bg-gk-hover hover:text-gk-red"
+                  >
+                    <Trash2 size={13} />
+                  </button>
+                </span>
+              )}
+            </li>
+          ))}
+        </ul>
+      )}
+    </section>
   );
 }

@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { AlertTriangle, CheckCircle2, CircleX, FileDiff, Loader2, Save, ShieldCheck, X } from 'lucide-react';
 import { UnifiedDiff } from '../DiffView.jsx';
 import { inlineHighlights } from '../../lib/inlineDiff.js';
+import { detectLanguage, highlightHunks } from '../../lib/highlight.js';
 import { kb } from '../../lib/platform.js';
 
 const api = window.api;
@@ -106,6 +107,7 @@ export function DraftDiff({ repoPath, drafts, onClose, onSave, saving }) {
 
 function DiffBlock({ item }) {
   const highlights = useMemo(() => (item.hunks ? item.hunks.map((h) => inlineHighlights(h.lines)) : null), [item]);
+  const syntax = useMemo(() => (item.hunks ? highlightHunks(item.hunks, detectLanguage(item.path)) : null), [item]);
   if (item.error) return <div className="p-4 font-sans text-[12.5px] text-gk-red">{item.error.message}</div>;
   return (
     <div className="border-b border-gk-border last:border-0">
@@ -117,7 +119,7 @@ function DiffBlock({ item }) {
       {item.hunks.length === 0 ? (
         <div className="px-4 py-3 font-sans text-[12px] text-gk-dim">Нет изменений</div>
       ) : (
-        <UnifiedDiff hunks={item.hunks} highlights={highlights} />
+        <UnifiedDiff hunks={item.hunks} highlights={highlights} syntax={syntax} />
       )}
     </div>
   );

@@ -1,6 +1,8 @@
-import { useEffect, useMemo, useState } from 'react';
-import { ArrowLeftRight, ChevronDown, ChevronRight, Folder, GitCompareArrows, Loader2, Search, X } from 'lucide-react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { ArrowLeftRight, CaseSensitive, ChevronDown, ChevronRight, Folder, GitCompareArrows, Loader2, Regex, Search, X } from 'lucide-react';
 import { plural, relativeTime } from '../lib/format.js';
+import { detectLanguage, highlightLines, layerLine } from '../lib/highlight.js';
+import { isMod, kb } from '../lib/platform.js';
 import { StatusBadge } from './RebaseView.jsx';
 
 const api = window.api;
@@ -15,6 +17,12 @@ export default function CompareView({ repoPath, a, b, hidden, activePath, onSwap
   const [sort, setSort] = useState('path'); // path | size
   const [dirFilter, setDirFilter] = useState(null);
   const [showCommits, setShowCommits] = useState(false);
+  // Поиск: по пути файла или по содержимому изменённых строк
+  const [mode, setMode] = useState('path'); // path | content
+  const [content, setContent] = useState({ query: '', caseSensitive: false, regex: false });
+  const [found, setFound] = useState({ loading: false, data: null, error: null, key: null });
+  const searchRef = useRef(null);
+  const seq = useRef(0);
 
   useEffect(() => {
     let alive = true;
@@ -27,6 +35,45 @@ export default function CompareView({ repoPath, a, b, hidden, activePath, onSwap
       alive = false;
     };
   }, [repoPath, a, b]);
+
+  // Поиск по содержимому — после паузы в наборе; устаревшие ответы отбрасываются
+  const contentKey = mode === 'content' && content.query.trim() ? JSON.stringify([a, b, content]) : null;
+  useEffect(() => {
+    if (!contentKey) {
+      seq.current++;
+      setFound({ loading: false, data: null, error: null, key: null });
+      return undefined;
+    }
+    const n = ++seq.current;
+    setFound((f) => ({ ...f, loading: true }));
+    const timer = setTimeout(async () => {
+      const res = await api.repo.compareSearch(repoPath, { a, b, ...content });
+      if (n !== seq.current) return;
+      setFound(res.ok ? { loading: false, data: res.data, error: null, key: contentKey } : { loading: false, data: null, error: res.error, key: contentKey });
+    }, 350);
+    return () => clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [contentKey, repoPath]);
+
+  // Ctrl+F в сравнении — поиск по содержимому изменений
+  useEffect(() => {
+    if (hidden) return undefined;
+    const onKey = (e) => {
+      if (document.querySelector('.fixed.inset-0')) return;
+      const key = e.key.toLowerCase();
+      if (isMod(e) && !e.altKey && !e.shiftKey && (key === 'f' || key === 'а')) {
+        e.preventDefault();
+        e.stopPropagation();
+        setMode('content');
+        requestAnimationFrame(() => {
+          searchRef.current?.focus();
+          searchRef.current?.select();
+        });
+      }
+    };
+    window.addEventListener('keydown', onKey, true);
+    return () => window.removeEventListener('keydown', onKey, true);
+  }, [hidden]);
 
   useEffect(() => {
     if (hidden) return undefined;
@@ -70,6 +117,31 @@ export default function CompareView({ repoPath, a, b, hidden, activePath, onSwap
     return g;
   }, [files]);
   const maxDir = Math.max(1, ...dirs.map((x) => x.additions + x.deletions));
+
+  const inDir = (path) => !dirFilter || (dirFilter === '(корень)' ? !path.includes('/') : path === dirFilter || path.startsWith(`${dirFilter}/`));
+
+  // Результаты поиска по содержимому: файлы из сравнения (статус, объём) + найденные строки
+  const contentResults = useMemo(() => {
+    if (mode !== 'content' || !found.data) return null;
+    const byPath = new Map(files.map((f) => [f.path, f]));
+    let list = found.data.files
+      .filter((r) => inDir(r.path))
+      .map((r) => ({ ...r, file: byPath.get(r.path) ?? { path: r.path, oldPath: r.oldPath, status: 'M', additions: null, deletions: null } }));
+    if (sort === 'size') list = [...list].sort((x, y) => y.count - x.count);
+    return list;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mode, found.data, files, sort, dirFilter]);
+
+  const openMatch = (r, line) => {
+    const list = contentResults.map((x) => x.file);
+    onOpenFile(r.file, list, {
+      query: content.query,
+      caseSensitive: content.caseSensitive,
+      regex: content.regex,
+      changedOnly: true,
+      line: line ? { t: line.t, n: line.t === '+' ? line.line : null, o: line.t === '-' ? line.line : null } : null,
+    });
+  };
 
   const shown = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -164,14 +236,66 @@ export default function CompareView({ repoPath, a, b, hidden, activePath, onSwap
           {/* Таблица файлов */}
           <div className="mx-3 mb-4 overflow-hidden rounded-lg border border-gk-border">
             <div className="flex items-center gap-2 border-b border-gk-border bg-gk-fg/[0.03] px-2.5 py-1.5">
-              <div className="flex min-w-0 flex-1 items-center gap-1.5 rounded bg-gk-bg px-2 ring-1 ring-gk-border focus-within:ring-gk-blue">
-                <Search size={12} className="shrink-0 text-gk-dim" />
-                <input
-                  value={query}
-                  onChange={(e) => setQuery(e.target.value)}
-                  placeholder="Фильтр по пути"
-                  className="min-w-0 flex-1 bg-transparent py-1 text-[12px] text-gk-text outline-none placeholder:text-gk-dim"
-                />
+              <div className="flex shrink-0 overflow-hidden rounded text-[11.5px] ring-1 ring-gk-border" role="tablist">
+                <SortBtn active={mode === 'path'} onClick={() => setMode('path')} data-testid="compare-mode-path" title="Фильтр списка по пути файла">
+                  Путь
+                </SortBtn>
+                <SortBtn
+                  active={mode === 'content'}
+                  onClick={() => {
+                    setMode('content');
+                    requestAnimationFrame(() => searchRef.current?.focus());
+                  }}
+                  data-testid="compare-mode-content"
+                  title={kb('Поиск текста в изменённых строках всех файлов (Ctrl+F)')}
+                >
+                  Содержимое
+                </SortBtn>
+              </div>
+              <div
+                className={`flex min-w-0 flex-1 items-center gap-1.5 rounded bg-gk-bg px-2 ring-1 focus-within:ring-gk-blue ${
+                  mode === 'content' && found.error ? 'ring-gk-red/60' : 'ring-gk-border'
+                }`}
+              >
+                {mode === 'content' && found.loading ? <Loader2 size={12} className="shrink-0 animate-spin text-gk-dim" /> : <Search size={12} className="shrink-0 text-gk-dim" />}
+                {mode === 'path' ? (
+                  <input
+                    value={query}
+                    onChange={(e) => setQuery(e.target.value)}
+                    placeholder="Фильтр по пути"
+                    className="min-w-0 flex-1 bg-transparent py-1 text-[12px] text-gk-text outline-none placeholder:text-gk-dim"
+                  />
+                ) : (
+                  <>
+                    <input
+                      ref={searchRef}
+                      value={content.query}
+                      onChange={(e) => setContent((c) => ({ ...c, query: e.target.value }))}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' && contentResults?.[0]) openMatch(contentResults[0], contentResults[0].lines[0]);
+                        if (e.altKey && (e.key === 'c' || e.key === 'с')) {
+                          e.preventDefault();
+                          setContent((c) => ({ ...c, caseSensitive: !c.caseSensitive }));
+                        }
+                        if (e.altKey && (e.key === 'r' || e.key === 'к')) {
+                          e.preventDefault();
+                          setContent((c) => ({ ...c, regex: !c.regex }));
+                        }
+                      }}
+                      placeholder="Найти в изменённых строках всех файлов"
+                      aria-label="Найти в изменениях"
+                      spellCheck={false}
+                      data-testid="compare-content-input"
+                      className="min-w-0 flex-1 bg-transparent py-1 font-mono text-[12px] text-gk-text outline-none placeholder:font-sans placeholder:text-gk-dim"
+                    />
+                    <OptBtn on={content.caseSensitive} onClick={() => setContent((c) => ({ ...c, caseSensitive: !c.caseSensitive }))} title="Учитывать регистр (Alt+C)" testid="compare-case">
+                      <CaseSensitive size={13} />
+                    </OptBtn>
+                    <OptBtn on={content.regex} onClick={() => setContent((c) => ({ ...c, regex: !c.regex }))} title="Регулярное выражение (Alt+R)" testid="compare-regex">
+                      <Regex size={13} />
+                    </OptBtn>
+                  </>
+                )}
               </div>
               <div className="flex shrink-0 overflow-hidden rounded text-[11.5px] ring-1 ring-gk-border">
                 <SortBtn active={sort === 'path'} onClick={() => setSort('path')}>
@@ -182,7 +306,15 @@ export default function CompareView({ repoPath, a, b, hidden, activePath, onSwap
                 </SortBtn>
               </div>
             </div>
-            {shown.length === 0 ? (
+            {mode === 'content' ? (
+              <ContentResults
+                query={content.query}
+                found={found}
+                results={contentResults}
+                activePath={activePath}
+                onOpen={openMatch}
+              />
+            ) : shown.length === 0 ? (
               <div className="px-3 py-6 text-center text-[12.5px] text-gk-dim">{files.length ? 'Ничего не найдено' : 'Файлы в этих коммитах одинаковые'}</div>
             ) : (
               shown.map((f, i) => {
@@ -289,5 +421,125 @@ function SortBtn({ active, children, ...props }) {
     <button {...props} className={`px-2 py-0.5 ${active ? 'bg-gk-blue/20 text-gk-blue' : 'text-gk-muted hover:text-gk-text'}`}>
       {children}
     </button>
+  );
+}
+
+function OptBtn({ on, children, title, testid, ...props }) {
+  return (
+    <button
+      {...props}
+      type="button"
+      aria-pressed={on}
+      title={title}
+      data-testid={testid}
+      className={`flex h-5 w-6 shrink-0 items-center justify-center rounded ${on ? 'bg-gk-blue/25 text-gk-blue' : 'text-gk-dim hover:text-gk-text'}`}
+    >
+      {children}
+    </button>
+  );
+}
+
+/* ---------- Поиск по содержимому: файлы и найденные строки ---------- */
+
+const PREVIEW_LINES = 4;
+
+function ContentResults({ query, found, results, activePath, onOpen }) {
+  const [expanded, setExpanded] = useState(() => new Set());
+  if (!query.trim()) {
+    return (
+      <div className="px-3 py-6 text-center text-[12.5px] leading-relaxed text-gk-dim">
+        Введите текст — найдём его в добавленных и удалённых строках всех файлов сравнения.
+        <br />
+        Клик по строке откроет файл прямо на совпадении.
+      </div>
+    );
+  }
+  if (found.error) return <div className="px-3 py-4 text-[12.5px] text-gk-red">{found.error.message}{found.error.hint && <span className="text-gk-dim"> — {found.error.hint}</span>}</div>;
+  if (!results) {
+    return (
+      <div className="flex items-center justify-center gap-2 px-3 py-6 text-[12.5px] text-gk-muted">
+        <Loader2 size={13} className="animate-spin" /> Ищем…
+      </div>
+    );
+  }
+  if (!results.length) return <div className="px-3 py-6 text-center text-[12.5px] text-gk-dim">В изменённых строках не найдено</div>;
+  const total = results.reduce((n, r) => n + r.count, 0);
+  return (
+    <div className={found.loading ? 'opacity-60 transition-opacity' : ''} data-testid="compare-content-results">
+      <div className="border-b border-gk-border/60 px-2.5 py-1 text-[11.5px] text-gk-muted" data-testid="compare-content-summary">
+        {total} {plural(total, 'совпадение', 'совпадения', 'совпадений')} в {results.length} {plural(results.length, 'файле', 'файлах', 'файлах')}
+        {found.data?.truncated && <span className="text-gk-yellow"> · показаны первые {found.data.total}</span>}
+      </div>
+      {results.map((r) => {
+        const parts = r.path.split('/');
+        const name = parts.pop();
+        const open = expanded.has(r.path);
+        const lines = open ? r.lines : r.lines.slice(0, PREVIEW_LINES);
+        return (
+          <div key={r.path} className="border-b border-gk-border/60 last:border-0" data-testid="compare-content-file">
+            <button
+              onClick={() => onOpen(r, r.lines[0])}
+              className={`flex w-full items-center gap-2.5 px-2.5 py-1.5 text-left text-[12.5px] ${activePath === r.path ? 'bg-gk-blue/15' : 'hover:bg-gk-hover'}`}
+              title={r.oldPath ? `${r.oldPath} → ${r.path}` : r.path}
+            >
+              <StatusBadge status={r.file.status} />
+              <span className="min-w-0 flex-1 truncate">
+                {r.oldPath && <span className="text-gk-dim">{r.oldPath} → </span>}
+                {parts.length > 0 && <span className="text-gk-muted">{parts.join('/')}/</span>}
+                <span className="text-gk-text">{name}</span>
+              </span>
+              <span className="shrink-0 rounded-full bg-gk-yellow/15 px-1.5 text-[11px] text-gk-yellow">{r.count}</span>
+            </button>
+            <MatchLines path={r.path} lines={lines} onOpen={(l) => onOpen(r, l)} />
+            {r.lines.length > PREVIEW_LINES && (
+              <button
+                onClick={() =>
+                  setExpanded((s) => {
+                    const next = new Set(s);
+                    if (next.has(r.path)) next.delete(r.path);
+                    else next.add(r.path);
+                    return next;
+                  })
+                }
+                className="mb-1 ml-9 text-[11.5px] text-gk-blue hover:underline"
+              >
+                {open ? 'свернуть' : `ещё ${r.lines.length - PREVIEW_LINES}${r.count > r.lines.length ? '+' : ''}`}
+              </button>
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+// Найденные строки с подсветкой синтаксиса и совпадений
+function MatchLines({ path, lines, onOpen }) {
+  const tokens = useMemo(() => highlightLines(lines.map((l) => l.text), detectLanguage(path)), [path, lines]);
+  return (
+    <div className="pb-1 font-mono text-[11.5px] leading-[18px]">
+      {lines.map((l, i) => {
+        const pieces = layerLine(l.text, { tokens: tokens?.[i] ?? null, hits: l.ranges.map(([start, end], idx) => ({ start, end, idx, current: false })) });
+        return (
+          <button
+            key={`${l.t}${l.line}:${i}`}
+            onClick={() => onOpen(l)}
+            data-testid="compare-content-line"
+            className={`flex w-full items-baseline gap-2 py-px pl-9 pr-2.5 text-left hover:bg-gk-hover ${l.t === '+' ? 'bg-gk-green/[0.05]' : 'bg-gk-red/[0.06]'}`}
+          >
+            <span className={`w-3 shrink-0 select-none ${l.t === '+' ? 'text-gk-green' : 'text-gk-red'}`}>{l.t === '+' ? '+' : '−'}</span>
+            <span className="w-10 shrink-0 select-none text-right text-gk-dim">{l.line}</span>
+            <span className="min-w-0 flex-1 truncate whitespace-pre text-gk-text">
+              {l.cut && <span className="text-gk-dim">… </span>}
+              {pieces.map((p, k) => (
+                <span key={k} className={[p.cls, p.hit ? 'bg-gk-yellow/40' : ''].filter(Boolean).join(' ') || undefined}>
+                  {p.text}
+                </span>
+              ))}
+            </span>
+          </button>
+        );
+      })}
+    </div>
   );
 }

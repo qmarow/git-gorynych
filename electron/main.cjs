@@ -505,6 +505,19 @@ ipcMain.handle(
   }),
 );
 ipcMain.handle('creds:clear', safe(async (dir, url) => credentials.clear((await credTarget(dir, url)).url)));
+// Серверы без привязки к репозиторию: свой GitLab / GitHub Enterprise / Gitea по домену
+ipcMain.handle('creds:describe-server', safe((input) => credentials.describeServer(input)));
+ipcMain.handle('creds:detect-server', safe((input) => credentials.detectServer(input)));
+ipcMain.handle('creds:save-server', safe((input, data) => credentials.saveServer(input, data ?? {})));
+ipcMain.handle('creds:servers', safe(() => credentials.listServers()));
+ipcMain.handle('creds:forget-server', safe((hostname) => credentials.forgetServer(hostname)));
+ipcMain.handle(
+  'creds:set-kind',
+  safe((hostname, kind) => {
+    credentials.setServer(hostname, { kind });
+    return { kind: credentials.serverKind(hostname) };
+  }),
+);
 ipcMain.handle('creds:ssh-keys', safe(() => credentials.listSshKeys()));
 ipcMain.handle('creds:pick-key', async () => {
   const { dir } = credentials.listSshKeys();
@@ -621,6 +634,7 @@ ipcMain.handle('repo:watch', (event, dir, opts) => {
 ipcMain.handle('repo:commit-files', safe((dir, hash, parent) => git.getCommitFiles(dir, hash, parent)));
 ipcMain.handle('repo:file-diff', safe((dir, params) => git.getFileDiff(dir, params)));
 ipcMain.handle('repo:compare', safe((dir, params) => compare.compareCommits(dir, params)));
+ipcMain.handle('repo:compare-search', safe((dir, params) => compare.searchChanges(dir, params)));
 ipcMain.handle('repo:rebase-preview', safe((dir, params) => rebasePlan.simulate(dir, params)));
 ipcMain.handle('repo:guard-scan', safe((dir, params) => guard.scanStaged(dir, params ?? {})));
 // Фоновая лёгкая проверка сервера (fetch только при изменениях) и коммиты для бейджей ↓/↑ веток

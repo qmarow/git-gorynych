@@ -686,25 +686,60 @@ export default function App() {
   const authRef = useRef(null);
   authRef.current = auth;
 
+  // Список Git-серверов в настройках перечитывается после входа на сервер
+  const [serversTick, setServersTick] = useState(0);
+
   /**
    * Открыть окно входа. url — для клонирования (репозитория ещё нет), иначе — remote текущей ветки.
+   * server — вход на сервер без репозитория ('' — выбрать сервер в окне; домен — сразу этот сервер).
    * retry() → { ok, error } — операция, которую повторить после входа (без retry — проверить доступ).
    */
-  const openAuth = useCallback(async ({ url = null, error = null, retry = null, actionLabel = null } = {}) => {
+  const openAuth = useCallback(async ({ url = null, server = null, error = null, retry = null, actionLabel = null } = {}) => {
     if (!api?.creds || authRef.current) return;
+    const openServer = async (input) => {
+      const res = input && api.creds.describeServer ? await api.creds.describeServer(input) : null;
+      setAuth({ dir: null, url: null, target: res?.ok ? res.data : { mode: 'server' }, error, retry: null, actionLabel, formError: null, busy: false });
+    };
+    if (server !== null) return openServer(server);
     const dir = url ? null : repoRef.current?.path ?? null;
     const res = await api.creds.describe(dir, url);
     if (!res.ok) {
+      // У репозитория нет remote (или репозиторий не открыт) — войти на сервер можно и заранее
+      if (!url && !error && api.creds.describeServer) return openServer('');
       if (error) setDialog({ type: 'error', action: 'Авторизация', error });
       return;
     }
     setAuth({ dir, url, target: res.data, error, retry, actionLabel, formError: null, busy: false });
   }, []);
 
+  // Вход на сервер без репозитория: проверить токен через API (если можно) и сохранить
+  const submitServerAuth = async (a, data) => {
+    const res = await api.creds.saveServer(data.server, data);
+    if (!res.ok) {
+      setAuth((cur) => cur && { ...cur, busy: false, formError: res.error });
+      return;
+    }
+    setAuth(null);
+    setServersTick((n) => n + 1);
+    const { target, verified } = res.data;
+    const where = target.hostname;
+    if (verified?.user) notify({ type: 'success', title: `Вход на ${where} выполнен — @${verified.user}`, hint: 'Данные сохранены: clone, pull и push с этого сервера пройдут без окна входа' });
+    else
+      notify({
+        type: verified?.unverified ? 'info' : 'success',
+        title: `Данные для ${where} сохранены`,
+        hint: verified?.unverified ?? 'Они используются для clone, pull и push с этого сервера',
+      });
+    // Открыт репозиторий с этого сервера — сразу проверить доступ
+    const remoteHost = repoRef.current?.forge?.host ?? null;
+    if (remoteHost && remoteHost.toLowerCase() === where) checkAccess();
+  };
+
   const submitAuth = async (data) => {
     const a = authRef.current;
     if (!a) return;
     setAuth({ ...a, busy: true, formError: null });
+    if (a.target?.mode === 'server') return submitServerAuth(a, data);
     const saved = await api.creds.save(a.dir, a.url, data);
     if (!saved.ok) {
       setAuth((cur) => cur && { ...cur, busy: false, formError: saved.error });
@@ -1881,7 +1916,8 @@ export default function App() {
     View: [
       { id: 'settings', label: 'Оформление…', icon: Palette, hint: 'Ctrl+,', onClick: () => openSettings('appearance') },
       { id: 'sync-settings', label: 'Синхронизация…', icon: RefreshCw, onClick: () => openSettings('sync') },
-      { id: 'integrations', label: 'Подключения (GitLab)…', icon: Plug, onClick: () => openSettings('integrations') },
+      { id: 'integrations', label: 'Подключения: Git-серверы и GitLab…', icon: Plug, onClick: () => openSettings('integrations') },
+      ...(api?.creds?.describeServer ? [{ id: 'server-login', label: 'Войти на Git-сервер (GitHub, GitLab, свой домен)…', icon: LogIn, onClick: () => openAuth({ server: '' }) }] : []),
     ],
     Actions: buildActionsMenu(),
     Help: [
@@ -2171,9 +2207,10 @@ export default function App() {
   };
 
   // Файл из сравнения двух коммитов (или из предпросмотра rebase): diff между a и b
-  const openCompareFile = (file, list, a, b) => {
+  // search — открыть файл сразу с поиском (из поиска по содержимому в сравнении) и на нужной строке
+  const openCompareFile = (file, list, a, b, search = null) => {
     const index = Math.max(0, list.findIndex((f) => f.path === file.path));
-    setDiffTarget({ kind: 'compare', mode: 'commit', hash: b, parent: a, commitHash: selectedHash, file, list, index });
+    setDiffTarget({ kind: 'compare', mode: 'commit', hash: b, parent: a, commitHash: selectedHash, file, list, index, search: search ? { ...search, nonce: Date.now() } : null });
   };
 
   const stepFile = (delta) => {
@@ -2857,8 +2894,9 @@ export default function App() {
                 />
               ) : diffTarget ? (
                 <DiffView
-                  key={`${diffTarget.kind}:${diffTarget.file.path}`}
+                  key={`${diffTarget.kind}:${diffTarget.file.path}:${diffTarget.search?.nonce ?? ''}`}
                   target={diffTarget}
+                  initialSearch={diffTarget.search}
                   data={diffData && diffData.path === diffTarget.file.path && diffData.mode === diffTarget.mode ? diffData : null}
                   view={diffView}
                   ignoreWhitespace={ignoreWs}
@@ -2905,7 +2943,7 @@ export default function App() {
                   activePath={null}
                   onSwap={() => setCompareView({ a: compareView.b, b: compareView.a })}
                   onClose={() => setCompareView(null)}
-                  onOpenFile={(f, list) => openCompareFile(f, list, compareView.a, compareView.b)}
+                  onOpenFile={(f, list, search) => openCompareFile(f, list, compareView.a, compareView.b, search)}
                   onLocate={setSelectedHash}
                 />
               )}
@@ -3046,6 +3084,7 @@ export default function App() {
           <NewTabPage
             key={activePath ?? 'none'}
             loading={loading}
+            onServerLogin={api?.creds?.describeServer ? () => openAuth({ server: '' }) : null}
             loadingPath={loading ? loadingLabel : null}
             openPaths={tabs.filter((t) => !t.isNew).map((t) => t.path)}
             onOpen={openRepository}
@@ -3142,6 +3181,22 @@ export default function App() {
           guard={guardCfg}
           onGuardChange={updateGuard}
           repoPath={repo?.path}
+          servers={
+            api?.creds?.servers
+              ? {
+                  tick: serversTick,
+                  onAdd: (input = '') => openAuth({ server: input }),
+                  onForget: async (hostname) => {
+                    const res = await api.creds.forgetServer(hostname);
+                    if (res.ok) {
+                      setServersTick((n) => n + 1);
+                      notify({ type: 'info', title: `Данные для ${hostname} удалены` });
+                    }
+                  },
+                }
+              : null
+          }
+          paused={Boolean(auth)}
           onClose={() => setDialog(null)}
         />
       )}
@@ -3335,6 +3390,7 @@ export default function App() {
       )}
       {auth && (
         <AuthDialog
+          key={`${auth.target?.mode ?? 'remote'}:${auth.url ?? auth.dir ?? ''}`}
           target={auth.target}
           error={auth.error}
           formError={auth.formError}
@@ -3343,7 +3399,7 @@ export default function App() {
           onSubmit={submitAuth}
           onForget={auth.target?.saved ? forgetAuth : null}
           onClose={() => setAuth(null)}
-          onKeyDefaults={(type) => api.creds.keyDefaults(auth.dir, auth.url, type)}
+          onKeyDefaults={(type, url) => api.creds.keyDefaults(auth.dir, url ?? auth.url, type)}
           onSwitchToSsh={auth.dir && !auth.url && api.creds.switchToSsh ? switchRemoteToSsh : null}
         />
       )}

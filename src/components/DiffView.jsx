@@ -1,9 +1,22 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
-import { ArrowDownToLine, ArrowUpToLine, ChevronDown, ChevronUp, Columns2, FileText, Highlighter, Loader2, Rows3, Space, X } from 'lucide-react';
+import { memo, useEffect, useMemo, useRef, useState } from 'react';
+import { ArrowDownToLine, ArrowUpToLine, CaseSensitive, ChevronDown, ChevronUp, CodeXml, Columns2, Diff, FileText, Highlighter, Loader2, Regex, Rows3, Search, Space, X } from 'lucide-react';
 import { FILE_STATUS } from '../lib/format.js';
 import { inlineHighlights } from '../lib/inlineDiff.js';
-import { kb } from '../lib/platform.js';
+import { detectLanguage, findAll, highlightHunks, languageName, layerLine, searchRegex } from '../lib/highlight.js';
+import { isMod, kb } from '../lib/platform.js';
 import { readable } from '../lib/scheme.js';
+
+const writePref = (key, on) => {
+  try {
+    localStorage.setItem(key, on ? '1' : '0');
+  } catch {
+    /* не страшно */
+  }
+};
+
+// Поиск переносится между файлами: открыли следующий файл — строка поиска остаётся
+let lastSearch = null;
+const MAX_HITS = 5000;
 
 const readPref = (key, def) => {
   try {
@@ -35,6 +48,7 @@ export default function DiffView({
   onHunkAction,
   fileActions,
   guardMarkers,
+  initialSearch,
 }) {
   const [hunkBusy, setHunkBusy] = useState(null);
   // Действия с фрагментом (stage / отменить …) — только когда фрагменты считаются по точному тексту
@@ -86,19 +100,143 @@ export default function DiffView({
 
   const toggleInline = () =>
     setInline((v) => {
-      try {
-        localStorage.setItem('diff.inline', v ? '0' : '1');
-      } catch {
-        /* не страшно */
-      }
+      writePref('diff.inline', !v);
       return !v;
     });
+
+  /* ---------- Подсветка синтаксиса: сначала текст, цвета — следом (не задерживает открытие файла) ---------- */
+  const [syntaxOn, setSyntaxOn] = useState(() => readPref('diff.syntax', true));
+  const lang = useMemo(() => detectLanguage(target.file.path), [target.file.path]);
+  const [syntax, setSyntax] = useState(null);
+  useEffect(() => {
+    setSyntax(null);
+    if (!syntaxOn || !lang || !data?.hunks?.length) return undefined;
+    let alive = true;
+    const timer = setTimeout(() => alive && setSyntax(highlightHunks(data.hunks, lang)), 0);
+    return () => {
+      alive = false;
+      clearTimeout(timer);
+    };
+  }, [syntaxOn, lang, data]);
+  const toggleSyntax = () =>
+    setSyntaxOn((v) => {
+      writePref('diff.syntax', !v);
+      return !v;
+    });
+
+  /* ---------- Поиск в изменениях (Ctrl+F) ---------- */
+  const [search, setSearch] = useState(() => {
+    const init = initialSearch ?? (lastSearch?.open ? lastSearch : null);
+    return { open: Boolean(init), query: init?.query ?? '', caseSensitive: Boolean(init?.caseSensitive), regex: Boolean(init?.regex), changedOnly: Boolean(init?.changedOnly) };
+  });
+  const [hitIndex, setHitIndex] = useState(0);
+  const jumpLine = useRef(initialSearch?.line ?? null); // открыли из поиска по сравнению — к этой строке
+  const searchInput = useRef(null);
+  useEffect(() => {
+    lastSearch = search;
+  }, [search]);
+  const patchSearch = (p) => setSearch((s) => ({ ...s, ...p }));
+  const openSearch = () => {
+    patchSearch({ open: true });
+    requestAnimationFrame(() => {
+      searchInput.current?.focus();
+      searchInput.current?.select();
+    });
+  };
+  const closeSearch = () => patchSearch({ open: false });
+
+  const { re: searchRe, error: searchError } = useMemo(
+    () => (search.open ? searchRegex(search.query, search) : { re: null }),
+    [search],
+  );
+  const hits = useMemo(() => {
+    const out = [];
+    if (!searchRe || !data?.hunks) return out;
+    outer: for (let hi = 0; hi < data.hunks.length; hi++) {
+      const lines = data.hunks[hi].lines;
+      for (let li = 0; li < lines.length; li++) {
+        const l = lines[li];
+        if (l.t === '\\' || (search.changedOnly && l.t === ' ')) continue;
+        for (const m of findAll(l.text, searchRe)) {
+          out.push({ hi, li, start: m.start, end: m.end });
+          if (out.length >= MAX_HITS) break outer;
+        }
+      }
+    }
+    return out;
+  }, [searchRe, data, search.changedOnly]);
+  // Совпадения по строкам: массивы стабильны между переходами — перерисовываются только две строки
+  const hitsByLine = useMemo(() => {
+    const map = new Map();
+    hits.forEach((h, idx) => {
+      const key = `${h.hi}:${h.li}`;
+      if (!map.has(key)) map.set(key, []);
+      map.get(key).push({ start: h.start, end: h.end, idx });
+    });
+    return map;
+  }, [hits]);
+
+  // Новые совпадения: к строке из поиска по сравнению или к первому
+  useEffect(() => {
+    if (!hits.length) {
+      setHitIndex(0);
+      return;
+    }
+    const want = jumpLine.current;
+    if (want && data?.hunks) {
+      const at = hits.findIndex((h) => {
+        const l = data.hunks[h.hi].lines[h.li];
+        return l.t === want.t && (want.t === '-' ? l.o === want.o : l.n === want.n);
+      });
+      if (at >= 0) {
+        jumpLine.current = null;
+        setHitIndex(at);
+        return;
+      }
+    }
+    setHitIndex(0);
+  }, [hits, data]);
+
+  // Текущее совпадение — в центр экрана
+  useEffect(() => {
+    if (!search.open || !hits.length) return;
+    const frame = requestAnimationFrame(() => {
+      scrollRef.current?.querySelector('[data-hit-current]')?.scrollIntoView({ block: 'center', inline: 'nearest' });
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [hitIndex, hits, search.open, view]);
+
+  const stepHit = (dir) => hits.length && setHitIndex((i) => (i + dir + hits.length) % hits.length);
+  const hitsAt = (hi, li) => hitsByLine.get(`${hi}:${li}`) ?? null;
+  const lineView = { syntax, hitsAt, current: search.open && hits.length ? hitIndex : null };
+
+  // Ctrl+F — поиск в этом файле (а не по коммитам); перехватываем раньше общего обработчика окна
+  useEffect(() => {
+    const onKey = (e) => {
+      if (document.querySelector('.fixed.inset-0')) return;
+      const key = e.key.toLowerCase();
+      if (isMod(e) && !e.altKey && !e.shiftKey && (key === 'f' || key === 'а')) {
+        e.preventDefault();
+        e.stopPropagation();
+        openSearch();
+      } else if (e.key === 'F3' && search.open) {
+        e.preventDefault();
+        e.stopPropagation();
+        stepHit(e.shiftKey ? -1 : 1);
+      }
+    };
+    window.addEventListener('keydown', onKey, true);
+    return () => window.removeEventListener('keydown', onKey, true);
+  });
 
   // Esc — закрыть, Alt+↑/↓ — предыдущий/следующий файл, F7 / Shift+F7 — следующее/предыдущее изменение
   useEffect(() => {
     const onKey = (e) => {
       if (document.querySelector('.fixed.inset-0')) return; // открыт диалог
-      if (e.key === 'Escape') onClose();
+      if (e.key === 'Escape') {
+        if (search.open) closeSearch();
+        else onClose();
+      }
       if (e.altKey && e.key === 'ArrowUp' && onPrev) onPrev();
       if (e.altKey && e.key === 'ArrowDown' && onNext) onNext();
       if (e.key === 'F7') {
@@ -183,6 +321,25 @@ export default function DiffView({
         >
           <Highlighter size={13} />
         </ToggleButton>
+        <ToggleButton
+          active={syntaxOn && Boolean(lang)}
+          onClick={toggleSyntax}
+          disabled={!lang}
+          title={lang ? `Подсветка синтаксиса: ${languageName(lang)}` : 'Подсветка синтаксиса — тип файла не распознан'}
+          data-testid="diff-syntax"
+          className="rounded ring-1 ring-gk-border disabled:opacity-40"
+        >
+          <CodeXml size={13} />
+        </ToggleButton>
+        <ToggleButton
+          active={search.open}
+          onClick={() => (search.open ? closeSearch() : openSearch())}
+          title={kb('Поиск в изменениях (Ctrl+F)')}
+          data-testid="diff-search-toggle"
+          className="rounded ring-1 ring-gk-border"
+        >
+          <Search size={13} />
+        </ToggleButton>
         {changeCount > 0 && (
           <div className="ml-1 flex items-center rounded ring-1 ring-gk-border">
             <ToggleButton onClick={() => goChange(-1)} title="Предыдущее изменение (Shift+F7)">
@@ -213,6 +370,20 @@ export default function DiffView({
         </div>
       </div>
 
+      {search.open && (
+        <SearchBar
+          inputRef={searchInput}
+          search={search}
+          onChange={patchSearch}
+          error={searchError}
+          count={hits.length}
+          capped={hits.length >= MAX_HITS}
+          index={hitIndex}
+          onStep={stepHit}
+          onClose={closeSearch}
+        />
+      )}
+
       {/* Содержимое */}
       <div ref={scrollRef} className="min-h-0 flex-1 overflow-auto font-mono text-[12px] leading-5 [tab-size:4]">
         {!data ? (
@@ -238,9 +409,9 @@ export default function DiffView({
                 : 'Нет изменений в содержимом'}
           </Placeholder>
         ) : view === 'split' ? (
-          <SplitDiff hunks={data.hunks} highlights={highlights} hunkProps={hunkProps} markers={guardMarkers} />
+          <SplitDiff hunks={data.hunks} highlights={highlights} hunkProps={hunkProps} markers={guardMarkers} {...lineView} />
         ) : (
-          <UnifiedDiff hunks={data.hunks} highlights={highlights} hunkProps={hunkProps} markers={guardMarkers} />
+          <UnifiedDiff hunks={data.hunks} highlights={highlights} hunkProps={hunkProps} markers={guardMarkers} {...lineView} />
         )}
         {data?.truncated && (
           <div className="border-t border-gk-border px-4 py-2 font-sans text-xs text-gk-dim">
@@ -265,26 +436,30 @@ const LINE_STYLES = {
 const markerOf = (markers, line) => (markers && line.t === '+' ? markers.get(line.n) : null);
 const markerCls = (m) => (m ? (m.category === 'secret' ? 'shadow-[inset_3px_0_0_rgb(242_93_93)]' : 'shadow-[inset_3px_0_0_rgb(242_202_51)]') : '');
 
-export function UnifiedDiff({ hunks, highlights, hunkProps, markers }) {
+// Совпадения строки и номер текущего (если он в этой строке) — для мемоизированной строки
+const lineHits = (hitsAt, current, hi, li) => {
+  const hits = hitsAt?.(hi, li) ?? null;
+  return { hits, current: hits && current !== null && hits.some((h) => h.idx === current) ? current : null };
+};
+
+export function UnifiedDiff({ hunks, highlights, hunkProps, markers, syntax, hitsAt, current = null }) {
   return (
     <div className="min-w-max pb-6">
       {hunks.map((hunk, hi) => (
         <div key={hi} className="group/hunk">
           <HunkHeader hunk={hunk} index={hi} {...hunkProps} />
           {hunk.lines.map((line, li) => {
-            const s = LINE_STYLES[line.t];
-            const segs = highlights?.[hi]?.get(li);
             const startsChange = (line.t === '+' || line.t === '-') && !['+', '-'].includes(hunk.lines[li - 1]?.t);
-            const mark = markerOf(markers, line);
             return (
-              <div key={li} className={`flex ${s.row} ${markerCls(mark)}`} data-change={startsChange ? '' : undefined} title={mark ? `Pre-commit Guard: ${mark.label}` : undefined}>
-                <span className={`w-12 shrink-0 select-none pr-2 text-right ${s.num}`}>{line.o ?? ''}</span>
-                <span className={`w-12 shrink-0 select-none pr-2 text-right ${s.num}`}>{line.n ?? ''}</span>
-                <span className={`w-5 shrink-0 select-none text-center ${s.sign}`}>{line.t === '\\' ? '' : line.t}</span>
-                <span className={`select-text whitespace-pre pr-6 ${line.t === '\\' ? 'italic text-gk-dim' : 'text-gk-text'}`}>
-                  {segs ? <Segments segs={segs} type={line.t} /> : line.text || ' '}
-                </span>
-              </div>
+              <UnifiedRow
+                key={li}
+                line={line}
+                startsChange={startsChange}
+                mark={markerOf(markers, line)}
+                segs={highlights?.[hi]?.get(li) ?? null}
+                tokens={syntax?.[hi]?.get(li) ?? null}
+                {...lineHits(hitsAt, current, hi, li)}
+              />
             );
           })}
         </div>
@@ -292,6 +467,20 @@ export function UnifiedDiff({ hunks, highlights, hunkProps, markers }) {
     </div>
   );
 }
+
+const UnifiedRow = memo(function UnifiedRow({ line, startsChange, mark, segs, tokens, hits, current }) {
+  const s = LINE_STYLES[line.t];
+  return (
+    <div className={`flex ${s.row} ${markerCls(mark)}`} data-change={startsChange ? '' : undefined} title={mark ? `Pre-commit Guard: ${mark.label}` : undefined}>
+      <span className={`w-12 shrink-0 select-none pr-2 text-right ${s.num}`}>{line.o ?? ''}</span>
+      <span className={`w-12 shrink-0 select-none pr-2 text-right ${s.num}`}>{line.n ?? ''}</span>
+      <span className={`w-5 shrink-0 select-none text-center ${s.sign}`}>{line.t === '\\' ? '' : line.t}</span>
+      <span className={`select-text whitespace-pre pr-6 ${line.t === '\\' ? 'italic text-gk-dim' : 'text-gk-text'}`}>
+        <LineText line={line} segs={segs} tokens={tokens} hits={hits} current={current} />
+      </span>
+    </div>
+  );
+});
 
 /* ---------- Split ---------- */
 
@@ -345,7 +534,7 @@ function toSplitRows(lines, pairs) {
   return rows;
 }
 
-function SplitDiff({ hunks, highlights, hunkProps, markers }) {
+function SplitDiff({ hunks, highlights, hunkProps, markers, syntax, hitsAt, current = null }) {
   const prepared = useMemo(
     () => hunks.map((h, hi) => ({ hunk: h, rows: toSplitRows(h.lines, highlights?.[hi]?.pairs) })),
     [hunks, highlights],
@@ -361,8 +550,22 @@ function SplitDiff({ hunks, highlights, hunkProps, markers }) {
             const startsChange = (isChange(row.left) || isChange(row.right)) && !(prev && (isChange(prev.left) || isChange(prev.right)));
             return (
               <div key={ri} className="grid grid-cols-2" data-change={startsChange ? '' : undefined}>
-                <SplitCell cell={row.left} segs={row.left && highlights?.[hi]?.get(row.left.idx)} side="old" />
-                <SplitCell cell={row.right} segs={row.right && highlights?.[hi]?.get(row.right.idx)} side="new" border mark={row.right && markerOf(markers, row.right.line)} />
+                <SplitCell
+                  cell={row.left}
+                  segs={row.left ? highlights?.[hi]?.get(row.left.idx) ?? null : null}
+                  tokens={row.left ? syntax?.[hi]?.get(row.left.idx) ?? null : null}
+                  {...(row.left ? lineHits(hitsAt, current, hi, row.left.idx) : {})}
+                  side="old"
+                />
+                <SplitCell
+                  cell={row.right}
+                  segs={row.right ? highlights?.[hi]?.get(row.right.idx) ?? null : null}
+                  tokens={row.right ? syntax?.[hi]?.get(row.right.idx) ?? null : null}
+                  {...(row.right ? lineHits(hitsAt, current, hi, row.right.idx) : {})}
+                  side="new"
+                  border
+                  mark={row.right ? markerOf(markers, row.right.line) : null}
+                />
               </div>
             );
           })}
@@ -372,7 +575,7 @@ function SplitDiff({ hunks, highlights, hunkProps, markers }) {
   );
 }
 
-function SplitCell({ cell, segs, side, border, mark }) {
+const SplitCell = memo(function SplitCell({ cell, segs, tokens, hits = null, current = null, side, border, mark }) {
   if (!cell) {
     return <div className={`bg-gk-fg/[0.02] ${border ? 'border-l border-gk-border' : ''}`} />;
   }
@@ -388,26 +591,121 @@ function SplitCell({ cell, segs, side, border, mark }) {
           line.t === '\\' ? 'italic text-gk-dim' : 'text-gk-text'
         }`}
       >
-        {segs ? <Segments segs={segs} type={line.t} /> : line.text || ' '}
+        <LineText line={line} segs={segs} tokens={tokens} hits={hits} current={current} />
       </span>
     </div>
   );
+});
+
+// Изменённые куски строки — яркой «маркерной» подложкой (цвет текста — от подсветки синтаксиса);
+// пробелы в изменении делаем видимыми. Совпадения поиска — жёлтым, текущее — оранжевым.
+const CHANGED = {
+  '-': 'rounded-[2px] bg-gk-red/35 shadow-[inset_0_-1px_0_rgb(242_93_93/0.6)]',
+  '+': 'rounded-[2px] bg-gk-green/30 shadow-[inset_0_-1px_0_rgb(60_240_160/0.6)]',
+};
+// Совпадение может быть разрезано токенами подсветки — поэтому сплошная подложка без рамок и скруглений
+// (важнее подложки изменённого куска — иначе совпадение внутри изменения не видно)
+const HIT = '!bg-gk-yellow/45';
+const HIT_CURRENT = '!bg-[#ff9632] !text-[#1b1300]';
+
+function LineText({ line, segs, tokens, hits, current }) {
+  if (line.t === '\\') return line.text;
+  if (!line.text) return ' ';
+  if (!segs && !tokens && !hits) return line.text;
+  const pieces = layerLine(line.text, {
+    tokens,
+    segs,
+    hits: hits?.map((h) => ({ ...h, current: h.idx === current })),
+  });
+  return pieces.map((p, i) => {
+    const changed = p.changed ? `${CHANGED[line.t] ?? CHANGED['+']} ${p.cls ? '' : 'text-gk-strong'}` : '';
+    const hit = p.hit ? (p.hit.current ? HIT_CURRENT : HIT) : '';
+    const cls = [p.cls, changed, hit].filter(Boolean).join(' ');
+    const text = p.ws ? p.text.replace(/ /g, '·').replace(/\t/g, '→   ') : p.text;
+    if (!cls) return <span key={i}>{text}</span>;
+    const Tag = p.changed ? 'mark' : 'span';
+    return (
+      <Tag
+        key={i}
+        className={cls}
+        data-hit={p.hit ? p.hit.idx : undefined}
+        data-hit-current={p.hit?.current ? '' : undefined}
+        title={p.ws ? 'Изменились пробелы' : undefined}
+      >
+        {text}
+      </Tag>
+    );
+  });
 }
 
-// Изменённые куски строки — яркой «маркерной» подложкой; пробелы в изменении делаем видимыми
-function Segments({ segs, type }) {
-  const cls =
-    type === '-'
-      ? 'rounded-[3px] bg-gk-red/35 text-gk-strong shadow-[inset_0_-1px_0_rgb(242_93_93/0.6)]'
-      : 'rounded-[3px] bg-gk-green/30 text-gk-strong shadow-[inset_0_-1px_0_rgb(60_240_160/0.6)]';
-  return segs.map((seg, i) =>
-    seg.changed ? (
-      <mark key={i} className={`${cls} px-[1px]`} title={/^\s+$/.test(seg.text) ? 'Изменились пробелы' : undefined}>
-        {/^\s+$/.test(seg.text) ? seg.text.replace(/ /g, '·').replace(/\t/g, '→   ') : seg.text}
-      </mark>
-    ) : (
-      <span key={i}>{seg.text}</span>
-    ),
+/* ---------- Поиск ---------- */
+
+function SearchBar({ inputRef, search, onChange, error, count, capped, index, onStep, onClose }) {
+  const opt = (key, Icon, title, testid) => (
+    <button
+      type="button"
+      onClick={() => onChange({ [key]: !search[key] })}
+      aria-pressed={search[key]}
+      title={title}
+      data-testid={testid}
+      className={`flex h-5 w-6 shrink-0 items-center justify-center rounded ${search[key] ? 'bg-gk-blue/25 text-gk-blue' : 'text-gk-dim hover:text-gk-text'}`}
+    >
+      <Icon size={13} />
+    </button>
+  );
+  return (
+    <div className="flex h-9 shrink-0 animate-fade-in items-center gap-2 border-b border-gk-border bg-gk-panel/80 px-3 font-sans" data-testid="diff-search">
+      <div
+        className={`flex w-[min(460px,60%)] min-w-0 items-center gap-1.5 rounded bg-gk-bg px-2 ring-1 focus-within:ring-gk-blue ${
+          error || (search.query && !count) ? 'ring-gk-red/60' : 'ring-gk-border'
+        }`}
+      >
+        <Search size={12} className="shrink-0 text-gk-dim" />
+        <input
+          ref={inputRef}
+          autoFocus
+          value={search.query}
+          onChange={(e) => onChange({ query: e.target.value })}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') {
+              e.preventDefault();
+              onStep(e.shiftKey ? -1 : 1);
+            } else if (e.key === 'Escape') {
+              e.preventDefault();
+              e.stopPropagation();
+              onClose();
+            } else if (e.altKey && (e.key === 'c' || e.key === 'с')) {
+              e.preventDefault();
+              onChange({ caseSensitive: !search.caseSensitive });
+            } else if (e.altKey && (e.key === 'r' || e.key === 'к')) {
+              e.preventDefault();
+              onChange({ regex: !search.regex });
+            }
+          }}
+          placeholder="Найти в изменениях"
+          aria-label="Найти в изменениях"
+          spellCheck={false}
+          className="min-w-0 flex-1 bg-transparent py-1 font-mono text-[12px] text-gk-text outline-none placeholder:font-sans placeholder:text-gk-dim"
+        />
+        {opt('caseSensitive', CaseSensitive, 'Учитывать регистр (Alt+C)', 'search-case')}
+        {opt('regex', Regex, 'Регулярное выражение (Alt+R)', 'search-regex')}
+        {opt('changedOnly', Diff, 'Только в изменённых строках (+ и −)', 'search-changed')}
+      </div>
+      <span className={`min-w-[88px] text-[11.5px] ${error || (search.query && !count) ? 'text-gk-red' : 'text-gk-muted'}`} data-testid="search-count">
+        {error ? error : !search.query ? '' : count ? `${index + 1} из ${count}${capped ? '+' : ''}` : 'Нет совпадений'}
+      </span>
+      <div className="flex items-center">
+        <IconBtn title="Предыдущее (Shift+Enter, Shift+F3)" disabled={!count} onClick={() => onStep(-1)}>
+          <ChevronUp size={15} />
+        </IconBtn>
+        <IconBtn title="Следующее (Enter, F3)" disabled={!count} onClick={() => onStep(1)}>
+          <ChevronDown size={15} />
+        </IconBtn>
+        <IconBtn title="Закрыть поиск (Esc)" onClick={onClose}>
+          <X size={15} />
+        </IconBtn>
+      </div>
+    </div>
   );
 }
 
