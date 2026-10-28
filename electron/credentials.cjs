@@ -93,8 +93,50 @@ function parseTarget(url) {
   return { protocol: 'local', scheme: null, host: null, hostname: null, user: null, url: raw };
 }
 
-/** Ключ записи в хранилище: для HTTPS — host с портом, для SSH — имя хоста */
+/** Ключ сервера: для HTTPS — host с портом, для SSH — имя хоста (так хранились входы до привязки к репозиторию) */
 const keyOf = (t) => (t.protocol === 'https' ? `${t.scheme}://${t.host}` : `ssh://${t.hostname}`);
+
+/**
+ * Путь репозитория из адреса: «group/sub/app» (без .git и слэшей), как написан в адресе.
+ * https://host/group/app.git, git@host:group/app.git, ssh://git@host:2222/group/app.git
+ */
+function repoPathOf(url) {
+  const raw = String(url ?? '').trim();
+  let p = '';
+  if (/^https?:\/\//i.test(raw)) {
+    try {
+      p = decodeURIComponent(new URL(raw).pathname);
+    } catch {
+      p = '';
+    }
+  } else {
+    const ssh = /^ssh:\/\/[^/]+(\/.*)$/i.exec(raw);
+    const scp = /^(?:[^@/\\]+@)?[^:/\\]+:(?!\/\/)(.*)$/.exec(raw);
+    p = ssh ? ssh[1] : scp ? scp[1] : '';
+  }
+  return p.replace(/^\/+|\/+$/g, '').replace(/\.git$/i, '');
+}
+
+/**
+ * Ключ входа для репозитория: сервер + путь (регистр пути не важен — GitLab и GitHub его не различают).
+ * https://gitlab.com/Group/App.git → «https://gitlab.com/group/app»; null — в адресе нет пути.
+ */
+function repoKeyOf(url) {
+  const t = parseTarget(url);
+  const p = repoPathOf(url);
+  if (!t.host || !p) return null;
+  return `${keyOf(t)}/${p.toLowerCase()}`;
+}
+
+/** Действующая запись для адреса: своя у репозитория или (запасной вариант) общая для сервера, сохранённая раньше */
+function entryFor(store, url) {
+  const t = parseTarget(url);
+  if (!t.host) return { entry: null, shared: false };
+  const own = store.repos?.[repoKeyOf(url)];
+  if (own) return { entry: own, shared: false };
+  const host = store.hosts[keyOf(t)];
+  return host ? { entry: host, shared: true } : { entry: null, shared: false };
+}
 
 /** Сохранённая запись без секретов (для интерфейса) */
 function describeEntry(entry) {
@@ -110,17 +152,22 @@ function describeEntry(entry) {
   };
 }
 
-/** Что сохранено для адреса — без секретов (для интерфейса) */
+/** Что сохранено для адреса репозитория — без секретов (для интерфейса) */
 function describe(url) {
   const t = parseTarget(url);
-  if (!t.host) return { ...t, saved: null, kind: null, kindSaved: false, cloud: false, base: null };
+  if (!t.host) return { ...t, saved: null, kind: null, kindSaved: false, cloud: false, base: null, repoPath: null, repoKey: null };
   const store = readStore();
+  const { entry, shared } = entryFor(store, url);
+  const saved = describeEntry(entry);
   return {
     ...t,
     ...serverInfo(t.hostname, store),
     // Адрес сайта сервера: для https — как в remote (со схемой и портом), для SSH — https://имя-хоста
     base: t.protocol === 'https' ? `${t.scheme}://${t.host}` : store.servers?.[t.hostname]?.base ?? `https://${t.hostname}`,
-    saved: describeEntry(store.hosts[keyOf(t)]),
+    repoPath: repoPathOf(url) || null,
+    repoKey: repoKeyOf(url),
+    // shared — вход общий для всего сервера (сохранён до привязки к репозиториям); новый сохранится для этого репозитория
+    saved: saved ? { ...saved, shared } : null,
   };
 }
 
@@ -188,26 +235,6 @@ function parseServer(input) {
   return { base: `${scheme}://${host}`, scheme, host, hostname };
 }
 
-/** Сервер без привязки к репозиторию: что про него известно и что для него сохранено */
-function describeServer(input) {
-  const s = parseServer(input);
-  const store = readStore();
-  const savedHttps = describeEntry(store.hosts[`${s.scheme}://${s.host}`]);
-  const savedSsh = describeEntry(store.hosts[`ssh://${s.hostname}`]);
-  return {
-    mode: 'server',
-    protocol: 'any', // способ входа выбирает пользователь: https (логин/токен) или SSH-ключ
-    ...s,
-    url: s.base,
-    user: null,
-    ...serverInfo(s.hostname, store),
-    saved: savedHttps ?? savedSsh,
-    savedHttps,
-    savedSsh,
-    defaultTokenUser: defaultTokenUser(s.hostname),
-  };
-}
-
 /** Запомнить тип сервера (и адрес сайта — для SSH-входа, где в адресе его нет) */
 function setServer(hostname, { kind, base } = {}) {
   const h = String(hostname ?? '').toLowerCase();
@@ -221,37 +248,58 @@ function setServer(hostname, { kind, base } = {}) {
   writeStore(store);
 }
 
-/** Все серверы, о которых что-то сохранено: тип и способы входа (без секретов) */
+/**
+ * Серверы и привязанные к ним репозитории (без секретов):
+ * [{ hostname, base, kind, cloud, kindSaved, repos: [{ key, url, path, protocol, method, … }], shared: [{ key, protocol, … }] }]
+ * shared — входы на весь сервер, сохранённые до привязки к репозиториям (действуют, пока у репозитория нет своего).
+ */
 function listServers() {
   const store = readStore();
   const map = new Map();
   const get = (hostname) => {
-    if (!map.has(hostname)) map.set(hostname, { hostname, base: null, logins: [] });
+    if (!map.has(hostname)) map.set(hostname, { hostname, base: null, repos: [], shared: [] });
     return map.get(hostname);
   };
+  for (const [key, entry] of Object.entries(store.repos ?? {})) {
+    const t = parseTarget(entry.url);
+    if (!t.hostname) continue;
+    const srv = get(t.hostname);
+    if (t.protocol === 'https') srv.base = srv.base ?? `${t.scheme}://${t.host}`;
+    srv.repos.push({ key, url: entry.url, path: repoPathOf(entry.url), protocol: t.protocol, ...describeEntry(entry) });
+  }
   for (const [key, entry] of Object.entries(store.hosts)) {
     const m = /^(https?|ssh):\/\/(.+)$/.exec(key);
     if (!m) continue;
-    const protocol = m[1] === 'ssh' ? 'ssh' : 'https';
-    const hostname = m[2].replace(/:\d+$/, '');
-    const srv = get(hostname);
-    if (protocol === 'https') srv.base = srv.base ?? key;
-    srv.logins.push({ protocol, key, ...describeEntry(entry) });
+    const srv = get(m[2].replace(/:\d+$/, ''));
+    if (m[1] !== 'ssh') srv.base = srv.base ?? key;
+    srv.shared.push({ key, protocol: m[1] === 'ssh' ? 'ssh' : 'https', ...describeEntry(entry) });
   }
   for (const [hostname, info] of Object.entries(store.servers ?? {})) {
     const srv = get(hostname);
     srv.base = srv.base ?? info.base ?? null;
   }
   return [...map.values()]
-    .map((srv) => ({ ...srv, base: srv.base ?? `https://${srv.hostname}`, ...serverInfo(srv.hostname, store) }))
+    .map((srv) => ({
+      ...srv,
+      base: srv.base ?? `https://${srv.hostname}`,
+      repos: srv.repos.sort((x, y) => x.path.localeCompare(y.path)),
+      ...serverInfo(srv.hostname, store),
+    }))
     .sort((a, b) => Number(b.cloud) - Number(a.cloud) || a.hostname.localeCompare(b.hostname));
 }
 
-/** Забыть сервер целиком: все способы входа (https с любым портом и SSH) и выбранный тип */
+/** Забыть сервер целиком: входы всех его репозиториев, общий вход и выбранный тип */
 function forgetServer(hostname) {
   const h = String(hostname ?? '').toLowerCase();
   const store = readStore();
   let removed = 0;
+  const sameHost = (url) => parseTarget(url).hostname === h;
+  for (const [key, entry] of Object.entries(store.repos ?? {})) {
+    if (sameHost(entry.url)) {
+      delete store.repos[key];
+      removed++;
+    }
+  }
   for (const key of Object.keys(store.hosts)) {
     const m = /^(?:https?|ssh):\/\/(.+)$/.exec(key);
     if (m && m[1].replace(/:\d+$/, '') === h) {
@@ -336,58 +384,7 @@ async function detectServer(input) {
 }
 
 /**
- * Проверить токен через API сервера (если тип это позволяет). → { user } при успехе,
- * { unverified: причина } — проверить не удалось (сеть, неизвестный тип); неверный токен — GitError AUTH.
- */
-async function verifyToken({ base, hostname, kind, token }) {
-  let url;
-  let headers;
-  if (kind === 'gitlab') {
-    url = `${base}/api/v4/user`;
-    headers = { 'PRIVATE-TOKEN': token };
-  } else if (kind === 'github') {
-    url = hostname === 'github.com' ? 'https://api.github.com/user' : `${base}/api/v3/user`;
-    headers = { Authorization: `token ${token}` };
-  } else if (kind === 'gitea') {
-    url = `${base}/api/v1/user`;
-    headers = { Authorization: `token ${token}` };
-  } else {
-    return { unverified: 'Для этого типа сервера токен проверится при первой операции с репозиторием' };
-  }
-  let r;
-  try {
-    r = await httpGet(url, headers);
-  } catch (error) {
-    return { unverified: error.name === 'AbortError' ? 'Сервер не ответил вовремя' : `Нет связи с ${hostname}` };
-  }
-  if (r.status === 401 || r.status === 403) {
-    throw new GitError(`Сервер ${hostname} не принял токен`, {
-      code: 'AUTH',
-      hint: 'Проверьте, что токен скопирован целиком, не истёк и создан на этом же сервере.',
-    });
-  }
-  if (r.status === 200) return { user: r.json?.username ?? r.json?.login ?? null };
-  return { unverified: `Сервер ответил кодом ${r.status} — возможно, это не ${kind === 'github' ? 'GitHub' : kind === 'gitea' ? 'Gitea' : 'GitLab'}` };
-}
-
-/**
- * Вход на сервер без репозитория: data как в save() + kind (тип сервера).
- * Для https-способов сохраняется под https://host, для SSH-ключа — под ssh://имя-хоста.
- */
-async function saveServer(input, data = {}) {
-  const s = parseServer(input);
-  const kind = data.kind ?? serverKind(s.hostname) ?? 'other';
-  let verified = null;
-  if (data.method === 'token' && String(data.secret ?? '').trim()) {
-    verified = await verifyToken({ ...s, kind, token: String(data.secret).trim() });
-  }
-  setServer(s.hostname, { kind, base: s.base });
-  save(data.method === 'ssh' ? `ssh://git@${s.hostname}` : s.base, data);
-  return { target: describeServer(s.base), verified };
-}
-
-/**
- * Сохранить данные для адреса.
+ * Сохранить вход для репозитория (по адресу remote или ссылке для клонирования).
  * data: { method, username, secret (пароль/токен), keyPath, passphrase }
  * Пустой secret/passphrase при уже сохранённом значении — оставить прежнее.
  */
@@ -410,10 +407,14 @@ function save(url, data = {}) {
   }
   // Тип сервера, выбранный в окне входа, — до логина по умолчанию: он от типа зависит
   if (data.kind && SERVER_KINDS.has(data.kind)) setServer(t.hostname, { kind: data.kind, base: t.protocol === 'https' ? `${t.scheme}://${t.host}` : undefined });
+  const key = repoKeyOf(url);
+  if (!key) throw new GitError('Укажите адрес репозитория', { code: 'BAD_ARGS', hint: 'Например: https://gitlab.com/group/project.git' });
   const store = readStore();
-  const key = keyOf(t);
-  const prev = store.hosts[key]?.method === method ? store.hosts[key] : null;
-  const entry = { method, savedAt: new Date().toISOString() };
+  store.repos = store.repos && typeof store.repos === 'object' ? store.repos : {};
+  // Пустой пароль/токен — оставить прежний: свой у репозитория или общий вход сервера
+  const { entry: current } = entryFor(store, url);
+  const prev = current?.method === method ? current : null;
+  const entry = { method, url: String(url).trim(), savedAt: new Date().toISOString() };
 
   if (method === 'password' || method === 'token') {
     const username = String(data.username ?? '').trim() || (method === 'token' ? defaultTokenUser(t.host) : '');
@@ -433,19 +434,41 @@ function save(url, data = {}) {
     if (passphrase) entry.passphrase = encrypt(passphrase);
     else if (!data.clearPassphrase && prev?.keyPath === keyPath && prev?.passphrase) entry.passphrase = prev.passphrase;
   }
-  store.hosts[key] = entry;
+  store.repos[key] = entry;
   writeStore(store);
   return describe(url);
 }
 
+/** Забыть вход репозитория; если своего нет, а действует общий вход сервера — забыть его (shared: true) */
 function clear(url) {
   const t = parseTarget(url);
   const store = readStore();
-  const removed = Boolean(t.host && store.hosts[keyOf(t)]);
-  if (removed) {
+  const key = repoKeyOf(url);
+  if (key && store.repos?.[key]) {
+    delete store.repos[key];
+    writeStore(store);
+    return { removed: true, shared: false };
+  }
+  if (t.host && store.hosts[keyOf(t)]) {
     delete store.hosts[keyOf(t)];
     writeStore(store);
+    return { removed: true, shared: true };
   }
+  return { removed: false, shared: false };
+}
+
+/** Забыть одну запись по ключу из списка серверов (вход репозитория или общий вход сервера) */
+function forgetLogin(key) {
+  const store = readStore();
+  let removed = false;
+  if (store.repos?.[key]) {
+    delete store.repos[key];
+    removed = true;
+  } else if (store.hosts[key]) {
+    delete store.hosts[key];
+    removed = true;
+  }
+  if (removed) writeStore(store);
   return { removed };
 }
 
@@ -468,9 +491,9 @@ function askpassScript() {
 }
 
 /**
- * Переменные окружения для git: все сохранённые HTTPS-доступы (каждый — только для своего хоста)
- * и SSH-ключ для хоста из urls (первого, для которого он сохранён).
- * existingCount — сколько GIT_CONFIG_* уже задано (обычно 0).
+ * Переменные окружения для git по адресам репозитория (remote или ссылка для клонирования):
+ * для каждого https-сервера — вход этого репозитория (или общий вход сервера), только для этого хоста;
+ * для SSH — ключ первого адреса, для которого он сохранён.
  */
 function envFor(urls = []) {
   let store;
@@ -481,20 +504,40 @@ function envFor(urls = []) {
   }
   const env = {};
   const config = [];
+  const hostsDone = new Set();
   let i = 0;
-  for (const [key, entry] of Object.entries(store.hosts)) {
-    if (entry.method !== 'password' && entry.method !== 'token') continue;
-    const secret = decrypt(entry.secret);
-    if (secret === null || !entry.username) continue;
-    // Пусто — сбросить helpers (Git Credential Manager и т.п.) для этого хоста; затем наш
-    config.push([`credential.${key}.helper`, '']);
-    config.push([
-      `credential.${key}.helper`,
-      `!f() { test "$1" = get && printf 'username=%s\\npassword=%s\\n' "$GITIDEA_U_${i}" "$GITIDEA_P_${i}"; }; f`,
-    ]);
-    env[`GITIDEA_U_${i}`] = entry.username;
-    env[`GITIDEA_P_${i}`] = secret;
-    i++;
+  let sshDone = false;
+  for (const url of urls) {
+    const t = parseTarget(url);
+    if (!t.host) continue;
+    const { entry } = entryFor(store, url);
+    if (t.protocol === 'https') {
+      // Один helper на сервер: вход первого адреса (remote текущей ветки идёт первым)
+      const key = keyOf(t);
+      if (hostsDone.has(key) || (entry?.method !== 'password' && entry?.method !== 'token')) continue;
+      const secret = decrypt(entry.secret);
+      if (secret === null || !entry.username) continue;
+      hostsDone.add(key);
+      // Пусто — сбросить helpers (Git Credential Manager и т.п.) для этого хоста; затем наш
+      config.push([`credential.${key}.helper`, '']);
+      config.push([
+        `credential.${key}.helper`,
+        `!f() { test "$1" = get && printf 'username=%s\\npassword=%s\\n' "$GITIDEA_U_${i}" "$GITIDEA_P_${i}"; }; f`,
+      ]);
+      env[`GITIDEA_U_${i}`] = entry.username;
+      env[`GITIDEA_P_${i}`] = secret;
+      i++;
+    } else if (t.protocol === 'ssh' && !sshDone && entry?.method === 'ssh' && entry.keyPath) {
+      sshDone = true;
+      const passphrase = entry.passphrase ? decrypt(entry.passphrase) : null;
+      env.GIT_SSH_COMMAND = sshCommand(entry.keyPath, Boolean(passphrase));
+      if (passphrase) {
+        env.SSH_ASKPASS = toPosix(askpassScript());
+        env.SSH_ASKPASS_REQUIRE = 'force';
+        env.DISPLAY = process.env.DISPLAY || ':0';
+        env.GITIDEA_SSH_PASS = passphrase;
+      }
+    }
   }
   if (config.length) {
     const base = Number(process.env.GIT_CONFIG_COUNT) || 0;
@@ -503,22 +546,6 @@ function envFor(urls = []) {
       env[`GIT_CONFIG_KEY_${base + n}`] = k;
       env[`GIT_CONFIG_VALUE_${base + n}`] = v;
     });
-  }
-
-  for (const url of urls) {
-    const t = parseTarget(url);
-    if (t.protocol !== 'ssh') continue;
-    const entry = store.hosts[keyOf(t)];
-    if (entry?.method !== 'ssh' || !entry.keyPath) continue;
-    const passphrase = entry.passphrase ? decrypt(entry.passphrase) : null;
-    env.GIT_SSH_COMMAND = sshCommand(entry.keyPath, Boolean(passphrase));
-    if (passphrase) {
-      env.SSH_ASKPASS = toPosix(askpassScript());
-      env.SSH_ASKPASS_REQUIRE = 'force';
-      env.DISPLAY = process.env.DISPLAY || ':0';
-      env.GITIDEA_SSH_PASS = passphrase;
-    }
-    break;
   }
   return env;
 }
@@ -698,11 +725,11 @@ module.exports = {
   guessKind,
   serverKind,
   parseServer,
-  describeServer,
   setServer,
   listServers,
   forgetServer,
+  forgetLogin,
   detectServer,
-  verifyToken,
-  saveServer,
+  repoKeyOf,
+  repoPathOf,
 };

@@ -490,26 +490,67 @@ async function credTarget(dir, url) {
   }
   throw new GitError('У репозитория нет remote', { code: 'NO_REMOTE' });
 }
+// Вход привязан к репозиторию: описание — по адресу remote (или ссылке для клонирования)
 const describeTarget = async (dir, url) => {
-  const t = await credTarget(dir, url);
+  let t;
+  try {
+    t = await credTarget(dir, url);
+  } catch (error) {
+    // У репозитория нет remote — окно входа предложит указать, где он хранится
+    if (error.code === 'NO_REMOTE' && dir && !url) return { noRemote: true, remote: null, url: null, protocol: 'https', host: null, hostname: null, saved: null, kind: null, cloud: false };
+    throw error;
+  }
   const info = credentials.describe(t.url);
-  return { ...info, remote: t.remote, defaultTokenUser: credentials.defaultTokenUser(info.host) };
+  return { ...info, remote: t.remote, noRemote: false, defaultTokenUser: credentials.defaultTokenUser(info.host) };
 };
 ipcMain.handle('creds:describe', safe((dir, url) => describeTarget(dir, url)));
 ipcMain.handle(
   'creds:save',
   safe(async (dir, url, data) => {
-    const t = await credTarget(dir, url);
-    credentials.save(t.url, data ?? {});
-    return describeTarget(dir, t.url);
+    const opts = data ?? {};
+    // В окне входа выбрали другой сервер / адрес — сначала меняем (или добавляем) remote репозитория
+    let remoteChange = null;
+    if (dir && !url && opts.remoteUrl) {
+      const next = String(opts.remoteUrl).trim();
+      if (!credentials.parseTarget(next).host || !credentials.repoKeyOf(next)) {
+        throw new GitError('Укажите полный адрес репозитория', { code: 'BAD_ARGS', hint: 'Например: https://gitlab.company.ru/group/project.git' });
+      }
+      const root = await git.resolveRepoRoot(dir);
+      const cur = await credTarget(dir, null).catch(() => null);
+      // Сначала вход (он проверяет данные) — с ошибкой в пароле remote не меняется
+      const { remoteUrl, ...rest } = opts;
+      credentials.save(next, rest);
+      if (!cur) {
+        await git.git(root, ['remote', 'add', 'origin', next]);
+        remoteChange = { remote: 'origin', from: null, to: next };
+      } else if (cur.url !== next) {
+        await git.git(root, ['remote', 'set-url', cur.remote, next]);
+        remoteChange = { remote: cur.remote, from: cur.url, to: next };
+      }
+    }
+    if (!(dir && !url && opts.remoteUrl)) {
+      const t = await credTarget(dir, url);
+      const { remoteUrl, ...rest } = opts;
+      credentials.save(t.url, rest);
+    }
+    return { ...(await describeTarget(dir, url)), remoteChange };
   }),
 );
 ipcMain.handle('creds:clear', safe(async (dir, url) => credentials.clear((await credTarget(dir, url)).url)));
-// Серверы без привязки к репозиторию: свой GitLab / GitHub Enterprise / Gitea по домену
-ipcMain.handle('creds:describe-server', safe((input) => credentials.describeServer(input)));
+// Проверить доступ к репозиторию по адресу (git ls-remote с сохранённым входом) — для репозиториев, которые сейчас не открыты
+ipcMain.handle(
+  'creds:check-url',
+  safe(async (url) => {
+    if (!credentials.repoKeyOf(url)) throw new GitError('Укажите адрес репозитория', { code: 'BAD_ARGS' });
+    const opts = await actions.networkOptions(os.homedir(), { url });
+    await git.git(os.homedir(), ['ls-remote', '--heads', '--', url], { ...opts, timeout: 60000 });
+    return { ok: true };
+  }),
+);
+// Серверы и привязанные к ним репозитории; тип своего сервера (GitLab / GitHub Enterprise / Gitea…) по домену
 ipcMain.handle('creds:detect-server', safe((input) => credentials.detectServer(input)));
-ipcMain.handle('creds:save-server', safe((input, data) => credentials.saveServer(input, data ?? {})));
 ipcMain.handle('creds:servers', safe(() => credentials.listServers()));
+ipcMain.handle('creds:forget-login', safe((key) => credentials.forgetLogin(key)));
 ipcMain.handle('creds:forget-server', safe((hostname) => credentials.forgetServer(hostname)));
 ipcMain.handle(
   'creds:set-kind',

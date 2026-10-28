@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { BookOpen, CloudDownload, FolderGit2, FolderOpen, Keyboard, Link2, Loader2, LogIn, Plus, Search, Settings, X } from 'lucide-react';
+import { BookOpen, CloudDownload, FolderGit2, FolderOpen, Keyboard, Link2, Loader2, Plus, Search, Settings, X } from 'lucide-react';
 import AppLogo from './AppLogo.jsx';
 import { relativeTime } from '../lib/format.js';
 import { kb } from '../lib/platform.js';
@@ -10,7 +10,7 @@ const api = typeof window !== 'undefined' ? window.api : null;
  * Страница «Новая вкладка» — как в GitKraken: слева репозитории (Открыть / Клонировать / Создать и недавние),
  * справа — коротко о возможностях и ссылки на справку. Клик по недавнему открывает его в этой же вкладке.
  */
-export default function NewTabPage({ loading, loadingPath, openPaths = [], onOpen, onOpenPath, onClone, onCreate, onConnect, onServerLogin, onGuide, onShortcuts, onSettings }) {
+export default function NewTabPage({ loading, loadingPath, openPaths = [], onOpen, onOpenPath, onClone, onCreate, onConnect, onGuide, onShortcuts, onSettings }) {
   const [recent, setRecent] = useState(null);
   const [query, setQuery] = useState('');
 
@@ -46,15 +46,6 @@ export default function NewTabPage({ loading, loadingPath, openPaths = [], onOpe
           <ActionButton icon={Plus} label="Создать" hint={kb('Ctrl+N')} onClick={onCreate} disabled={loading} />
           <ActionButton icon={Link2} label="Подключить к GitLab / GitHub" onClick={onConnect} disabled={loading} subtle />
         </div>
-        {onServerLogin && (
-          <button
-            onClick={onServerLogin}
-            data-testid="newtab-server-login"
-            className="mt-2.5 flex items-center gap-1.5 self-start text-[12.5px] text-gk-blue hover:underline"
-          >
-            <LogIn size={12} /> Войти на Git-сервер — GitHub, GitLab или свой (Self-Managed) по домену
-          </button>
-        )}
 
         <div className="mt-7 flex items-center gap-3">
           <h2 className="text-[13px] font-medium text-gk-text">Недавние</h2>

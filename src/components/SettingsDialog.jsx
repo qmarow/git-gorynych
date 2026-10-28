@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Archive, Check, Cloud, FileKey, GitBranch, GitCommitHorizontal, KeyRound, LogIn, RefreshCw, Image as ImageIcon, Loader2, Palette, Pencil, Plug, RotateCcw, Server, ShieldCheck, Sparkles, Trash2, UserRound, X } from 'lucide-react';
+import { Archive, Check, Cloud, FileKey, FolderGit2, GitBranch, GitCommitHorizontal, KeyRound, LogIn, RefreshCw, Image as ImageIcon, Loader2, Palette, Pencil, Plug, RotateCcw, Server, ShieldCheck, Sparkles, Trash2, UserRound, X } from 'lucide-react';
 import { AUTO_THEME, BACKGROUNDS, THEMES, resolveThemeId, themeById } from '../lib/appearance.js';
 import { TokenSetup } from './TokenSetup.jsx';
 import { GuardSettings, Switch } from './Guard.jsx';
@@ -546,10 +546,28 @@ function IntegrationsTab({ repo, onForgeChanged, servers }) {
 const LOGIN_ICONS = { password: UserRound, token: KeyRound, ssh: FileKey };
 const LOGIN_NAMES = { password: 'логин и пароль', token: 'токен', ssh: 'SSH-ключ' };
 
-/** Git-серверы, для которых сохранён вход: GitHub, GitLab, свои (Self-Managed) — тип, способы входа, «Забыть» */
-function ServersSection({ tick, onAdd, onForget }) {
+function LoginText({ login }) {
+  const Icon = LOGIN_ICONS[login.method] ?? KeyRound;
+  return (
+    <span className="flex min-w-0 items-center gap-1 text-[11px] text-gk-muted">
+      <Icon size={11} className={`shrink-0 ${login.readable === false ? 'text-gk-yellow' : 'text-gk-dim'}`} />
+      <span className="truncate">
+        {LOGIN_NAMES[login.method]}
+        {login.username && login.method !== 'ssh' ? ` · ${login.username}` : ''}
+        {login.keyPath ? ` · ${login.keyPath.split(/[\\/]/).pop()}` : ''}
+      </span>
+      {login.readable === false && <span className="shrink-0 text-gk-yellow">— введите заново</span>}
+    </span>
+  );
+}
+
+/**
+ * Git-серверы и привязанные к ним репозитории: у каждого репозитория свой вход (логин, токен или SSH-ключ).
+ * «Общий вход» — сохранённый раньше на весь сервер; действует для репозиториев без своего.
+ */
+function ServersSection({ tick, repoOpen, onAuthCurrent, onEdit, onForgetLogin, onForgetServer }) {
   const [list, setList] = useState(null);
-  const [confirm, setConfirm] = useState(null); // hostname, который подтверждаем удалить
+  const [confirm, setConfirm] = useState(null); // ключ записи или «server:<host>», который подтверждаем удалить
 
   useEffect(() => {
     let alive = true;
@@ -559,22 +577,48 @@ function ServersSection({ tick, onAdd, onForget }) {
     };
   }, [tick]);
 
+  const confirmBox = (id, onYes) => (
+    <span className="flex shrink-0 items-center gap-1.5 text-[11.5px]">
+      <span className="text-gk-muted">Забыть?</span>
+      <button
+        onClick={() => {
+          setConfirm(null);
+          onYes();
+        }}
+        data-testid="login-forget-confirm"
+        className="rounded bg-gk-red px-2 py-0.5 font-semibold text-white"
+      >
+        Да
+      </button>
+      <button onClick={() => setConfirm(null)} className="rounded px-1.5 py-0.5 text-gk-muted hover:bg-gk-hover">
+        Нет
+      </button>
+    </span>
+  );
+  const iconBtn = (props, Icon, hover = 'hover:text-gk-text') => (
+    <button {...props} className={`rounded p-1 text-gk-dim hover:bg-gk-hover ${hover}`}>
+      <Icon size={13} />
+    </button>
+  );
+
   return (
     <section className="space-y-2" data-testid="servers-section">
       <div className="flex items-center gap-2">
         <Server size={14} className="text-gk-muted" />
-        <span className="flex-1 text-[13px] font-semibold text-gk-strong">Git-серверы</span>
-        <button
-          onClick={() => onAdd('')}
-          data-testid="server-add"
-          className="flex items-center gap-1.5 rounded-md bg-gk-blue px-2.5 py-1 text-[12px] font-semibold text-white hover:brightness-110"
-        >
-          <LogIn size={12} /> Войти на сервер…
-        </button>
+        <span className="flex-1 text-[13px] font-semibold text-gk-strong">Авторизация репозиториев</span>
+        {repoOpen && (
+          <button
+            onClick={onAuthCurrent}
+            data-testid="repo-auth"
+            className="flex items-center gap-1.5 rounded-md bg-gk-blue px-2.5 py-1 text-[12px] font-semibold text-white hover:brightness-110"
+          >
+            <LogIn size={12} /> Авторизовать открытый репозиторий…
+          </button>
+        )}
       </div>
       <p className="text-[12px] leading-relaxed text-gk-muted">
-        GitHub, GitLab или свой сервер компании (Self-Managed) по домену. Сохранённый вход используется для clone, pull и push — окно
-        входа больше не появится.
+        Вход сохраняется для конкретного репозитория — на одном сервере у разных репозиториев могут быть разные учётные записи. В окне
+        авторизации выбирается, где хранится репозиторий: GitHub, GitLab или свой сервер (Self-Managed).
       </p>
       {list === null ? (
         <div className="flex items-center gap-2 text-[12px] text-gk-dim">
@@ -582,75 +626,68 @@ function ServersSection({ tick, onAdd, onForget }) {
         </div>
       ) : list.length === 0 ? (
         <p className="rounded-lg border border-dashed border-gk-border px-3 py-2.5 text-[12px] text-gk-dim">
-          Пока ни одного. Вход сохраняется сам, когда сервер впервые попросит авторизацию, — или нажмите «Войти на сервер…».
+          Пока ни одного. Вход сохраняется сам, когда сервер впервые попросит авторизацию при Pull, Push или клонировании.
         </p>
       ) : (
-        <ul className="divide-y divide-gk-border overflow-hidden rounded-lg border border-gk-border">
+        <div className="space-y-2">
           {list.map((srv) => (
-            <li key={srv.hostname} className="group flex items-center gap-3 bg-gk-fg/[0.02] px-3 py-2" data-testid="server-row">
-              {srv.cloud ? <Cloud size={15} className="shrink-0" style={{ color: kindInfo(srv.kind)?.color }} /> : <Server size={15} className="shrink-0" style={{ color: kindInfo(srv.kind)?.color ?? undefined }} />}
-              <div className="min-w-0 flex-1">
-                <div className="flex items-baseline gap-2">
-                  <span className="truncate font-mono text-[12.5px] text-gk-strong">{srv.hostname}</span>
-                  <span className="shrink-0 text-[11px] text-gk-dim">{srv.kind ? kindLabel(srv.kind, srv.cloud) : 'тип не выбран'}</span>
-                </div>
-                <div className="mt-0.5 flex flex-wrap gap-x-3 gap-y-0.5 text-[11px] text-gk-muted">
-                  {srv.logins.length === 0 && <span className="text-gk-dim">вход не сохранён</span>}
-                  {srv.logins.map((l) => {
-                    const Icon = LOGIN_ICONS[l.method] ?? KeyRound;
-                    return (
-                      <span key={l.key} className="flex items-center gap-1" data-tip={l.protocol === 'ssh' ? `Для адресов git@${srv.hostname}:…` : `Для адресов ${l.key}/…`}>
-                        <Icon size={11} className={l.readable === false ? 'text-gk-yellow' : 'text-gk-dim'} />
-                        {LOGIN_NAMES[l.method]}
-                        {l.username && l.method !== 'ssh' ? ` · ${l.username}` : ''}
-                        {l.keyPath ? ` · ${l.keyPath.split(/[\\/]/).pop()}` : ''}
-                        {l.readable === false && <span className="text-gk-yellow">— введите заново</span>}
-                      </span>
-                    );
-                  })}
-                </div>
+            <div key={srv.hostname} className="overflow-hidden rounded-lg border border-gk-border" data-testid="server-row">
+              <div className="group flex items-center gap-2.5 bg-gk-fg/[0.03] px-3 py-1.5">
+                {srv.cloud ? <Cloud size={14} className="shrink-0" style={{ color: kindInfo(srv.kind)?.color }} /> : <Server size={14} className="shrink-0" style={{ color: kindInfo(srv.kind)?.color ?? undefined }} />}
+                <span className="truncate font-mono text-[12.5px] text-gk-strong">{srv.hostname}</span>
+                <span className="min-w-0 flex-1 truncate text-[11px] text-gk-dim">{srv.kind ? kindLabel(srv.kind, srv.cloud) : 'тип не выбран'}</span>
+                {confirm === `server:${srv.hostname}`
+                  ? confirmBox(srv.hostname, () => onForgetServer(srv.hostname))
+                  : iconBtn(
+                      {
+                        onClick: () => setConfirm(`server:${srv.hostname}`),
+                        'data-tip': 'Забыть сервер: входы всех его репозиториев, общий вход и выбранный тип',
+                        'aria-label': `Забыть ${srv.hostname}`,
+                        'data-testid': 'server-forget',
+                      },
+                      Trash2,
+                      'hover:text-gk-red',
+                    )}
               </div>
-              {confirm === srv.hostname ? (
-                <span className="flex shrink-0 items-center gap-1.5 text-[11.5px]">
-                  <span className="text-gk-muted">Забыть?</span>
-                  <button
-                    onClick={() => {
-                      setConfirm(null);
-                      onForget(srv.hostname);
-                    }}
-                    data-testid="server-forget-confirm"
-                    className="rounded bg-gk-red px-2 py-0.5 font-semibold text-white"
-                  >
-                    Да
-                  </button>
-                  <button onClick={() => setConfirm(null)} className="rounded px-1.5 py-0.5 text-gk-muted hover:bg-gk-hover">
-                    Нет
-                  </button>
-                </span>
-              ) : (
-                <span className="flex shrink-0 items-center gap-0.5 opacity-70 group-hover:opacity-100">
-                  <button
-                    onClick={() => onAdd(srv.base)}
-                    data-tip="Изменить вход или тип сервера"
-                    aria-label={`Изменить ${srv.hostname}`}
-                    className="rounded p-1 text-gk-dim hover:bg-gk-hover hover:text-gk-text"
-                  >
-                    <Pencil size={13} />
-                  </button>
-                  <button
-                    onClick={() => setConfirm(srv.hostname)}
-                    data-tip="Забыть сервер: удалить сохранённые логины, токены и выбранный тип"
-                    aria-label={`Забыть ${srv.hostname}`}
-                    data-testid="server-forget"
-                    className="rounded p-1 text-gk-dim hover:bg-gk-hover hover:text-gk-red"
-                  >
-                    <Trash2 size={13} />
-                  </button>
-                </span>
-              )}
-            </li>
+              <ul className="divide-y divide-gk-border/70">
+                {srv.repos.map((r) => (
+                  <li key={r.key} className="group flex items-center gap-2.5 py-1.5 pl-8 pr-3" data-testid="repo-row">
+                    <FolderGit2 size={13} className="shrink-0 text-gk-dim" />
+                    <div className="min-w-0 flex-1">
+                      <div className="flex min-w-0 items-baseline gap-2">
+                        <span className="truncate text-[12.5px] text-gk-text" data-tip={r.url}>
+                          {r.path}
+                        </span>
+                        <span className="shrink-0 rounded bg-gk-hover px-1 text-[9.5px] uppercase text-gk-dim">{r.protocol === 'ssh' ? 'SSH' : 'HTTPS'}</span>
+                      </div>
+                      <LoginText login={r} />
+                    </div>
+                    {confirm === r.key ? (
+                      confirmBox(r.key, () => onForgetLogin(r.key, r.path))
+                    ) : (
+                      <span className="flex shrink-0 items-center gap-0.5 opacity-70 group-hover:opacity-100">
+                        {iconBtn({ onClick: () => onEdit(r.url), 'data-tip': 'Изменить вход', 'aria-label': `Изменить ${r.path}` }, Pencil)}
+                        {iconBtn({ onClick: () => setConfirm(r.key), 'data-tip': 'Забыть вход этого репозитория', 'aria-label': `Забыть ${r.path}`, 'data-testid': 'repo-forget' }, Trash2, 'hover:text-gk-red')}
+                      </span>
+                    )}
+                  </li>
+                ))}
+                {srv.shared.map((l) => (
+                  <li key={l.key} className="group flex items-center gap-2.5 py-1.5 pl-8 pr-3" data-testid="shared-row">
+                    <Server size={13} className="shrink-0 text-gk-dim" />
+                    <div className="min-w-0 flex-1">
+                      <div className="text-[12.5px] text-gk-muted">Общий вход для всех репозиториев сервера</div>
+                      <LoginText login={l} />
+                    </div>
+                    {confirm === l.key
+                      ? confirmBox(l.key, () => onForgetLogin(l.key, `всех репозиториев ${srv.hostname}`))
+                      : iconBtn({ onClick: () => setConfirm(l.key), 'data-tip': 'Забыть общий вход (сохранён раньше, до привязки к репозиториям)', 'aria-label': 'Забыть общий вход' }, Trash2, 'hover:text-gk-red')}
+                  </li>
+                ))}
+              </ul>
+            </div>
           ))}
-        </ul>
+        </div>
       )}
     </section>
   );

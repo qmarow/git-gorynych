@@ -681,103 +681,74 @@ export default function App() {
 
   /* ---------- Авторизация на remote-сервере ---------- */
 
-  // { dir, url, target, error, formError, busy, retry } — окно «Авторизация на сервере»
+  // { dir, url, target, error, formError, busy, retry } — окно «Авторизация репозитория»
   const [auth, setAuth] = useState(null);
   const authRef = useRef(null);
   authRef.current = auth;
 
-  // Список Git-серверов в настройках перечитывается после входа на сервер
+  // Список серверов и репозиториев в настройках перечитывается после входа
   const [serversTick, setServersTick] = useState(0);
 
   /**
-   * Открыть окно входа. url — для клонирования (репозитория ещё нет), иначе — remote текущей ветки.
-   * server — вход на сервер без репозитория ('' — выбрать сервер в окне; домен — сразу этот сервер).
+   * Открыть окно входа — вход привязан к репозиторию.
+   * Без url — открытый репозиторий (его remote; без remote окно предложит указать, где он хранится);
+   * url — клонирование или репозиторий из списка в настройках (verify: проверить доступ git ls-remote).
    * retry() → { ok, error } — операция, которую повторить после входа (без retry — проверить доступ).
    */
-  const openAuth = useCallback(async ({ url = null, server = null, error = null, retry = null, actionLabel = null } = {}) => {
+  const openAuth = useCallback(async ({ url = null, verify = false, error = null, retry = null, actionLabel = null } = {}) => {
     if (!api?.creds || authRef.current) return;
-    const openServer = async (input) => {
-      const res = input && api.creds.describeServer ? await api.creds.describeServer(input) : null;
-      setAuth({ dir: null, url: null, target: res?.ok ? res.data : { mode: 'server' }, error, retry: null, actionLabel, formError: null, busy: false });
-    };
-    if (server !== null) return openServer(server);
     const dir = url ? null : repoRef.current?.path ?? null;
+    if (!url && !dir) return;
     const res = await api.creds.describe(dir, url);
     if (!res.ok) {
-      // У репозитория нет remote (или репозиторий не открыт) — войти на сервер можно и заранее
-      if (!url && !error && api.creds.describeServer) return openServer('');
       if (error) setDialog({ type: 'error', action: 'Авторизация', error });
+      else notify({ type: 'error', title: res.error.message, hint: res.error.hint });
       return;
     }
-    setAuth({ dir, url, target: res.data, error, retry, actionLabel, formError: null, busy: false });
+    setAuth({ dir, url, verify, target: res.data, error, retry, actionLabel, formError: null, busy: false, nonce: Date.now() });
   }, []);
-
-  // Вход на сервер без репозитория: проверить токен через API (если можно) и сохранить
-  const submitServerAuth = async (a, data) => {
-    const res = await api.creds.saveServer(data.server, data);
-    if (!res.ok) {
-      setAuth((cur) => cur && { ...cur, busy: false, formError: res.error });
-      return;
-    }
-    setAuth(null);
-    setServersTick((n) => n + 1);
-    const { target, verified } = res.data;
-    const where = target.hostname;
-    if (verified?.user) notify({ type: 'success', title: `Вход на ${where} выполнен — @${verified.user}`, hint: 'Данные сохранены: clone, pull и push с этого сервера пройдут без окна входа' });
-    else
-      notify({
-        type: verified?.unverified ? 'info' : 'success',
-        title: `Данные для ${where} сохранены`,
-        hint: verified?.unverified ?? 'Они используются для clone, pull и push с этого сервера',
-      });
-    // Открыт репозиторий с этого сервера — сразу проверить доступ
-    const remoteHost = repoRef.current?.forge?.host ?? null;
-    if (remoteHost && remoteHost.toLowerCase() === where) checkAccess();
-  };
 
   const submitAuth = async (data) => {
     const a = authRef.current;
     if (!a) return;
     setAuth({ ...a, busy: true, formError: null });
-    if (a.target?.mode === 'server') return submitServerAuth(a, data);
     const saved = await api.creds.save(a.dir, a.url, data);
     if (!saved.ok) {
       setAuth((cur) => cur && { ...cur, busy: false, formError: saved.error });
       return;
     }
+    setServersTick((n) => n + 1);
+    const moved = saved.data.remoteChange;
+    if (moved) {
+      notify({
+        type: 'info',
+        title: moved.from ? `Remote ${moved.remote} теперь указывает на ${saved.data.hostname}` : `Добавлен remote ${moved.remote}`,
+        hint: moved.from ? `${moved.from} → ${moved.to}` : moved.to,
+      });
+      if (a.dir) await loadRepo(a.dir, { silent: true });
+    }
     // Повторяем прерванную операцию; без неё — проверяем доступ (git ls-remote / push --dry-run)
     let result;
     if (a.retry) result = await a.retry();
+    else if (a.verify && a.url) result = await api.creds.checkUrl(a.url);
     else {
       const acc = await checkAccess();
       const err = acc?.error ?? acc?.data?.error ?? null;
       result = err ? { ok: false, error: err } : { ok: true };
     }
-    if (result?.ok === false && ['AUTH', 'HOST_KEY'].includes(result.error?.code)) {
-      // Сервер снова не пустил — окно остаётся, показываем свежую ошибку
+    if (result?.ok === false && ['AUTH', 'HOST_KEY', 'NOT_FOUND', 'FORBIDDEN'].includes(result.error?.code)) {
+      // Сервер снова не пустил — окно остаётся (уже с сохранённым входом), показываем свежую ошибку
       setAuth((cur) => cur && { ...cur, busy: false, target: saved.data, error: result.error });
       return;
     }
     setAuth(null);
+    const where = saved.data.repoPath ? `${saved.data.repoPath} (${saved.data.hostname})` : saved.data.hostname ?? saved.data.host;
     if (result?.ok !== false) {
-      notify({ type: 'success', title: `Вход на ${saved.data.hostname ?? saved.data.host} выполнен — данные сохранены` });
+      notify({ type: 'success', title: `Вход для ${where} выполнен — данные сохранены` });
       if (repoRef.current?.remotes?.length && a.retry) checkAccess();
     } else if (result?.error && result.error.code !== 'BUSY') {
       notify({ type: 'error', title: result.error.message, hint: result.error.hint, details: result.error.details });
     }
-  };
-
-  // Remote с https:// на SSH (git@host:path.git) — чтобы входить по ключу
-  const switchRemoteToSsh = async () => {
-    const a = authRef.current;
-    if (!a?.dir) return null;
-    const res = await api.creds.switchToSsh(a.dir);
-    if (res.ok) {
-      setAuth((cur) => cur && { ...cur, target: res.data.target, formError: null });
-      notify({ type: 'success', title: `Remote ${res.data.remote} переведён на SSH`, hint: `${res.data.from} → ${res.data.to}` });
-      loadRepo(a.dir, { silent: true });
-    }
-    return res;
   };
 
   const forgetAuth = async () => {
@@ -787,7 +758,11 @@ export default function App() {
     if (res.ok) {
       const fresh = await api.creds.describe(a.dir, a.url);
       setAuth((cur) => cur && { ...cur, target: fresh.ok ? fresh.data : { ...cur.target, saved: null } });
-      notify({ type: 'info', title: `Данные для ${a.target?.hostname ?? 'сервера'} удалены` });
+      setServersTick((n) => n + 1);
+      notify({
+        type: 'info',
+        title: res.data.shared ? `Общий вход для ${a.target?.hostname ?? 'сервера'} удалён` : `Вход для ${a.target?.repoPath ?? 'репозитория'} удалён`,
+      });
     }
   };
 
@@ -1917,7 +1892,7 @@ export default function App() {
       { id: 'settings', label: 'Оформление…', icon: Palette, hint: 'Ctrl+,', onClick: () => openSettings('appearance') },
       { id: 'sync-settings', label: 'Синхронизация…', icon: RefreshCw, onClick: () => openSettings('sync') },
       { id: 'integrations', label: 'Подключения: Git-серверы и GitLab…', icon: Plug, onClick: () => openSettings('integrations') },
-      ...(api?.creds?.describeServer ? [{ id: 'server-login', label: 'Войти на Git-сервер (GitHub, GitLab, свой домен)…', icon: LogIn, onClick: () => openAuth({ server: '' }) }] : []),
+      ...(api?.creds ? [{ id: 'repo-login', label: 'Авторизация репозитория…', icon: LogIn, disabled: !repo, onClick: () => openAuth({ actionLabel: 'Сохранить и проверить' }) }] : []),
     ],
     Actions: buildActionsMenu(),
     Help: [
@@ -3084,7 +3059,6 @@ export default function App() {
           <NewTabPage
             key={activePath ?? 'none'}
             loading={loading}
-            onServerLogin={api?.creds?.describeServer ? () => openAuth({ server: '' }) : null}
             loadingPath={loading ? loadingLabel : null}
             openPaths={tabs.filter((t) => !t.isNew).map((t) => t.path)}
             onOpen={openRepository}
@@ -3185,12 +3159,21 @@ export default function App() {
             api?.creds?.servers
               ? {
                   tick: serversTick,
-                  onAdd: (input = '') => openAuth({ server: input }),
-                  onForget: async (hostname) => {
+                  repoOpen: Boolean(repo),
+                  onAuthCurrent: () => openAuth({ actionLabel: 'Сохранить и проверить' }),
+                  onEdit: (url) => openAuth({ url, verify: true, actionLabel: 'Сохранить и проверить' }),
+                  onForgetLogin: async (login, label) => {
+                    const res = await api.creds.forgetLogin(login);
+                    if (res.ok) {
+                      setServersTick((n) => n + 1);
+                      notify({ type: 'info', title: `Вход для ${label} удалён` });
+                    }
+                  },
+                  onForgetServer: async (hostname) => {
                     const res = await api.creds.forgetServer(hostname);
                     if (res.ok) {
                       setServersTick((n) => n + 1);
-                      notify({ type: 'info', title: `Данные для ${hostname} удалены` });
+                      notify({ type: 'info', title: `Все входы для ${hostname} удалены` });
                     }
                   },
                 }
@@ -3390,7 +3373,7 @@ export default function App() {
       )}
       {auth && (
         <AuthDialog
-          key={`${auth.target?.mode ?? 'remote'}:${auth.url ?? auth.dir ?? ''}`}
+          key={`${auth.url ?? auth.dir ?? ''}:${auth.nonce}`}
           target={auth.target}
           error={auth.error}
           formError={auth.formError}
@@ -3400,7 +3383,7 @@ export default function App() {
           onForget={auth.target?.saved ? forgetAuth : null}
           onClose={() => setAuth(null)}
           onKeyDefaults={(type, url) => api.creds.keyDefaults(auth.dir, url ?? auth.url, type)}
-          onSwitchToSsh={auth.dir && !auth.url && api.creds.switchToSsh ? switchRemoteToSsh : null}
+          canEditRemote={Boolean(auth.dir && !auth.url)}
         />
       )}
       {dialog?.type === 'confirm' && (

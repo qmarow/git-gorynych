@@ -46,7 +46,7 @@ const RULES = [
     re: /Authentication failed|could not read (Username|Password)|terminal prompts disabled|Invalid username or password|HTTP Basic: Access denied|Permission denied \(publickey|returned error: 401|Bad credentials|invalid credentials|logon failed|unable to get password|SSH_AUTH_SOCK|passphrase/i,
     message: 'Ошибка авторизации на сервере',
     hint:
-      'Введите логин и пароль, токен доступа или выберите SSH-ключ в окне «Авторизация на сервере» — программа запомнит их для этого сервера. ' +
+      'Введите логин и пароль, токен доступа или выберите SSH-ключ в окне «Авторизация репозитория» — программа запомнит их для этого репозитория. ' +
       'Для HTTPS также подойдёт окно Git Credential Manager; для SSH — ключ, добавленный в аккаунт на сервере.',
   },
   {
