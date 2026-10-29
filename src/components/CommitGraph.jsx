@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import { Check, Copy, Pencil, SlidersHorizontal } from 'lucide-react';
+import { Check, Copy, FileSearch, Pencil, SlidersHorizontal } from 'lucide-react';
 import { RefKindIcon, RefsPopover, refKindLabel, useHoverPopover } from './RefBadge.jsx';
 import { edgePath, graphWidth, laneColor, laneX, layoutGraph, metricsFor, rowY } from '../lib/graphLayout.js';
 import { StatusIcon, statusInfo } from './PipelineStatus.jsx';
@@ -82,6 +82,7 @@ export default function CommitGraph({
   wipCount,
   truncated,
   matchSet = null, // Set хэшей, подходящих под поиск; остальные приглушаются
+  fileHits = null, // Map хэш → { files, count } — текст поиска найден в изменениях этих файлов
   pipelines = null, // { [sha]: { id, status } } — статусы пайплайнов GitLab
   onPipelineClick,
   onCompare, // Ctrl+клик: сравнить выбранный коммит с этим
@@ -369,6 +370,7 @@ export default function CommitGraph({
             refsSide={refsSide}
             dateFormat={gv.dateFormat}
             pipeline={pipelines?.[node.hash] ?? null}
+            fileHit={fileHits?.get(node.hash) ?? null}
             onPipelineClick={onPipelineClick}
             selected={node.hash === selectedHash}
             hovered={node.hash === hoverHash}
@@ -568,6 +570,7 @@ function Row({
   delay,
   wipCount,
   pipeline,
+  fileHit,
   onPipelineClick,
   onHover,
   onSelect,
@@ -645,6 +648,19 @@ function Row({
               <>
                 {node.isHead && <HeadPill compact={compact} />}
                 <MessageText node={node} strong={selected || node.isHead} />
+                {fileHit && (
+                  <span
+                    data-testid="row-file-hits"
+                    data-tip={`Найдено в изменениях:\n${fileHit.files
+                      .slice(0, 8)
+                      .map((f) => `${f.path} — ${f.count}`)
+                      .join('\n')}${fileHit.files.length > 8 || fileHit.moreFiles ? '\n…' : ''}`}
+                    className="ml-2 flex shrink-0 items-center gap-1 rounded-full bg-gk-yellow/20 px-1.5 py-px text-[10.5px] font-medium text-gk-yellow"
+                  >
+                    <FileSearch size={10} />
+                    {fileHit.files.length + (fileHit.moreFiles ?? 0)}
+                  </span>
+                )}
                 {pipeline && (
                   <button
                     onMouseDown={(e) => e.stopPropagation()}

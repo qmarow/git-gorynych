@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { CalendarDays, ChevronDown, ChevronUp, Search, User, X } from 'lucide-react';
+import { CalendarDays, ChevronDown, ChevronUp, FileSearch, Loader2, Search, User, X } from 'lucide-react';
 import { avatarColor, initials } from '../lib/format.js';
 
 export const EMPTY_FILTER = { query: '', authors: [], period: 'all', from: '', to: '' };
@@ -44,7 +44,7 @@ export function matchCommit(c, f) {
   return true;
 }
 
-export default function SearchBar({ commits, filter, onChange, matches, current, onPrev, onNext, onClose, totalLoaded, truncated }) {
+export default function SearchBar({ commits, filter, onChange, matches, current, onPrev, onNext, onClose, totalLoaded, truncated, inFiles = false, onToggleInFiles, content = null }) {
   const inputRef = useRef(null);
   const [authorsOpen, setAuthorsOpen] = useState(false);
   const [authorQuery, setAuthorQuery] = useState('');
@@ -88,7 +88,7 @@ export default function SearchBar({ commits, filter, onChange, matches, current,
             }
             if (e.key === 'Escape') onClose();
           }}
-          placeholder="Сообщение, SHA, автор, ветка…"
+          placeholder={inFiles ? 'Сообщение, SHA, автор, ветка или текст в файлах…' : 'Сообщение, SHA, автор, ветка…'}
           className="min-w-0 flex-1 bg-transparent text-[13px] outline-none placeholder:text-gk-dim"
         />
         {filter.query && (
@@ -97,6 +97,22 @@ export default function SearchBar({ commits, filter, onChange, matches, current,
           </button>
         )}
       </label>
+
+      {/* Искать ещё и в изменённых строках файлов */}
+      {onToggleInFiles && (
+        <button
+          onClick={onToggleInFiles}
+          data-testid="search-in-files"
+          aria-pressed={inFiles}
+          data-tip={inFiles ? 'Ищется и текст в изменениях файлов: найденный коммит, файл и строка подсвечиваются. Клик — искать только в описании коммитов' : 'Искать и в изменениях файлов'}
+          className={`flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs ring-1 transition-colors ${
+            inFiles ? 'bg-gk-blue/15 text-gk-blue ring-gk-blue/40' : 'text-gk-muted ring-gk-border hover:text-gk-text'
+          }`}
+        >
+          {content?.loading ? <Loader2 size={13} className="animate-spin" /> : <FileSearch size={13} />}
+          В файлах
+        </button>
+      )}
 
       {/* Авторы */}
       <div ref={authorsRef} className="relative">
@@ -196,8 +212,19 @@ export default function SearchBar({ commits, filter, onChange, matches, current,
             className={`mr-1 text-xs ${matches.length ? 'text-gk-text' : 'text-gk-red'}`}
             title={truncated ? `Поиск по последним ${totalLoaded} коммитам` : undefined}
           >
-            {matches.length ? `${current + 1} из ${matches.length}` : 'Ничего не найдено'}
+            {matches.length ? `${current + 1} из ${matches.length}` : content?.loading ? 'Ищем…' : 'Ничего не найдено'}
             {truncated && <span className="text-gk-dim"> · в {totalLoaded} посл.</span>}
+          </span>
+        )}
+        {active && content && !content.loading && content.commits > 0 && (
+          <span data-testid="search-file-count" className="mr-1 flex items-center gap-1 text-[11px] text-gk-dim" data-tip="Коммиты, в изменениях которых найден текст">
+            <FileSearch size={11} /> в файлах: {content.commits}
+            {content.truncated ? '+' : ''}
+          </span>
+        )}
+        {active && content?.error && (
+          <span className="mr-1 text-[11px] text-gk-red" data-tip={content.error.hint ?? undefined}>
+            {content.error.message}
           </span>
         )}
         <IconBtn title="Предыдущий (Shift+Enter)" disabled={!matches.length} onClick={onPrev}>

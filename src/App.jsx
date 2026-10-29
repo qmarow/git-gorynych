@@ -2502,21 +2502,64 @@ export default function App() {
   const [filter, setFilter] = useState(EMPTY_FILTER);
   const [matchIndex, setMatchIndex] = useState(0);
   const filterActive = isFilterActive(filter);
+  // Поиск ещё и в изменённых строках файлов (git log -G по коммитам графа): где именно найдено
+  const [inFiles, setInFiles] = useState(() => readPref('searchInFiles', '1') !== '0');
+  const [contentSearch, setContentSearch] = useState(null); // { query, loading, data: { commits, … }, error }
+  const contentQuery = searchOpen && inFiles && repo ? filter.query.trim() : '';
+  useEffect(() => {
+    if (contentQuery.length < 2 || !api?.repo?.searchHistory) {
+      setContentSearch(null);
+      return undefined;
+    }
+    let alive = true;
+    setContentSearch((cur) => ({ query: contentQuery, loading: true, data: cur?.query === contentQuery ? cur.data : null, error: null }));
+    const t = setTimeout(async () => {
+      const r = repoRef.current;
+      if (!r) return;
+      const hashes = r.commits.filter((c) => !c.wip && !c.isStash).map((c) => c.hash);
+      const res = await api.repo.searchHistory(r.path, { hashes, query: contentQuery });
+      if (!alive) return;
+      setContentSearch(res.ok ? { query: contentQuery, loading: false, data: res.data, error: null } : { query: contentQuery, loading: false, data: null, error: res.error });
+    }, 350);
+    return () => {
+      alive = false;
+      clearTimeout(t);
+    };
+  }, [contentQuery, repo?.headHash, repo?.commits?.length]); // eslint-disable-line react-hooks/exhaustive-deps
+  // Хэш → где найдено (файлы и строки)
+  const fileHits = useMemo(() => {
+    if (!contentSearch?.data || contentSearch.query !== contentQuery) return null;
+    return new Map(contentSearch.data.commits.map((c) => [c.hash, c]));
+  }, [contentSearch, contentQuery]);
+  const noQueryFilter = useMemo(() => ({ ...filter, query: '' }), [filter]);
   const searchMatches = useMemo(
-    () => (repo && searchOpen && filterActive ? repo.commits.filter((c) => matchCommit(c, filter)).map((c) => c.hash) : []),
-    [repo, filter, searchOpen, filterActive],
+    () =>
+      repo && searchOpen && filterActive
+        ? repo.commits.filter((c) => matchCommit(c, filter) || (fileHits?.has(c.hash) && matchCommit(c, noQueryFilter))).map((c) => c.hash)
+        : [],
+    [repo, filter, searchOpen, filterActive, fileHits, noQueryFilter],
   );
   const matchSet = useMemo(() => new Set(searchMatches), [searchMatches]);
 
-  // При изменении фильтра — к первому совпадению
+  // При изменении фильтра — к первому совпадению; пришли совпадения в файлах, а по описанию ничего — тоже к первому
+  const lastJump = useRef(null);
   useEffect(() => {
     setMatchIndex(0);
     if (searchMatches.length) {
       setDiffTarget(null);
       setSelectedHash(searchMatches[0]);
+      lastJump.current = filter;
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [filter]);
+  useEffect(() => {
+    if (!fileHits || !searchMatches.length || lastJump.current === filter) return;
+    lastJump.current = filter;
+    setMatchIndex(0);
+    setDiffTarget(null);
+    setSelectedHash(searchMatches[0]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [fileHits]);
 
   const gotoMatch = (delta) => {
     if (!searchMatches.length) return;
@@ -2528,6 +2571,33 @@ export default function App() {
   const closeSearch = () => {
     setSearchOpen(false);
     setFilter(EMPTY_FILTER);
+  };
+  const toggleInFiles = () => {
+    setInFiles((v) => {
+      writePref('searchInFiles', v ? '0' : '1');
+      return !v;
+    });
+  };
+  // Открыть файл коммита на месте совпадения: diff сразу с поиском этого текста и прокруткой к строке
+  const openSearchHit = (hash, hitFile, line) => {
+    const commit = allCommits.find((c) => c.hash === hash);
+    if (!commit) return;
+    const loaded = Array.isArray(filesByHash[hash]) ? filesByHash[hash] : null;
+    const list = loaded ?? (fileHits?.get(hash)?.files ?? [hitFile]).map((f) => ({ path: f.path, oldPath: f.oldPath, status: f.status }));
+    const file = list.find((f) => f.path === hitFile.path) ?? { path: hitFile.path, oldPath: hitFile.oldPath, status: hitFile.status };
+    const first = line ?? hitFile.lines?.[0] ?? null;
+    setSelectedHash(hash);
+    setDiffTarget({
+      kind: 'commit',
+      mode: 'commit',
+      hash,
+      parent: commit.parents[0] ?? null,
+      commitHash: hash,
+      file,
+      list,
+      index: Math.max(0, list.indexOf(file)),
+      search: { open: true, query: contentQuery || filter.query.trim(), caseSensitive: false, regex: false, changedOnly: false, line: first ? { t: first.t, o: first.o, n: first.n } : null, nonce: Date.now() },
+    });
   };
 
   /* ---------- Автообновление ---------- */
@@ -2876,6 +2946,9 @@ export default function App() {
                   onClose={closeSearch}
                   totalLoaded={repo.commits.length}
                   truncated={repo.truncated}
+                  inFiles={inFiles}
+                  onToggleInFiles={toggleInFiles}
+                  content={contentQuery.length >= 2 ? { loading: Boolean(contentSearch?.loading), error: contentSearch?.error ?? null, commits: fileHits?.size ?? 0, partial: contentSearch?.data?.partial, truncated: contentSearch?.data?.truncated } : null}
                 />
               )}
               {conflictPath ? (
@@ -3034,6 +3107,7 @@ export default function App() {
                   wipCount={repo.wipFiles.length}
                   truncated={repo.truncated}
                   matchSet={searchOpen && filterActive ? matchSet : null}
+                  fileHits={searchOpen && filterActive ? fileHits : null}
                   pipelines={pipelineMap?.bySha ?? null}
                   onPipelineClick={(p) => openPipelines(p.id)}
                   onCopySha={(hash) => copy(hash, 'Хэш коммита')}
@@ -3056,6 +3130,9 @@ export default function App() {
               <CommitDetails
                 commit={selected}
                 files={selected && !selected.wip ? filesByHash[selectedKey] : null}
+                searchHits={searchOpen && selected && !selected.wip ? fileHits?.get(selected.hash) ?? null : null}
+                searchQuery={contentQuery}
+                onOpenSearchHit={openSearchHit}
                 repo={repo}
                 busy={Boolean(busyAction)}
                 activeFile={diffTarget ? { kind: diffTarget.kind, path: diffTarget.file.path } : null}

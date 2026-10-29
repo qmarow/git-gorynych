@@ -751,6 +751,7 @@ ipcMain.handle('repo:commit-files', safe((dir, hash, parent) => git.getCommitFil
 ipcMain.handle('repo:file-diff', safe((dir, params) => git.getFileDiff(dir, params)));
 ipcMain.handle('repo:compare', safe((dir, params) => compare.compareCommits(dir, params)));
 ipcMain.handle('repo:compare-search', safe((dir, params) => compare.searchChanges(dir, params)));
+ipcMain.handle('repo:search-history', safe((dir, params) => compare.searchHistory(dir, params ?? {})));
 ipcMain.handle('repo:rebase-preview', safe((dir, params) => rebasePlan.simulate(dir, params)));
 ipcMain.handle('repo:guard-scan', safe((dir, params) => guard.scanStaged(dir, params ?? {})));
 // Фоновая лёгкая проверка сервера (fetch только при изменениях) и коммиты для бейджей ↓/↑ веток

@@ -5,7 +5,10 @@ import {
   ArchiveRestore,
   ArrowRight,
   ArrowDownToLine,
+  ChevronDown,
+  ChevronRight,
   Copy,
+  FileSearch,
   FolderSync,
   FileText,
   GitCommitHorizontal,
@@ -49,6 +52,9 @@ export default function CommitDetails({
   onGuardSettings,
   onStashRestore,
   onCommitSettings,
+  searchHits = null, // поиск по графу: где в изменениях этого коммита найден текст
+  searchQuery = '',
+  onOpenSearchHit,
 }) {
   return (
     <aside className="glass flex w-full min-w-0 flex-col border-l border-gk-border bg-gk-panel">
@@ -97,6 +103,9 @@ export default function CommitDetails({
           onRevertTo={onRevertTo}
           busy={busy}
           onFileMenu={onFileMenu}
+          searchHits={searchHits}
+          searchQuery={searchQuery}
+          onOpenSearchHit={onOpenSearchHit}
         />
       )}
     </aside>
@@ -105,9 +114,10 @@ export default function CommitDetails({
 
 /* ---------- Выбран обычный коммит ---------- */
 
-function CommitPanel({ commit, files, activeFile, onOpenFile, onSelectCommit, onRevertTo, busy, onFileMenu }) {
+function CommitPanel({ commit, files, activeFile, onOpenFile, onSelectCommit, onRevertTo, busy, onFileMenu, searchHits, searchQuery, onOpenSearchHit }) {
   const [treeView, setTreeView] = useState(false);
   const list = Array.isArray(files) ? files : [];
+  const hitByPath = new Map((searchHits?.files ?? []).map((f) => [f.path, f]));
   const counts = list.reduce((acc, f) => ({ ...acc, [f.status]: (acc[f.status] ?? 0) + 1 }), {});
 
   return (
@@ -176,6 +186,8 @@ function CommitPanel({ commit, files, activeFile, onOpenFile, onSelectCommit, on
 
       </div>
 
+      {searchHits && <SearchHits hits={searchHits} query={searchQuery} onOpen={(f, line) => onOpenSearchHit?.(commit.hash, f, line)} />}
+
       <div className="flex h-9 shrink-0 items-center gap-2 border-b border-gk-border px-3 text-xs">
         {Object.entries(counts).map(([status, n]) => (
           <span key={status} className="flex items-center gap-1 text-gk-muted">
@@ -196,26 +208,125 @@ function CommitPanel({ commit, files, activeFile, onOpenFile, onSelectCommit, on
         {Array.isArray(files) && files.length === 0 && (
           <div className="px-3 py-2 text-xs italic text-gk-dim">Нет изменённых файлов</div>
         )}
-        {list.map((file) => (
-          <FileRow
-            key={file.path}
-            file={file}
-            tree={treeView}
-            active={activeFile?.kind === 'commit' && activeFile.path === file.path}
-            onClick={() => onOpenFile(file, 'commit', list)}
-            onContextMenu={(e) => {
-              e.preventDefault();
-              onFileMenu?.(file, 'commit', list, e.clientX, e.clientY);
-            }}
-          >
-            <span className="ml-auto flex shrink-0 items-center gap-1.5">
-              <DiffStat file={file} />
-            </span>
-          </FileRow>
-        ))}
+        {list.map((file) => {
+          const hit = hitByPath.get(file.path);
+          return (
+            <FileRow
+              key={file.path}
+              file={file}
+              tree={treeView}
+              active={activeFile?.kind === 'commit' && activeFile.path === file.path}
+              found={Boolean(hit)}
+              data-found={hit ? 'true' : undefined}
+              onClick={() => (hit && onOpenSearchHit ? onOpenSearchHit(commit.hash, hit) : onOpenFile(file, 'commit', list))}
+              onContextMenu={(e) => {
+                e.preventDefault();
+                onFileMenu?.(file, 'commit', list, e.clientX, e.clientY);
+              }}
+            >
+              <span className="ml-auto flex shrink-0 items-center gap-1.5">
+                {hit && (
+                  <span data-tip={`«${searchQuery}» найдено здесь: ${hit.count}`} className="flex items-center gap-0.5 rounded-full bg-gk-yellow/20 px-1.5 text-[10.5px] font-medium text-gk-yellow">
+                    <FileSearch size={10} />
+                    {hit.count}
+                  </span>
+                )}
+                <DiffStat file={file} />
+              </span>
+            </FileRow>
+          );
+        })}
       </div>
     </>
   );
+}
+
+/* ---------- Поиск по графу: где в изменениях найден текст ---------- */
+
+function SearchHits({ hits, query, onOpen }) {
+  const [open, setOpen] = useState(true);
+  const files = hits.files ?? [];
+  const totalFiles = files.length + (hits.moreFiles ?? 0);
+  return (
+    <div data-testid="search-hits" className="max-h-[40%] shrink-0 overflow-y-auto border-b border-gk-border bg-gk-yellow/[0.04]">
+      <button onClick={() => setOpen((v) => !v)} className="flex w-full items-center gap-1.5 px-3 py-1.5 text-left text-[11.5px] text-gk-yellow">
+        {open ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
+        <FileSearch size={12} />
+        <span className="min-w-0 flex-1 truncate">
+          «{query}» найдено: {hits.count} в {totalFiles} {plural(totalFiles, 'файле', 'файлах', 'файлах')}
+        </span>
+      </button>
+      {open && (
+        <div className="pb-1.5">
+          {files.map((f) => (
+            <div key={f.path} data-testid="search-hit-file" data-path={f.path}>
+              <button
+                onClick={() => onOpen(f)}
+                className="flex w-full items-center gap-1.5 px-3 py-0.5 text-left text-[12px] hover:bg-gk-hover"
+                data-tip={`${f.path}\nОткрыть изменения на месте совпадения`}
+              >
+                <StatusBadge status={f.status} />
+                <span className="min-w-0 flex-1 truncate font-medium text-gk-text">
+                  {f.path.split('/').pop()}
+                  {f.path.includes('/') && <span className="ml-1.5 font-normal text-gk-dim">{compactDir(f.path.split('/').slice(0, -1).join('/'))}</span>}
+                </span>
+                <span className="shrink-0 text-[10.5px] text-gk-yellow">{f.count}</span>
+              </button>
+              {f.lines.map((l, i) => (
+                <button
+                  key={i}
+                  data-testid="search-hit-line"
+                  onClick={() => onOpen(f, l)}
+                  data-tip={l.t === '+' ? `Добавлено, строка ${l.n}` : `Удалено, было на строке ${l.o}`}
+                  className="flex w-full items-baseline gap-1.5 py-px pl-7 pr-3 text-left font-mono text-[11px] leading-[18px] hover:bg-gk-hover"
+                >
+                  <span className={`w-9 shrink-0 text-right tabular-nums ${l.t === '+' ? 'text-gk-green' : 'text-gk-red'}`}>
+                    {l.t}
+                    {l.t === '+' ? l.n : l.o}
+                  </span>
+                  <span className="min-w-0 flex-1 truncate whitespace-pre text-gk-text/85">
+                    <Snippet line={l} />
+                  </span>
+                </button>
+              ))}
+              {f.count > f.lines.length && <div className="py-px pl-[3.25rem] text-[10.5px] text-gk-dim">…и ещё {f.count - f.lines.length}</div>}
+            </div>
+          ))}
+          {hits.moreFiles > 0 && <div className="px-3 py-0.5 text-[10.5px] text-gk-dim">…и ещё {hits.moreFiles} {plural(hits.moreFiles, 'файл', 'файла', 'файлов')}</div>}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// Узкая панель: начало строки отрезаем так, чтобы совпадение было видно
+function Snippet({ line }) {
+  const first = line.ranges?.[0]?.[0] ?? 0;
+  const lead = line.text.match(/^\s*/)[0].length;
+  const start = first > 18 ? first - 14 : lead;
+  const ranges = (line.ranges ?? []).map(([a, b]) => [a - start, b - start]).filter(([a]) => a >= 0);
+  return (
+    <>
+      {(line.cut || start > lead) && <span className="text-gk-dim">…</span>}
+      <Highlighted text={line.text.slice(start)} ranges={ranges} />
+    </>
+  );
+}
+
+function Highlighted({ text, ranges }) {
+  const out = [];
+  let at = 0;
+  for (const [a, b] of ranges ?? []) {
+    if (a > at) out.push(text.slice(at, a));
+    out.push(
+      <mark key={a} className="rounded-sm bg-gk-yellow/45 px-px text-gk-strong">
+        {text.slice(a, b)}
+      </mark>,
+    );
+    at = b;
+  }
+  out.push(text.slice(at));
+  return out;
 }
 
 /* ---------- Выбран stash ---------- */
@@ -582,7 +693,7 @@ function FileGroup({
 
 /* ---------- Общие мелочи ---------- */
 
-function FileRow({ file, tree, active, selected, lead, children, ...props }) {
+function FileRow({ file, tree, active, selected, found = false, lead, children, ...props }) {
   const parts = file.path.split('/');
   const name = parts.pop();
   const dir = parts.join('/');
@@ -595,7 +706,7 @@ function FileRow({ file, tree, active, selected, lead, children, ...props }) {
       {...props}
       title={title}
       className={`group flex h-7 cursor-pointer items-center gap-2 px-3 text-[13px] ${
-        active ? 'bg-gk-blue/20' : selected ? 'bg-gk-blue/[0.08] hover:bg-gk-hover' : 'hover:bg-gk-hover'
+        active ? 'bg-gk-blue/20' : selected ? 'bg-gk-blue/[0.08] hover:bg-gk-hover' : found ? 'bg-gk-yellow/[0.08] shadow-[inset_2px_0_0_var(--gk-yellow)] hover:bg-gk-yellow/15' : 'hover:bg-gk-hover'
       }`}
       style={tree ? { paddingLeft: 12 + parts.length * 12 } : undefined}
     >

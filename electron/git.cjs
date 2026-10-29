@@ -76,9 +76,9 @@ const DEFAULT_LIMIT = 2000;
  * Запуск git. options.env — доп. переменные окружения, options.timeout — мс.
  * При ошибке бросает GitError с классификацией (AUTH, FORBIDDEN, PROTECTED, ...).
  */
-function git(cwd, args, { env, timeout = 0 } = {}) {
+function git(cwd, args, { env, timeout = 0, input = null } = {}) {
   return new Promise((resolve, reject) => {
-    execFile(
+    const child = execFile(
       findGit(),
       ['-c', 'core.quotepath=false', '-c', 'color.ui=never', ...args],
       {
@@ -101,6 +101,11 @@ function git(cwd, args, { env, timeout = 0 } = {}) {
         else resolve(stdout);
       },
     );
+    // Данные на stdin (например, список коммитов для --stdin)
+    if (input != null) {
+      child.stdin?.on('error', () => {});
+      child.stdin?.end(input);
+    }
   });
 }
 
