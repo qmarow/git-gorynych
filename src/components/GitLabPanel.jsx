@@ -22,7 +22,7 @@ import {
 } from 'lucide-react';
 import { relativeTime } from '../lib/format.js';
 import { parseLog } from '../lib/ansi.js';
-import { TokenSetup } from './TokenSetup.jsx';
+import { CiAuth } from './TokenSetup.jsx';
 import GitLabVariables from './ci/GitLabVariables.jsx';
 import GitLabSchedules from './ci/GitLabSchedules.jsx';
 import {
@@ -78,6 +78,7 @@ export default function GitLabPanel({
   initialPipelineId,
   onLocate,
   onForgeChanged,
+  onEditLogin,
   notify,
   branches = [],
 }) {
@@ -91,13 +92,13 @@ export default function GitLabPanel({
         <div className="w-full max-w-[520px] animate-slide-up">
           <div className="mb-1 flex items-center gap-2">
             <span className="h-2.5 w-2.5 rounded-full bg-[#fc6d26]" />
-            <h3 className="text-[15px] font-semibold text-gk-strong">Подключите GitLab</h3>
+            <h3 className="text-[15px] font-semibold text-gk-strong">Пайплайны GitLab</h3>
           </div>
-          <p className="mb-5 text-[13px] leading-relaxed text-gk-muted">
-            Чтобы видеть статусы пайплайнов прямо в графе, читать логи заданий, перезапускать и отменять их, нужен личный токен
-            доступа к {forge?.host ?? 'GitLab'}.
+          <p className="mb-4 text-[13px] leading-relaxed text-gk-muted">
+            Статусы пайплайнов в графе, логи заданий, перезапуск и отмена работают от авторизации репозитория — той же, что для Pull и
+            Push. Отдельно входить не нужно.
           </p>
-          <TokenSetup repoPath={repoPath} forge={forge} remoteName={remoteName} onChanged={onForgeChanged} autoFocus />
+          <CiAuth forge={forge} onEditLogin={onEditLogin} />
         </div>
       </div>
     );
@@ -128,8 +129,13 @@ export default function GitLabPanel({
         >
           {forge.path} <ExternalLink size={11} />
         </button>
-        <span className="truncate text-[11px] text-gk-dim" title={forge.token.scopes?.join(', ')}>
-          @{forge.token.user?.username}
+        <span
+          data-testid="gl-auth-source"
+          className="truncate text-[11px] text-gk-dim"
+          title={`${forge.token.source?.startsWith('legacy') ? 'Токен CI/CD из прежней версии' : 'Авторизация репозитория — та же, что для Pull и Push'}${forge.token.scopes ? ` · ${forge.token.scopes.join(', ')}` : ''}`}
+        >
+          {forge.token.user?.username ? `@${forge.token.user.username}` : ''}
+          {(forge.token.source === 'login' || forge.token.source === 'login-shared') && <span className="ml-1">· авторизация репозитория</span>}
           {forge.token.scopes && !forge.token.scopes.includes('api') && <span className="ml-1 text-gk-yellow">· только просмотр</span>}
         </span>
       </div>

@@ -443,7 +443,7 @@ ipcMain.handle('repo:stash-details', safe((dir, hash) => git.getStashDetails(dir
 const gl = (fn) => safe(async (dir, ...args) => fn(await git.resolveRepoRoot(dir), ...args));
 const remoteOpt = (opts) => ({ preferredRemote: typeof opts?.remote === 'string' ? opts.remote : undefined });
 ipcMain.handle('gitlab:status', gl((root, opts) => gitlab.detectRemote(root, remoteOpt(opts).preferredRemote)));
-ipcMain.handle('gitlab:set-token', gl((root, token, opts) => gitlab.setToken(root, token, remoteOpt(opts).preferredRemote)));
+ipcMain.handle('gitlab:set-token', gl((root, token, opts) => gitlab.setToken(root, token, remoteOpt(opts).preferredRemote, { alsoForGit: Boolean(opts?.alsoForGit) })));
 ipcMain.handle('gitlab:clear-token', gl((root, opts) => gitlab.clearToken(root, remoteOpt(opts).preferredRemote)));
 ipcMain.handle('gitlab:pipelines', gl((root, opts) => gitlab.listPipelines(root, { ref: opts?.ref, ...remoteOpt(opts) })));
 ipcMain.handle('gitlab:pipeline', gl((root, id, opts) => gitlab.pipelineDetail(root, id, remoteOpt(opts))));
@@ -501,8 +501,20 @@ const describeTarget = async (dir, url) => {
     throw error;
   }
   const info = credentials.describe(t.url);
-  return { ...info, remote: t.remote, noRemote: false, defaultTokenUser: credentials.defaultTokenUser(info.host) };
+  // Пайплайны (API GitLab) работают от этой же авторизации — состояние последней проверки, без сети
+  const api = info.kind === 'gitlab' && info.repoPath ? apiState(info) : null;
+  return { ...info, remote: t.remote, noRemote: false, defaultTokenUser: credentials.defaultTokenUser(info.host), api };
 };
+function apiState(info) {
+  try {
+    const st = gitlab.loginApiState(info.hostname, info.repoPath, info.base);
+    if (st) return st;
+    const login = credentials.apiLoginFor(info.hostname, info.repoPath);
+    return login.repo ? { state: null } : login.other ? { state: 'none', method: login.other.method } : null;
+  } catch {
+    return null;
+  }
+}
 ipcMain.handle('creds:describe', safe((dir, url) => describeTarget(dir, url)));
 ipcMain.handle(
   'creds:save',
@@ -533,7 +545,12 @@ ipcMain.handle(
       const { remoteUrl, ...rest } = opts;
       credentials.save(t.url, rest);
     }
-    return { ...(await describeTarget(dir, url)), remoteChange };
+    const described = await describeTarget(dir, url);
+    // Та же авторизация — для пайплайнов: сразу проверяем, принимает ли её API GitLab
+    if (described.kind === 'gitlab' && described.repoPath) {
+      described.api = await gitlab.checkLoginApi(described.hostname, described.repoPath, described.base).catch(() => null);
+    }
+    return { ...described, remoteChange };
   }),
 );
 ipcMain.handle('creds:clear', safe(async (dir, url) => credentials.clear((await credTarget(dir, url)).url)));
@@ -549,9 +566,67 @@ ipcMain.handle(
 );
 // Серверы и привязанные к ним репозитории; тип своего сервера (GitLab / GitHub Enterprise / Gitea…) по домену
 ipcMain.handle('creds:detect-server', safe((input) => credentials.detectServer(input)));
-ipcMain.handle('creds:servers', safe(() => credentials.listServers()));
-ipcMain.handle('creds:forget-login', safe((key) => credentials.forgetLogin(key)));
-ipcMain.handle('creds:forget-server', safe((hostname) => credentials.forgetServer(hostname)));
+ipcMain.handle('creds:servers', safe(() => serversWithCi()));
+ipcMain.handle(
+  'creds:forget-login',
+  safe((key) => {
+    if (String(key).startsWith('ci:')) return gitlab.forgetToken(key);
+    // Авторизация одна: вместе со входом репозитория забываем и его старый отдельный токен CI/CD
+    const row = credentials.listServers().flatMap((srv) => srv.repos.map((r) => ({ ...r, hostname: srv.hostname }))).find((r) => r.key === key);
+    if (row) gitlab.forgetRepoToken(row.hostname, row.path);
+    return credentials.forgetLogin(key);
+  }),
+);
+ipcMain.handle(
+  'creds:forget-server',
+  safe((hostname) => {
+    const a = credentials.forgetServer(hostname);
+    const b = gitlab.forgetHost(hostname);
+    return { removed: a.removed || b.removed };
+  }),
+);
+
+/**
+ * Серверы и репозитории; для GitLab — работают ли пайплайны от авторизации репозитория (ci: { state, reason, … }).
+ * Старые отдельные токены CI/CD (до объединения авторизации) показываются при своём репозитории или отдельной строкой.
+ */
+function serversWithCi() {
+  const servers = credentials.listServers();
+  const tokens = gitlab.listTokens();
+  const byHost = new Map(servers.map((s) => [s.hostname, s]));
+  const serverFor = (hostname, base) => {
+    if (!byHost.has(hostname)) {
+      const kind = credentials.serverKind(hostname);
+      const srv = { hostname, base, repos: [], shared: [], kind: kind ?? 'gitlab', cloud: hostname === 'gitlab.com', kindSaved: Boolean(kind) };
+      byHost.set(hostname, srv);
+      servers.push(srv);
+    }
+    return byHost.get(hostname);
+  };
+  for (const srv of servers) {
+    if (srv.kind !== 'gitlab') continue;
+    for (const r of srv.repos) {
+      const st = gitlab.loginApiState(srv.hostname, r.path, srv.base);
+      const usable = r.method === 'token' || r.hasApiToken;
+      r.ci = { source: usable ? 'login' : null, state: st?.state ?? (usable ? null : 'none'), reason: st?.reason ?? null, user: st?.user ?? null, scopes: st?.scopes ?? null, viaApiToken: Boolean(r.hasApiToken) };
+    }
+  }
+  for (const t of tokens.repos) {
+    if (!t.hostname) continue;
+    const srv = serverFor(t.hostname, t.base);
+    const rows = srv.repos.filter((r) => r.path.toLowerCase() === t.path.toLowerCase());
+    if (rows.length) for (const r of rows) r.ci = { ...(r.ci ?? {}), legacy: { key: t.key, user: t.user, scopes: t.scopes } };
+    else srv.repos.push({ key: t.key, url: t.url, path: t.path, protocol: 'ci', ciOnly: true, ci: { source: 'legacy', user: t.user, scopes: t.scopes, readable: t.readable } });
+  }
+  for (const t of tokens.shared) {
+    if (!t.hostname) continue;
+    const srv = serverFor(t.hostname, t.base);
+    srv.sharedCi = [...(srv.sharedCi ?? []), t];
+  }
+  for (const srv of servers) srv.repos.sort((x, y) => x.path.localeCompare(y.path));
+  return servers;
+}
+
 ipcMain.handle(
   'creds:set-kind',
   safe((hostname, kind) => {

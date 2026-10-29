@@ -31,7 +31,8 @@ export function tokenPage(kind, base, hostname) {
   const b = trimBase(base);
   if (!b) return null;
   if (kind === 'github') return `${hostname === 'github.com' ? 'https://github.com' : b}/settings/tokens`;
-  if (kind === 'gitlab') return `${b}/-/user_settings/personal_access_tokens`;
+  // GitLab: сразу с правом api — один токен и для Pull/Push, и для пайплайнов
+  if (kind === 'gitlab') return `${b}/-/user_settings/personal_access_tokens?name=${encodeURIComponent('git-Горыныч')}&scopes=api`;
   if (kind === 'gitea') return `${b}/user/settings/applications`;
   if (kind === 'bitbucket') return hostname === 'bitbucket.org' ? 'https://bitbucket.org/account/settings/app-passwords/' : `${b}/plugins/servlet/access-tokens/manage`;
   return null;
@@ -48,10 +49,10 @@ export function sshKeysPage(kind, base, hostname) {
   return null;
 }
 
-/** Какие права нужны токену для clone / pull / push */
+/** Какие права нужны токену для clone / pull / push (для GitLab — и для пайплайнов CI/CD) */
 export function tokenScopes(kind) {
   if (kind === 'github') return ['repo'];
-  if (kind === 'gitlab') return ['read_repository', 'write_repository'];
+  if (kind === 'gitlab') return ['api'];
   if (kind === 'gitea') return ['write:repository'];
   if (kind === 'bitbucket') return ['Repository: write'];
   return null;

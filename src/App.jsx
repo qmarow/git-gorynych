@@ -689,13 +689,22 @@ export default function App() {
   // Список серверов и репозиториев в настройках перечитывается после входа
   const [serversTick, setServersTick] = useState(0);
 
+  // Авторизация CI/CD привязана к репозиторию и может браться из его входа — после смены входа перечитываем
+  const refreshForge = useCallback(async () => {
+    const r = repoRef.current;
+    if (!r || !api?.gitlab) return;
+    const cur = r.localBranches?.find((b) => b.name === r.currentBranch);
+    const st = await api.gitlab.status(r.path, { remote: cur?.upstreamRemote });
+    if (st?.ok) setRepo((x) => (x && x.path === r.path ? { ...x, forge: st.data } : x));
+  }, []);
+
   /**
    * Открыть окно входа — вход привязан к репозиторию.
    * Без url — открытый репозиторий (его remote; без remote окно предложит указать, где он хранится);
    * url — клонирование или репозиторий из списка в настройках (verify: проверить доступ git ls-remote).
    * retry() → { ok, error } — операция, которую повторить после входа (без retry — проверить доступ).
    */
-  const openAuth = useCallback(async ({ url = null, verify = false, error = null, retry = null, actionLabel = null } = {}) => {
+  const openAuth = useCallback(async ({ url = null, verify = false, error = null, retry = null, actionLabel = null, forCi = false } = {}) => {
     if (!api?.creds || authRef.current) return;
     const dir = url ? null : repoRef.current?.path ?? null;
     if (!url && !dir) return;
@@ -705,19 +714,20 @@ export default function App() {
       else notify({ type: 'error', title: res.error.message, hint: res.error.hint });
       return;
     }
-    setAuth({ dir, url, verify, target: res.data, error, retry, actionLabel, formError: null, busy: false, nonce: Date.now() });
+    setAuth({ dir, url, verify, target: res.data, error, retry, actionLabel, forCi, formError: null, notice: null, busy: false, nonce: Date.now() });
   }, []);
 
   const submitAuth = async (data) => {
     const a = authRef.current;
     if (!a) return;
-    setAuth({ ...a, busy: true, formError: null });
+    setAuth({ ...a, busy: true, formError: null, notice: null });
     const saved = await api.creds.save(a.dir, a.url, data);
     if (!saved.ok) {
       setAuth((cur) => cur && { ...cur, busy: false, formError: saved.error });
       return;
     }
     setServersTick((n) => n + 1);
+    if (a.dir) refreshForge();
     const moved = saved.data.remoteChange;
     if (moved) {
       notify({
@@ -741,10 +751,16 @@ export default function App() {
       setAuth((cur) => cur && { ...cur, busy: false, target: saved.data, error: result.error });
       return;
     }
+    // Авторизация одна: та же должна открывать пайплайны. Не открывает — окно остаётся и объясняет почему
+    const apiRes = saved.data.api;
+    if (result?.ok !== false && apiRes && (apiRes.state === 'bad' || (a.forCi && apiRes.state === 'none'))) {
+      setAuth((cur) => cur && { ...cur, busy: false, target: saved.data, error: null, notice: { message: 'Pull и Push работают, а пайплайны CI/CD — нет', hint: apiRes.reason } });
+      return;
+    }
     setAuth(null);
     const where = saved.data.repoPath ? `${saved.data.repoPath} (${saved.data.hostname})` : saved.data.hostname ?? saved.data.host;
     if (result?.ok !== false) {
-      notify({ type: 'success', title: `Вход для ${where} выполнен — данные сохранены` });
+      notify({ type: 'success', title: `Вход для ${where} выполнен — данные сохранены`, hint: apiRes?.state === 'ok' ? 'Эта же авторизация работает и для пайплайнов CI/CD' : undefined });
       if (repoRef.current?.remotes?.length && a.retry) checkAccess();
     } else if (result?.error && result.error.code !== 'BUSY') {
       notify({ type: 'error', title: result.error.message, hint: result.error.hint, details: result.error.details });
@@ -759,6 +775,7 @@ export default function App() {
       const fresh = await api.creds.describe(a.dir, a.url);
       setAuth((cur) => cur && { ...cur, target: fresh.ok ? fresh.data : { ...cur.target, saved: null } });
       setServersTick((n) => n + 1);
+      refreshForge();
       notify({
         type: 'info',
         title: res.data.shared ? `Общий вход для ${a.target?.hostname ?? 'сервера'} удалён` : `Вход для ${a.target?.repoPath ?? 'репозитория'} удалён`,
@@ -2091,6 +2108,8 @@ export default function App() {
           setPipelineMap({ bySha: res.data.bySha, pipelines: res.data.pipelines, error: null });
         } else {
           setPipelineMap((m) => ({ bySha: m?.bySha ?? {}, pipelines: m?.pipelines ?? [], error: res.error }));
+          // Вход репозитория оказался не годен для API — показать, почему, и предложить токен
+          if (res.error?.code === 'NO_TOKEN') refreshForge();
         }
       }
       // Пока что-то выполняется — обновляем чаще
@@ -2108,6 +2127,19 @@ export default function App() {
   const onForgeChanged = useCallback((next) => {
     setRepo((r) => (r ? { ...r, forge: next } : r));
   }, []);
+
+  // Токен входа репозитория проверяется в фоне — пока идёт проверка, перечитываем состояние
+  const forgePending = Boolean(forge?.token?.pending);
+  useEffect(() => {
+    if (!forgePending) return undefined;
+    let n = 0;
+    const t = setInterval(() => {
+      n += 1;
+      refreshForge();
+      if (n >= 8) clearInterval(t);
+    }, 1500);
+    return () => clearInterval(t);
+  }, [forgePending, refreshForge]);
 
   const openPipelines = (pipelineId = null) => {
     setDiffTarget(null);
@@ -2957,6 +2989,7 @@ export default function App() {
               {conflictPath || diffTarget || compareView || rebaseView ? null : ciView ? (
                 <CiView
                   repoPath={repo.path}
+                  onEditLogin={() => openAuth({ actionLabel: 'Сохранить и проверить', forCi: true })}
                   initialFile={ciView.file}
                   initialMode={ciView.mode}
                   initialPipelineId={ciView.pipelineId}
@@ -3166,13 +3199,15 @@ export default function App() {
                     const res = await api.creds.forgetLogin(login);
                     if (res.ok) {
                       setServersTick((n) => n + 1);
-                      notify({ type: 'info', title: `Вход для ${label} удалён` });
+                      refreshForge();
+                      notify({ type: 'info', title: String(login).startsWith('ci:') ? `Токен CI/CD для ${label.replace(/^CI\/CD /, '')} удалён` : `Вход для ${label} удалён` });
                     }
                   },
                   onForgetServer: async (hostname) => {
                     const res = await api.creds.forgetServer(hostname);
                     if (res.ok) {
                       setServersTick((n) => n + 1);
+                      refreshForge();
                       notify({ type: 'info', title: `Все входы для ${hostname} удалены` });
                     }
                   },
@@ -3377,6 +3412,7 @@ export default function App() {
           target={auth.target}
           error={auth.error}
           formError={auth.formError}
+          notice={auth.notice}
           busy={auth.busy}
           actionLabel={auth.actionLabel}
           onSubmit={submitAuth}

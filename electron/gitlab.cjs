@@ -2,9 +2,12 @@
 // Токен хранится зашифрованным (Electron safeStorage → DPAPI на Windows) и никогда не уходит в renderer.
 const fs = require('node:fs');
 const path = require('node:path');
+const crypto = require('node:crypto');
 const { git } = require('./git.cjs');
 const { GitError } = require('./errors.cjs');
-const { serverKind } = require('./credentials.cjs');
+const credentials = require('./credentials.cjs');
+
+const { serverKind } = credentials;
 
 let electron = null;
 try {
@@ -26,12 +29,14 @@ function storeFile() {
   return path.join(dir, 'gitlab-tokens.json');
 }
 
+// { repos: { «https://host/group/app»: токен репозитория }, hosts: { «https://host»: общий токен сервера (сохранён раньше) } }
 function readStore() {
   try {
     const data = JSON.parse(fs.readFileSync(storeFile(), 'utf8'));
-    return data && typeof data.hosts === 'object' ? data : { hosts: {} };
+    if (!data || typeof data.hosts !== 'object') return { hosts: {}, repos: {} };
+    return { ...data, repos: data.repos && typeof data.repos === 'object' ? data.repos : {} };
   } catch {
-    return { hosts: {} };
+    return { hosts: {}, repos: {} };
   }
 }
 
@@ -59,7 +64,213 @@ function decrypt(entry) {
   return null;
 }
 
-const tokenFor = (base) => decrypt(readStore().hosts[base]);
+/* =================== Чем авторизоваться в API =================== */
+
+/** Ключ репозитория для API: сервер + путь проекта (без учёта регистра и протокола remote) */
+const apiKey = (remote) => `${remote.base}/${String(remote.path).toLowerCase()}`;
+
+// Токен (строка) или { value, bearer } — OAuth-токен отправляется как Authorization: Bearer
+const tokenValue = (token) => (typeof token === 'object' && token ? token.value : token);
+const authHeaders = (token) =>
+  typeof token === 'object' && token?.bearer ? { Authorization: `Bearer ${token.value}` } : { 'PRIVATE-TOKEN': tokenValue(token) };
+
+// Проверка входа репозитория для API: отпечаток токена → { state: 'ok' | 'bad' | 'pending', info, reason, bearer, promise }
+const loginChecks = new Map();
+const fingerprint = (base, secret) => crypto.createHash('sha256').update(`${base}\n${secret}`).digest('hex').slice(0, 24);
+
+const SCOPE_NAMES = { api: 'api', read_api: 'read_api', read_repository: 'read_repository', write_repository: 'write_repository', read_user: 'read_user' };
+
+/** Подходит ли токен входа репозитория для API GitLab (результат запоминается до перезапуска или смены токена) */
+function verifyLogin(base, secret) {
+  const fp = fingerprint(base, secret);
+  const cached = loginChecks.get(fp);
+  if (cached && (cached.state !== 'bad' || Date.now() - cached.at < 10 * 60 * 1000)) return cached.promise ?? Promise.resolve(cached);
+  const entry = { state: 'pending', at: Date.now() };
+  entry.promise = (async () => {
+    let info = null;
+    let bearer = false;
+    try {
+      info = await tokenInfo(base, secret);
+    } catch (error) {
+      if (error.code === 'AUTH') {
+        try {
+          info = await tokenInfo(base, { value: secret, bearer: true });
+          bearer = true;
+        } catch {
+          info = null;
+        }
+      }
+      if (!info) {
+        if (error.code === 'NETWORK' || error.code === 'RATE_LIMIT') {
+          loginChecks.delete(fp); // нет связи — проверим в следующий раз
+          return { state: 'unknown', reason: error.message };
+        }
+        // Права токена можно узнать и без доступа к /user — чтобы назвать, чего не хватает
+        let scopes = null;
+        if (error.code === 'FORBIDDEN') scopes = (await request(base, secret, 'GET', '/personal_access_tokens/self').catch(() => null))?.scopes ?? null;
+        const reason =
+          error.code === 'FORBIDDEN'
+            ? scopes?.length
+              ? `у токена нет права на API: есть только ${scopes.map((x) => SCOPE_NAMES[x] ?? x).join(', ')}, а нужен «api» или «read_api»`
+              : 'у токена нет права на API (нужен scope «api» или «read_api»)'
+            : error.code === 'AUTH'
+              ? 'GitLab не принимает этот токен для API — он отозван, истёк или это не личный токен'
+              : error.message;
+        Object.assign(entry, { state: 'bad', reason, at: Date.now(), promise: null });
+        return entry;
+      }
+    }
+    if (info.scopes && !info.scopes.some((x) => x === 'api' || x === 'read_api')) {
+      Object.assign(entry, {
+        state: 'bad',
+        reason: `у токена нет права на API: есть только ${info.scopes.map((x) => SCOPE_NAMES[x] ?? x).join(', ')}, а нужен «api» или «read_api»`,
+        info,
+        at: Date.now(),
+        promise: null,
+      });
+      return entry;
+    }
+    Object.assign(entry, { state: 'ok', info, bearer, at: Date.now(), promise: null });
+    return entry;
+  })();
+  loginChecks.set(fp, entry);
+  return entry.promise;
+}
+const loginCheckState = (base, secret) => loginChecks.get(fingerprint(base, secret)) ?? null;
+
+/**
+ * Все варианты авторизации API для репозитория — по порядку. Авторизация одна — авторизация репозитория:
+ *  login        — вход репозитория (токен или токен для пайплайнов к паролю / SSH-ключу);
+ *  legacy       — отдельный токен CI/CD, сохранённый в старых версиях (только как запасной вариант);
+ *  legacy-shared — старый общий токен CI/CD сервера;
+ *  login-shared — общий вход сервера для git, сохранённый до привязки к репозиториям.
+ */
+function authOptions(remote) {
+  const store = readStore();
+  const list = [];
+  let login = { repo: null, shared: null, other: null };
+  try {
+    login = credentials.apiLoginFor(remote.host, remote.path);
+  } catch {
+    /* хранилище входов недоступно */
+  }
+  if (login.repo) list.push({ source: 'login', secret: login.repo.secret, login: login.repo, savedAt: login.repo.savedAt });
+  let unreadable = false;
+  const own = store.repos[apiKey(remote)];
+  if (own) {
+    const t = decrypt(own);
+    if (t) list.push({ source: 'legacy', token: t, meta: own, savedAt: own.savedAt });
+    else unreadable = true;
+  }
+  const shared = store.hosts[remote.base];
+  if (shared) {
+    const t = decrypt(shared);
+    if (t) list.push({ source: 'legacy-shared', token: t, meta: shared, savedAt: shared.savedAt });
+  }
+  if (login.shared) list.push({ source: 'login-shared', secret: login.shared.secret, login: login.shared, savedAt: login.shared.savedAt });
+  return { list, other: login.other, unreadable };
+}
+
+/**
+ * Старый отдельный токен CI/CD переносится во вход репозитория: если репозиторий авторизован паролем или
+ * SSH-ключом (их API не принимает), токен становится его «токеном для пайплайнов» — дальше авторизация одна.
+ */
+function migrateLegacy(remote) {
+  const store = readStore();
+  const own = store.repos[apiKey(remote)];
+  if (!own) return;
+  const token = decrypt(own);
+  if (!token) return;
+  let login;
+  try {
+    login = credentials.apiLoginFor(remote.host, remote.path);
+  } catch {
+    return;
+  }
+  if (login.other && !login.repo && credentials.attachApiToken(login.other.key, token)) {
+    delete store.repos[apiKey(remote)];
+    writeStore(store);
+  }
+}
+
+/** Вариант для показа (без сети): вход репозитория с непроверенным токеном считается подходящим, пока не доказано обратное */
+function pickSync(remote) {
+  const { list, other, unreadable } = authOptions(remote);
+  const rejected = [];
+  for (const opt of list) {
+    if (!opt.secret) return { opt, rejected, other, unreadable };
+    const st = loginCheckState(remote.base, opt.secret);
+    if (st?.state === 'bad') {
+      rejected.push({ source: opt.source, method: opt.login.method, viaApiToken: opt.login.viaApiToken, reason: st.reason });
+      continue;
+    }
+    if (!st) verifyLogin(remote.base, opt.secret).catch(() => {}); // проверим в фоне
+    return { opt: { ...opt, check: st }, rejected, other, unreadable };
+  }
+  return { opt: null, rejected, other, unreadable };
+}
+
+/** Вариант для запроса: вход репозитория проверяется по сети (один раз) */
+async function pickVerified(remote) {
+  const { list, other } = authOptions(remote);
+  const rejected = [];
+  for (const opt of list) {
+    if (!opt.secret) return { token: opt.token, meta: opt.meta ?? {}, source: opt.source };
+    const st = await verifyLogin(remote.base, opt.secret);
+    if (st.state === 'ok' || st.state === 'unknown') {
+      const info = st.info ?? {};
+      return { token: st.bearer ? { value: opt.secret, bearer: true } : opt.secret, meta: { user: info.user, scopes: info.scopes ?? null, expiresAt: info.expiresAt ?? null }, source: opt.source };
+    }
+    rejected.push({ source: opt.source, method: opt.login.method, viaApiToken: opt.login.viaApiToken, reason: st.reason });
+  }
+  return { token: null, rejected, other };
+}
+
+/** Почему вход репозитория не подходит для CI/CD — текст для интерфейса */
+function loginProblem(rejected, other) {
+  const r = rejected?.find((x) => x.source !== 'login-shared') ?? rejected?.[0];
+  if (r) {
+    return {
+      method: r.method,
+      reason: `${r.viaApiToken ? 'Токен для пайплайнов в авторизации репозитория' : 'Токен авторизации репозитория'} не подходит для пайплайнов: ${r.reason}.`,
+    };
+  }
+  if (other?.method === 'ssh') {
+    return { method: 'ssh', reason: 'Репозиторий авторизован SSH-ключом — его принимает git, но не API GitLab. Добавьте в авторизацию репозитория токен для пайплайнов.' };
+  }
+  if (other?.method === 'password') {
+    return {
+      method: 'password',
+      reason: other.unreadable
+        ? 'Пароль авторизации репозитория не расшифровывается — авторизуйтесь заново.'
+        : 'Репозиторий авторизован логином и паролем — API GitLab принимает только токены. Добавьте в авторизацию репозитория токен для пайплайнов.',
+    };
+  }
+  return null;
+}
+
+/**
+ * Проверить по сети, работает ли авторизация репозитория для API (сразу после сохранения входа).
+ * → { state: 'ok' | 'bad' | 'none' | 'unknown', reason, user, scopes }
+ */
+async function checkLoginApi(hostname, repoPath, base, timeout = 8000) {
+  const login = credentials.apiLoginFor(hostname, repoPath);
+  if (!login.repo) {
+    const p = loginProblem([], login.other);
+    return { state: 'none', reason: p?.reason ?? null, method: login.other?.method ?? null };
+  }
+  const st = await Promise.race([verifyLogin(base, login.repo.secret), new Promise((r) => setTimeout(() => r({ state: 'unknown', reason: 'сервер не ответил' }), timeout))]);
+  const p = st.state === 'bad' ? loginProblem([{ method: login.repo.method, viaApiToken: login.repo.viaApiToken, reason: st.reason }]) : null;
+  return { state: st.state, reason: p?.reason ?? st.reason ?? null, user: st.info?.user ?? null, scopes: st.info?.scopes ?? null, viaApiToken: login.repo.viaApiToken };
+}
+
+/** Токен для фоновых запросов (без ожидания проверки) */
+const tokenForRemote = (remote) => {
+  const { opt } = pickSync(remote);
+  if (!opt) return null;
+  if (!opt.secret) return opt.token;
+  return opt.check?.bearer ? { value: opt.secret, bearer: true } : opt.secret;
+};
 
 /* =================== Remote → GitLab =================== */
 
@@ -90,24 +301,50 @@ async function detectRemote(root, preferredRemote) {
   }
   if (!remotes.size) return null;
   const name = [preferredRemote, 'origin', ...remotes.keys()].find((n) => n && remotes.has(n));
-  const parsed = parseRemoteUrl(remotes.get(name));
+  const url = remotes.get(name);
+  const parsed = parseRemoteUrl(url);
   if (!parsed) return null;
-  const base = `${parsed.protocol}://${parsed.host}${parsed.port ? `:${parsed.port}` : ''}`;
+  const isHttp = /^https?:\/\//i.test(url);
+  // Для SSH-адреса сайт сервера — каким его указали в окне авторизации (свой сервер может быть с портом)
+  const base = (!isHttp && credentials.serverBase(parsed.host)?.replace(/\/+$/, '')) || `${parsed.protocol}://${parsed.host}${parsed.port ? `:${parsed.port}` : ''}`;
+  const remote = { remote: name, url, protocol: /^https?:\/\//i.test(url) ? 'https' : 'ssh', host: parsed.host, base, path: parsed.path };
+  migrateLegacy(remote);
   const store = readStore();
-  const meta = store.hosts[base];
+  const hasCiToken = Boolean(store.repos[apiKey(remote)] || store.hosts[base]);
   // GitLab по имени хоста, по сохранённому токену или по типу, выбранному в окне входа (свой сервер с любым доменом)
   const kind = serverKind(parsed.host);
-  const looksLikeGitlab = kind === 'gitlab' || Boolean(meta) || (kind === null && /gitlab/i.test(parsed.host));
+  const looksLikeGitlab = kind === 'gitlab' || hasCiToken || (kind === null && /gitlab/i.test(parsed.host));
   return {
     kind: looksLikeGitlab ? 'gitlab' : null,
-    remote: name,
-    host: parsed.host,
-    base,
-    path: parsed.path,
+    ...remote,
     webUrl: `${base}/${parsed.path}`,
-    token: meta
-      ? { configured: true, user: meta.user ?? null, scopes: meta.scopes ?? null, expiresAt: meta.expiresAt ?? null, savedAt: meta.savedAt }
-      : { configured: false },
+    token: looksLikeGitlab ? tokenStatus(remote) : { configured: false },
+  };
+}
+
+/** Чем авторизован API этого репозитория — без секретов (для интерфейса) */
+function tokenStatus(remote) {
+  const { opt, rejected, other, unreadable } = pickSync(remote);
+  const problem = loginProblem(rejected, other);
+  if (!opt) {
+    return { configured: false, repoLogin: problem, unreadable, repoKey: apiKey(remote) };
+  }
+  if (!opt.secret) {
+    const m = opt.meta ?? {};
+    return { configured: true, source: opt.source, user: m.user ?? null, scopes: m.scopes ?? null, expiresAt: m.expiresAt ?? null, savedAt: m.savedAt, repoLogin: problem, repoKey: apiKey(remote) };
+  }
+  // Вход репозитория: пользователь и права известны после проверки
+  const info = opt.check?.info ?? {};
+  return {
+    configured: true,
+    source: opt.source,
+    pending: !opt.check || opt.check.state === 'pending',
+    user: info.user ?? null,
+    scopes: info.scopes ?? null,
+    expiresAt: info.expiresAt ?? null,
+    savedAt: opt.savedAt ?? null,
+    login: { method: opt.login.method, username: opt.login.username, shared: opt.login.shared, viaApiToken: opt.login.viaApiToken },
+    repoKey: apiKey(remote),
   };
 }
 
@@ -124,7 +361,7 @@ async function request(base, token, method, apiPath, { query, body, text = false
     res = await doFetch(url.toString(), {
       method,
       headers: {
-        'PRIVATE-TOKEN': token,
+        ...authHeaders(token),
         Accept: text ? 'text/plain' : 'application/json',
         ...(body ? { 'Content-Type': 'application/json' } : {}),
       },
@@ -239,10 +476,17 @@ async function context(root, preferredRemote) {
       hint: 'Если это свой сервер GitLab — сохраните для него токен в настройках',
     });
   }
-  const token = tokenFor(remote.base);
-  if (!token) throw new GitError('Не настроен токен GitLab', { code: 'NO_TOKEN', hint: 'Добавьте личный токен доступа' });
+  const auth = await pickVerified(remote);
+  if (!auth.token) {
+    const problem = loginProblem(auth.rejected, auth.other);
+    throw new GitError(problem ? 'Авторизация репозитория не подходит для пайплайнов' : 'Репозиторий не авторизован', {
+      code: 'NO_TOKEN',
+      hint: problem ? problem.reason : 'Авторизуйте репозиторий — эта же авторизация работает и для пайплайнов',
+    });
+  }
+  const token = auth.token;
 
-  const key = `${remote.base}|${remote.path}|${token.slice(-6)}`;
+  const key = `${remote.base}|${remote.path}|${tokenValue(token).slice(-6)}`;
   const cached = projectCache.get(key);
   let project = cached && Date.now() - cached.at < PROJECT_CACHE_MS ? cached.project : null;
   if (!project) {
@@ -257,7 +501,7 @@ async function context(root, preferredRemote) {
     };
     projectCache.set(key, { at: Date.now(), project });
   }
-  return { remote, token, project, meta: readStore().hosts[remote.base] ?? {} };
+  return { remote, token, project, meta: auth.meta ?? {}, source: auth.source };
 }
 
 const canWrite = (ctx) => !ctx.meta.scopes || ctx.meta.scopes.includes('api');
@@ -280,7 +524,7 @@ async function tokenInfo(base, token) {
   };
 }
 
-async function setToken(root, token, preferredRemote) {
+async function setToken(root, token, preferredRemote, { alsoForGit = false } = {}) {
   const remote = await detectRemote(root, preferredRemote);
   if (!remote) throw new GitError('У репозитория нет remote', { code: 'NO_REMOTE' });
   const clean = String(token ?? '').trim();
@@ -302,9 +546,13 @@ async function setToken(root, token, preferredRemote) {
     else throw error;
   }
 
+  // Токен привязывается к репозиторию (как вход для Pull/Push)
   const store = readStore();
-  store.hosts[remote.base] = {
+  store.repos[apiKey(remote)] = {
     ...encrypt(clean),
+    url: remote.url,
+    base: remote.base,
+    path: remote.path,
     user: info.user,
     scopes: info.scopes,
     expiresAt: info.expiresAt,
@@ -313,18 +561,143 @@ async function setToken(root, token, preferredRemote) {
   };
   writeStore(store);
   for (const key of projectCache.keys()) if (key.startsWith(`${remote.base}|`)) projectCache.delete(key);
-  return { ...info, projectAccess, base: remote.base };
+
+  // Тот же токен — и для Pull/Push по HTTPS, если у репозитория ещё нет своего входа (scope api даёт доступ к репозиторию)
+  let gitSaved = false;
+  if (alsoForGit && remote.protocol === 'https' && (!info.scopes || info.scopes.includes('api'))) {
+    const login = credentials.apiLoginFor(remote.host, remote.path);
+    const hasOwn = login.repo || login.other;
+    if (!hasOwn) {
+      credentials.save(remote.url, { method: 'token', secret: clean, kind: 'gitlab' });
+      gitSaved = true;
+    }
+  }
+  return { ...info, projectAccess, base: remote.base, gitSaved };
 }
 
+/**
+ * Отключить токен CI/CD репозитория: свой токен репозитория, а если его нет — общий токен сервера.
+ * Вход репозитория (для Pull/Push) не трогаем — он меняется в окне авторизации.
+ */
 async function clearToken(root, preferredRemote) {
   const remote = await detectRemote(root, preferredRemote);
   if (!remote) return { removed: false };
   const store = readStore();
-  const removed = Boolean(store.hosts[remote.base]);
-  delete store.hosts[remote.base];
-  writeStore(store);
+  let removed = null;
+  if (store.repos[apiKey(remote)]) {
+    delete store.repos[apiKey(remote)];
+    removed = 'ci';
+  } else if (store.hosts[remote.base]) {
+    delete store.hosts[remote.base];
+    removed = 'shared';
+  }
+  if (removed) writeStore(store);
   for (const key of projectCache.keys()) if (key.startsWith(`${remote.base}|`)) projectCache.delete(key);
-  return { removed, base: remote.base };
+  return { removed: Boolean(removed), shared: removed === 'shared', base: remote.base };
+}
+
+/* ---------- Список для настроек ---------- */
+
+const hostOf = (base) => {
+  try {
+    return new URL(base).hostname.toLowerCase();
+  } catch {
+    return null;
+  }
+};
+const describeToken = (entry) => ({
+  user: entry.user ?? null,
+  scopes: entry.scopes ?? null,
+  expiresAt: entry.expiresAt ?? null,
+  savedAt: entry.savedAt ?? null,
+  readable: decrypt(entry) !== null,
+});
+
+/** Токены CI/CD: привязанные к репозиториям и общие (сохранённые раньше) — без секретов */
+function listTokens() {
+  const store = readStore();
+  const repos = Object.entries(store.repos).map(([key, e]) => ({
+    key: `ci:${key}`,
+    hostname: hostOf(e.base ?? key),
+    base: e.base ?? key.replace(/^(https?:\/\/[^/]+).*$/, '$1'),
+    path: e.path ?? key.replace(/^https?:\/\/[^/]+\//, ''),
+    url: e.url ?? null,
+    ...describeToken(e),
+  }));
+  const shared = Object.entries(store.hosts).map(([base, e]) => ({ key: `ci:${base}`, hostname: hostOf(base), base, ...describeToken(e) }));
+  return { repos, shared };
+}
+
+/** Состояние проверки входа репозитория для API (без сети): 'ok' | 'bad' | null — ещё не проверялся */
+function loginApiState(hostname, repoPath, base) {
+  const login = credentials.apiLoginFor(hostname, repoPath);
+  if (!login.repo) return null;
+  const st = loginCheckState(base ?? `https://${hostname}`, login.repo.secret);
+  return st && st.state !== 'pending'
+    ? { state: st.state, reason: st.reason ?? null, user: st.info?.user ?? null, scopes: st.info?.scopes ?? null, viaApiToken: login.repo.viaApiToken }
+    : null;
+}
+
+/** Забыть токен CI/CD по ключу из списка («ci:https://host/group/app» или «ci:https://host») */
+function forgetToken(key) {
+  const k = String(key ?? '').replace(/^ci:/, '');
+  const store = readStore();
+  let removed = false;
+  if (store.repos[k]) {
+    delete store.repos[k];
+    removed = true;
+  } else if (store.hosts[k]) {
+    delete store.hosts[k];
+    removed = true;
+  }
+  if (removed) {
+    writeStore(store);
+    projectCache.clear();
+  }
+  return { removed };
+}
+
+/** Забыть старый токен CI/CD репозитория (вместе с авторизацией репозитория) */
+function forgetRepoToken(hostname, repoPath) {
+  const h = String(hostname ?? '').toLowerCase();
+  const p = String(repoPath ?? '').toLowerCase();
+  const store = readStore();
+  let removed = false;
+  for (const [k, e] of Object.entries(store.repos)) {
+    if (hostOf(e.base ?? k) === h && String(e.path ?? '').toLowerCase() === p) {
+      delete store.repos[k];
+      removed = true;
+    }
+  }
+  if (removed) {
+    writeStore(store);
+    projectCache.clear();
+  }
+  return { removed };
+}
+
+/** Забыть все токены CI/CD сервера */
+function forgetHost(hostname) {
+  const h = String(hostname ?? '').toLowerCase();
+  const store = readStore();
+  let removed = false;
+  for (const [k, e] of Object.entries(store.repos)) {
+    if (hostOf(e.base ?? k) === h) {
+      delete store.repos[k];
+      removed = true;
+    }
+  }
+  for (const k of Object.keys(store.hosts)) {
+    if (hostOf(k) === h) {
+      delete store.hosts[k];
+      removed = true;
+    }
+  }
+  if (removed) {
+    writeStore(store);
+    projectCache.clear();
+  }
+  return { removed };
 }
 
 /* =================== Пайплайны =================== */
@@ -757,7 +1130,7 @@ const LIGHT_MAX_PAGES = 20;
 async function branchHeads(root, remoteName) {
   const remote = await detectRemote(root, remoteName);
   if (!remote || remote.kind !== 'gitlab' || remote.remote !== remoteName) return null;
-  const token = tokenFor(remote.base);
+  const token = tokenForRemote(remote);
   if (!token) return null;
 
   const doFetch = electron?.net?.fetch ? electron.net.fetch.bind(electron.net) : fetch;
@@ -771,7 +1144,7 @@ async function branchHeads(root, remoteName) {
     let res;
     try {
       res = await doFetch(url, {
-        headers: { 'PRIVATE-TOKEN': token, Accept: 'application/json', ...(cached?.etag ? { 'If-None-Match': cached.etag } : {}) },
+        headers: { ...authHeaders(token), Accept: 'application/json', ...(cached?.etag ? { 'If-None-Match': cached.etag } : {}) },
         signal: controller.signal,
       });
     } catch (error) {
@@ -821,6 +1194,13 @@ module.exports = {
   detectRemote,
   setToken,
   clearToken,
+  listTokens,
+  loginApiState,
+  forgetToken,
+  forgetHost,
+  forgetRepoToken,
+  verifyLogin,
+  checkLoginApi,
   listPipelines,
   pipelineDetail,
   jobLog,

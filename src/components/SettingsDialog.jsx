@@ -1,7 +1,6 @@
 import { useEffect, useState } from 'react';
-import { Archive, Check, Cloud, FileKey, FolderGit2, GitBranch, GitCommitHorizontal, KeyRound, LogIn, RefreshCw, Image as ImageIcon, Loader2, Palette, Pencil, Plug, RotateCcw, Server, ShieldCheck, Sparkles, Trash2, UserRound, X } from 'lucide-react';
+import { Archive, Check, Cloud, FileKey, FolderGit2, GitBranch, GitCommitHorizontal, KeyRound, LogIn, RefreshCw, Image as ImageIcon, Loader2, Palette, Pencil, Plug, RotateCcw, Server, ShieldCheck, Sparkles, Trash2, UserRound, Workflow, X } from 'lucide-react';
 import { AUTO_THEME, BACKGROUNDS, THEMES, resolveThemeId, themeById } from '../lib/appearance.js';
-import { TokenSetup } from './TokenSetup.jsx';
 import { GuardSettings, Switch } from './Guard.jsx';
 import { CommitSettings } from './CommitForm.jsx';
 import { BACKGROUND_SEC, BACKOFF_SEC, SYNC_MODES, useSyncStatus } from '../lib/syncStatus.js';
@@ -103,7 +102,7 @@ export default function SettingsDialog({
             ) : tab === 'guard' ? (
               <GuardSettings cfg={guard} onChange={onGuardChange} repoPath={repoPath} />
             ) : (
-              <IntegrationsTab repo={repo} onForgeChanged={onForgeChanged} servers={servers} />
+              <IntegrationsTab servers={servers} />
             )}
           </div>
         </div>
@@ -517,29 +516,43 @@ function BackgroundPreview({ id, theme: t, imageUrl }) {
 
 /* =================== Подключения =================== */
 
-function IntegrationsTab({ repo, onForgeChanged, servers }) {
-  const current = repo?.localBranches.find((b) => b.name === repo.currentBranch);
+function IntegrationsTab({ servers }) {
+  // Одна авторизация на репозиторий — для Pull, Push и пайплайнов CI/CD; отдельного входа для CI/CD нет
+  return <div className="space-y-6">{servers ? <ServersSection {...servers} /> : <p className="text-[12px] text-gk-dim">Авторизация недоступна.</p>}</div>;
+}
+
+const SCOPE_SHORT = { api: 'просмотр и действия', read_api: 'только просмотр' };
+
+/** Работают ли пайплайны CI/CD от авторизации репозитория (GitLab) */
+function CiText({ ci, method }) {
+  if (!ci) return null;
+  const who = ci.user?.username ? ` · @${ci.user.username}` : '';
+  const scope = ci.scopes ? ci.scopes.map((x) => SCOPE_SHORT[x]).filter(Boolean)[0] : null;
+  let text;
+  let tone = 'text-gk-muted';
+  let state = 'ok';
+  if (ci.source === 'legacy') {
+    text = `Пайплайны: токен из прежней версии${who} — авторизуйте репозиторий, чтобы была одна авторизация`;
+    tone = 'text-gk-yellow';
+    state = 'legacy';
+  } else if (ci.state === 'bad') {
+    text = 'Пайплайны: эта авторизация не подходит для API — откройте «Изменить»';
+    tone = 'text-gk-yellow';
+    state = 'bad';
+  } else if (ci.state === 'none' || !ci.source) {
+    text = ci.legacy
+      ? 'Пайплайны: пока по токену из прежней версии'
+      : `Пайплайны: ${method === 'ssh' ? 'SSH-ключ' : 'пароль'} не подходит для API — добавьте токен в «Изменить»`;
+    tone = 'text-gk-yellow';
+    state = 'none';
+  } else {
+    text = `Пайплайны: та же авторизация${ci.viaApiToken ? ' (с токеном для API)' : ''}${who}${scope ? ` · ${scope}` : ''}${ci.state ? '' : ' — проверится при первом обращении'}`;
+  }
   return (
-    <div className="space-y-6">
-      {servers && <ServersSection {...servers} />}
-      <section className="space-y-2">
-        <div className="flex items-center gap-2">
-          <span className="h-2.5 w-2.5 rounded-full bg-[#fc6d26]" />
-          <span className="text-[13px] font-semibold text-gk-strong">Пайплайны GitLab</span>
-          {repo?.forge?.path && <span className="truncate font-mono text-[11px] text-gk-dim">{repo.forge.path}</span>}
-        </div>
-        <p className="text-[12px] leading-relaxed text-gk-muted">
-          Статусы пайплайнов в графе, логи заданий, перезапуск и отмена, переменные CI/CD и раннеры проекта.
-        </p>
-        {repo ? (
-          <div className="pt-1">
-            <TokenSetup repoPath={repo.path} forge={repo.forge} remoteName={current?.upstreamRemote} onChanged={onForgeChanged} />
-          </div>
-        ) : (
-          <p className="text-[12px] text-gk-dim">Откройте репозиторий, чтобы подключить пайплайны для него.</p>
-        )}
-      </section>
-    </div>
+    <span data-testid="ci-line" data-state={state} className={`flex min-w-0 items-center gap-1 text-[11px] ${tone}`} data-tip={ci.reason ?? undefined}>
+      <Workflow size={11} className="shrink-0 opacity-80" />
+      <span className="truncate">{text}</span>
+    </span>
   );
 }
 
@@ -617,8 +630,9 @@ function ServersSection({ tick, repoOpen, onAuthCurrent, onEdit, onForgetLogin, 
         )}
       </div>
       <p className="text-[12px] leading-relaxed text-gk-muted">
-        Вход сохраняется для конкретного репозитория — на одном сервере у разных репозиториев могут быть разные учётные записи. В окне
-        авторизации выбирается, где хранится репозиторий: GitHub, GitLab или свой сервер (Self-Managed).
+        Авторизация сохраняется для конкретного репозитория и одна на всё: Pull, Push, клонирование и пайплайны CI/CD. На одном сервере у
+        разных репозиториев могут быть разные учётные записи. В окне авторизации выбирается, где хранится репозиторий: GitHub, GitLab или
+        свой сервер (Self-Managed).
       </p>
       {list === null ? (
         <div className="flex items-center gap-2 text-[12px] text-gk-dim">
@@ -658,18 +672,40 @@ function ServersSection({ tick, repoOpen, onAuthCurrent, onEdit, onForgetLogin, 
                         <span className="truncate text-[12.5px] text-gk-text" data-tip={r.url}>
                           {r.path}
                         </span>
-                        <span className="shrink-0 rounded bg-gk-hover px-1 text-[9.5px] uppercase text-gk-dim">{r.protocol === 'ssh' ? 'SSH' : 'HTTPS'}</span>
+                        <span className="shrink-0 rounded bg-gk-hover px-1 text-[9.5px] uppercase text-gk-dim">
+                          {r.ciOnly ? 'CI/CD' : r.protocol === 'ssh' ? 'SSH' : 'HTTPS'}
+                        </span>
                       </div>
-                      <LoginText login={r} />
+                      {!r.ciOnly && <LoginText login={r} />}
+                      <CiText ci={r.ci} method={r.method} />
                     </div>
                     {confirm === r.key ? (
                       confirmBox(r.key, () => onForgetLogin(r.key, r.path))
                     ) : (
                       <span className="flex shrink-0 items-center gap-0.5 opacity-70 group-hover:opacity-100">
-                        {iconBtn({ onClick: () => onEdit(r.url), 'data-tip': 'Изменить вход', 'aria-label': `Изменить ${r.path}` }, Pencil)}
-                        {iconBtn({ onClick: () => setConfirm(r.key), 'data-tip': 'Забыть вход этого репозитория', 'aria-label': `Забыть ${r.path}`, 'data-testid': 'repo-forget' }, Trash2, 'hover:text-gk-red')}
+                        {r.url &&
+                          iconBtn(
+                            { onClick: () => onEdit(r.url), 'data-tip': r.ciOnly ? 'Авторизовать репозиторий' : 'Изменить авторизацию (Pull/Push и пайплайны)', 'aria-label': `Изменить ${r.path}`, 'data-testid': 'repo-edit' },
+                            Pencil,
+                          )}
+                        {iconBtn({ onClick: () => setConfirm(r.key), 'data-tip': 'Забыть авторизацию этого репозитория', 'aria-label': `Забыть ${r.path}`, 'data-testid': 'repo-forget' }, Trash2, 'hover:text-gk-red')}
                       </span>
                     )}
+                  </li>
+                ))}
+                {(srv.sharedCi ?? []).map((l) => (
+                  <li key={l.key} className="group flex items-center gap-2.5 py-1.5 pl-8 pr-3" data-testid="shared-ci-row">
+                    <Workflow size={13} className="shrink-0 text-gk-dim" />
+                    <div className="min-w-0 flex-1">
+                      <div className="text-[12.5px] text-gk-muted">Токен пайплайнов для всего сервера (из прежней версии)</div>
+                      <span className="text-[11px] text-gk-dim">
+                        {l.user?.username ? `@${l.user.username}` : 'токен'}
+                        {' · действует для репозиториев, чья авторизация не открывает пайплайны'}
+                      </span>
+                    </div>
+                    {confirm === l.key
+                      ? confirmBox(l.key, () => onForgetLogin(l.key, `CI/CD всех репозиториев ${srv.hostname}`))
+                      : iconBtn({ onClick: () => setConfirm(l.key), 'data-tip': 'Забыть общий токен CI/CD (сохранён раньше, до привязки к репозиториям)', 'aria-label': 'Забыть общий токен CI/CD' }, Trash2, 'hover:text-gk-red')}
                   </li>
                 ))}
                 {srv.shared.map((l) => (

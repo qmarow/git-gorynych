@@ -147,6 +147,8 @@ function describeEntry(entry) {
     keyPath: entry.keyPath ?? null,
     hasSecret: Boolean(entry.secret),
     hasPassphrase: Boolean(entry.passphrase),
+    // Токен для API сервера (пайплайны) — к входу паролем или SSH-ключом, которые API не принимает
+    hasApiToken: Boolean(entry.apiToken),
     savedAt: entry.savedAt ?? null,
     readable: entry.method === 'ssh' ? !entry.passphrase || decrypt(entry.passphrase) !== null : decrypt(entry.secret) !== null,
   };
@@ -385,8 +387,9 @@ async function detectServer(input) {
 
 /**
  * Сохранить вход для репозитория (по адресу remote или ссылке для клонирования).
- * data: { method, username, secret (пароль/токен), keyPath, passphrase }
- * Пустой secret/passphrase при уже сохранённом значении — оставить прежнее.
+ * data: { method, username, secret (пароль/токен), keyPath, passphrase, apiToken, clearApiToken }
+ * Пустой secret/passphrase/apiToken при уже сохранённом значении — оставить прежнее.
+ * apiToken — к паролю или SSH-ключу: API сервера (пайплайны CI/CD) их не принимает, а одна авторизация должна работать везде.
  */
 function save(url, data = {}) {
   const t = parseTarget(url);
@@ -434,9 +437,35 @@ function save(url, data = {}) {
     if (passphrase) entry.passphrase = encrypt(passphrase);
     else if (!data.clearPassphrase && prev?.keyPath === keyPath && prev?.passphrase) entry.passphrase = prev.passphrase;
   }
+  if (method !== 'token') {
+    const apiToken = String(data.apiToken ?? '').trim();
+    if (apiToken) {
+      if (/\s/.test(apiToken)) throw new GitError('В токене для пайплайнов не должно быть пробелов', { code: 'BAD_ARGS' });
+      entry.apiToken = encrypt(apiToken);
+    } else if (!data.clearApiToken && current?.apiToken) entry.apiToken = current.apiToken;
+  }
   store.repos[key] = entry;
   writeStore(store);
   return describe(url);
+}
+
+/** Адрес сайта сервера, выбранный в окне входа (для SSH-адресов: https://host:порт) */
+function serverBase(hostname) {
+  try {
+    return readStore().servers?.[String(hostname ?? '').toLowerCase()]?.base ?? null;
+  } catch {
+    return null;
+  }
+}
+
+/** Добавить токен для API к сохранённому входу репозитория (перенос старого отдельного токена CI/CD) */
+function attachApiToken(key, token) {
+  const store = readStore();
+  const entry = store.repos?.[key];
+  if (!entry || entry.method === 'token' || entry.apiToken) return false;
+  entry.apiToken = encrypt(token);
+  writeStore(store);
+  return true;
 }
 
 /** Забыть вход репозитория; если своего нет, а действует общий вход сервера — забыть его (shared: true) */
@@ -470,6 +499,52 @@ function forgetLogin(key) {
   }
   if (removed) writeStore(store);
   return { removed };
+}
+
+/* =================== Вход репозитория → API (CI/CD) =================== */
+
+// Токены, которые GitLab принимает и в git, и в API (личные, проектные, групповые, OAuth); deploy-токены (gldt-) API не дают
+const API_TOKEN_PREFIX = /^(glpat-|gloas-|glsoat-)/;
+
+/**
+ * Вход, сохранённый для репозитория (hostname + путь), который можно попробовать для API сервера.
+ * → { repo: { secret, method, username, key, url, savedAt } | null, shared: … | null, other: { method, key } | null }
+ * repo — свой вход репозитория (токен или пароль-токен), shared — общий вход сервера (сохранён до привязки),
+ * other — вход есть, но для API не годится (SSH-ключ, обычный пароль).
+ */
+function apiLoginFor(hostname, repoPath) {
+  const h = String(hostname ?? '').toLowerCase();
+  const p = String(repoPath ?? '').toLowerCase().replace(/^\/+|\/+$/g, '').replace(/\.git$/i, '');
+  const store = readStore();
+  const usable = (entry) =>
+    entry && (Boolean(entry.apiToken) || entry.method === 'token' || (entry.method === 'password' && API_TOKEN_PREFIX.test(decrypt(entry.secret) ?? '')));
+  const pack = (key, entry, shared = false) => {
+    const viaApiToken = Boolean(entry.apiToken);
+    const secret = viaApiToken ? decrypt(entry.apiToken) : decrypt(entry.secret);
+    if (secret === null) return null;
+    return { secret, method: entry.method, viaApiToken, username: entry.username ?? null, key, url: entry.url ?? null, savedAt: entry.savedAt ?? null, shared };
+  };
+  let repo = null;
+  let other = null;
+  // HTTPS-вход раньше SSH: у одного репозитория могут быть оба (адрес remote меняли)
+  const own = Object.entries(store.repos ?? {})
+    .filter(([, e]) => parseTarget(e.url).hostname === h && repoPathOf(e.url).toLowerCase() === p)
+    .sort(([, a], [, b]) => Number(b.method !== 'ssh') - Number(a.method !== 'ssh'));
+  for (const [key, entry] of own) {
+    if (usable(entry)) {
+      repo = pack(key, entry);
+      if (repo) break;
+    } else if (!other) other = { method: entry.method, key, unreadable: entry.method !== 'ssh' && decrypt(entry.secret) === null };
+  }
+  let shared = null;
+  for (const [key, entry] of Object.entries(store.hosts)) {
+    const m = /^(https?):\/\/(.+)$/.exec(key);
+    if (m && m[2].replace(/:\d+$/, '') === h && usable(entry)) {
+      shared = pack(key, entry, true);
+      if (shared) break;
+    }
+  }
+  return { repo, shared, other: repo ? null : other };
 }
 
 /* =================== Передача в git =================== */
@@ -732,4 +807,7 @@ module.exports = {
   detectServer,
   repoKeyOf,
   repoPathOf,
+  apiLoginFor,
+  attachApiToken,
+  serverBase,
 };

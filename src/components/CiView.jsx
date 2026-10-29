@@ -86,6 +86,7 @@ export default function CiView({
   onClose,
   onLocate,
   onForgeChanged,
+  onEditLogin,
   notify,
 }) {
   const [file, setFile] = useState(initialFile ?? null);
@@ -511,6 +512,7 @@ export default function CiView({
             initialPipelineId={initialPipelineId}
             onLocate={onLocate}
             onForgeChanged={onForgeChanged}
+            onEditLogin={onEditLogin}
             notify={notify}
             branches={branches}
           />

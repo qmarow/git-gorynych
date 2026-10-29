@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { AlertTriangle, ArrowRightLeft, Check, Cloud, Copy, Eye, EyeOff, ExternalLink, FileKey, FolderGit2, FolderOpen, KeyRound, Loader2, Lock, Server, Sparkles, Trash2, UserRound } from 'lucide-react';
+import { AlertTriangle, ArrowRightLeft, Check, CircleCheck, Cloud, Copy, Eye, EyeOff, ExternalLink, FileKey, FolderGit2, FolderOpen, KeyRound, Loader2, Lock, Server, Sparkles, Trash2, UserRound, Workflow } from 'lucide-react';
 import { Button, Modal } from './Dialogs.jsx';
 import { secretStorageText } from '../lib/platform.js';
 import { CLOUD_SERVERS, SERVER_KINDS, kindInfo, kindLabel, prefersToken, sshKeysPage, tokenPage, tokenPlaceholder, tokenScopes } from '../lib/servers.js';
@@ -70,7 +70,7 @@ const domainOfUrl = (raw) => {
  * canEditRemote — адрес можно менять (открытый репозиторий); при клонировании адрес задан в окне клонирования.
  * target — ответ api.creds.describe; error — ошибка, из-за которой окно открылось; onSubmit(data) — сохранить и повторить.
  */
-export default function AuthDialog({ target, error, formError, busy, actionLabel, canEditRemote = false, onSubmit, onForget, onClose, onKeyDefaults }) {
+export default function AuthDialog({ target, error, formError, notice, busy, actionLabel, canEditRemote = false, onSubmit, onForget, onClose, onKeyDefaults }) {
   const originalUrl = target?.url ?? '';
   const [url, setUrl] = useState(originalUrl);
   const parsed = parseRepoUrl(url);
@@ -115,6 +115,8 @@ export default function AuthDialog({ target, error, formError, busy, actionLabel
   const [token, setToken] = useState('');
   const [keyPath, setKeyPath] = useState(saved?.keyPath ?? '');
   const [passphrase, setPassphrase] = useState('');
+  // Пароль и SSH-ключ API GitLab не принимает — токен для пайплайнов хранится в этой же авторизации
+  const [apiToken, setApiToken] = useState('');
   const [show, setShow] = useState({ password: false, token: false, passphrase: false });
   const [keys, setKeys] = useState(null); // { dir, keys: [...] }
   const [keyNote, setKeyNote] = useState(null); // { type: 'ok' | 'error', text }
@@ -258,6 +260,7 @@ const tabInfo = TABS.find((t) => t.id === tab);
     if (!cloud && kind) extra.kind = kind;
     // Другой сервер / адрес — remote репозитория сменится (или добавится, если его не было)
     if (canEditRemote && (changed || !originalUrl)) extra.remoteUrl = url.trim();
+    if (kind === 'gitlab' && apiToken.trim()) extra.apiToken = apiToken.trim();
     if (tab === 'password') onSubmit({ method: 'password', username: username.trim(), secret: password, ...extra });
     else if (tab === 'token') onSubmit({ method: 'token', username: tokenUser.trim(), secret: token.trim(), ...extra });
     else onSubmit({ method: 'ssh', keyPath, passphrase, ...extra });
@@ -320,8 +323,8 @@ const tabInfo = TABS.find((t) => t.id === tab);
               <Trash2 size={13} /> Забыть
             </Button>
           )}
-          <Button onClick={onClose} disabled={busy}>
-            Отмена
+          <Button onClick={onClose} disabled={busy} data-testid="auth-cancel">
+            {notice ? 'Готово' : 'Отмена'}
           </Button>
           <Button variant="blue" onClick={submit} disabled={!canSubmit} data-testid="auth-submit">
             {busy ? <Loader2 size={13} className="animate-spin" /> : <Lock size={13} />}
@@ -405,6 +408,16 @@ const tabInfo = TABS.find((t) => t.id === tab);
           <span>
             {error.message}
             {error.details && <span className="mt-0.5 block font-mono text-[11px] text-gk-muted">{error.details.split('\n').filter(Boolean).pop()}</span>}
+          </span>
+        </div>
+      )}
+
+      {notice && (
+        <div data-testid="auth-notice" className="flex items-start gap-2 rounded-md border border-gk-yellow/35 bg-gk-yellow/10 px-3 py-2 text-[12px] leading-relaxed">
+          <AlertTriangle size={14} className="mt-0.5 shrink-0 text-gk-yellow" />
+          <span className="text-gk-text">
+            {notice.message}
+            {notice.hint && <span className="block text-gk-muted">{notice.hint}</span>}
           </span>
         </div>
       )}
@@ -527,6 +540,12 @@ const tabInfo = TABS.find((t) => t.id === tab);
               </button>
             )}
           </p>
+          {kind === 'gitlab' && (
+            <p data-testid="auth-ci-hint" className="flex items-start gap-1.5 text-[11.5px] leading-relaxed text-gk-dim">
+              <Workflow size={12} className="mt-0.5 shrink-0" />
+              <span>Эта же авторизация работает и для пайплайнов CI/CD — отдельно входить не нужно. Права api хватает на всё.</span>
+            </p>
+          )}
         </div>
       )}
 
@@ -648,6 +667,42 @@ const tabInfo = TABS.find((t) => t.id === tab);
         </div>
       )}
 
+      {kind === 'gitlab' && tab !== 'token' && (
+        <div data-testid="auth-api-token" className="space-y-1.5 rounded-lg border border-gk-border bg-gk-fg/[0.02] px-3 py-2.5">
+          <div className="flex items-center gap-1.5 text-[12px] font-medium text-gk-text">
+            <Workflow size={13} className="text-gk-muted" /> Пайплайны CI/CD
+            <span className="font-normal text-gk-dim">— необязательно</span>
+          </div>
+          <p className="text-[11.5px] leading-relaxed text-gk-dim">
+            {tab === 'ssh' ? 'SSH-ключ' : 'Пароль'} GitLab принимает для Pull/Push, но не для API. Чтобы эта же авторизация открывала и
+            пайплайны, добавьте токен с правом api или read_api — он сохранится вместе с ней.
+            {base && (
+              <button
+                onClick={() => api?.openExternal(tokenPage('gitlab', base, parsed.hostname))}
+                className="ml-1 inline-flex items-center gap-0.5 text-gk-blue hover:underline"
+              >
+                Создать токен <ExternalLink size={10} />
+              </button>
+            )}
+          </p>
+          <div className="relative">
+            <input
+              type={show.apiToken ? 'text' : 'password'}
+              value={apiToken}
+              onChange={(e) => setApiToken(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && submit()}
+              placeholder={saved?.hasApiToken && saved.method === tab ? '•••••• сохранён — введите, чтобы заменить' : 'glpat-…'}
+              aria-label="Токен для пайплайнов"
+              spellCheck={false}
+              className={`${INPUT} pr-9 font-mono`}
+            />
+            {eye('apiToken')}
+          </div>
+        </div>
+      )}
+
+      {srv?.api && kind === 'gitlab' && !notice && <ApiLine api={srv.api} />}
+
       {formError && (
         <div className="flex items-start gap-2 rounded-md border border-gk-red/30 bg-gk-red/10 px-3 py-2 text-[12px]">
           <AlertTriangle size={14} className="mt-0.5 shrink-0 text-gk-red" />
@@ -681,6 +736,27 @@ const tabInfo = TABS.find((t) => t.id === tab);
 }
 
 const METHOD_NAMES = { password: 'логин и пароль', token: 'токен', ssh: 'SSH-ключ' };
+
+/** Работают ли пайплайны от сохранённой авторизации (последняя проверка) */
+function ApiLine({ api: a }) {
+  if (!a) return null;
+  if (a.state === 'ok') {
+    return (
+      <p data-testid="auth-api-state" data-state="ok" className="flex items-center gap-1.5 text-[11.5px] text-gk-green">
+        <CircleCheck size={12} /> Пайплайны CI/CD работают от этой авторизации{a.user?.username ? ` (@${a.user.username})` : ''}.
+      </p>
+    );
+  }
+  if (a.state === 'bad' || a.state === 'none') {
+    return (
+      <p data-testid="auth-api-state" data-state={a.state} className="flex items-start gap-1.5 text-[11.5px] leading-relaxed text-gk-yellow">
+        <AlertTriangle size={12} className="mt-0.5 shrink-0" />
+        <span>{a.reason ?? 'Пайплайны CI/CD от этой авторизации не открываются — нужен токен.'}</span>
+      </p>
+    );
+  }
+  return null;
+}
 
 /** Логин для токена по умолчанию — как в main-процессе (credentials.defaultTokenUser), но по выбранному сейчас типу */
 function defaultTokenUserFor(kind, fallback) {

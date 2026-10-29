@@ -299,7 +299,7 @@ export default function Sidebar({
             <Item
               title={
                 !forge.token?.configured
-                  ? 'Подключите GitLab, чтобы видеть статусы пайплайнов'
+                  ? 'Авторизуйте репозиторий — эта же авторизация откроет пайплайны'
                   : pipelinesError
                     ? pipelinesError.message
                     : branchPipeline
@@ -318,7 +318,7 @@ export default function Sidebar({
               )}
               <span className="truncate">Пайплайны</span>
               <span className={`ml-auto shrink-0 truncate text-[11px] ${forge.token?.configured ? 'text-gk-dim' : 'text-gk-blue'}`}>
-                {!forge.token?.configured ? 'подключить' : pipelinesError ? 'ошибка' : 'GitLab'}
+                {!forge.token?.configured ? 'авторизовать' : pipelinesError ? 'ошибка' : 'GitLab'}
               </span>
             </Item>
           )}
