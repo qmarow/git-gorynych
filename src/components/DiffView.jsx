@@ -289,8 +289,11 @@ export default function DiffView({
             key={a.label}
             onClick={a.onClick}
             title={a.title}
-            className={`ml-1 flex h-6 shrink-0 items-center gap-1 rounded px-2 text-[11.5px] ring-1 ring-gk-border transition-colors ${
-              a.danger ? 'text-gk-red hover:bg-gk-red/10' : 'text-gk-muted hover:bg-gk-fg/10 hover:text-gk-text'
+            disabled={a.disabled}
+            data-testid="diff-file-action"
+            data-label={a.label}
+            className={`ml-1 flex h-6 shrink-0 items-center gap-1 rounded px-2 text-[11.5px] ring-1 ring-gk-border transition-colors disabled:opacity-40 ${
+              a.danger ? 'text-gk-red enabled:hover:bg-gk-red/10' : 'text-gk-muted enabled:hover:bg-gk-fg/10 enabled:hover:text-gk-text'
             }`}
           >
             {a.icon && <a.icon size={12} />} {a.label}

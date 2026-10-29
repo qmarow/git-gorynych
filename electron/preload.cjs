@@ -118,6 +118,9 @@ contextBridge.exposeInMainWorld('api', {
     compareSearch: (dir, params) => ipcRenderer.invoke('repo:compare-search', dir, params),
     searchHistory: (dir, params) => ipcRenderer.invoke('repo:search-history', dir, params),
     gitflowConfig: (dir) => ipcRenderer.invoke('repo:gitflow-config', dir),
+    fileHistory: (dir, params) => ipcRenderer.invoke('repo:file-history', dir, params),
+    blame: (dir, params) => ipcRenderer.invoke('repo:blame', dir, params),
+    commitInfo: (dir, params) => ipcRenderer.invoke('repo:commit-info', dir, params),
     rebasePreview: (dir, params) => ipcRenderer.invoke('repo:rebase-preview', dir, params),
     // rules: [{ id, label, pattern, flags, files, category }] — проверка staged-изменений перед коммитом
     guardScan: (dir, params) => ipcRenderer.invoke('repo:guard-scan', dir, params),

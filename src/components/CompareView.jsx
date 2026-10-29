@@ -11,7 +11,7 @@ const api = window.api;
  * Сравнение двух коммитов: a — «было», b — «стало».
  * Таблица файлов с полосками объёма изменений, сводка по папкам, коммиты между ними.
  */
-export default function CompareView({ repoPath, a, b, hidden, activePath, onSwap, onClose, onOpenFile, onLocate }) {
+export default function CompareView({ repoPath, a, b, hidden, activePath, onSwap, onClose, onOpenFile, onLocate, onFileMenu }) {
   const [state, setState] = useState({ loading: true, data: null, error: null });
   const [query, setQuery] = useState('');
   const [sort, setSort] = useState('path'); // path | size
@@ -324,6 +324,11 @@ export default function CompareView({ repoPath, a, b, hidden, activePath, onSwap
                   <button
                     key={f.path}
                     onClick={() => onOpenFile(f, shown)}
+                    onContextMenu={(e) => {
+                      if (!onFileMenu) return;
+                      e.preventDefault();
+                      onFileMenu(f, shown, e.clientX, e.clientY);
+                    }}
                     className={`grid w-full animate-fade-in grid-cols-[auto_minmax(0,1fr)_minmax(80px,200px)_92px] items-center gap-3 border-b border-gk-border/60 px-2.5 py-1.5 text-left text-[12.5px] last:border-0 ${
                       activePath === f.path ? 'bg-gk-blue/15' : 'hover:bg-gk-hover'
                     }`}

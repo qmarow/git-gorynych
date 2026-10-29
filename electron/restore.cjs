@@ -46,15 +46,22 @@ function snapshot(root, file, before) {
  * side: 'after' — как в самом коммите, 'before' — как было до него (в первом родителе).
  * Если в той версии файла нет — файл удаляется из рабочей папки.
  */
-async function restoreFile(cwd, { hash, path: file, side = 'after' }) {
+async function restoreFile(cwd, { hash, path: file, side = 'after', sourcePath = null }) {
   requireHash(hash);
   const root = await resolveRepoRoot(cwd);
   const full = safeRelative(root, file);
+  // sourcePath — имя файла в той версии (из истории файла: до переименования он назывался иначе)
+  const from = sourcePath && sourcePath !== file ? sourcePath : file;
+  if (from !== file) safeRelative(root, from);
   const source = side === 'before' ? await firstParent(root, hash) : hash;
   const before = readFileOrNull(full);
-  const present = source ? await existsIn(root, source, file) : false;
+  const present = source ? await existsIn(root, source, from) : false;
 
-  if (present) {
+  if (present && from !== file) {
+    const buf = await git(root, ['cat-file', 'blob', `${source}:${from}`], { encoding: 'buffer' });
+    fs.mkdirSync(path.dirname(full), { recursive: true });
+    fs.writeFileSync(full, buf);
+  } else if (present) {
     await git(root, ['restore', `--source=${source}`, '--worktree', '--', file]);
   } else if (before !== null) {
     fs.rmSync(full, { force: true });

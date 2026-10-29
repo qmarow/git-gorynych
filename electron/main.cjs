@@ -10,6 +10,7 @@ const ci = require('./ci.cjs');
 const ciEdit = require('./ciEdit.cjs');
 const gitlab = require('./gitlab.cjs');
 const compare = require('./compare.cjs');
+const fileHistory = require('./fileHistory.cjs');
 const rebasePlan = require('./rebase.cjs');
 const guard = require('./guard.cjs');
 const { watchRepository } = require('./watch.cjs');
@@ -752,6 +753,10 @@ ipcMain.handle('repo:file-diff', safe((dir, params) => git.getFileDiff(dir, para
 ipcMain.handle('repo:compare', safe((dir, params) => compare.compareCommits(dir, params)));
 ipcMain.handle('repo:compare-search', safe((dir, params) => compare.searchChanges(dir, params)));
 ipcMain.handle('repo:search-history', safe((dir, params) => compare.searchHistory(dir, params ?? {})));
+// История файла (через переименования), построчное авторство и коммит для поповера
+ipcMain.handle('repo:file-history', safe((dir, params) => fileHistory.fileHistory(dir, params ?? {})));
+ipcMain.handle('repo:blame', safe((dir, params) => fileHistory.blame(dir, params ?? {})));
+ipcMain.handle('repo:commit-info', safe((dir, params) => fileHistory.commitInfo(dir, params ?? {})));
 // Настройки git flow репозитория (git flow init): приписки веток и основные ветки
 ipcMain.handle(
   'repo:gitflow-config',

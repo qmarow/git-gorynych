@@ -11,6 +11,8 @@ import {
   Copy,
   Eraser,
   FileText,
+  FileClock,
+  FileUser,
   FolderOpen,
   GitBranch,
   GitCompareArrows,
@@ -62,6 +64,7 @@ import ConflictView from './components/ConflictView.jsx';
 import CiView from './components/CiView.jsx';
 import RebaseView from './components/RebaseView.jsx';
 import CompareView from './components/CompareView.jsx';
+import FileView from './components/FileView.jsx';
 import GuideDialog from './components/GuideDialog.jsx';
 import ActionBuilder, { ACTION_ICONS } from './components/ActionBuilder.jsx';
 import { RunDialog, RunnerCard } from './components/ActionRunner.jsx';
@@ -217,6 +220,7 @@ export default function App() {
   const [ciView, setCiViewRaw] = useState(null); // { file, mode, pipelineId } — открыт просмотр CI/CD
   const [compareView, setCompareViewRaw] = useState(null); // { a, b } — сравнение двух коммитов
   const [rebaseView, setRebaseViewRaw] = useState(null); // { upstream, onto?, nonce } — интерактивный rebase
+  const [fileView, setFileViewRaw] = useState(null); // { path, rev, mode, blameRev, blamePath, blameStack, focus } — история файла / blame
   const [compareMark, setCompareMark] = useState(null); // коммит, отмеченный для сравнения
   // В центре одновременно открыта только одна большая панель
   const setCiView = (v) => {
@@ -224,6 +228,7 @@ export default function App() {
     if (v) {
       setCompareViewRaw(null);
       setRebaseViewRaw(null);
+      setFileViewRaw(null);
     }
   };
   const setCompareView = (v) => {
@@ -231,6 +236,7 @@ export default function App() {
     if (v) {
       setCiViewRaw(null);
       setRebaseViewRaw(null);
+      setFileViewRaw(null);
       setDiffTarget(null);
     }
   };
@@ -239,6 +245,16 @@ export default function App() {
     if (v) {
       setCiViewRaw(null);
       setCompareViewRaw(null);
+      setFileViewRaw(null);
+      setDiffTarget(null);
+    }
+  };
+  const setFileView = (v) => {
+    setFileViewRaw(v);
+    if (v) {
+      setCiViewRaw(null);
+      setCompareViewRaw(null);
+      setRebaseViewRaw(null);
       setDiffTarget(null);
     }
   };
@@ -353,6 +369,7 @@ export default function App() {
     setCiView(null);
     setCompareView(null);
     setRebaseView(null);
+    setFileView(null);
     setCompareMark(null);
     setMenu(null);
     setAccess(null);
@@ -379,6 +396,7 @@ export default function App() {
     setCiView(null);
     setCompareView(null);
     setRebaseView(null);
+    setFileView(null);
     setCompareMark(null);
     setMenu(null);
     setAccess(null);
@@ -955,6 +973,7 @@ export default function App() {
     setCiView(null);
     setCompareView(null);
     setRebaseView(null);
+    setFileView(null);
     setSelectedHash(hash);
   };
 
@@ -2248,9 +2267,10 @@ export default function App() {
 
   const isDirty = (path) => repo.wipFiles.some((f) => f.path === path);
 
-  const restoreFile = (file, hash, side) => {
+  // sourcePath — имя файла в той версии (из истории файла: до переименования он назывался иначе)
+  const restoreFile = (file, hash, side, sourcePath = null) => {
     const go = () =>
-      run('restoreFile', { hash, path: file.path, side }, {
+      run('restoreFile', { hash, path: file.path, side, ...(sourcePath && sourcePath !== file.path ? { sourcePath } : {}) }, {
         label: 'Вернуть файл',
         success: (d) =>
           `${d.path}: ${d.deleted ? 'удалён (его не было в той версии)' : `версия ${side === 'before' ? 'до' : 'из'} ${hash.slice(0, 7)}`} — без коммита${d.undoable ? ', Undo вернёт' : ''}`,
@@ -2294,12 +2314,60 @@ export default function App() {
     return applyHunks(id, t.mode === 'untracked' ? 'unstaged' : t.mode, t.file, t.hash, [hunk.header]);
   };
 
+  /* ---------- История файла и Blame ---------- */
+
+  // Откуда строить историю и blame для файла из коммита, stash, WIP или сравнения.
+  // → { history: view | null, blame: view | null, reason } (reason — почему недоступно)
+  const fileViewsFor = (file, kind, ctx = {}) => {
+    if (!file || file.status === 'U') return { history: null, blame: null, reason: 'Сначала разрешите конфликт' };
+    if (kind === 'unstaged' || kind === 'staged') {
+      if (file.untracked || file.status === 'A') return { history: null, blame: null, reason: 'Файл ещё не закоммичен — у него нет истории' };
+      // Переименованный или удалённый в рабочей папке — история и blame под прежним именем из HEAD
+      const old = file.status === 'R' || file.status === 'D' ? file.oldPath ?? file.path : null;
+      const path = old ?? file.path;
+      return { history: { path, rev: null }, blame: { path, rev: null, blameRev: old ? 'HEAD' : null } };
+    }
+    const hash = kind === 'stash' ? file.diffHash : ctx.hash;
+    const parent = kind === 'stash' ? file.diffParent : ctx.parent;
+    if (!hash) return { history: null, blame: null, reason: 'Нет коммита' };
+    if (file.status === 'D') {
+      const old = file.oldPath ?? file.path;
+      return { history: { path: old, rev: hash, focus: hash }, blame: parent ? { path: old, rev: hash, blameRev: parent } : null, reason: 'Файл удалён в этом коммите' };
+    }
+    return { history: { path: file.path, rev: hash, focus: hash }, blame: { path: file.path, rev: hash, blameRev: hash } };
+  };
+  const openFileView = (base, mode) => {
+    if (!base) return;
+    setMenu(null);
+    setFileView({ ...base, mode, blameRev: base.blameRev === undefined ? 'HEAD' : base.blameRev, blamePath: null, blameStack: [] });
+  };
+  const fileViewItems = (file, kind, ctx) => {
+    const v = fileViewsFor(file, kind, ctx);
+    return [
+      {
+        label: 'История файла (Log)',
+        icon: FileClock,
+        disabled: !v.history,
+        title: v.history ? 'Все коммиты, которые меняли этот файл, — и под прежними именами' : v.reason,
+        onClick: () => openFileView(v.history, 'history'),
+      },
+      {
+        label: 'Blame',
+        icon: FileUser,
+        disabled: !v.blame,
+        title: v.blame ? 'Кто и когда последним менял каждую строку' : v.reason,
+        onClick: () => openFileView(v.blame, 'blame'),
+      },
+    ];
+  };
+
   const buildFileMenu = (file, kind, list, extra) => {
     const items = [{ header: file.path }];
     if (kind === 'stash') {
       const st = extra?.stash ?? selected;
       items.push(
         { label: 'Показать изменения', icon: FileDiff, onClick: () => openFile(file, 'stash', list) },
+        ...fileViewItems(file, 'stash'),
         { separator: true },
         {
           label: 'Восстановить файл из stash',
@@ -2313,6 +2381,7 @@ export default function App() {
       if (!c || c.wip) return null;
       items.push(
         { label: 'Показать изменения', icon: FileDiff, onClick: () => openFile(file, 'commit', list) },
+        ...fileViewItems(file, 'commit', { hash: c.hash, parent: c.parents[0] ?? null }),
         { separator: true },
         {
           label: 'Вернуть файл к версии из этого коммита',
@@ -2338,6 +2407,7 @@ export default function App() {
     } else if (kind === 'unstaged' || kind === 'staged') {
       items.push(
         { label: 'Показать изменения', icon: FileDiff, onClick: () => openFile(file, kind, list) },
+        ...fileViewItems(file, kind),
         kind === 'unstaged'
           ? { label: 'Добавить в индекс (Stage)', icon: Plus, onClick: () => stageFiles([file.path]) }
           : { label: 'Убрать из индекса (Unstage)', icon: Minus, onClick: () => unstageFiles(file.oldPath ? [file.path, file.oldPath] : [file.path]) },
@@ -2811,7 +2881,7 @@ export default function App() {
   };
 
   // CI/CD занимает центр (а не diff, конфликт, сравнение или rebase поверх него)
-  const ciCentered = Boolean(ciView) && !(conflictPath || diffTarget || compareView || rebaseView);
+  const ciCentered = Boolean(ciView) && !(conflictPath || diffTarget || compareView || rebaseView || fileView);
 
   /* ---------- Разметка ---------- */
 
@@ -3012,8 +3082,12 @@ export default function App() {
                   guardMarkers={guardMarkers}
                   hunkActions={hunkActionsFor(diffTarget)}
                   onHunkAction={onHunkAction}
-                  fileActions={
-                    diffTarget.kind === 'commit' && selected && !selected.wip
+                  fileActions={[
+                    ...fileViewItems(diffTarget.file, diffTarget.kind === 'compare' ? 'commit' : diffTarget.kind, { hash: diffTarget.hash, parent: diffTarget.parent }).map((it) => ({
+                      ...it,
+                      label: it.label === 'Blame' ? 'Blame' : 'История файла',
+                    })),
+                    ...(diffTarget.kind === 'commit' && selected && !selected.wip
                       ? [
                           {
                             label: 'Вернуть файл…',
@@ -3022,12 +3096,12 @@ export default function App() {
                             onClick: (e) => {
                               const r = e.currentTarget.getBoundingClientRect();
                               const items = buildFileMenu(diffTarget.file, 'commit', diffTarget.list);
-                              if (items) setMenu({ x: r.left, y: r.bottom + 4, items: items.filter((i) => i.label !== 'Показать изменения') });
+                              if (items) setMenu({ x: r.left, y: r.bottom + 4, items: items.filter((i) => i.label !== 'Показать изменения' && i.icon !== FileClock && i.icon !== FileUser) });
                             },
                           },
                         ]
-                      : null
-                  }
+                      : []),
+                  ]}
                 />
               ) : null}
               {compareView && (
@@ -3041,6 +3115,36 @@ export default function App() {
                   onClose={() => setCompareView(null)}
                   onOpenFile={(f, list, search) => openCompareFile(f, list, compareView.a, compareView.b, search)}
                   onLocate={setSelectedHash}
+                  onFileMenu={(f, list, x, y) =>
+                    setMenu({
+                      x,
+                      y,
+                      items: [
+                        { header: f.path },
+                        { label: 'Показать изменения', icon: FileDiff, onClick: () => openCompareFile(f, list, compareView.a, compareView.b) },
+                        ...fileViewItems(f, 'commit', { hash: compareView.b, parent: compareView.a }),
+                        { separator: true },
+                        { label: 'Копировать путь', icon: Copy, onClick: () => copy(f.path, 'Путь') },
+                      ],
+                    })
+                  }
+                />
+              )}
+              {fileView && (
+                <FileView
+                  repoPath={repo.path}
+                  view={fileView}
+                  hidden={Boolean(conflictPath || diffTarget)}
+                  onChange={(patch) => setFileView({ ...fileView, ...patch })}
+                  onClose={() => setFileView(null)}
+                  onLocate={locateCommit}
+                  isLoaded={(hash) => allCommits.some((c) => c.hash === hash)}
+                  notify={notify}
+                  onRestore={(c) =>
+                    c.status === 'D'
+                      ? restoreFile({ path: fileView.path }, c.hash, 'before', c.path)
+                      : restoreFile({ path: fileView.path }, c.hash, 'after', c.path)
+                  }
                 />
               )}
               {rebaseView && (
@@ -3075,7 +3179,7 @@ export default function App() {
                   }}
                 />
               )}
-              {conflictPath || diffTarget || compareView || rebaseView ? null : ciView ? (
+              {conflictPath || diffTarget || compareView || rebaseView || fileView ? null : ciView ? (
                 <CiView
                   repoPath={repo.path}
                   onEditLogin={() => openAuth({ actionLabel: 'Сохранить и проверить', forCi: true })}
