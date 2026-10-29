@@ -752,6 +752,24 @@ ipcMain.handle('repo:file-diff', safe((dir, params) => git.getFileDiff(dir, para
 ipcMain.handle('repo:compare', safe((dir, params) => compare.compareCommits(dir, params)));
 ipcMain.handle('repo:compare-search', safe((dir, params) => compare.searchChanges(dir, params)));
 ipcMain.handle('repo:search-history', safe((dir, params) => compare.searchHistory(dir, params ?? {})));
+// Настройки git flow репозитория (git flow init): приписки веток и основные ветки
+ipcMain.handle(
+  'repo:gitflow-config',
+  safe(async (dir) => {
+    const root = await git.resolveRepoRoot(dir);
+    const out = await git.git(root, ['config', '--get-regexp', '^gitflow\\.']).catch(() => '');
+    const cfg = { prefixes: {}, develop: null, master: null, configured: false };
+    for (const line of out.split('\n')) {
+      const m = /^gitflow\.(prefix\.(\w+)|branch\.(\w+))\s+(.*)$/.exec(line.trim());
+      if (!m) continue;
+      cfg.configured = true;
+      if (m[2]) cfg.prefixes[m[2]] = m[4].trim();
+      else if (m[3] === 'develop') cfg.develop = m[4].trim();
+      else if (m[3] === 'master' || m[3] === 'main') cfg.master = m[4].trim();
+    }
+    return cfg;
+  }),
+);
 ipcMain.handle('repo:rebase-preview', safe((dir, params) => rebasePlan.simulate(dir, params)));
 ipcMain.handle('repo:guard-scan', safe((dir, params) => guard.scanStaged(dir, params ?? {})));
 // Фоновая лёгкая проверка сервера (fetch только при изменениях) и коммиты для бейджей ↓/↑ веток

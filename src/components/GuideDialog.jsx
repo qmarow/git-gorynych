@@ -370,7 +370,7 @@ const SECTIONS = [
     id: 'branches',
     title: 'Ветки',
     icon: GitBranch,
-    keywords: 'ветка branch checkout merge слить удалить переключить создать detached тег tag сервер remote origin облако ноутбук +N удалить с сервера push --delete входящие исходящие ahead behind gone update обновить без переключения',
+    keywords: 'ветка branch git flow gitflow feature bugfix release hotfix support приписка префикс checkout merge слить удалить переключить создать detached тег tag сервер remote origin облако ноутбук +N удалить с сервера push --delete входящие исходящие ahead behind gone update обновить без переключения',
     body: () => (
       <>
         <H>Создать и переключить</H>
@@ -381,6 +381,12 @@ const SECTIONS = [
             </>,
             <>
               Правый клик по коммиту → <B>Создать ветку здесь…</B> — ветка от любого коммита.
+            </>,
+            <>
+              В окне новой ветки выбирается <B>тип по git flow</B>: <B>feature/</B>, <B>bugfix/</B>, <B>release/</B>, <B>hotfix/</B>,{' '}
+              <B>support/</B> или без приписки — приписка подставится сама, вводится только остальное имя. Программа подскажет, от какой
+              ветки по git flow создаётся такой тип (feature — от develop, hotfix — от main), и предложит <B>Создать от develop</B>. Если
+              в репозитории выполнен <B>git flow init</B>, приписки берутся из его настроек. Последний выбранный тип запоминается.
             </>,
             <>
               Переключиться: двойной клик по ветке слева или по её метке в графе, клик по названию ветки вверху или <K>Ctrl+B</K>.

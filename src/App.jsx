@@ -962,8 +962,24 @@ export default function App() {
     const sel = node ?? allCommits.find((c) => c.hash === selectedHash);
     const startHash = sel && !sel.wip ? sel.hash : repo.headHash;
     const label = sel && !sel.wip ? `${sel.hash.slice(0, 7)} — ${sel.message}` : `HEAD (${repo.headHash?.slice(0, 7)})`;
-    setDialog({ type: 'branch', startHash, startLabel: label, error: null });
+    setDialog({ type: 'branch', startHash, startLabel: label, error: null, flow: null });
+    // Приписки git flow из настроек репозитория (git flow init), если они есть
+    const path = repo.path;
+    api?.repo?.gitflowConfig?.(path).then((res) => {
+      if (res?.ok) setDialog((d) => (d?.type === 'branch' && repoRef.current?.path === path ? { ...d, flow: res.data } : d));
+    });
   };
+  // Ветки для подсказки «создать от develop / main»: локальные и на сервере
+  const branchBases = useMemo(
+    () =>
+      repo
+        ? [
+            ...repo.localBranches.map((b) => ({ name: b.name, hash: b.hash })),
+            ...(repo.remotes ?? []).flatMap((r) => r.branches.map((b) => ({ name: b.fullName, hash: b.hash, remote: true }))),
+          ]
+        : [],
+    [repo],
+  );
 
   const stageFiles = (paths) => run('stage', { paths }, { label: 'Stage' });
   const unstageFiles = (paths) => run('unstage', { paths }, { label: 'Unstage' });
@@ -3411,6 +3427,8 @@ export default function App() {
         <BranchDialog
           startHash={dialog.startHash}
           startLabel={dialog.startLabel}
+          branches={branchBases}
+          flow={dialog.flow}
           busy={busyAction === 'createBranch'}
           error={dialog.error}
           onClose={() => setDialog(null)}

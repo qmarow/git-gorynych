@@ -423,13 +423,86 @@ export function TagDialog({ hash, label, busy, error, onClose, onSubmit }) {
 
 /* =================== Создание ветки =================== */
 
-export function BranchDialog({ startHash, startLabel, busy, error, onClose, onSubmit }) {
+// Типы веток git flow: приписка, от какой ветки создаётся, пример имени
+export const FLOW_TYPES = [
+  { id: 'feature', label: 'feature', hint: 'новая функциональность', base: 'develop', placeholder: 'login-form' },
+  { id: 'bugfix', label: 'bugfix', hint: 'исправление ошибки до релиза', base: 'develop', placeholder: 'crash-on-save' },
+  { id: 'release', label: 'release', hint: 'подготовка релиза', base: 'develop', placeholder: '1.4.0' },
+  { id: 'hotfix', label: 'hotfix', hint: 'срочное исправление в рабочей версии', base: 'master', placeholder: '1.3.1' },
+  { id: 'support', label: 'support', hint: 'поддержка старой версии', base: 'master', placeholder: '1.x' },
+];
+const NO_PREFIX = 'none';
+const readPrefType = () => {
+  try {
+    return localStorage.getItem('branchFlowType') || 'feature';
+  } catch {
+    return 'feature';
+  }
+};
+
+/**
+ * Новая ветка. Тип по git flow добавляет приписку (feature/, bugfix/, release/, hotfix/, support/) —
+ * её берут из настроек git flow репозитория (git flow init), если они есть. Подсказывает, от какой ветки создавать.
+ * branches — [{ name, hash }] локальные и remote-ветки (для «создать от develop / main»).
+ */
+export function BranchDialog({ startHash, startLabel, busy, error, onClose, onSubmit, branches = [], flow = null }) {
+  const [type, setTypeRaw] = useState(() => {
+    const t = readPrefType();
+    return t === NO_PREFIX || FLOW_TYPES.some((x) => x.id === t) ? t : 'feature';
+  });
   const [name, setName] = useState('');
   const [checkout, setCheckout] = useState(true);
+  const [base, setBase] = useState(null); // { name, hash } — выбранная основа вместо коммита из графа
   const inputRef = useRef(null);
   useEffect(() => inputRef.current?.focus(), []);
 
-  const submit = () => name.trim() && !busy && onSubmit({ name: name.trim(), start: startHash, checkout });
+  const prefixOf = (id) => (id === NO_PREFIX ? '' : flow?.prefixes?.[id] ?? `${id}/`);
+  const setType = (id) => {
+    setTypeRaw(id);
+    setBase(null);
+    try {
+      localStorage.setItem('branchFlowType', id);
+    } catch {
+      /* без хранилища — просто не запоминаем */
+    }
+    requestAnimationFrame(() => inputRef.current?.focus());
+  };
+  // Вставили имя уже с припиской («feature/x» или «hotfix/1.2.1») — переключаем тип, приписку убираем из поля
+  const onNameChange = (raw) => {
+    let v = raw.replace(/\s/g, '-');
+    for (const t of FLOW_TYPES) {
+      const p = prefixOf(t.id);
+      if (p && v.toLowerCase().startsWith(p.toLowerCase()) && v.length > p.length - 1) {
+        if (t.id !== type) setType(t.id);
+        v = v.slice(p.length);
+        break;
+      }
+    }
+    setName(v);
+  };
+
+  const flowType = FLOW_TYPES.find((t) => t.id === type) ?? null;
+  const prefix = prefixOf(type);
+  const full = name.trim() ? `${prefix}${name.trim()}` : '';
+
+  // Основа по git flow: develop для feature/bugfix/release, master (main) для hotfix/support.
+  // Передаём хэш, а не имя: от origin/develop новая ветка иначе начала бы следить за develop
+  const find = (names) => {
+    for (const n of names.filter(Boolean)) {
+      const b = branches.find((x) => x.name === n) ?? branches.find((x) => x.name.replace(/^[^/]+\//, '') === n && x.remote);
+      if (b) return b;
+    }
+    return null;
+  };
+  const flowBase = !flowType
+    ? null
+    : flowType.base === 'develop'
+      ? find([flow?.develop, 'develop', 'dev'])
+      : find([flow?.master, 'main', 'master']);
+  const wantName = flowType ? (flowType.base === 'develop' ? flow?.develop ?? 'develop' : flow?.master ?? 'main / master') : null;
+  const startOk = !flowBase || (base ?? { hash: startHash }).hash === flowBase.hash;
+
+  const submit = () => full && !busy && onSubmit({ name: full, start: base?.hash ?? startHash, checkout });
 
   return (
     <Modal
@@ -437,26 +510,102 @@ export function BranchDialog({ startHash, startLabel, busy, error, onClose, onSu
       icon={GitBranch}
       iconClass="text-gk-green"
       onClose={onClose}
+      width={540}
       footer={
         <>
           <Button onClick={onClose}>Отмена</Button>
-          <Button variant="primary" disabled={!name.trim() || busy} onClick={submit}>
+          <Button variant="primary" disabled={!full || busy} onClick={submit} data-testid="branch-create">
             {busy && <Loader2 size={13} className="animate-spin" />} Создать ветку
           </Button>
         </>
       }
     >
-      <input
-        ref={inputRef}
-        value={name}
-        onChange={(e) => setName(e.target.value.replace(/\s/g, '-'))}
-        onKeyDown={(e) => e.key === 'Enter' && submit()}
-        placeholder="feature/my-branch"
-        className="w-full rounded bg-gk-bg px-3 py-2 font-mono outline-none ring-1 ring-gk-border placeholder:text-gk-dim focus:ring-gk-blue"
-      />
-      <div className="text-xs text-gk-muted">
-        От коммита <span className="font-mono text-gk-text">{startLabel}</span>
+      {/* Тип ветки по git flow */}
+      <div>
+        <div className="mb-1.5 flex items-center gap-1.5 text-[11px] text-gk-muted">
+          Тип ветки (git flow)
+          {flow?.configured && <span className="text-gk-dim">· приписки из настроек git flow репозитория</span>}
+        </div>
+        <div role="radiogroup" className="flex flex-wrap gap-1.5" data-testid="branch-types">
+          {FLOW_TYPES.map((t) => (
+            <button
+              key={t.id}
+              role="radio"
+              aria-checked={type === t.id}
+              data-type={t.id}
+              onClick={() => setType(t.id)}
+              data-tip={`${prefixOf(t.id)}… — ${t.hint}\nПо git flow создаётся от ${t.base === 'develop' ? flow?.develop ?? 'develop' : flow?.master ?? 'main / master'}`}
+              className={`rounded-full px-2.5 py-1 font-mono text-[12px] transition-colors ${
+                type === t.id ? 'bg-gk-green/20 text-gk-green ring-1 ring-gk-green/45' : 'bg-gk-fg/5 text-gk-muted hover:text-gk-text'
+              }`}
+            >
+              {prefixOf(t.id)}
+            </button>
+          ))}
+          <button
+            role="radio"
+            aria-checked={type === NO_PREFIX}
+            data-type={NO_PREFIX}
+            onClick={() => setType(NO_PREFIX)}
+            className={`rounded-full px-2.5 py-1 text-[12px] transition-colors ${
+              type === NO_PREFIX ? 'bg-gk-green/20 text-gk-green ring-1 ring-gk-green/45' : 'bg-gk-fg/5 text-gk-muted hover:text-gk-text'
+            }`}
+          >
+            без приписки
+          </button>
+        </div>
       </div>
+
+      {/* Имя: приписка + своя часть */}
+      <div className="flex items-center rounded bg-gk-bg ring-1 ring-gk-border focus-within:ring-gk-blue">
+        {prefix && (
+          <span data-testid="branch-prefix" className="shrink-0 select-none pl-3 font-mono text-gk-green">
+            {prefix}
+          </span>
+        )}
+        <input
+          ref={inputRef}
+          value={name}
+          onChange={(e) => onNameChange(e.target.value)}
+          onKeyDown={(e) => e.key === 'Enter' && submit()}
+          placeholder={flowType?.placeholder ?? 'my-branch'}
+          aria-label="Имя ветки"
+          className={`min-w-0 flex-1 bg-transparent py-2 pr-3 font-mono outline-none placeholder:text-gk-dim ${prefix ? 'pl-0' : 'pl-3'}`}
+        />
+      </div>
+      {full && (
+        <div className="text-xs text-gk-muted">
+          Будет создана ветка <span data-testid="branch-full" className="font-mono text-gk-text">{full}</span>
+        </div>
+      )}
+
+      <div className="text-xs text-gk-muted">
+        От {base ? 'ветки' : 'коммита'} <span className="font-mono text-gk-text">{base ? base.name : startLabel}</span>
+        {base && (
+          <button onClick={() => setBase(null)} className="ml-2 text-gk-blue hover:underline">
+            вернуть выбранный коммит
+          </button>
+        )}
+      </div>
+      {flowType && (
+        <div
+          data-testid="branch-flow-base"
+          className={`rounded-md px-3 py-2 text-[12px] leading-relaxed ${startOk ? 'bg-gk-fg/[0.03] text-gk-muted' : 'bg-gk-yellow/10 text-gk-text'}`}
+        >
+          По git flow ветки <span className="font-mono">{prefix}</span> создаются от <span className="font-mono text-gk-text">{wantName}</span>.
+          {!flowBase && <> Такой ветки в репозитории нет — ветка будет создана от выбранного коммита.</>}
+          {flowBase && !startOk && (
+            <button
+              onClick={() => setBase(flowBase)}
+              data-testid="branch-use-flow-base"
+              className="ml-1 inline-flex items-center gap-1 rounded bg-gk-blue/15 px-1.5 py-0.5 text-gk-blue hover:bg-gk-blue/25"
+            >
+              <GitBranch size={11} /> Создать от {flowBase.name}
+            </button>
+          )}
+          {flowBase && startOk && <span className="text-gk-green"> ✓</span>}
+        </div>
+      )}
       <label className="flex cursor-pointer items-center gap-2 text-xs">
         <input type="checkbox" checked={checkout} onChange={(e) => setCheckout(e.target.checked)} className="accent-gk-green" />
         Переключиться на новую ветку
