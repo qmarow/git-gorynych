@@ -1,0 +1,487 @@
+@import "tailwindcss";
+
+/* Палитра в стиле GitKraken. Панели полупрозрачные — под ними светится фон (glassmorphism). */
+@theme {
+  --color-gk-bg: rgb(20 23 31 / 0.55);
+  --color-gk-panel: rgb(24 27 36 / 0.62);
+  --color-gk-panel-2: rgb(34 38 49 / 0.78);
+  --color-gk-titlebar: rgb(12 14 19 / 0.72);
+  --color-gk-border: rgb(255 255 255 / 0.07);
+  --color-gk-hover: rgb(255 255 255 / 0.06);
+  /* Семантические цвета, которые меняются между светлой и тёмной схемой:
+     strong — заголовки и выделенный текст; fg — подсветка поверх панелей (hover, рамки, плашки);
+     sink — «утопленные» места (поля, код, тени прокрутки); scrim — затемнение под модальными окнами */
+  --color-gk-strong: #ffffff;
+  --color-gk-fg: rgb(255 255 255);
+  --color-gk-sink: rgb(0 0 0);
+  --color-gk-scrim: rgb(5 7 12 / 0.5);
+  --color-gk-purple: #c084fc;
+  --color-gk-ink: #0f1217;
+  --color-gk-text: #d6dae1;
+  --color-gk-muted: #848c99;
+  --color-gk-dim: #5b6270;
+  --color-gk-green: #3cf0a0;
+  --color-gk-blue: #2f9bff;
+  --color-gk-red: #f25d5d;
+  --color-gk-yellow: #f2ca33;
+
+  --font-sans: "Segoe UI Variable Text", "Segoe UI", "Inter", system-ui, sans-serif;
+  --font-mono: "Cascadia Code", "Consolas", ui-monospace, monospace;
+
+  --animate-fade-in: fade-in 0.34s cubic-bezier(0.16, 1, 0.3, 1) both;
+  --animate-pop-in: pop-in 0.28s cubic-bezier(0.16, 1, 0.3, 1) both;
+  --animate-slide-up: slide-up 0.42s cubic-bezier(0.16, 1, 0.3, 1) both;
+  --animate-slide-in-left: slide-in-left 0.45s cubic-bezier(0.16, 1, 0.3, 1) both;
+  --animate-slide-in-right: slide-in-right 0.42s cubic-bezier(0.16, 1, 0.3, 1) both;
+  --animate-row-in: row-in 0.55s cubic-bezier(0.16, 1, 0.3, 1) both;
+  --animate-shimmer: shimmer 1.4s linear infinite;
+}
+
+@keyframes fade-in {
+  from { opacity: 0; }
+}
+@keyframes pop-in {
+  from { opacity: 0; transform: scale(0.98) translateY(-3px); }
+}
+@keyframes slide-up {
+  from { opacity: 0; transform: translateY(6px); }
+}
+@keyframes slide-in-left {
+  from { opacity: 0; transform: translateX(-14px); }
+}
+@keyframes slide-in-right {
+  from { opacity: 0; transform: translateX(16px); }
+}
+@keyframes row-in {
+  from { opacity: 0; transform: translateX(-6px); }
+}
+@keyframes shimmer {
+  from { background-position: -200% 0; }
+  to { background-position: 200% 0; }
+}
+@keyframes node-in {
+  from { opacity: 0; transform: scale(0.5); }
+}
+@keyframes edge-draw {
+  from { stroke-dashoffset: 1; }
+  to { stroke-dashoffset: 0; }
+}
+@keyframes node-pulse {
+  0% { transform: scale(1); opacity: 0.7; }
+  100% { transform: scale(1.9); opacity: 0; }
+}
+@keyframes blob-drift {
+  0%, 100% { transform: translate(0, 0) scale(1); }
+  50% { transform: translate(3%, -4%) scale(1.08); }
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+/* Фон только у html: фон body перекрыл бы подложку .app-backdrop (z-index: -1) */
+:root {
+  --gk-base: #0e1117;
+  --gk-solid: #14171f;
+  --gk-solid-2: #181b24;
+  --gk-blur: 18px;
+  --glow-1: rgb(60 240 160 / 0.42);
+  --glow-2: rgb(47 155 255 / 0.45);
+  --glow-3: rgb(142 0 194 / 0.25);
+  --glow-1-soft: rgb(21 160 191 / 0.15);
+  --glow-2-soft: rgb(142 0 194 / 0.18);
+  --bg-image: none;
+  --bg-image-blur: 8px;
+  --bg-image-dim: 0.45;
+  --gk-fg-rgb: 255 255 255;
+  --gk-dim-rgb: 0 0 0;
+  --gk-log-bg: color-mix(in srgb, var(--gk-base) 80%, black);
+  /* Подсветка синтаксиса: YAML/Groovy в редакторе CI и код в диффах (highlight.js) */
+  --syn-key: #7ab8ff;
+  --syn-string: #9be29b;
+  --syn-number: #f5b971;
+  --syn-keyword: #c792ea;
+  --syn-variable: #ffcb6b;
+  --syn-anchor: #c792ea;
+  --syn-func: #82b1ff;
+  --syn-type: #ffcb6b;
+  --syn-tag: #f07178;
+  --syn-attr: #f5b971;
+  --syn-builtin: #89ddff;
+  --syn-meta: #89ddff;
+  --syn-regex: #f78c6c;
+  --syn-comment: #7f8798;
+  color-scheme: dark;
+}
+/* Светлая схема: поля ввода, полосы прокрутки и выпадающие списки браузера — светлые */
+html[data-scheme='light'] {
+  color-scheme: light;
+  --gk-log-bg: #1e222a; /* лог CI остаётся «терминальным»: ANSI-цвета рассчитаны на тёмный фон */
+  --syn-key: #0b5cc4;
+  --syn-string: #1a7f37;
+  --syn-number: #b35900;
+  --syn-keyword: #8a3ab9;
+  --syn-variable: #9a6700;
+  --syn-anchor: #8a3ab9;
+  --syn-func: #0550ae;
+  --syn-type: #8a5a00;
+  --syn-tag: #b4232c;
+  --syn-attr: #a14d00;
+  --syn-builtin: #0a6f7f;
+  --syn-meta: #0a6f7f;
+  --syn-regex: #b5470b;
+  --syn-comment: #6e7781;
+}
+html {
+  background: var(--gk-base);
+  transition: background-color 0.4s ease;
+}
+/* «Стекло Windows»: окно прозрачное, под ним системный Mica/Acrylic */
+html[data-bg='system'] {
+  background: transparent;
+}
+
+body {
+  margin: 0;
+  color: var(--color-gk-text);
+  font-family: var(--font-sans);
+  font-size: 13px;
+  overflow: hidden;
+  user-select: none;
+  -webkit-font-smoothing: antialiased;
+  background: transparent;
+}
+
+/* ---------- Фон за стеклом ---------- */
+.app-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  overflow: hidden;
+  background: radial-gradient(ellipse at 50% 120%, color-mix(in srgb, var(--gk-base) 80%, white 4%) 0%, var(--gk-base) 60%);
+  transition: background 0.4s ease;
+}
+.app-backdrop::before,
+.app-backdrop::after {
+  content: '';
+  position: absolute;
+  pointer-events: none;
+  transition: opacity 0.5s ease, background 0.5s ease;
+}
+
+/* Сияние (по умолчанию): два мягких пятна */
+html:not([data-bg]) .app-backdrop::before,
+html[data-bg='glow'] .app-backdrop::before,
+html:not([data-bg]) .app-backdrop::after,
+html[data-bg='glow'] .app-backdrop::after {
+  border-radius: 50%;
+  filter: blur(80px);
+  opacity: 0.85;
+  animation: blob-drift 26s ease-in-out infinite;
+}
+html:not([data-bg]) .app-backdrop::before,
+html[data-bg='glow'] .app-backdrop::before {
+  width: 46vw;
+  height: 46vw;
+  left: -10vw;
+  top: -14vw;
+  background: radial-gradient(circle, var(--glow-1), var(--glow-1-soft) 45%, transparent 68%);
+}
+html:not([data-bg]) .app-backdrop::after,
+html[data-bg='glow'] .app-backdrop::after {
+  width: 52vw;
+  height: 52vw;
+  right: -14vw;
+  bottom: -18vw;
+  background: radial-gradient(circle, var(--glow-2), var(--glow-2-soft) 45%, transparent 70%);
+  animation-delay: -13s;
+}
+
+/* Аврора: переливающиеся полосы */
+html[data-bg='aurora'] .app-backdrop::before {
+  inset: -30% -20%;
+  background:
+    linear-gradient(115deg, transparent 22%, var(--glow-1) 34%, transparent 46%),
+    linear-gradient(100deg, transparent 40%, var(--glow-2) 54%, transparent 66%),
+    linear-gradient(130deg, transparent 58%, var(--glow-3) 70%, transparent 82%);
+  filter: blur(70px);
+  opacity: 0.8;
+  animation: aurora-shift 34s ease-in-out infinite alternate;
+}
+html[data-bg='aurora'] .app-backdrop::after {
+  inset: 0;
+  background: radial-gradient(ellipse at 50% 0%, transparent 30%, var(--gk-base) 85%);
+  opacity: 0.7;
+}
+
+/* Сетка: тонкие линии + свечение сверху */
+html[data-bg='grid'] .app-backdrop {
+  background-color: var(--gk-base);
+  background-image:
+    linear-gradient(rgb(var(--gk-fg-rgb) / 0.035) 1px, transparent 1px),
+    linear-gradient(90deg, rgb(var(--gk-fg-rgb) / 0.035) 1px, transparent 1px);
+  background-size: 36px 36px;
+}
+html[data-bg='grid'] .app-backdrop::before {
+  width: 80vw;
+  height: 50vh;
+  left: 10vw;
+  top: -22vh;
+  border-radius: 50%;
+  background: radial-gradient(ellipse, var(--glow-1), transparent 70%);
+  filter: blur(60px);
+  opacity: 0.55;
+  animation: blob-drift 30s ease-in-out infinite;
+}
+html[data-bg='grid'] .app-backdrop::after {
+  inset: 0;
+  background: radial-gradient(ellipse at 50% 30%, transparent 40%, var(--gk-base) 95%);
+}
+
+/* Градиент: спокойный, без движения */
+html[data-bg='gradient'] .app-backdrop {
+  background:
+    radial-gradient(ellipse at 0% 0%, var(--glow-1-soft), transparent 55%),
+    radial-gradient(ellipse at 100% 100%, var(--glow-2-soft), transparent 60%),
+    linear-gradient(160deg, color-mix(in srgb, var(--gk-base) 85%, white 5%), var(--gk-base));
+}
+
+/* Однотонный */
+html[data-bg='solid'] .app-backdrop {
+  background: var(--gk-base);
+}
+
+/* Своя картинка: размытие и затемнение настраиваются */
+html[data-bg='image'] .app-backdrop::before {
+  inset: calc(var(--bg-image-blur) * -2);
+  background: var(--bg-image) center / cover no-repeat;
+  filter: blur(var(--bg-image-blur));
+}
+html[data-bg='image'] .app-backdrop::after {
+  inset: 0;
+  background: rgb(var(--gk-dim-rgb) / var(--bg-image-dim));
+}
+
+html[data-bg='system'] .app-backdrop {
+  display: none;
+}
+
+/* Анимация фона выключена */
+html[data-motion='off'] .app-backdrop::before,
+html[data-motion='off'] .app-backdrop::after {
+  animation: none !important;
+}
+
+@keyframes aurora-shift {
+  0% { transform: translate3d(-6%, -2%, 0) rotate(-3deg); }
+  50% { transform: translate3d(4%, 3%, 0) rotate(2deg); }
+  100% { transform: translate3d(8%, -3%, 0) rotate(5deg); }
+}
+
+/* Стекло: полупрозрачный фон + размытие того, что под ним */
+.glass {
+  backdrop-filter: blur(var(--gk-blur)) saturate(150%);
+}
+.glass-strong {
+  backdrop-filter: blur(calc(var(--gk-blur) + 8px)) saturate(170%);
+  box-shadow: 0 0 0 1px rgb(var(--gk-fg-rgb) / 0.04) inset, 0 20px 50px -12px rgb(0 0 0 / 0.65);
+}
+
+/* SVG-анимации графа */
+.graph-node {
+  transform-box: fill-box;
+  transform-origin: center;
+  transition: transform 0.22s cubic-bezier(0.16, 1, 0.3, 1);
+}
+.graph-node.is-intro {
+  animation: node-in 0.5s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+.graph-node.is-hover {
+  transform: scale(1.12);
+}
+.graph-edge.is-intro {
+  stroke-dasharray: 1;
+  animation: edge-draw 0.8s cubic-bezier(0.65, 0, 0.35, 1) both;
+}
+.graph-pulse {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: node-pulse 1.8s ease-out infinite;
+}
+
+/* Лоадер-граф */
+@keyframes loader-draw {
+  0% { stroke-dashoffset: 1; opacity: 1; }
+  45%, 80% { stroke-dashoffset: 0; opacity: 1; }
+  100% { stroke-dashoffset: 0; opacity: 0; }
+}
+@keyframes loader-pop {
+  0%, 8% { transform: scale(0); }
+  22%, 80% { transform: scale(1); }
+  100% { transform: scale(0); }
+}
+@keyframes loader-bar {
+  from { transform: translateX(-110%); }
+  to { transform: translateX(320%); }
+}
+.loader-edge {
+  stroke-dasharray: 1;
+  animation: loader-draw 2s ease-in-out infinite;
+}
+.loader-node {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: loader-pop 2s cubic-bezier(0.2, 0.9, 0.3, 1.3) infinite;
+}
+.loader-bar {
+  animation: loader-bar 1.2s ease-in-out infinite;
+}
+
+.skeleton {
+  background: linear-gradient(90deg, rgb(var(--gk-fg-rgb) / 0.03) 25%, rgb(var(--gk-fg-rgb) / 0.09) 50%, rgb(var(--gk-fg-rgb) / 0.03) 75%);
+  background-size: 200% 100%;
+  animation: var(--animate-shimmer);
+}
+
+/* Перетаскивание окна за кастомный заголовок */
+.app-drag {
+  -webkit-app-region: drag;
+}
+.app-no-drag {
+  -webkit-app-region: no-drag;
+}
+
+/* Во время перетаскивания границы колонок не выделяем текст и не реагируем на hover */
+body.is-resizing,
+body.is-resizing * {
+  user-select: none !important;
+  cursor: col-resize !important;
+}
+
+button:not(:disabled):active {
+  transform: scale(0.96);
+}
+
+/* Ползунок в настройках */
+.gk-range {
+  -webkit-appearance: none;
+  appearance: none;
+  height: 18px;
+  background: transparent;
+  cursor: pointer;
+}
+.gk-range::-webkit-slider-runnable-track {
+  height: 4px;
+  border-radius: 999px;
+  background: linear-gradient(90deg, var(--color-gk-green) var(--pct, 50%), rgb(var(--gk-fg-rgb) / 0.12) var(--pct, 50%));
+}
+.gk-range::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 14px;
+  height: 14px;
+  margin-top: -5px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-gk-green) 35%, transparent), 0 1px 2px rgb(0 0 0 / 0.25), 0 2px 6px rgb(0 0 0 / 0.3);
+  transition: transform 0.15s ease;
+}
+.gk-range:active::-webkit-slider-thumb {
+  transform: scale(1.15);
+}
+
+/* Скролл внутри разделов боковой панели — тонкий, проявляется при наведении */
+.sidebar-scroll::-webkit-scrollbar {
+  width: 6px;
+}
+.sidebar-scroll::-webkit-scrollbar-thumb {
+  background: transparent;
+  border-radius: 999px;
+}
+.sidebar-scroll:hover::-webkit-scrollbar-thumb {
+  background: rgb(var(--gk-fg-rgb) / 0.16);
+}
+
+/* Тонкие тёмные скроллбары */
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-corner {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: rgb(var(--gk-fg-rgb) / 0.12);
+  border-radius: 6px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: rgb(var(--gk-fg-rgb) / 0.2);
+  background-clip: padding-box;
+}
+
+input,
+textarea {
+  user-select: text;
+}
+
+/* Уважаем системную настройку «уменьшить движение» */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* Подсказки data-tip (TooltipLayer): узкие, с переносом, всегда внутри окна */
+.gk-tooltip {
+  max-width: 280px;
+  box-sizing: border-box;
+  white-space: pre-line;
+  word-break: break-word;
+  overflow-wrap: anywhere;
+  backdrop-filter: blur(14px) saturate(1.2);
+}
+/* Полный текст коммита: шире и переносы только между словами */
+.gk-tooltip-wide {
+  max-width: min(440px, calc(100vw - 16px));
+  overflow-wrap: break-word;
+}
+
+/* Мягкое затухание текста у верхнего и нижнего края прокручиваемой области:
+   строки не «режутся» о шапку и футер, а плавно уходят */
+.scroll-fade {
+  box-sizing: border-box;
+  padding-top: 16px;
+  padding-bottom: 24px;
+  -webkit-mask-image: linear-gradient(to bottom, transparent 0, #000 14px, #000 calc(100% - 20px), transparent 100%);
+  mask-image: linear-gradient(to bottom, transparent 0, #000 14px, #000 calc(100% - 20px), transparent 100%);
+}
+
+/* ================= Светлая схема: мягче тени ================= */
+html[data-scheme='light'] .glass-strong {
+  box-shadow: 0 0 0 1px rgb(16 24 40 / 0.06) inset, 0 18px 44px -14px rgb(16 24 40 / 0.28);
+}
+
+/* ================= Подсветка синтаксиса кода (src/lib/highlight.js) ================= */
+.tok-keyword { color: var(--syn-keyword); }
+.tok-string { color: var(--syn-string); }
+.tok-number { color: var(--syn-number); }
+.tok-func { color: var(--syn-func); }
+.tok-type { color: var(--syn-type); }
+.tok-tag { color: var(--syn-tag); }
+.tok-attr { color: var(--syn-attr); }
+.tok-builtin { color: var(--syn-builtin); }
+.tok-meta { color: var(--syn-meta); }
+.tok-regex { color: var(--syn-regex); }
+.tok-variable { color: var(--syn-variable); }
+.tok-comment { color: var(--syn-comment); font-style: italic; }
+.tok-punct { color: var(--color-gk-muted); }
