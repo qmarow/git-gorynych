@@ -9,6 +9,7 @@ const cloner = require('./clone.cjs');
 const ci = require('./ci.cjs');
 const ciEdit = require('./ciEdit.cjs');
 const gitlab = require('./gitlab.cjs');
+const cicd = require('./cicd/index.cjs');
 const compare = require('./compare.cjs');
 const fileHistory = require('./fileHistory.cjs');
 const rebasePlan = require('./rebase.cjs');
@@ -397,7 +398,7 @@ ipcMain.handle(
     data.history = actions.historySummary(data.path);
     data.ci = ci.detectCi(data.path);
     const current = data.localBranches.find((b) => b.name === data.currentBranch);
-    data.forge = await gitlab.detectRemote(data.path, current?.upstreamRemote).catch(() => null);
+    data.forge = await cicd.detect(data.path, current?.upstreamRemote).catch(() => null);
     writeSettings({ lastRepo: data.path });
     rememberRecent(data.path, data.name);
     return data;
@@ -444,6 +445,47 @@ ipcMain.handle('repo:stash-details', safe((dir, hash) => git.getStashDetails(dir
 const gl = (fn) => safe(async (dir, ...args) => fn(await git.resolveRepoRoot(dir), ...args));
 const remoteOpt = (opts) => ({ preferredRemote: typeof opts?.remote === 'string' ? opts.remote : undefined });
 ipcMain.handle('gitlab:status', gl((root, opts) => gitlab.detectRemote(root, remoteOpt(opts).preferredRemote)));
+
+// CI/CD любого провайдера (GitLab, GitHub, Gitea/Forgejo, Bitbucket) — единый слой с нормализованными моделями
+ipcMain.handle('cicd:status', gl((root, opts) => cicd.detect(root, remoteOpt(opts).preferredRemote)));
+ipcMain.handle('cicd:info', gl((root, opts) => cicd.info(root, remoteOpt(opts))));
+ipcMain.handle('cicd:settings', gl((root, opts) => cicd.getSettings(root, remoteOpt(opts))));
+ipcMain.handle('cicd:settings-save', gl((root, data, opts) => cicd.setSettings(root, data ?? {}, remoteOpt(opts))));
+ipcMain.handle('cicd:pipelines', gl((root, opts) => cicd.pipelines(root, { ref: opts?.ref, ...remoteOpt(opts) })));
+ipcMain.handle('cicd:pipeline', gl((root, id, opts) => cicd.pipeline(root, id, remoteOpt(opts))));
+ipcMain.handle('cicd:job-log', gl((root, id, opts) => cicd.jobLog(root, id, { ...remoteOpt(opts), pipelineId: opts?.pipelineId })));
+ipcMain.handle('cicd:action', gl((root, a, opts) => cicd.action(root, a, remoteOpt(opts))));
+ipcMain.handle('cicd:run', gl((root, params, opts) => cicd.run(root, params ?? {}, remoteOpt(opts))));
+ipcMain.handle('cicd:run-form', gl((root, opts) => cicd.runForm(root, remoteOpt(opts))));
+ipcMain.handle('cicd:runners', gl((root, opts) => cicd.runners(root, remoteOpt(opts))));
+ipcMain.handle('cicd:runner-update', gl((root, data, opts) => cicd.runnerUpdate(root, data ?? {}, remoteOpt(opts))));
+ipcMain.handle('cicd:runner-delete', gl((root, data, opts) => cicd.runnerDelete(root, data ?? {}, remoteOpt(opts))));
+ipcMain.handle('cicd:runners-prune', gl((root, data, opts) => cicd.runnersPrune(root, data ?? {}, remoteOpt(opts))));
+ipcMain.handle('cicd:runner-register', gl((root, data, opts) => cicd.runnerRegister(root, data ?? {}, remoteOpt(opts))));
+ipcMain.handle('cicd:runner-tags', gl((root, data, opts) => cicd.runnerTagCheck(root, data ?? {}, remoteOpt(opts))));
+ipcMain.handle('cicd:local-runners', gl((root, opts) => cicd.localRunners(root, remoteOpt(opts))));
+ipcMain.handle('cicd:local-runner-start', gl((root, data, opts) => cicd.localRunnerStart(root, data ?? {}, remoteOpt(opts))));
+ipcMain.handle('cicd:local-runner-stop', safe((name) => cicd.localRunnerStop(name)));
+ipcMain.handle('cicd:local-runner-resume', safe((name) => cicd.localRunnerResume(name)));
+ipcMain.handle('cicd:secrets', gl((root, opts) => cicd.secrets(root, remoteOpt(opts))));
+ipcMain.handle('cicd:secret-save', gl((root, data, opts) => cicd.secretSave(root, data ?? {}, remoteOpt(opts))));
+ipcMain.handle('cicd:secret-delete', gl((root, data, opts) => cicd.secretDelete(root, data ?? {}, remoteOpt(opts))));
+// Артефакт: спросить, куда сохранить, и скачать потоком
+ipcMain.handle(
+  'cicd:artifact-download',
+  gl(async (root, artifact, opts) => {
+    const name = String(artifact?.fileName ?? `${artifact?.name ?? 'artifact'}.zip`).replace(/[\\/:*?"<>|]+/g, '_');
+    let dest = typeof opts?.dest === 'string' && process.env.GK_TEST_USERDATA ? opts.dest : null;
+    if (!dest) {
+      const res = await dialog.showSaveDialog(mainWindow, { title: 'Сохранить артефакт', defaultPath: path.join(app.getPath('downloads'), name), filters: [{ name: 'Архив', extensions: ['zip'] }] });
+      if (res.canceled || !res.filePath) return { canceled: true };
+      dest = res.filePath;
+    }
+    const out = await cicd.artifactDownload(root, { artifact, dest }, remoteOpt(opts));
+    return { ...out, name };
+  }),
+);
+ipcMain.handle('cicd:show-file', safe((file) => shell.showItemInFolder(String(file))));
 ipcMain.handle('gitlab:set-token', gl((root, token, opts) => gitlab.setToken(root, token, remoteOpt(opts).preferredRemote, { alsoForGit: Boolean(opts?.alsoForGit) })));
 ipcMain.handle('gitlab:clear-token', gl((root, opts) => gitlab.clearToken(root, remoteOpt(opts).preferredRemote)));
 ipcMain.handle('gitlab:pipelines', gl((root, opts) => gitlab.listPipelines(root, { ref: opts?.ref, ...remoteOpt(opts) })));
@@ -550,6 +592,15 @@ ipcMain.handle(
     // Та же авторизация — для пайплайнов: сразу проверяем, принимает ли её API GitLab
     if (described.kind === 'gitlab' && described.repoPath) {
       described.api = await gitlab.checkLoginApi(described.hostname, described.repoPath, described.base).catch(() => null);
+    } else if (dir && ['github', 'gitea', 'bitbucket'].includes(described.kind)) {
+      // GitHub, Gitea, Bitbucket: та же авторизация — для CI/CD; проверяем сразу (не дольше 8 с)
+      const root = await git.resolveRepoRoot(dir).catch(() => null);
+      if (root) {
+        described.api = await Promise.race([
+          cicd.checkLogin(root).catch(() => null),
+          new Promise((r) => setTimeout(() => r({ state: 'unknown', reason: 'сервер не ответил' }), 8000)),
+        ]);
+      }
     }
     return { ...described, remoteChange };
   }),

@@ -1,17 +1,19 @@
 // Ошибки Git с понятной классификацией: авторизация, доступ, защищённые ветки, сеть и т.д.
 
 class GitError extends Error {
-  constructor(message, { code = 'GIT', hint = null, details = '', stdout = '' } = {}) {
+  // data — структурированные подробности для интерфейса (например, список файлов при WIP_CONFLICT)
+  constructor(message, { code = 'GIT', hint = null, details = '', stdout = '', data = null } = {}) {
     super(message);
     this.name = 'GitError';
     this.code = code;
     this.hint = hint;
     this.details = details;
     this.stdout = stdout;
+    this.data = data;
   }
 
   toJSON() {
-    return { code: this.code, message: this.message, hint: this.hint, details: this.details };
+    return { code: this.code, message: this.message, hint: this.hint, details: this.details, ...(this.data ? { data: this.data } : {}) };
   }
 }
 

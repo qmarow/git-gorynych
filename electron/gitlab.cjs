@@ -6,6 +6,7 @@ const crypto = require('node:crypto');
 const { git } = require('./git.cjs');
 const { GitError } = require('./errors.cjs');
 const credentials = require('./credentials.cjs');
+const cicdSettings = require('./cicd/settings.cjs');
 
 const { serverKind } = credentials;
 
@@ -306,18 +307,23 @@ async function detectRemote(root, preferredRemote) {
   if (!parsed) return null;
   const isHttp = /^https?:\/\//i.test(url);
   // Для SSH-адреса сайт сервера — каким его указали в окне авторизации (свой сервер может быть с портом)
-  const base = (!isHttp && credentials.serverBase(parsed.host)?.replace(/\/+$/, '')) || `${parsed.protocol}://${parsed.host}${parsed.port ? `:${parsed.port}` : ''}`;
+  const siteBase = (!isHttp && credentials.serverBase(parsed.host)?.replace(/\/+$/, '')) || `${parsed.protocol}://${parsed.host}${parsed.port ? `:${parsed.port}` : ''}`;
+  // Свой адрес API из настроек CI/CD репозитория (сервер за прокси, другой порт): без хвоста /api/v4
+  const override = cicdSettings.get(parsed.host, parsed.path);
+  const base = override?.apiBase && (!override.provider || override.provider === 'gitlab') ? override.apiBase.replace(/\/api\/v4$/i, '') : siteBase;
   const remote = { remote: name, url, protocol: /^https?:\/\//i.test(url) ? 'https' : 'ssh', host: parsed.host, base, path: parsed.path };
   migrateLegacy(remote);
   const store = readStore();
   const hasCiToken = Boolean(store.repos[apiKey(remote)] || store.hosts[base]);
   // GitLab по имени хоста, по сохранённому токену или по типу, выбранному в окне входа (свой сервер с любым доменом)
   const kind = serverKind(parsed.host);
-  const looksLikeGitlab = kind === 'gitlab' || hasCiToken || (kind === null && /gitlab/i.test(parsed.host));
+  const looksLikeGitlab = override?.provider
+    ? override.provider === 'gitlab'
+    : kind === 'gitlab' || hasCiToken || (kind === null && /gitlab/i.test(parsed.host));
   return {
     kind: looksLikeGitlab ? 'gitlab' : null,
     ...remote,
-    webUrl: `${base}/${parsed.path}`,
+    webUrl: `${siteBase}/${parsed.path}`,
     token: looksLikeGitlab ? tokenStatus(remote) : { configured: false },
   };
 }
@@ -1182,6 +1188,13 @@ async function branchHeads(root, remoteName) {
 }
 
 module.exports = {
+  context,
+  request,
+  fetchAll,
+  canWrite,
+  jobSummary,
+  pipelineSummary,
+  aggregateStatus,
   branchHeads,
   createMergeRequest,
   lintCi,

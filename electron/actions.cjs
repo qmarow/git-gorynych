@@ -471,6 +471,138 @@ async function smartCheckout(cwd, target) {
   return { ...res, autoStash, restored };
 }
 
+/* =================== Checkout с незакоммиченными изменениями =================== */
+//
+// Как в GitKraken: если в рабочей папке есть изменения, checkout без стратегии не выполняется —
+// возвращается WIP_CONFLICT с подробностями, и интерфейс спрашивает, что с ними сделать:
+//   stash — спрятать под именем текущей ветки (вернутся, когда переключитесь обратно; это «умное переключение»);
+//   merge — перенести изменения в новую ветку (stash → switch → pop; при конфликте stash остаётся);
+//   force — выбросить изменения (перед этим копия, Undo вернёт).
+
+const MOVE_STASH = 'gorynych-move: ';
+const DISCARD_STASH = 'gorynych-discard: ';
+
+/** Коммит, на который указывает цель checkout (локальная ветка или remote-ветка) */
+async function targetCommit(cwd, target) {
+  const ref = target.branch ? `refs/heads/${target.branch}` : target.remoteBranch?.fullName ? `refs/remotes/${target.remoteBranch.fullName}` : null;
+  if (!ref) throw new GitError('Не указана ветка', { code: 'BAD_ARGS' });
+  // Remote-ветка, у которой уже есть локальная, — переключимся на локальную
+  if (target.remoteBranch) {
+    const local = (await git(cwd, ['rev-parse', '--verify', '--quiet', `refs/heads/${target.remoteBranch.name}`]).catch(() => '')).trim();
+    if (local) return local;
+  }
+  const hash = (await git(cwd, ['rev-parse', '--verify', '--quiet', `${ref}^{commit}`]).catch(() => '')).trim();
+  if (!hash) throw new GitError(`Ветка «${target.branch ?? target.remoteBranch.fullName}» не найдена`, { code: 'NOT_FOUND', hint: 'Возможно, её удалили — обновите список (Fetch)' });
+  return hash;
+}
+
+/** Незакоммиченные изменения и их пересечение с тем, что отличается в целевой ветке */
+async function inspectWip(cwd, target) {
+  const files = await readStatus(cwd);
+  if (!files.length) return null;
+  const state = await currentState(cwd);
+  const to = await targetCommit(cwd, target);
+  let changedInTarget = [];
+  if (state.headHash) {
+    changedInTarget = (await git(cwd, ['diff', '--name-only', '-z', state.headHash, to]).catch(() => '')).split('\0').filter(Boolean);
+  }
+  const changed = new Set(changedInTarget);
+  const paths = [...new Set(files.map((f) => f.path))];
+  return {
+    from: state.branchName ?? null,
+    to: target.branch ?? target.remoteBranch?.name,
+    files: paths.length,
+    list: files.slice(0, 50).map((f) => ({ path: f.path, status: f.status, untracked: Boolean(f.untracked), staged: Boolean(f.staged) })),
+    untracked: files.filter((f) => f.untracked).length,
+    conflicted: files.filter((f) => f.status === 'U').map((f) => f.path),
+    overlap: paths.filter((p) => changed.has(p)).slice(0, 50), // эти файлы изменены и в целевой ветке — при переносе возможен конфликт
+    detached: !state.branchName,
+  };
+}
+
+/** Перенести изменения в новую ветку: stash → switch → pop. При конфликте stash остаётся в списке */
+async function moveCheckout(cwd, target) {
+  const state = await currentState(cwd);
+  requireNoOperation(state, 'checkout');
+  const files = await readStatus(cwd);
+  if (files.some((f) => f.status === 'U')) {
+    throw new GitError('В рабочей папке есть неразрешённые конфликты', { code: 'CONFLICT', hint: 'Сначала решите их, затем переключайтесь.' });
+  }
+  let stashHash = null;
+  if (files.length) {
+    await git(cwd, ['stash', 'push', '--include-untracked', '-m', `${MOVE_STASH}${state.branchName ?? state.headHash?.slice(0, 7)}`]);
+    stashHash = (await git(cwd, ['rev-parse', 'stash@{0}'])).trim();
+  }
+  let res;
+  try {
+    res = await checkout(cwd, target);
+  } catch (error) {
+    if (stashHash) await popStash(cwd, 'stash@{0}').catch(() => {});
+    throw error;
+  }
+  let moved = null;
+  if (stashHash) {
+    try {
+      await popStash(cwd, 'stash@{0}');
+      moved = { files: new Set(files.map((f) => f.path)).size, conflict: false };
+    } catch (error) {
+      moved = { files: new Set(files.map((f) => f.path)).size, conflict: true, stash: stashHash, message: error.message };
+    }
+  }
+  return { ...res, moved };
+}
+
+/** Выбросить изменения и переключиться. Копия изменений — висячий stash-коммит: Undo применит её обратно */
+async function discardCheckout(cwd, target) {
+  const state = await currentState(cwd);
+  requireNoOperation(state, 'checkout');
+  const files = await readStatus(cwd);
+  let backup = null;
+  if (files.length) {
+    // Конфликтные файлы спрятать нельзя — сначала сбрасываем индекс
+    if (files.some((f) => f.status === 'U')) await git(cwd, ['reset', '-q']);
+    await git(cwd, ['stash', 'push', '--include-untracked', '-m', `${DISCARD_STASH}${state.branchName ?? ''}`]);
+    backup = (await git(cwd, ['rev-parse', 'stash@{0}'])).trim();
+    await git(cwd, ['stash', 'drop', '-q', 'stash@{0}']); // из списка убираем, коммит остаётся для Undo
+  }
+  try {
+    const res = await checkout(cwd, target);
+    return { ...res, discarded: backup ? { files: new Set(files.map((f) => f.path)).size, backup } : null };
+  } catch (error) {
+    if (backup) await git(cwd, ['stash', 'apply', '--index', backup]).catch(() => git(cwd, ['stash', 'apply', backup]).catch(() => {}));
+    throw error;
+  }
+}
+
+/**
+ * Checkout с выбранной стратегией для незакоммиченных изменений.
+ * strategy: 'stash' | 'merge' | 'force' | undefined. Без стратегии и с изменениями — WIP_CONFLICT.
+ */
+async function checkoutWithStrategy(cwd, p) {
+  const target = p.branch ? { branch: p.branch } : { remoteBranch: p.remoteBranch };
+  const state = await currentState(cwd);
+  requireNoOperation(state, 'checkout');
+  const targetName = target.branch ?? target.remoteBranch?.name;
+  // Уже на этой ветке — ничего не делаем
+  if (state.branchName && state.branchName === targetName) return { kind: 'checkout', res: await checkout(cwd, target) };
+  const strategy = p.strategy ?? (p.smart ? 'stash' : null);
+  if (strategy === 'stash') return { kind: 'smartCheckout', res: await smartCheckout(cwd, target) };
+  if (strategy === 'merge') return { kind: 'moveCheckout', res: await moveCheckout(cwd, target) };
+  if (strategy === 'force') return { kind: 'discardCheckout', res: await discardCheckout(cwd, target) };
+  if (strategy && strategy !== 'none') throw new GitError(`Неизвестная стратегия: ${strategy}`, { code: 'BAD_ARGS' });
+  const wip = await inspectWip(cwd, target);
+  // Папка чистая, но для целевой ветки что-то спрятано раньше («Спрятать и переключиться») — вернём при переходе
+  if (!wip && (await autoStashes(cwd)).some((x) => x.branch === targetName)) return { kind: 'smartCheckout', res: await smartCheckout(cwd, target) };
+  if (wip) {
+    throw new GitError(`В рабочей папке есть незакоммиченные изменения (${wip.files})`, {
+      code: 'WIP_CONFLICT',
+      hint: 'Выберите, что с ними сделать: спрятать, перенести в новую ветку или выбросить.',
+      data: wip,
+    });
+  }
+  return { kind: 'checkout', res: await checkout(cwd, target) };
+}
+
 /* =================== Своя git-команда (из конструктора действий) =================== */
 
 // Аргументы разбираются без shell: кавычки группируют, спецсимволы оболочки ничего не делают
@@ -1082,6 +1214,33 @@ const HANDLERS = {
       else await smartCheckout(cwd, { branch: e.to.branch });
     },
   },
+  // Перенос изменений — обратно тем же переносом
+  moveCheckout: {
+    async undo(cwd, e) {
+      if (!e.previous.branch) throw new GitError('Нельзя вернуться: до переключения был detached HEAD', { code: 'HISTORY_STALE' });
+      await moveCheckout(cwd, { branch: e.previous.branch });
+      if (e.created && (await branchTip(cwd, e.created.name)) === e.created.hash) await git(cwd, ['branch', '-D', e.created.name]);
+    },
+    async redo(cwd, e) {
+      if (e.created) await moveCheckout(cwd, { remoteBranch: { name: e.created.name, fullName: e.created.track } });
+      else await moveCheckout(cwd, { branch: e.to.branch });
+    },
+  },
+  // Выброшенные изменения: Undo возвращает ветку и применяет сохранённую копию
+  discardCheckout: {
+    async undo(cwd, e) {
+      if ((await readStatus(cwd)).length) {
+        throw new GitError('В рабочей папке уже есть изменения', { code: 'HISTORY_STALE', hint: 'Закоммитьте или спрячьте их, затем повторите Undo.' });
+      }
+      await switchTo(cwd, e.previous);
+      if (e.created && (await branchTip(cwd, e.created.name)) === e.created.hash) await git(cwd, ['branch', '-D', e.created.name]);
+      if (e.backup) await git(cwd, ['stash', 'apply', '--index', e.backup]).catch(() => git(cwd, ['stash', 'apply', e.backup]));
+    },
+    async redo(cwd, e) {
+      const res = await discardCheckout(cwd, e.created ? { remoteBranch: { name: e.created.name, fullName: e.created.track } } : { branch: e.to.branch });
+      e.backup = res.discarded?.backup ?? e.backup;
+    },
+  },
   checkout: {
     async undo(cwd, e) {
       await switchTo(cwd, e.previous);
@@ -1269,18 +1428,23 @@ const ACTIONS = {
     return res;
   },
   async checkout(cwd, p) {
-    if (p.smart) {
-      const res = await smartCheckout(cwd, p);
-      if (res.previous.branch !== res.to.branch || res.created) {
-        record(cwd, { type: 'smartCheckout', label: `Checkout ${posLabel(res.to)}`, previous: res.previous, to: res.to, created: res.created });
-      }
-      return res;
+    const { kind, res } = await checkoutWithStrategy(cwd, p);
+    const changed = res.previous.branch !== res.to.branch || res.created;
+    if (changed) {
+      const base = { label: `Checkout ${posLabel(res.to)}`, previous: res.previous, to: res.to, created: res.created };
+      if (kind === 'smartCheckout') record(cwd, { type: 'smartCheckout', ...base });
+      else if (kind === 'moveCheckout') record(cwd, { type: 'moveCheckout', ...base, label: `Checkout ${posLabel(res.to)} с переносом изменений` });
+      else if (kind === 'discardCheckout') record(cwd, { type: 'discardCheckout', ...base, backup: res.discarded?.backup ?? null, label: `Checkout ${posLabel(res.to)} без изменений` });
+      else record(cwd, { type: 'checkout', ...base });
     }
-    const res = await checkout(cwd, p);
-    if (res.previous.branch !== res.to.branch || res.created) {
-      record(cwd, { type: 'checkout', label: `Checkout ${posLabel(res.to)}`, ...res });
-    }
-    return res;
+    // Новый HEAD — чтобы интерфейс сразу выделил коммит и прокрутил к нему
+    const head = (await git(cwd, ['rev-parse', 'HEAD']).catch(() => '')).trim() || null;
+    return { ...res, strategy: kind === 'checkout' ? null : kind.replace('Checkout', ''), head };
+  },
+  /** Что будет с незакоммиченными изменениями при переходе на ветку (для окна выбора) */
+  async checkoutPreview(cwd, p) {
+    const target = p.branch ? { branch: p.branch } : { remoteBranch: p.remoteBranch };
+    return { wip: await inspectWip(cwd, target) };
   },
   async createBranch(cwd, p) {
     const res = await createBranch(cwd, p);

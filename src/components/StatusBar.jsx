@@ -2,9 +2,11 @@ import { AlertTriangle, ArrowDown, ArrowUp, Crosshair, FolderGit2, GitBranch, Lo
 import { openFolderLabel, openTerminalLabel } from '../lib/platform.js';
 import { fullDate, relativeTime } from '../lib/format.js';
 import { BACKGROUND_SEC, syncModeById, useSyncStatus } from '../lib/syncStatus.js';
+import { ACTIVE_STATUSES, StatusIcon, statusInfo } from './PipelineStatus.jsx';
+import { Duration } from './ci/common.jsx';
 
 // Строка состояния: текущая ветка и активный коммит (HEAD). Клик — перейти к HEAD в графе.
-export default function StatusBar({ repo, onJumpToHead, sync, onOpenFolder, onOpenTerminal, onPathMenu }) {
+export default function StatusBar({ repo, onJumpToHead, sync, onOpenFolder, onOpenTerminal, onPathMenu, pipeline = null, pipelineLabel = null, onOpenPipeline }) {
   const head = repo.commits.find((c) => c.hash === repo.headHash) ?? null;
   const branch = repo.localBranches.find((b) => b.name === repo.currentBranch) ?? null;
 
@@ -73,6 +75,21 @@ export default function StatusBar({ repo, onJumpToHead, sync, onOpenFolder, onOp
 
       {/* Автообновление: слежение за папкой + фоновая проверка сервера */}
       {sync && <SyncControls sync={sync} hasRemotes={repo.remotes.length > 0} />}
+
+      {/* Последний пайплайн текущей ветки */}
+      {pipeline && (
+        <button
+          onClick={() => onOpenPipeline?.(pipeline)}
+          data-testid="status-pipeline"
+          data-status={pipeline.status}
+          data-tip={`${pipelineLabel ?? 'CI/CD'}: последний пайплайн ветки ${repo.currentBranch} — #${pipeline.number ?? pipeline.id}, ${statusInfo(pipeline.status).label}${pipeline.name ? `\n${pipeline.name}` : ''}\nКлик — ${pipeline.status === 'failed' ? 'лог упавшего задания' : 'подробности'}`}
+          className="flex shrink-0 items-center gap-1 rounded px-1.5 py-0.5 hover:bg-gk-hover hover:text-gk-text"
+        >
+          <StatusIcon status={pipeline.status} size={12} title="" />
+          <span style={{ color: statusInfo(pipeline.status).color }}>{statusInfo(pipeline.status).label}</span>
+          {ACTIVE_STATUSES.has(pipeline.status) && pipeline.startedAt && <Duration startedAt={pipeline.startedAt} running className="text-gk-dim" />}
+        </button>
+      )}
 
       {repo.operation && (
         <span className="shrink-0 rounded bg-gk-yellow/15 px-1.5 text-gk-yellow">{repo.operation} в процессе</span>

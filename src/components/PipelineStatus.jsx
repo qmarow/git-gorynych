@@ -1,4 +1,4 @@
-// Статусы пайплайнов и заданий GitLab: иконки в духе GitLab, подписи, форматирование времени
+// Статусы пайплайнов и заданий (GitLab, GitHub, Gitea, Bitbucket — после нормализации): иконки в духе GitLab, подписи, форматирование времени
 import { readable } from '../lib/scheme.js';
 
 export const STATUS = {
@@ -30,6 +30,17 @@ export const SOURCE_LABELS = {
   pipeline: 'из другого проекта',
   chat: 'из чата',
   external: 'внешний',
+  // GitHub, Gitea, Bitbucket
+  pull_request: 'pull request',
+  pull_request_target: 'pull request',
+  workflow_dispatch: 'запущен вручную',
+  repository_dispatch: 'через API',
+  release: 'релиз',
+  workflow_run: 'после другого workflow',
+  workflow_call: 'вызван workflow',
+  manual: 'запущен вручную',
+  pullrequest: 'pull request',
+  commit: 'push',
 };
 
 export const FAILURE_REASONS = {

@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import {
   AlertTriangle,
+  Archive,
   Check,
   Cloud,
   GitCommitHorizontal,
@@ -12,10 +14,12 @@ import {
   KeyRound,
   Loader2,
   Lock,
+  MoveRight,
   RefreshCw,
   ShieldAlert,
   ShieldCheck,
   Tag,
+  Trash2,
   X,
 } from 'lucide-react';
 import { kb } from '../lib/platform.js';
@@ -24,12 +28,18 @@ import { kb } from '../lib/platform.js';
 
 export function Modal({ title, icon: Icon, iconClass = 'text-gk-blue', onClose, children, footer, width = 460 }) {
   useEffect(() => {
-    const onKey = (e) => e.key === 'Escape' && onClose();
+    // Esc закрывает только это окно: помечаем событие, чтобы панели под окном (CI/CD, diff) не закрылись следом
+    const onKey = (e) => {
+      if (e.key !== 'Escape' || e.defaultPrevented) return;
+      e.preventDefault();
+      onClose();
+    };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, [onClose]);
 
-  return (
+  // В портале на body: окно из панели (CI/CD, история файла) не попадает под её контекст наложения и анимации
+  return createPortal(
     <div
       className="fixed inset-0 z-40 flex animate-fade-in items-start justify-center bg-gk-scrim pt-[12vh] backdrop-blur-[3px]"
       onMouseDown={(e) => e.target === e.currentTarget && onClose()}
@@ -46,7 +56,8 @@ export function Modal({ title, icon: Icon, iconClass = 'text-gk-blue', onClose, 
         <div className="min-h-0 space-y-3 overflow-y-auto px-4 py-4 text-[13px]">{children}</div>
         {footer && <div className="flex shrink-0 justify-end gap-2 border-t border-gk-border px-4 py-3">{footer}</div>}
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }
 
@@ -732,6 +743,138 @@ export function RenameBranchDialog({ from, upstream, busy, error, onClose, onSub
         )}
       </p>
       {error && <ErrorBox error={error} />}
+    </Modal>
+  );
+}
+
+/* =================== Checkout с незакоммиченными изменениями =================== */
+
+const WIP_STATUS = { M: ['M', '#f2ca33'], A: ['A', '#3cf0a0'], D: ['D', '#f25d5d'], R: ['R', '#2f9bff'], U: ['U', '#ff8c3a'] };
+
+/**
+ * Что сделать с незакоммиченными изменениями перед переключением ветки (как в GitKraken):
+ * спрятать (вернутся при возврате), перенести в новую ветку или выбросить.
+ * wip — данные WIP_CONFLICT из main-процесса: { from, to, files, list, untracked, overlap, conflicted, detached }
+ */
+export function CheckoutWipDialog({ wip, busy, onChoose, onClose }) {
+  const overlap = wip.overlap ?? [];
+  const blocked = (wip.conflicted ?? []).length > 0;
+  // Рекомендация: без пересечений — перенести (как обычный git switch), с пересечениями — спрятать
+  const recommended = blocked ? 'force' : overlap.length ? 'stash' : 'merge';
+  const [choice, setChoice] = useState(recommended);
+  const [remember, setRemember] = useState(false);
+  const from = wip.from ?? 'detached HEAD';
+  const options = [
+    {
+      id: 'stash',
+      icon: Archive,
+      title: 'Спрятать и переключиться',
+      term: 'Stash',
+      text: wip.detached
+        ? 'Изменения уйдут в stash — достать их можно из списка Stash.'
+        : `Изменения спрячутся под именем ${from} и сами вернутся, когда вы переключитесь обратно на ${from}.`,
+      disabled: blocked ? 'Сначала решите конфликты в файлах с пометкой U' : null,
+      tone: 'text-gk-yellow',
+    },
+    {
+      id: 'merge',
+      icon: MoveRight,
+      title: `Перенести изменения в ${wip.to}`,
+      term: 'Move changes',
+      text: overlap.length
+        ? `${overlap.length} ${overlap.length === 1 ? 'файл изменён' : 'файлов изменено'} и в ${wip.to} — возможен конфликт. Если он будет, копия изменений останется в Stash.`
+        : `Изменения поедут вместе с вами: в ${wip.to} они не пересекаются с чужими правками.`,
+      disabled: blocked ? 'Сначала решите конфликты в файлах с пометкой U' : null,
+      tone: 'text-gk-blue',
+    },
+    {
+      id: 'force',
+      icon: Trash2,
+      title: 'Выбросить изменения и переключиться',
+      term: 'Discard',
+      text: 'Рабочая папка станет как в коммите ветки. Ctrl+Z вернёт и ветку, и выброшенные изменения.',
+      tone: 'text-gk-red',
+      danger: true,
+    },
+  ];
+  const submit = (id = choice) => !busy && onChoose(id, remember && id !== 'force');
+  return (
+    <Modal
+      title={`Переключиться на ${wip.to}`}
+      icon={GitBranch}
+      onClose={onClose}
+      width={540}
+      footer={
+        <>
+          <label className="mr-auto flex cursor-pointer items-center gap-2 text-[12px] text-gk-muted" data-tip="Запомнить выбор для следующих переключений. Изменить — в Настройки → Ветки">
+            <input type="checkbox" checked={remember && choice !== 'force'} disabled={choice === 'force'} onChange={(e) => setRemember(e.target.checked)} className="accent-gk-blue" data-testid="wip-remember" />
+            Больше не спрашивать
+          </label>
+          <Button onClick={onClose}>Отмена</Button>
+          <Button variant={choice === 'force' ? 'danger' : 'primary'} disabled={busy} onClick={() => submit()} data-testid="wip-submit">
+            {busy ? <Loader2 size={13} className="animate-spin" /> : null}
+            {choice === 'stash' ? 'Спрятать и переключиться' : choice === 'merge' ? 'Перенести и переключиться' : 'Выбросить и переключиться'}
+          </Button>
+        </>
+      }
+    >
+      <div data-testid="wip-dialog" data-recommended={recommended} className="space-y-3">
+        <p className="text-gk-muted">
+          В <span className="font-medium text-gk-text">{from}</span> есть незакоммиченные изменения: {wip.files}{' '}
+          {wip.files === 1 ? 'файл' : wip.files < 5 ? 'файла' : 'файлов'}
+          {wip.untracked ? `, из них новых: ${wip.untracked}` : ''}. Что с ними сделать?
+        </p>
+        <div className="max-h-28 overflow-y-auto rounded-md border border-gk-border bg-gk-fg/[0.02] px-2 py-1 font-mono text-[11.5px]" data-testid="wip-files">
+          {(wip.list ?? []).map((f) => {
+            const [letter, color] = WIP_STATUS[f.untracked ? 'A' : f.status] ?? WIP_STATUS.M;
+            const hit = overlap.includes(f.path);
+            return (
+              <div key={f.path} className="flex items-center gap-2 py-0.5" data-overlap={hit ? 'true' : undefined}>
+                <span className="w-3 shrink-0 text-center font-bold" style={{ color }}>
+                  {letter}
+                </span>
+                <span className="min-w-0 flex-1 truncate text-gk-text">{f.path}</span>
+                {hit && <span className="shrink-0 font-sans text-[10.5px] text-gk-yellow" data-tip={`Изменён и в ${wip.to}`}>есть и в {wip.to}</span>}
+              </div>
+            );
+          })}
+          {wip.files > (wip.list ?? []).length && <div className="py-0.5 font-sans text-gk-dim">… и ещё {wip.files - wip.list.length}</div>}
+        </div>
+        <div className="space-y-1.5" role="radiogroup">
+          {options.map((o) => {
+            const on = choice === o.id;
+            return (
+              <button
+                key={o.id}
+                type="button"
+                role="radio"
+                aria-checked={on}
+                disabled={Boolean(o.disabled)}
+                data-testid={`wip-${o.id}`}
+                data-tip={o.disabled ?? undefined}
+                onClick={() => setChoice(o.id)}
+                onDoubleClick={() => !o.disabled && submit(o.id)}
+                className={`flex w-full items-start gap-3 rounded-lg border px-3 py-2.5 text-left transition-colors disabled:cursor-not-allowed disabled:opacity-40 ${
+                  on ? (o.danger ? 'border-gk-red/50 bg-gk-red/[0.07]' : 'border-gk-blue/50 bg-gk-blue/[0.08]') : 'border-gk-border hover:bg-gk-hover'
+                }`}
+              >
+                <span className={`mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded-full border ${on ? (o.danger ? 'border-gk-red' : 'border-gk-blue') : 'border-gk-dim'}`}>
+                  {on && <span className={`h-2 w-2 rounded-full ${o.danger ? 'bg-gk-red' : 'bg-gk-blue'}`} />}
+                </span>
+                <o.icon size={15} className={`mt-0.5 shrink-0 ${o.tone}`} />
+                <span className="min-w-0 flex-1">
+                  <span className="flex items-center gap-2 text-[13px] font-medium text-gk-strong">
+                    {o.title}
+                    <span className="text-[11px] font-normal text-gk-dim">{o.term}</span>
+                    {o.id === recommended && <span className="rounded bg-gk-green/15 px-1.5 text-[10.5px] font-normal text-gk-green">рекомендуем</span>}
+                  </span>
+                  <span className="mt-0.5 block text-[12px] leading-snug text-gk-muted">{o.text}</span>
+                </span>
+              </button>
+            );
+          })}
+        </div>
+      </div>
     </Modal>
   );
 }

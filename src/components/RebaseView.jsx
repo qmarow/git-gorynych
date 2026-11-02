@@ -186,7 +186,7 @@ export default function RebaseView({ repoPath, session, hidden, busy, onClose, o
         return;
       }
       if (e.key === 'Escape') {
-        onClose();
+        if (!e.defaultPrevented) onClose();
         return;
       }
       if (!n) return;

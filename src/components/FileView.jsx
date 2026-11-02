@@ -414,7 +414,7 @@ function BlameMode({ repoPath, view, onChange, onClose, onLocate, isLoaded, hidd
   useEffect(() => {
     if (hidden) return undefined;
     const onKey = (e) => {
-      if (e.key !== 'Escape' || document.querySelector('.fixed.inset-0')) return;
+      if (e.key !== 'Escape' || e.defaultPrevented || document.querySelector('.fixed.inset-0')) return;
       if (pop) setPop(null);
       else if (stack.length) back();
       else onClose();

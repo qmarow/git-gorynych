@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { AlertTriangle, Check, ChevronDown, FileCode, LayoutTemplate, Pencil, Plus, RotateCcw, Save, Settings2, Ticket, Trash2, X } from 'lucide-react';
+import { AlertTriangle, Check, ChevronDown, CircleSlash, FileCode, LayoutTemplate, Pencil, Plus, RotateCcw, Save, Settings2, Ticket, Trash2, X } from 'lucide-react';
 import {
   CC_TYPES,
   DEFAULT_TEMPLATES as BUILTIN_TEMPLATES,
@@ -115,6 +115,15 @@ export default function CommitForm({ repoPath, branch, stagedFiles, busy, onComm
 
   const len = summary.trim().length;
   const showChips = prefs.chips || ticket;
+  // [skip ci] / [ci skip] — коммит не запускает пайплайн (понимают GitLab, GitHub, Gitea, Bitbucket)
+  const SKIP_RE = /\s*\[(?:skip ci|ci skip)\]/i;
+  const skipCi = SKIP_RE.test(summary) || SKIP_RE.test(description);
+  const toggleSkipCi = () =>
+    setDraft((d) =>
+      skipCi
+        ? { ...d, summary: d.summary.replace(SKIP_RE, ''), description: d.description.replace(SKIP_RE, '') }
+        : { ...d, summary: `${d.summary.trimEnd()} [skip ci]` },
+    );
 
   return (
     <div className="space-y-2 border-t border-gk-border p-3">
@@ -253,6 +262,19 @@ export default function CommitForm({ repoPath, branch, stagedFiles, busy, onComm
         aria-label="Описание"
         className={`${inputCls} resize-y`}
       />
+      <div className="flex items-center">
+        <button
+          onClick={toggleSkipCi}
+          aria-pressed={skipCi}
+          data-testid="skip-ci"
+          data-tip={skipCi ? 'В сообщении есть [skip ci] — пайплайн для этого коммита не запустится. Клик — убрать' : 'Добавить [skip ci]: коммит не запустит пайплайн CI/CD (GitLab, GitHub, Gitea, Bitbucket)'}
+          className={`flex h-[22px] items-center gap-1 rounded-md px-1.5 text-[11px] ring-1 transition-colors ${
+            skipCi ? 'bg-gk-yellow/15 text-gk-yellow ring-gk-yellow/40' : 'text-gk-dim ring-gk-border hover:text-gk-text'
+          }`}
+        >
+          <CircleSlash size={11} /> Пропустить CI <span className="font-mono">[skip ci]</span>
+        </button>
+      </div>
       <button
         onClick={submit}
         disabled={!canCommit}

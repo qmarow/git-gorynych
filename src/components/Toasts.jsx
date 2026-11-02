@@ -29,6 +29,18 @@ function Toast({ toast, onClose }) {
         <div className="min-w-0 flex-1 text-[13px]">
           <div className="font-medium text-gk-text">{kb(toast.title)}</div>
           {toast.hint && <div className="mt-0.5 text-xs leading-relaxed text-gk-muted">{kb(toast.hint)}</div>}
+          {toast.action && (
+            <button
+              onClick={() => {
+                toast.action.onClick();
+                onClose();
+              }}
+              data-testid="toast-action"
+              className="mt-1.5 rounded bg-gk-blue/15 px-2 py-0.5 text-[12px] text-gk-blue hover:bg-gk-blue/25"
+            >
+              {toast.action.label}
+            </button>
+          )}
           {toast.details && (
             <>
               <button

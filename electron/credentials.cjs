@@ -512,12 +512,14 @@ const API_TOKEN_PREFIX = /^(glpat-|gloas-|glsoat-)/;
  * repo — свой вход репозитория (токен или пароль-токен), shared — общий вход сервера (сохранён до привязки),
  * other — вход есть, но для API не годится (SSH-ключ, обычный пароль).
  */
-function apiLoginFor(hostname, repoPath) {
+function apiLoginFor(hostname, repoPath, kind = 'gitlab') {
   const h = String(hostname ?? '').toLowerCase();
   const p = String(repoPath ?? '').toLowerCase().replace(/^\/+|\/+$/g, '').replace(/\.git$/i, '');
   const store = readStore();
-  const usable = (entry) =>
-    entry && (Boolean(entry.apiToken) || entry.method === 'token' || (entry.method === 'password' && API_TOKEN_PREFIX.test(decrypt(entry.secret) ?? '')));
+  // GitLab принимает в API только токены; GitHub для git и так требует токен вместо пароля;
+  // Gitea/Forgejo и Bitbucket принимают в API логин и пароль (пароль приложения) — Basic-авторизация
+  const passwordOk = (entry) => (kind === 'gitlab' ? API_TOKEN_PREFIX.test(decrypt(entry.secret) ?? '') : Boolean(entry.secret));
+  const usable = (entry) => entry && (Boolean(entry.apiToken) || entry.method === 'token' || (entry.method === 'password' && passwordOk(entry)));
   const pack = (key, entry, shared = false) => {
     const viaApiToken = Boolean(entry.apiToken);
     const secret = viaApiToken ? decrypt(entry.apiToken) : decrypt(entry.secret);

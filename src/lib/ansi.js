@@ -1,5 +1,6 @@
-// Разбор лога задания GitLab: ANSI-цвета, перезапись строки через \r и сворачиваемые секции
-// (section_start:<время>:<имя>[collapsed=true] … section_end:<время>:<имя>)
+// Разбор лога задания: ANSI-цвета, перезапись строки через \r и сворачиваемые секции —
+// GitLab (section_start:<время>:<имя>[collapsed=true] … section_end), GitHub/Gitea (##[group] / ::group:: … ##[endgroup]),
+// метки времени GitHub в начале строк и аннотации ##[error] / ##[warning].
 
 const FG = {
   30: '#6b7385', 31: '#ff6b6b', 32: '#3cf0a0', 33: '#f5c451', 34: '#5aa2ff', 35: '#c792ea', 36: '#56d4e0', 37: '#d7dae0',
@@ -66,6 +67,20 @@ function collapseCarriage(text) {
 /**
  * Возвращает дерево: { children: [ { type:'line', n, segs } | { type:'section', key, name, title:segs, n, duration, collapsed, children } ] }
  */
+// Строка с ошибкой — для кнопки «К первой ошибке»
+export const ERROR_LINE = /(^|[\s:>\]])(error:|error\b(?=\s*[:!])|fatal:|failed\b|fail\b|exception\b|traceback \(most recent|exit code [1-9]|exit status [1-9]|err!|✗|✖)/i;
+const TS = /^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d(?:\.\d+)?Z ?/;
+const GH_CMD = /^(?:##\[(group|endgroup|error|warning|notice|debug|command|section)\]|::(group|endgroup|error|warning|notice|debug)(?: [^:]*)?::)(.*)$/;
+const ANNOTATION = {
+  error: { fg: '#ff6b6b', bold: true, prefix: 'Ошибка: ' },
+  warning: { fg: '#f5c451', bold: true, prefix: 'Предупреждение: ' },
+  notice: { fg: '#5aa2ff', bold: false, prefix: '' },
+  debug: { fg: null, dim: true, prefix: '' },
+  command: { fg: '#56d4e0', bold: false, prefix: '' },
+  section: { fg: '#56d4e0', bold: true, prefix: '' },
+};
+const plainOf = (segs) => segs.map((s) => s.text).join('');
+
 export function parseLog(text) {
   const root = { type: 'root', children: [] };
   const stack = [root];
@@ -75,16 +90,38 @@ export function parseLog(text) {
   const marker = /section_(start|end):(\d+):([A-Za-z0-9_.\-]+)(\[[^\]]*\])?\r?(?:\x1b\[0?K)*/g;
 
   const top = () => stack[stack.length - 1];
-  const pushLine = (raw) => {
-    const segs = toSegments(collapseCarriage(raw), state);
+  const pushLine = (raw, extra = null) => {
+    let segs = toSegments(collapseCarriage(raw), state);
+    if (extra) segs = [{ text: extra.prefix ?? '', fg: extra.fg, bold: extra.bold, dim: extra.dim }, ...segs.map((x) => ({ ...x, fg: x.fg ?? extra.fg, dim: x.dim || extra.dim }))].filter((x) => x.text);
     n += 1;
-    top().children.push({ type: 'line', n, segs });
+    const node = { type: 'line', n, segs };
+    if (extra?.error || ERROR_LINE.test(plainOf(segs))) node.error = true;
+    top().children.push(node);
   };
 
   const lines = text.replace(/\r\n/g, '\n').split('\n');
   if (lines.length && lines[lines.length - 1] === '') lines.pop();
+  // GitHub/Gitea: у каждой строки метка времени — уберём, если она у большинства строк
+  const stamped = lines.length > 0 && lines.filter((l) => TS.test(l)).length >= lines.length * 0.6;
 
-  for (const line of lines) {
+  for (let line of lines) {
+    if (stamped) line = line.replace(TS, '');
+    const gh = line.startsWith('##[') || line.startsWith('::') ? GH_CMD.exec(line) : null;
+    if (gh) {
+      const kind = gh[1] ?? gh[2];
+      const rest = gh[3];
+      if (kind === 'group') {
+        n += 1;
+        const section = { type: 'section', group: true, key: key++, name: `::group${key}`, start: null, end: null, duration: null, collapsed: true, title: toSegments(rest || 'Группа', { ...state }), n, children: [] };
+        top().children.push(section);
+        stack.push(section);
+      } else if (kind === 'endgroup') {
+        if (stack.length > 1 && top().group) stack.pop();
+      } else {
+        pushLine(rest, { ...ANNOTATION[kind], error: kind === 'error' });
+      }
+      continue;
+    }
     marker.lastIndex = 0;
     if (!line.includes('section_')) {
       pushLine(line);

@@ -74,7 +74,7 @@ class Positions {
         const lineCounter = new YAML.LineCounter();
         let doc = null;
         try {
-          doc = YAML.parseDocument(text, { lineCounter, uniqueKeys: false, customTags: [{ tag: '!reference', collection: 'seq', resolve: (s) => s }] });
+          doc = YAML.parseDocument(text, { lineCounter, uniqueKeys: false, logLevel: 'error', customTags: [{ tag: '!reference', collection: 'seq', resolve: (s) => s }] });
         } catch {
           doc = null;
         }

@@ -27,7 +27,8 @@ export const laneColor = (lane) => {
   const lanes = laneColors();
   return lanes[lane % lanes.length];
 };
-export const laneX = (lane, m = DEFAULT_METRICS) => GRAPH_PADDING + lane * m.laneW + m.laneW / 2;
+// maxX — правый край узкой колонки (см. fitMetrics): дорожки, которые не помещаются, прижимаются к нему, как в GitKraken
+export const laneX = (lane, m = DEFAULT_METRICS) => Math.min(GRAPH_PADDING + lane * m.laneW + m.laneW / 2, m.maxX ?? Infinity);
 export const rowY = (row, m = DEFAULT_METRICS) => row * m.rowH + m.rowH / 2;
 
 function takeFreeLane(lanes) {
@@ -150,4 +151,20 @@ export function edgePath(edge, m = DEFAULT_METRICS) {
 
 export function graphWidth(laneCount, m = DEFAULT_METRICS) {
   return GRAPH_PADDING * 2 + laneCount * m.laneW;
+}
+
+/**
+ * Метрики графа под фактическую ширину колонки «Граф». Размер узлов и шаг дорожек не меняются:
+ * если все дорожки не помещаются, те, что правее края, прижимаются к нему и двигаются вместе с границей колонки
+ * (узлы и линии), как в GitKraken. maxX — x прижатых узлов (узел с кольцом HEAD целиком виден).
+ */
+export function fitMetrics(m, laneCount, width, nodeR = m.nodeR) {
+  const lanes = Math.max(1, laneCount);
+  if (!(width > 0) || graphWidth(lanes, m) <= width) return m;
+  const first = GRAPH_PADDING + m.laneW / 2;
+  // Край колонки «толкает» дорожки плавно: x прижатых дорожек следует за границей пиксель в пиксель,
+  // а дорожки левее края остаются на своих местах, пока граница до них не дойдёт
+  const maxX = Math.max(first, width - Math.max(nodeR + 5, m.laneW / 2));
+  const visibleLanes = Math.max(1, Math.floor((maxX - first) / m.laneW) + 1);
+  return { ...m, maxX, visibleLanes, hiddenLanes: lanes - visibleLanes, fitted: true };
 }

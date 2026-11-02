@@ -17,6 +17,8 @@ const FS = '\x1f';
 const SYSTEMS = [
   { id: 'gitlab', title: 'GitLab CI', files: ['.gitlab-ci.yml', '.gitlab-ci.yaml'] },
   { id: 'github', title: 'GitHub Actions', dir: '.github/workflows', ext: /\.ya?ml$/i },
+  { id: 'gitea', title: 'Gitea Actions', dir: '.gitea/workflows', ext: /\.ya?ml$/i },
+  { id: 'forgejo', title: 'Forgejo Actions', dir: '.forgejo/workflows', ext: /\.ya?ml$/i },
   { id: 'jenkins', title: 'Jenkins', files: ['Jenkinsfile'] },
   { id: 'bitbucket', title: 'Bitbucket Pipelines', files: ['bitbucket-pipelines.yml'] },
   { id: 'circleci', title: 'CircleCI', files: ['.circleci/config.yml', '.circleci/config.yaml'] },
@@ -71,6 +73,7 @@ function parseYaml(text, file) {
     customTags: [REFERENCE_TAG],
     prettyErrors: true,
     uniqueKeys: false,
+    logLevel: 'error', // без предупреждений yaml в консоль (ключ-коллекция и т. п. — ошибки и так в errors)
   });
   const errors = [...doc.errors, ...doc.warnings.filter((w) => w.code !== 'TAG_RESOLVE_FAILED')].map((e) => ({
     file,
@@ -606,7 +609,10 @@ function loadGithub(root, file) {
       source: file,
       line: jobLines[id] ?? null,
       kind: cfg.uses ? 'trigger' : 'job',
-      runsOn: cfg['runs-on'] ? asArray(cfg['runs-on']).join(', ') : null,
+      runsOn: cfg['runs-on'] ? asArray(isPlainObject(cfg['runs-on']) ? cfg['runs-on'].labels ?? cfg['runs-on'].group : cfg['runs-on']).join(', ') : null,
+      // Метки раннера списком (для сверки с живыми раннерами); группа раннеров — отдельно
+      runsOnLabels: cfg['runs-on'] == null ? null : asArray(isPlainObject(cfg['runs-on']) ? cfg['runs-on'].labels : cfg['runs-on']).map(String),
+      runsOnGroup: isPlainObject(cfg['runs-on']) && cfg['runs-on'].group ? String(cfg['runs-on'].group) : null,
       image: cfg.container ? imageName(cfg.container) : null,
       condition: cfg.if != null ? String(cfg.if) : null,
       needs: cfg.needs ? asArray(cfg.needs).map((n) => ({ job: String(n) })) : null,
@@ -686,6 +692,7 @@ function loadBitbucket(root, file) {
       imageInherited: s.image ? false : defaultImage ? 'глобально' : false,
       manual: s.trigger === 'manual',
       when: s.trigger === 'manual' ? 'manual' : 'on_success',
+      runsOnLabels: s['runs-on'] ? asArray(s['runs-on']).map(String) : null,
       script: s.script ? { lines: scriptLines(s.script), inherited: false } : null,
       afterScript: s['after-script'] ? { lines: scriptLines(s['after-script']), inherited: false } : null,
       environment: s.deployment ? { name: s.deployment } : null,
@@ -1003,6 +1010,8 @@ function loadGeneric(root, file) {
 const LOADERS = {
   gitlab: loadGitlab,
   github: loadGithub,
+  gitea: loadGithub,
+  forgejo: loadGithub,
   bitbucket: loadBitbucket,
   circleci: loadCircle,
   azure: loadAzure,
@@ -1088,4 +1097,4 @@ async function loadCi(root, requestedFile, { skipHistory = false } = {}) {
   };
 }
 
-module.exports = { detectCi, loadCi, previewCi };
+module.exports = { detectCi, loadCi, previewCi, parseYaml };

@@ -55,7 +55,7 @@ async function checkCi(root, systemId, result) {
       const [def, branches] = await Promise.all([defaultBranch(root), branchSet(root)]);
       defBranch = def;
       ({ scenarios } = checkGitlab(result, { ...ctx, defBranch: def, branches }));
-    } else if (systemId === 'github') checkGithub(result, ctx);
+    } else if (systemId === 'github' || systemId === 'gitea' || systemId === 'forgejo') checkGithub(result, ctx);
     else if (systemId === 'bitbucket') checkBitbucket(result, ctx);
     else if (systemId === 'jenkins') checkJenkins(result, ctx);
     else if (systemId === 'circleci') checkCircle(result, ctx);
@@ -64,7 +64,7 @@ async function checkCi(root, systemId, result) {
     add({ id: 'check-failed', severity: 'info', title: 'Проверка прервалась', when: '—', how: 'Часть проверок не выполнена.', why: String(error?.message ?? error), fix: 'Сообщите об ошибке — проверка конфигурации не должна падать.' });
   }
   // Предупреждения разбора, которые проверки не покрывают (для систем без подробной проверки)
-  if (!['gitlab', 'github', 'bitbucket', 'jenkins'].includes(systemId)) {
+  if (!['gitlab', 'github', 'gitea', 'forgejo', 'bitbucket', 'jenkins'].includes(systemId)) {
     for (const w of result.warnings ?? []) add({ id: 'loader-warning', severity: 'warning', title: w, when: '—', how: 'Схема пайплайна может быть показана неполно.', why: w, fix: 'Проверьте файл.', file: result.files?.[0]?.path ?? null });
   }
 

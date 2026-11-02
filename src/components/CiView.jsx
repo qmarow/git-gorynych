@@ -30,7 +30,10 @@ import {
 } from 'lucide-react';
 import { relativeTime } from '../lib/format.js';
 import { highlight } from '../lib/syntax.jsx';
-import GitLabPanel from './GitLabPanel.jsx';
+import CiPanel from './ci/CiPanel.jsx';
+import DagView from './ci/DagView.jsx';
+import { describeCron } from '../lib/cron.js';
+import { TAG_KEYS, snippetsFor } from '../lib/ciSnippets.js';
 import CiEditor from './ci/CiEditor.jsx';
 import JobForm from './ci/JobForm.jsx';
 import { ChoiceDialog, DraftBar, DraftDiff, LintPanel } from './ci/DraftTools.jsx';
@@ -43,6 +46,8 @@ const api = window.api;
 const SYSTEM_COLORS = {
   gitlab: '#fc6d26',
   github: '#8b9cff',
+  gitea: '#609926',
+  forgejo: '#fb923c',
   jenkins: '#d24939',
   bitbucket: '#2684ff',
   circleci: '#3cf0a0',
@@ -66,7 +71,7 @@ const MODES = [
   { id: 'check', label: 'Проверка', icon: ListChecks },
   { id: 'file', label: 'Файл', icon: FileCode },
   { id: 'history', label: 'История', icon: History },
-  { id: 'pipelines', label: 'Пайплайны', icon: Zap, gitlab: true },
+  { id: 'pipelines', label: 'Пайплайны', icon: Zap, remote: true },
 ];
 
 /**
@@ -88,12 +93,14 @@ export default function CiView({
   onForgeChanged,
   onEditLogin,
   notify,
+  focusFailed,
 }) {
   const [file, setFile] = useState(initialFile ?? null);
   const [state, setState] = useState({ loading: true, data: null, error: null });
   const [reloadKey, setReloadKey] = useState(0);
   const [mode, setMode] = useState(initialMode ?? 'scheme');
-  const isGitlab = forge?.kind === 'gitlab';
+  const isGitlab = forge?.provider === 'gitlab';
+  const hasRemote = Boolean(forge);
   useEffect(() => {
     if (initialMode) setMode(initialMode);
   }, [initialMode, initialPipelineId]);
@@ -168,7 +175,36 @@ export default function CiView({
   const pipeline = current?.pipelines.find((p) => p.id === pipelineId) ?? current?.pipelines[0] ?? null;
   const allJobs = useMemo(() => (pipeline ? pipeline.stages.flatMap((s) => s.jobs) : []), [pipeline]);
   const job = allJobs.find((j) => j.id === jobId) ?? null;
-  const check = current?.check ?? null;
+  const baseCheck = current?.check ?? null;
+
+  // Сверка tags / runs-on с живыми раннерами провайдера (по черновику тоже); метки живых раннеров — для автодополнения
+  const [runnerCheck, setRunnerCheck] = useState(null);
+  const tagSystems = ['gitlab', 'github', 'gitea', 'forgejo', 'bitbucket'];
+  const canCheckRunners = Boolean(forge?.token?.configured && forge?.capabilities?.canListRunners && current && tagSystems.includes(current.system));
+  useEffect(() => {
+    if (!canCheckRunners) {
+      setRunnerCheck(null);
+      return undefined;
+    }
+    let alive = true;
+    const t = setTimeout(async () => {
+      const res = await api.cicd.runnerTags(repoPath, { file: current.file, drafts: hasDrafts ? drafts : null }, { remote: remoteName });
+      if (alive) setRunnerCheck(res.ok ? res.data : null);
+    }, hasDrafts ? 600 : 0);
+    return () => {
+      alive = false;
+      clearTimeout(t);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [canCheckRunners, repoPath, current?.file, drafts, remoteName, forge?.provider, mode === 'pipelines']); // после вкладки «Раннеры» — заново
+  const check = useMemo(() => {
+    if (!baseCheck || !runnerCheck?.issues?.length) return baseCheck;
+    const issues = [...baseCheck.issues.filter((i) => i.id !== 'tags-runner'), ...runnerCheck.issues];
+    const stats = { error: 0, warning: 0, info: 0 };
+    for (const i of issues) stats[i.severity] += 1;
+    return { ...baseCheck, issues, stats };
+  }, [baseCheck, runnerCheck]);
+  const runnerLabels = runnerCheck?.labels ?? [];
   // Проблемы по заданиям — для значков на схеме и в карточке задания
   const issuesByJob = useMemo(() => {
     const m = new Map();
@@ -344,6 +380,51 @@ export default function CiView({
   /* ---------- Проверка в GitLab ---------- */
 
   const lintAvailable = isGitlab && forge?.token?.configured && current?.system === 'gitlab';
+
+  /* ---------- Вставка в файл: теги раннера, шаблоны шагов ---------- */
+
+  // Где стоял курсор в редакторе (путь → позиция) — туда и вставляем
+  const caret = useRef({});
+  const insertText = (snippet, { path: target } = {}) => {
+    const path = target ?? fileTab ?? current?.file;
+    if (!path) return false;
+    const text = textOf(path);
+    const pos = Math.min(caret.current[path] ?? text.length, text.length);
+    const lineStart = text.lastIndexOf('\n', pos - 1) + 1;
+    const lineEndRaw = text.indexOf('\n', pos);
+    const lineEnd = lineEndRaw === -1 ? text.length : lineEndRaw;
+    const line = text.slice(lineStart, lineEnd);
+    const indent = /^\s*/.exec(line)[0];
+    const body = snippet.split('\n').map((l) => (l ? indent + l : l)).join('\n');
+    let next;
+    let at;
+    if (!line.trim()) {
+      next = text.slice(0, lineStart) + body + text.slice(lineEnd);
+      at = lineStart;
+    } else {
+      next = `${text.slice(0, lineEnd)}\n${body}${text.slice(lineEnd)}`;
+      at = lineEnd + 1;
+    }
+    setDraft(path, next);
+    caret.current[path] = at + body.length;
+    const lineNo = next.slice(0, at).split('\n').length;
+    setMode('file');
+    setFileTab(path);
+    setJump({ path, line: lineNo, n: Date.now() });
+    return true;
+  };
+  const tagsSnippet = (runner) => {
+    const sys = current?.system;
+    if (sys === 'gitlab') return `tags: [${runner.labels.join(', ')}]`;
+    if (sys === 'bitbucket') return `runs-on:\n${runner.labels.map((l) => `  - ${l}`).join('\n')}`;
+    const labels = runner.isShared || runner.virtual ? runner.labels : runner.labels.includes('self-hosted') ? runner.labels : ['self-hosted', ...runner.labels];
+    return labels.length === 1 ? `runs-on: ${labels[0]}` : `runs-on: [${labels.join(', ')}]`;
+  };
+  const insertRunnerTags = (runner) => {
+    const snippet = tagsSnippet(runner);
+    navigator.clipboard?.writeText(snippet).catch(() => {});
+    if (insertText(snippet)) notify?.({ type: 'success', title: 'Теги раннера вставлены в конфиг', hint: snippet });
+  };
   const runLint = async () => {
     if (!current) return;
     setLint({ loading: true });
@@ -420,12 +501,13 @@ export default function CiView({
           </button>
         )}
         <div className="flex shrink-0 overflow-hidden rounded-md ring-1 ring-gk-border">
-          {MODES.filter((m) => !m.gitlab || isGitlab).map((m) => (
+          {MODES.filter((m) => !m.remote || hasRemote).map((m) => (
             <button
               key={m.id}
               onClick={() => setMode(m.id)}
-              disabled={!m.gitlab && !current && !state.loading}
-              title={!m.gitlab && !current && !state.loading ? 'В репозитории нет файлов CI/CD' : undefined}
+              data-testid={`ci-mode-${m.id}`}
+              disabled={!m.remote && !current && !state.loading}
+              title={!m.remote && !current && !state.loading ? 'В репозитории нет файлов CI/CD' : undefined}
               className={`flex items-center gap-1.5 px-2.5 py-1 text-[12px] transition-colors disabled:opacity-35 ${
                 mode === m.id ? 'bg-gk-blue/20 text-gk-blue' : 'text-gk-muted enabled:hover:bg-gk-hover enabled:hover:text-gk-text'
               }`}
@@ -502,19 +584,22 @@ export default function CiView({
       )}
 
       <div className="relative flex min-h-0 flex-1">
-        {mode === 'pipelines' && isGitlab ? (
-          <GitLabPanel
+        {mode === 'pipelines' && hasRemote ? (
+          <CiPanel
             repoPath={repoPath}
             forge={forge}
             remoteName={remoteName}
             currentBranch={currentBranch}
             commitsBySha={commitsBySha}
             initialPipelineId={initialPipelineId}
+            focusFailed={focusFailed}
             onLocate={onLocate}
             onForgeChanged={onForgeChanged}
             onEditLogin={onEditLogin}
             notify={notify}
             branches={branches}
+            canInsertTags={Boolean(current && tagSystems.includes(current.system))}
+            onInsertTags={insertRunnerTags}
           />
         ) : state.loading && !state.data ? (
           <Center>
@@ -523,7 +608,7 @@ export default function CiView({
         ) : state.error ? (
           <Center className="text-gk-red">{state.error.message}</Center>
         ) : !current ? (
-          <NoCi gitlab={isGitlab} onPipelines={() => setMode('pipelines')} onCreate={createFromTemplate} />
+          <NoCi gitlab={hasRemote} providerLabel={forge?.label} onPipelines={() => setMode('pipelines')} onCreate={createFromTemplate} />
         ) : mode === 'check' ? (
           <CheckView
             check={check}
@@ -538,7 +623,7 @@ export default function CiView({
             <Scheme
               key={current.file}
               data={current}
-              pipeline={pipeline}
+              pipeline={pipeline ? { ...pipeline, implicitStages: current.system === 'gitlab' || current.system === 'bitbucket' } : pipeline}
               onPipeline={(id) => {
                 setPipelineId(id);
                 setJobId(null);
@@ -627,6 +712,12 @@ export default function CiView({
             textOf={textOf}
             onChange={setDraft}
             onSave={() => saveAll()}
+            system={current.system}
+            runnerLabels={runnerLabels}
+            onCaret={(path, pos) => {
+              caret.current[path] = pos;
+            }}
+            onInsert={(snippet, path) => insertText(snippet, { path })}
           />
         ) : (
           <HistoryView history={baseCurrent?.history ?? []} onLocate={onLocate} />
@@ -644,6 +735,21 @@ export default function CiView({
 function Scheme({ data, pipeline, onPipeline, selectedJob, onSelectJob, onShowLine, check, jobIssues, onOpenCheck, editable, busy, onAddJob, onStageOp }) {
   const [showVars, setShowVars] = useState(false);
   const [showTemplates, setShowTemplates] = useState(false);
+  const [view, setView] = useState(() => {
+    try {
+      return localStorage.getItem('ciSchemeView') === 'dag' ? 'dag' : 'stages';
+    } catch {
+      return 'stages';
+    }
+  });
+  const pickView = (v) => {
+    setView(v);
+    try {
+      localStorage.setItem('ciSchemeView', v);
+    } catch {
+      /* не страшно */
+    }
+  };
   const errors = data.errors.filter((e) => e.severity === 'error');
   const yamlWarnings = data.errors.filter((e) => e.severity !== 'error');
 
@@ -677,7 +783,17 @@ function Scheme({ data, pipeline, onPipeline, selectedJob, onSelectJob, onShowLi
                 {data.triggers.map((t, i) => (
                   <li key={i} className="flex items-start gap-2">
                     <span className="mt-1.5 h-1 w-1 shrink-0 rounded-full bg-gk-dim" />
-                    <span className="min-w-0 break-words font-mono text-[11.5px] text-gk-text/90">{t.text}</span>
+                    <span className="min-w-0 break-words font-mono text-[11.5px] text-gk-text/90">
+                      {t.text}
+                      {[...String(t.text).matchAll(/cron: ([^;]+)/g)].map((m, k) => {
+                        const human = describeCron(m[1].trim());
+                        return human ? (
+                          <span key={k} data-testid="cron-human" className="ml-1.5 rounded bg-gk-blue/10 px-1.5 py-px font-sans text-[11px] text-gk-blue">
+                            {human} UTC
+                          </span>
+                        ) : null;
+                      })}
+                    </span>
                     {t.when && t.when !== 'on_success' && <WhenChip when={t.when} />}
                   </li>
                 ))}
@@ -757,6 +873,28 @@ function Scheme({ data, pipeline, onPipeline, selectedJob, onSelectJob, onShowLi
             Для {data.title} схема пока не строится — откройте вкладку «Файл».
           </div>
         ) : pipeline && pipeline.stages.length > 0 ? (
+          <>
+          <div className="flex items-center gap-2">
+            <div className="flex overflow-hidden rounded-md ring-1 ring-gk-border" data-testid="scheme-view">
+              {[
+                ['stages', 'Этапы'],
+                ['dag', 'Граф выполнения (DAG)'],
+              ].map(([id, label]) => (
+                <button
+                  key={id}
+                  onClick={() => pickView(id)}
+                  data-view={id}
+                  className={`px-2.5 py-1 text-[12px] transition-colors ${view === id ? 'bg-gk-blue/20 text-gk-blue' : 'text-gk-muted hover:bg-gk-hover hover:text-gk-text'}`}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+            {view === 'dag' && <span className="text-[11.5px] text-gk-dim">Наведите на задание — подсветится цепочка зависимостей</span>}
+          </div>
+          {view === 'dag' ? (
+            <DagView pipeline={pipeline} selectedJob={selectedJob} onSelectJob={onSelectJob} jobIssues={jobIssues} />
+          ) : (
           <StagesBoard
             pipeline={pipeline}
             jobIssues={jobIssues}
@@ -767,6 +905,8 @@ function Scheme({ data, pipeline, onPipeline, selectedJob, onSelectJob, onShowLi
             onAddJob={onAddJob}
             onStageOp={onStageOp}
           />
+          )}
+          </>
         ) : (
           errors.length === 0 && (
             <div className="rounded-lg border border-dashed border-gk-border p-6 text-center text-[13px] text-gk-muted">
@@ -1317,7 +1457,9 @@ function JobDetails({ job, allJobs, onSelectJob, onClose, onShowLine, issues = [
 
 /* =================== Файл =================== */
 
-function FileEditor({ files, active, onActive, jump, errors, issues = [], gitDirty, drafts, textOf, onChange, onSave }) {
+function FileEditor({ files, active, onActive, jump, errors, issues = [], gitDirty, drafts, textOf, onChange, onSave, system, runnerLabels = [], onCaret, onInsert }) {
+  const [snipOpen, setSnipOpen] = useState(false);
+  const snippets = snippetsFor(system);
   const file = files.find((f) => f.path === active) ?? files[0];
   const lang = /\.ya?ml$/i.test(file?.path ?? '') ? 'yaml' : 'groovy';
   // Ошибки YAML и найденные проверкой проблемы этого файла (кроме советов)
@@ -1368,6 +1510,38 @@ function FileEditor({ files, active, onActive, jump, errors, issues = [], gitDir
         ))}
         <div className="flex-1" />
         <span className="shrink-0 font-sans text-[11px] text-gk-dim">{kb('Tab — отступ · Ctrl+/ — комментарий · Ctrl+S — сохранить')}</span>
+        {snippets.length > 0 && (
+          <div className="relative shrink-0">
+            <button
+              onClick={() => setSnipOpen((v) => !v)}
+              data-testid="snippets-open"
+              className={`flex items-center gap-1 rounded px-2 py-0.5 font-sans text-[11.5px] transition-colors ${snipOpen ? 'bg-gk-blue/20 text-gk-blue' : 'text-gk-muted hover:bg-gk-hover hover:text-gk-text'}`}
+            >
+              <Plus size={12} /> Шаблон шага <ChevronDown size={11} />
+            </button>
+            {snipOpen && (
+              <div className="absolute right-0 top-full z-30 mt-1 w-72 overflow-hidden rounded-md border border-gk-fg/10 bg-[var(--gk-solid-2)] py-1 font-sans shadow-xl" data-testid="snippets">
+                <div className="px-3 pb-1 pt-0.5 text-[10.5px] uppercase tracking-wider text-gk-dim">Вставить в позицию курсора</div>
+                {snippets.map((sn) => (
+                  <button
+                    key={sn.id}
+                    data-testid="snippet"
+                    data-id={sn.id}
+                    onMouseDown={(e) => {
+                      e.preventDefault();
+                      setSnipOpen(false);
+                      onInsert?.(sn.text, file.path);
+                    }}
+                    className="block w-full px-3 py-1.5 text-left text-[12.5px] text-gk-text hover:bg-gk-hover"
+                  >
+                    {sn.label}
+                    <span className="block truncate font-mono text-[10.5px] text-gk-dim">{sn.text.split('\n')[0]}</span>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
       </div>
       <CiEditor
         key={file.path}
@@ -1377,6 +1551,8 @@ function FileEditor({ files, active, onActive, jump, errors, issues = [], gitDir
         jump={effJump}
         onChange={(text) => onChange(file.path, text)}
         onSave={onSave}
+        completions={runnerLabels.length ? { keys: TAG_KEYS[system] ?? [], labels: runnerLabels } : null}
+        onCaret={(pos) => onCaret?.(file.path, pos)}
       />
       {fileErrors.length > 0 && (
         <div
@@ -1432,7 +1608,7 @@ function HistoryView({ history, onLocate }) {
 
 /* =================== Мелочи =================== */
 
-function NoCi({ gitlab, onPipelines, onCreate }) {
+function NoCi({ gitlab, providerLabel, onPipelines, onCreate }) {
   return (
     <Center>
       <div className="max-w-md text-center">
@@ -1452,7 +1628,7 @@ function NoCi({ gitlab, onPipelines, onCreate }) {
           </button>
           {gitlab && (
             <button onClick={onPipelines} className="rounded-md bg-gk-blue/15 px-3 py-1.5 text-[12px] text-gk-blue hover:bg-gk-blue/25">
-              Посмотреть пайплайны в GitLab
+              Посмотреть пайплайны{providerLabel ? ` ${providerLabel}` : ''}
             </button>
           )}
         </div>

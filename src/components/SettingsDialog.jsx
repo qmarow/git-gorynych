@@ -261,19 +261,35 @@ function AppearanceTab({ appearance: a, meta, imageUrl, onChange, onPickImage })
 function BranchesTab({ workflow, onChange }) {
   return (
     <div className="space-y-4 text-[12.5px]">
-      <label className="flex cursor-pointer items-start gap-3">
-        <Switch checked={workflow.smartSwitch} onChange={(v) => onChange({ ...workflow, smartSwitch: v })} />
-        <span>
-          <span className="block font-medium text-gk-text">Умное переключение веток</span>
-          <span className="mt-0.5 block leading-relaxed text-gk-muted">
-            При переключении на другую ветку незакоммиченные изменения сами прячутся в stash с именем текущей ветки, а когда вы вернётесь
-            на неё — так же сами достаются обратно. Больше не нужно помнить, какой stash@{'{3}'} к чему относился.
-          </span>
-        </span>
-      </label>
-      <div className="ml-11 rounded-lg border border-gk-border bg-gk-fg/[0.02] p-3 text-gk-muted">
+      <div>
+        <div className="font-medium text-gk-text">Незакоммиченные изменения при переключении ветки</div>
+        <div className="mt-0.5 text-gk-muted">Что делать с правками в рабочей папке, когда вы переходите на другую ветку.</div>
+        <div className="mt-2 space-y-1.5" role="radiogroup" data-testid="checkout-wip-setting">
+          {[
+            ['ask', 'Спрашивать каждый раз', 'Окно с выбором: спрятать, перенести или выбросить — с подсказкой, какие файлы пересекаются с целевой веткой.'],
+            ['stash', 'Прятать автоматически (умное переключение)', 'Правки прячутся в stash с именем текущей ветки и сами возвращаются, когда вы вернётесь на неё.'],
+            ['merge', 'Переносить в новую ветку', 'Как обычный git switch: правки едут с вами. Если пересекутся с правками ветки — будет конфликт, копия останется в Stash.'],
+          ].map(([id, title, hint]) => (
+            <label key={id} className="flex cursor-pointer items-start gap-2.5 rounded-md px-2 py-1.5 hover:bg-gk-hover">
+              <input
+                type="radio"
+                name="checkoutWip"
+                value={id}
+                checked={workflow.checkoutWip === id}
+                onChange={() => onChange({ ...workflow, checkoutWip: id })}
+                className="mt-0.5 accent-gk-blue"
+              />
+              <span>
+                <span className="block text-gk-text">{title}</span>
+                <span className="block text-[11.5px] leading-snug text-gk-muted">{hint}</span>
+              </span>
+            </label>
+          ))}
+        </div>
+      </div>
+      <div className="ml-6 rounded-lg border border-gk-border bg-gk-fg/[0.02] p-3 text-gk-muted">
         <div className="mb-1.5 flex items-center gap-1.5 font-medium text-gk-text">
-          <Archive size={13} className="text-gk-yellow" /> Как это выглядит
+          <Archive size={13} className="text-gk-yellow" /> Как работает «спрятать»
         </div>
         <ol className="list-decimal space-y-0.5 pl-4 leading-relaxed">
           <li>Работаете в feature-A, есть правки. Двойной клик по hotfix.</li>
@@ -285,9 +301,7 @@ function BranchesTab({ workflow, onChange }) {
           правками.
         </div>
       </div>
-      <p className="text-[11.5px] text-gk-dim">
-        Когда выключено — как в обычном Git: правки переезжают вместе с вами на новую ветку, а если мешают переключению, Git сообщит об ошибке.
-      </p>
+
     </div>
   );
 }

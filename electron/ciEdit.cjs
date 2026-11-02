@@ -89,7 +89,7 @@ const EDITABLE_FIELDS = new Set(['stage', 'image', 'script', 'before_script', 'a
 const WHEN_VALUES = new Set(['on_success', 'on_failure', 'always', 'manual', 'delayed', 'never']);
 
 // Нестандартные теги (!reference) не трогаем — они сохраняются как есть
-const parse = (text) => YAML.parseDocument(text, { keepSourceTokens: true, uniqueKeys: false });
+const parse = (text) => YAML.parseDocument(text, { keepSourceTokens: true, uniqueKeys: false, logLevel: 'error' });
 
 function stringifyOptions(text) {
   // Стиль списков в файле: «key:\n  - a» (с отступом) или «key:\n- a» (без)

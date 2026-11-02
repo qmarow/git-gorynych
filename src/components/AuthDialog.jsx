@@ -260,7 +260,7 @@ const tabInfo = TABS.find((t) => t.id === tab);
     if (!cloud && kind) extra.kind = kind;
     // Другой сервер / адрес — remote репозитория сменится (или добавится, если его не было)
     if (canEditRemote && (changed || !originalUrl)) extra.remoteUrl = url.trim();
-    if (kind === 'gitlab' && apiToken.trim()) extra.apiToken = apiToken.trim();
+    if (CI_KINDS.includes(kind) && apiToken.trim()) extra.apiToken = apiToken.trim();
     if (tab === 'password') onSubmit({ method: 'password', username: username.trim(), secret: password, ...extra });
     else if (tab === 'token') onSubmit({ method: 'token', username: tokenUser.trim(), secret: token.trim(), ...extra });
     else onSubmit({ method: 'ssh', keyPath, passphrase, ...extra });
@@ -540,10 +540,10 @@ const tabInfo = TABS.find((t) => t.id === tab);
               </button>
             )}
           </p>
-          {kind === 'gitlab' && (
+          {CI_KINDS.includes(kind) && (
             <p data-testid="auth-ci-hint" className="flex items-start gap-1.5 text-[11.5px] leading-relaxed text-gk-dim">
               <Workflow size={12} className="mt-0.5 shrink-0" />
-              <span>Эта же авторизация работает и для пайплайнов CI/CD — отдельно входить не нужно. Права api хватает на всё.</span>
+              <span>Эта же авторизация работает и для пайплайнов CI/CD — отдельно входить не нужно. {CI_SCOPE_HINT[kind]}</span>
             </p>
           )}
         </div>
@@ -667,18 +667,18 @@ const tabInfo = TABS.find((t) => t.id === tab);
         </div>
       )}
 
-      {kind === 'gitlab' && tab !== 'token' && (
+      {CI_KINDS.includes(kind) && (kind === 'gitlab' ? tab !== 'token' : tab === 'ssh') && (
         <div data-testid="auth-api-token" className="space-y-1.5 rounded-lg border border-gk-border bg-gk-fg/[0.02] px-3 py-2.5">
           <div className="flex items-center gap-1.5 text-[12px] font-medium text-gk-text">
             <Workflow size={13} className="text-gk-muted" /> Пайплайны CI/CD
             <span className="font-normal text-gk-dim">— необязательно</span>
           </div>
           <p className="text-[11.5px] leading-relaxed text-gk-dim">
-            {tab === 'ssh' ? 'SSH-ключ' : 'Пароль'} GitLab принимает для Pull/Push, но не для API. Чтобы эта же авторизация открывала и
-            пайплайны, добавьте токен с правом api или read_api — он сохранится вместе с ней.
-            {base && (
+            {tab === 'ssh' ? 'SSH-ключ' : 'Пароль'} {KIND_NAME[kind]} принимает для Pull/Push, но не для API. Чтобы эта же авторизация открывала и
+            пайплайны, добавьте токен — он сохранится вместе с ней. {CI_SCOPE_HINT[kind]}
+            {base && tokenPage(kind, base, parsed.hostname) && (
               <button
-                onClick={() => api?.openExternal(tokenPage('gitlab', base, parsed.hostname))}
+                onClick={() => api?.openExternal(tokenPage(kind, base, parsed.hostname))}
                 className="ml-1 inline-flex items-center gap-0.5 text-gk-blue hover:underline"
               >
                 Создать токен <ExternalLink size={10} />
@@ -691,7 +691,7 @@ const tabInfo = TABS.find((t) => t.id === tab);
               value={apiToken}
               onChange={(e) => setApiToken(e.target.value)}
               onKeyDown={(e) => e.key === 'Enter' && submit()}
-              placeholder={saved?.hasApiToken && saved.method === tab ? '•••••• сохранён — введите, чтобы заменить' : 'glpat-…'}
+              placeholder={saved?.hasApiToken && saved.method === tab ? '•••••• сохранён — введите, чтобы заменить' : tokenPlaceholder(kind)}
               aria-label="Токен для пайплайнов"
               spellCheck={false}
               className={`${INPUT} pr-9 font-mono`}
@@ -701,7 +701,7 @@ const tabInfo = TABS.find((t) => t.id === tab);
         </div>
       )}
 
-      {srv?.api && kind === 'gitlab' && !notice && <ApiLine api={srv.api} />}
+      {srv?.api && CI_KINDS.includes(kind) && !notice && <ApiLine api={srv.api} />}
 
       {formError && (
         <div className="flex items-start gap-2 rounded-md border border-gk-red/30 bg-gk-red/10 px-3 py-2 text-[12px]">
@@ -738,6 +738,15 @@ const tabInfo = TABS.find((t) => t.id === tab);
 const METHOD_NAMES = { password: 'логин и пароль', token: 'токен', ssh: 'SSH-ключ' };
 
 /** Работают ли пайплайны от сохранённой авторизации (последняя проверка) */
+const CI_KINDS = ['gitlab', 'github', 'gitea', 'bitbucket'];
+const KIND_NAME = { gitlab: 'GitLab', github: 'GitHub', gitea: 'Gitea', bitbucket: 'Bitbucket' };
+const CI_SCOPE_HINT = {
+  gitlab: 'Права api хватает на всё.',
+  github: 'Токену нужны права repo и workflow (для раннеров и секретов — администратор репозитория).',
+  gitea: 'Токену нужны права write:repository.',
+  bitbucket: 'Паролю приложения нужны права Pipelines и Repositories.',
+};
+
 function ApiLine({ api: a }) {
   if (!a) return null;
   if (a.state === 'ok') {

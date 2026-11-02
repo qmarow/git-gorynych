@@ -24,9 +24,14 @@ import {
   Workflow,
 } from 'lucide-react';
 
+const PROVIDER_SHORT = { gitlab: 'GitLab', github: 'GitHub', gitea: 'Gitea', bitbucket: 'Bitbucket' };
+const PROVIDER_DOT = { gitlab: '#fc6d26', github: '#8b949e', gitea: '#609926', bitbucket: '#2684ff' };
+
 const CI_COLORS = {
   gitlab: '#fc6d26',
   github: '#8b9cff',
+  gitea: '#609926',
+  forgejo: '#fb923c',
   jenkins: '#d24939',
   bitbucket: '#2684ff',
   circleci: '#3cf0a0',
@@ -280,7 +285,7 @@ export default function Sidebar({
           {repo.tags.length === 0 && <Empty>Нет тегов</Empty>}
         </Section>
 
-        <Section title="CI/CD" icon={Workflow} count={ciCount + (forge?.kind === 'gitlab' ? 1 : 0)}>
+        <Section title="CI/CD" icon={Workflow} count={ciCount + (forge ? 1 : 0)}>
           {ciSystems.map((sys) =>
             sys.files.map((file) => (
               <Item
@@ -295,16 +300,18 @@ export default function Sidebar({
               </Item>
             )),
           )}
-          {forge?.kind === 'gitlab' && (
+          {forge && (
             <Item
               title={
-                !forge.token?.configured
-                  ? 'Авторизуйте репозиторий — эта же авторизация откроет пайплайны'
-                  : pipelinesError
-                    ? pipelinesError.message
-                    : branchPipeline
-                      ? `Последний пайплайн ветки ${repo.currentBranch}: #${branchPipeline.id} — ${statusInfo(branchPipeline.status).label}`
-                      : 'Пайплайны GitLab'
+                !forge.provider
+                  ? 'Сервис CI/CD не определён — укажите его и адрес API'
+                  : !forge.token?.configured
+                    ? 'Авторизуйте репозиторий — эта же авторизация откроет пайплайны'
+                    : pipelinesError
+                      ? pipelinesError.message
+                      : branchPipeline
+                        ? `Последний пайплайн ветки ${repo.currentBranch}: #${branchPipeline.number ?? branchPipeline.id} — ${statusInfo(branchPipeline.status).label}`
+                        : `Пайплайны ${forge.label ?? ''}`
               }
               selected={pipelinesActive}
               onClick={onOpenPipelines}
@@ -313,16 +320,16 @@ export default function Sidebar({
                 <StatusIcon status={branchPipeline.status} size={13} />
               ) : (
                 <span className="flex h-[13px] w-[13px] shrink-0 items-center justify-center">
-                  <span className={`h-2 w-2 rounded-full ${pipelinesError ? 'bg-gk-red' : 'bg-[#fc6d26]'}`} />
+                  <span className={`h-2 w-2 rounded-full ${pipelinesError ? 'bg-gk-red' : ''}`} style={pipelinesError ? undefined : { backgroundColor: PROVIDER_DOT[forge.provider] ?? '#8b93a7' }} />
                 </span>
               )}
               <span className="truncate">Пайплайны</span>
-              <span className={`ml-auto shrink-0 truncate text-[11px] ${forge.token?.configured ? 'text-gk-dim' : 'text-gk-blue'}`}>
-                {!forge.token?.configured ? 'авторизовать' : pipelinesError ? 'ошибка' : 'GitLab'}
+              <span className={`ml-auto shrink-0 truncate text-[11px] ${forge.provider && forge.token?.configured ? 'text-gk-dim' : 'text-gk-blue'}`}>
+                {!forge.provider ? 'настроить' : !forge.token?.configured ? 'авторизовать' : pipelinesError ? 'ошибка' : PROVIDER_SHORT[forge.provider]}
               </span>
             </Item>
           )}
-          {ciCount === 0 && forge?.kind !== 'gitlab' && (
+          {ciCount === 0 && !forge && (
             <div title="Ищем .gitlab-ci.yml, .github/workflows, Jenkinsfile, bitbucket-pipelines.yml и другие">
               <Empty>Не найдено</Empty>
             </div>
@@ -567,11 +574,12 @@ function Item({ children, current, selected, indent, depth, dropTarget, title, .
   return (
     <div
       {...props}
+      data-current={current ? 'true' : undefined}
       data-tip={title || undefined}
       style={depth !== undefined ? { paddingLeft: 24 + depth * 20 } : undefined}
       className={`group flex h-7 cursor-pointer items-center gap-2 pr-3 text-[13px] transition-colors ${
         depth !== undefined ? '' : indent ? 'pl-12' : 'pl-6'
-      } ${state}`}
+      } ${state} ${current ? 'font-semibold' : ''}`}
     >
       {children}
     </div>

@@ -105,6 +105,7 @@ import {
   ErrorDialog,
   Modal,
   PushRejectedDialog,
+  CheckoutWipDialog,
   RenameBranchDialog,
   SwitchToDialog,
   TagDialog,
@@ -187,17 +188,22 @@ export default function App() {
   const [dialog, setDialog] = useState(null);
   const [access, setAccess] = useState(null);
   const [pullMode, setPullMode] = useState(readPullMode);
-  // Поведение: умное переключение веток (по умолчанию включено)
-  // и синхронизация индекса с правками из внешних программ (по умолчанию включена)
+  // Поведение: что делать с незакоммиченными изменениями при переключении ветки
+  // ('ask' — спросить, 'stash' — спрятать под именем ветки, 'merge' — перенести) и синхронизация индекса
   const [workflow, setWorkflow] = useState(() => ({
-    smartSwitch: readPref('smartSwitch', '1') !== '0',
+    checkoutWip: ['ask', 'stash', 'merge'].includes(readPref('checkoutWip', 'ask')) ? readPref('checkoutWip', 'ask') : 'ask',
     syncIndex: readPref('syncIndex', '1') !== '0',
   }));
   const updateWorkflow = (next) => {
     setWorkflow(next);
-    writePref('smartSwitch', next.smartSwitch ? '1' : '0');
+    writePref('checkoutWip', next.checkoutWip);
     writePref('syncIndex', next.syncIndex ? '1' : '0');
   };
+  // Перейти к коммиту в графе: выделить и плавно прокрутить, чтобы он оказался по центру (после checkout — новый HEAD)
+  const [graphFocus, setGraphFocus] = useState(null); // { hash, n }
+  useEffect(() => {
+    if (graphFocus?.hash) setSelectedHash(graphFocus.hash);
+  }, [graphFocus]);
   const [fsTick, setFsTick] = useState(0); // счётчик изменений файлов на диске — для повторной проверки перед коммитом
   // Pre-commit Guard: правила и последняя проверка staged-изменений
   const [guardCfg, setGuardCfg] = useState(readGuard);
@@ -710,9 +716,9 @@ export default function App() {
   // Авторизация CI/CD привязана к репозиторию и может браться из его входа — после смены входа перечитываем
   const refreshForge = useCallback(async () => {
     const r = repoRef.current;
-    if (!r || !api?.gitlab) return;
+    if (!r || !api?.cicd) return;
     const cur = r.localBranches?.find((b) => b.name === r.currentBranch);
-    const st = await api.gitlab.status(r.path, { remote: cur?.upstreamRemote });
+    const st = await api.cicd.status(r.path, { remote: cur?.upstreamRemote });
     if (st?.ok) setRepo((x) => (x && x.path === r.path ? { ...x, forge: st.data } : x));
   }, []);
 
@@ -918,24 +924,61 @@ export default function App() {
   }, []);
 
 
-  const checkout = (target) =>
-    run('checkout', { ...target, smart: workflow.smartSwitch }, {
-      label: 'Checkout',
-      progress: `Переключаемся на ${target.branch ?? target.remoteBranch?.fullName ?? ''}`,
-      success: (d) => {
-        const parts = [d.created ? `Создана ветка ${d.created.name}, отслеживает ${d.created.track}` : `Checkout: ${d.to.branch}`];
-        if (d.autoStash) parts.push(`правки ${d.autoStash.branch} спрятаны (${d.autoStash.files}) — вернутся при возврате`);
-        if (d.restored && !d.restored.conflict) parts.push(`правки ${d.restored.branch} восстановлены`);
-        if (d.restored?.conflict) {
-          notify({
-            type: 'error',
-            title: `Правки ветки ${d.restored.branch} вернулись с конфликтом`,
-            hint: 'Stash сохранён в списке Stashes. Решите конфликты в файлах с пометкой U или откатите их и примените stash позже.',
-          });
-        }
-        return parts.join(' · ');
-      },
+  /**
+   * Checkout ветки (локальной или удалённой — тогда создаётся локальная, отслеживающая её).
+   * Если в рабочей папке есть изменения, main-процесс отвечает WIP_CONFLICT — спрашиваем, что с ними делать
+   * (спрятать / перенести / выбросить), и повторяем с выбранной стратегией. Промис завершается после выбора:
+   * вызывающий код (например, «переключиться и перебазировать») продолжит только после успешного checkout.
+   */
+  const checkout = (target, strategy) =>
+    new Promise((resolve) => {
+      const auto = workflow.checkoutWip !== 'ask' ? workflow.checkoutWip : undefined;
+      let deferred = false;
+      run('checkout', { ...target, strategy: strategy ?? auto }, {
+        label: 'Checkout',
+        progress: `Переключаемся на ${target.branch ?? target.remoteBranch?.fullName ?? ''}`,
+        success: (d) => {
+          const parts = [d.created ? `Создана ветка ${d.created.name}, отслеживает ${d.created.track}` : `Checkout: ${d.to.branch}`];
+          if (d.autoStash) parts.push(`правки ${d.autoStash.branch} спрятаны (${d.autoStash.files}) — вернутся при возврате`);
+          if (d.restored && !d.restored.conflict) parts.push(`правки ${d.restored.branch} восстановлены`);
+          if (d.moved && !d.moved.conflict) parts.push(`изменения перенесены (${d.moved.files})`);
+          if (d.discarded) parts.push(`изменения выброшены (${d.discarded.files}) — Ctrl+Z вернёт`);
+          if (d.restored?.conflict) {
+            notify({
+              type: 'error',
+              title: `Правки ветки ${d.restored.branch} вернулись с конфликтом`,
+              hint: 'Stash сохранён в списке Stashes. Решите конфликты в файлах с пометкой U или откатите их и примените stash позже.',
+            });
+          }
+          if (d.moved?.conflict) {
+            notify({
+              type: 'error',
+              title: `Изменения перенесены в ${d.to.branch} с конфликтом`,
+              hint: 'Копия изменений осталась в списке Stash. Решите конфликты в файлах с пометкой U.',
+            });
+          }
+          return parts.join(' · ');
+        },
+        onError: (error) => {
+          if (error.code !== 'WIP_CONFLICT' || !error.data) return false;
+          deferred = true;
+          setDialog({ type: 'checkoutWip', target, wip: error.data, resolve });
+          return true;
+        },
+      }).then((res) => {
+        if (res.ok && res.data?.head) setGraphFocus({ hash: res.data.head, n: Date.now() });
+        if (!deferred) resolve(res);
+      });
     });
+  // Выбор в окне «незакоммиченные изменения»: повторяем checkout со стратегией; «Больше не спрашивать» — в настройки
+  const chooseCheckoutWip = async (strategy, remember) => {
+    const d = dialog;
+    if (!d || d.type !== 'checkoutWip') return;
+    if (remember) updateWorkflow({ ...workflow, checkoutWip: strategy });
+    setDialog(null);
+    const res = await checkout(d.target, strategy);
+    d.resolve?.(res);
+  };
 
   const stash = () =>
     run('stash', {}, {
@@ -1635,10 +1678,10 @@ export default function App() {
         return act('createBranch', { name: p.name, start: p.from || undefined, checkout: p.checkout !== false });
       case 'checkout': {
         if (p.branch === cur.currentBranch) return skip('уже на этой ветке');
-        if (cur.localBranches.some((b) => b.name === p.branch)) return act('checkout', { branch: p.branch, smart: workflow.smartSwitch });
+        if (cur.localBranches.some((b) => b.name === p.branch)) return act('checkout', { branch: p.branch, strategy: workflow.checkoutWip === 'merge' ? 'merge' : 'stash' });
         for (const r of cur.remotes) {
           const rb = r.branches.find((b) => b.fullName === p.branch || b.name === p.branch);
-          if (rb) return act('checkout', { remoteBranch: { name: rb.name, fullName: rb.fullName }, smart: workflow.smartSwitch });
+          if (rb) return act('checkout', { remoteBranch: { name: rb.name, fullName: rb.fullName }, strategy: workflow.checkoutWip === 'merge' ? 'merge' : 'stash' });
         }
         return fail(`Ветка ${p.branch} не найдена`, 'Проверьте имя или сделайте Fetch.');
       }
@@ -1832,7 +1875,7 @@ export default function App() {
         hint: isCur ? undefined : 'с переключением',
         disabled: op,
         onClick: () =>
-          run('mergeInto', { ref, target: t.name, smart: workflow.smartSwitch }, { label: 'Merge', success: `${srcLabel} слита в ${t.name} — Undo вернёт` }),
+          run('mergeInto', { ref, target: t.name, smart: true }, { label: 'Merge', success: `${srcLabel} слита в ${t.name} — Undo вернёт` }),
       });
       if (src.kind === 'commit') {
         items.push({
@@ -1841,7 +1884,7 @@ export default function App() {
           hint: isCur ? 'один коммит' : 'с переключением',
           disabled: op,
           onClick: () =>
-            run('cherryPickInto', { hash: src.hash, target: t.name, smart: workflow.smartSwitch }, {
+            run('cherryPickInto', { hash: src.hash, target: t.name, smart: true }, {
               label: 'Cherry-pick',
               success: `Коммит ${srcLabel} применён к ${t.name}`,
             }),
@@ -2109,10 +2152,10 @@ export default function App() {
 
   const openSettings = (tab = 'appearance') => setDialog({ type: 'settings', tab });
 
-  /* ---------- GitLab: статусы пайплайнов для графа ---------- */
+  /* ---------- CI/CD: статусы пайплайнов для графа (GitLab, GitHub, Gitea, Bitbucket) ---------- */
 
   const forge = repo?.forge ?? null;
-  const gitlabReady = forge?.kind === 'gitlab' && Boolean(forge.token?.configured);
+  const ciReady = Boolean(forge?.provider && forge.token?.configured && forge.capabilities?.canListPipelines !== false);
   const currentBranchInfo = repo?.localBranches.find((b) => b.name === repo.currentBranch) ?? null;
   // Ветки для форм CI/CD (расписания GitLab): сначала ветки на сервере, затем локальные
   const ciBranches = useMemo(() => {
@@ -2120,12 +2163,14 @@ export default function App() {
     const remote = repo.remotes?.find((r) => r.name === (currentBranchInfo?.upstreamRemote ?? 'origin')) ?? repo.remotes?.[0];
     return [...new Set([...(remote?.branches ?? []).map((b) => b.name), ...repo.localBranches.map((b) => b.name)])];
   }, [repo, currentBranchInfo?.upstreamRemote]);
-  const pipelineKey = gitlabReady
-    ? `${repo.path}|${forge.base}|${forge.token.savedAt}|${repo.headHash}|${currentBranchInfo?.ahead}|${currentBranchInfo?.upstream}`
+  const pipelineKey = ciReady
+    ? `${repo.path}|${forge.provider}|${forge.apiBase}|${forge.token.savedAt ?? forge.token.user?.username ?? ''}|${repo.headHash}|${currentBranchInfo?.ahead}|${currentBranchInfo?.upstream}`
     : null;
+  // Статусы, которые уже видели: пайплайн, который шёл и закончился, — системное уведомление
+  const seenStatuses = useRef(new Map());
 
   useEffect(() => {
-    if (!pipelineKey || !api?.gitlab) {
+    if (!pipelineKey || !api?.cicd) {
       setPipelineMap(null);
       return undefined;
     }
@@ -2136,10 +2181,11 @@ export default function App() {
     const tick = async () => {
       let active = false;
       if (document.visibilityState === 'visible') {
-        const res = await api.gitlab.pipelines(path, { remote });
+        const res = await api.cicd.pipelines(path, { remote });
         if (!alive) return;
         if (res.ok) {
           active = res.data.pipelines.some((p) => ACTIVE_STATUSES.has(p.status));
+          announceFinished(path, res.data.pipelines, res.data.label);
           setPipelineMap({ bySha: res.data.bySha, pipelines: res.data.pipelines, error: null });
         } else {
           setPipelineMap((m) => ({ bySha: m?.bySha ?? {}, pipelines: m?.pipelines ?? [], error: res.error }));
@@ -2176,14 +2222,64 @@ export default function App() {
     return () => clearInterval(t);
   }, [forgePending, refreshForge]);
 
-  const openPipelines = (pipelineId = null) => {
+  // focusFailed — открыть сразу лог упавшего задания (клик по красному значку в графе)
+  const openPipelines = (pipelineId = null, focusFailed = false) => {
     setDiffTarget(null);
-    setCiView({ file: null, mode: 'pipelines', pipelineId, n: Date.now() });
+    setCiView({ file: null, mode: 'pipelines', pipelineId, focusFailed, n: Date.now() });
   };
 
+  /** Пайплайн, который шёл и закончился успехом или ошибкой, — уведомление ОС и в приложении */
+  function announceFinished(path, list, label) {
+    const seen = seenStatuses.current;
+    const first = !seen.has(path);
+    if (first) seen.set(path, new Map());
+    const map = seen.get(path);
+    for (const p of list) {
+      const prev = map.get(p.id);
+      map.set(p.id, p.status);
+      if (first || !prev || !ACTIVE_STATUSES.has(prev) || ACTIVE_STATUSES.has(p.status)) continue;
+      if (!['success', 'failed', 'canceled'].includes(p.status)) continue;
+      const ok = p.status === 'success';
+      const title = `${ok ? '✓' : p.status === 'failed' ? '✕' : '⊘'} Пайплайн #${p.number ?? p.id} ${ok ? 'прошёл' : p.status === 'failed' ? 'упал' : 'отменён'}`;
+      const body = [p.branch, p.name].filter(Boolean).join(' · ');
+      notify({ type: ok ? 'success' : p.status === 'failed' ? 'error' : 'info', title, hint: `${body}${label ? ` · ${label}` : ''}`, action: { label: 'Открыть', onClick: () => openPipelines(p.id, p.status === 'failed') } });
+      try {
+        const show = () => {
+          const n = new window.Notification(title, { body: body || label || '', silent: ok, tag: `pipeline-${p.id}` });
+          n.onclick = () => {
+            window.focus();
+            openPipelines(p.id, p.status === 'failed');
+          };
+        };
+        if (window.Notification?.permission === 'granted') show();
+        else if (window.Notification && window.Notification.permission !== 'denied') window.Notification.requestPermission().then((perm) => perm === 'granted' && show());
+      } catch {
+        /* уведомления ОС недоступны */
+      }
+    }
+  }
+
   const branchPipeline = useMemo(
-    () => pipelineMap?.pipelines.find((p) => p.ref === repo?.currentBranch) ?? null,
+    () => pipelineMap?.pipelines.find((p) => p.branch === repo?.currentBranch) ?? null,
     [pipelineMap, repo?.currentBranch],
+  );
+
+  // Подсказка значка пайплайна в графе: сводка по заданиям (загружается при наведении)
+  const [pipelineTips, setPipelineTips] = useState({});
+  const pipelineTipRequested = useRef(new Set());
+  const loadPipelineTip = useCallback(
+    async (p) => {
+      const r = repoRef.current;
+      const key = `${p.id}:${p.status}`;
+      if (!r || pipelineTipRequested.current.has(key)) return;
+      pipelineTipRequested.current.add(key);
+      const res = await api.cicd.pipeline(r.path, p.id, { remote: r.localBranches?.find((b) => b.name === r.currentBranch)?.upstreamRemote });
+      if (!res.ok) return;
+      const icon = (st, allow) => (st === 'success' ? '✓' : st === 'failed' ? (allow ? '⚠' : '✕') : ACTIVE_STATUSES.has(st) ? '⟳' : st === 'manual' ? '⏸' : st === 'canceled' ? '⊘' : st === 'skipped' ? '»' : '•');
+      const parts = res.data.stages.flatMap((s) => (s.jobs.length > 4 ? [`${s.name}: ${icon(s.status)} (${s.jobs.length})`] : s.jobs.map((j) => `${j.name}: ${icon(j.status, j.allowFailure)}`)));
+      setPipelineTips((m) => ({ ...m, [p.id]: { status: p.status, text: parts.join(', ') } }));
+    },
+    [],
   );
 
   const allCommits = useMemo(() => {
@@ -3186,6 +3282,7 @@ export default function App() {
                   initialFile={ciView.file}
                   initialMode={ciView.mode}
                   initialPipelineId={ciView.pipelineId}
+                  focusFailed={Boolean(ciView.focusFailed)}
                   version={ciVersion}
                   forge={forge}
                   remoteName={currentBranchInfo?.upstreamRemote}
@@ -3207,6 +3304,7 @@ export default function App() {
                 <CommitGraph
                   commits={allCommits}
                   introKey={repo.path}
+                  focus={graphFocus}
                   selectedHash={selectedHash}
                   onSelect={setSelectedHash}
                   onCompare={(hash) => {
@@ -3229,7 +3327,9 @@ export default function App() {
                   matchSet={searchOpen && filterActive ? matchSet : null}
                   fileHits={searchOpen && filterActive ? fileHits : null}
                   pipelines={pipelineMap?.bySha ?? null}
-                  onPipelineClick={(p) => openPipelines(p.id)}
+                  pipelineTips={pipelineTips}
+                  onPipelineHover={loadPipelineTip}
+                  onPipelineClick={(p) => openPipelines(p.id, p.status === 'failed')}
                   onCopySha={(hash) => copy(hash, 'Хэш коммита')}
                 />
               )}
@@ -3334,6 +3434,9 @@ export default function App() {
           }}
           onOpenFolder={api?.openFolder ? () => openRepoFolder(repo.path) : null}
           onOpenTerminal={api?.openTerminal ? () => openRepoTerminal(repo.path) : null}
+          pipeline={ciReady ? branchPipeline : null}
+          pipelineLabel={forge?.label ?? null}
+          onOpenPipeline={(p) => openPipelines(p.id, p.status === 'failed')}
           onPathMenu={(x, y) =>
             setMenu({ x, y, items: [...repoFolderItems(repo.path), { separator: true }, { label: 'Скопировать путь', icon: Copy, onClick: () => copy(repo.path, 'Путь') }] })
           }
@@ -3512,6 +3615,17 @@ export default function App() {
             const node = dialog.node;
             setDialog(null);
             checkoutDetached(node);
+          }}
+        />
+      )}
+      {dialog?.type === 'checkoutWip' && (
+        <CheckoutWipDialog
+          wip={dialog.wip}
+          busy={Boolean(busyAction)}
+          onChoose={chooseCheckoutWip}
+          onClose={() => {
+            dialog.resolve?.({ ok: false, error: { code: 'CANCELED' } });
+            setDialog(null);
           }}
         />
       )}

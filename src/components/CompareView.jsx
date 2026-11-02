@@ -83,7 +83,7 @@ export default function CompareView({ repoPath, a, b, hidden, activePath, onSwap
         if (e.key === 'Escape') e.target.blur();
         return;
       }
-      if (e.key === 'Escape') onClose();
+      if (e.key === 'Escape' && !e.defaultPrevented) onClose();
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);

@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { flushSync } from 'react-dom';
 import { Check, Copy, FileSearch, Pencil, SlidersHorizontal } from 'lucide-react';
 import { RefKindIcon, RefsPopover, refKindLabel, useHoverPopover } from './RefBadge.jsx';
-import { edgePath, graphWidth, laneColor, laneX, layoutGraph, metricsFor, rowY } from '../lib/graphLayout.js';
+import { edgePath, fitMetrics, graphWidth, laneColor, laneX, layoutGraph, metricsFor, rowY } from '../lib/graphLayout.js';
 import { StatusIcon, statusInfo } from './PipelineStatus.jsx';
 import { fullDate, initials, relativeTime, shortDate } from '../lib/format.js';
 import { ResizeHandle, useStoredWidth } from './Resizer.jsx';
@@ -75,6 +76,7 @@ const clampW = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
 export default function CommitGraph({
   commits,
   introKey,
+  focus = null, // { hash, n } — плавно прокрутить так, чтобы коммит оказался по центру (новый HEAD после checkout)
   selectedHash,
   onSelect,
   onActivate,
@@ -83,7 +85,9 @@ export default function CommitGraph({
   truncated,
   matchSet = null, // Set хэшей, подходящих под поиск; остальные приглушаются
   fileHits = null, // Map хэш → { files, count } — текст поиска найден в изменениях этих файлов
-  pipelines = null, // { [sha]: { id, status } } — статусы пайплайнов GitLab
+  pipelines = null, // { [sha]: { id, status } } — статусы пайплайнов CI/CD
+  pipelineTips = null, // { [id]: { status, text } } — сводка по заданиям для подсказки
+  onPipelineHover,
   onPipelineClick,
   onCompare, // Ctrl+клик: сравнить выбранный коммит с этим
   compareMark = null, // коммит, отмеченный для сравнения
@@ -155,6 +159,15 @@ export default function CommitGraph({
   const msgAt = columns.indexOf('message');
   const height = nodes.length * m.rowH;
 
+  // Фактическая ширина колонки «Граф» (ResizeObserver на её заголовке) — по ней пересчитываются x дорожек и узлов:
+  // когда колонку сужают, дорожки, которые не помещаются, прижимаются к правому краю (узлы того же размера),
+  // и граф не залезает на сообщения коммитов
+  const [graphBoxW, graphCellRef] = useElementWidth();
+  // Пока колонку тянут, измерение может отстать на кадр — берём меньшее из двух, чтобы граф не вылез за край
+  const graphW_ = has('graph') ? Math.min(graphBoxW || width, width) : 0;
+  const gm = useMemo(() => fitMetrics(m, laneCount, graphW_, dots ? m.dotR : m.nodeR), [m, laneCount, graphW_, dots]);
+  const dotsEff = dots;
+
   const scrollRef = useRef(null);
   const [hoverHash, setHoverHash] = useState(null);
   const [intro, setIntro] = useState(true);
@@ -191,11 +204,26 @@ export default function CommitGraph({
     return () => ro.disconnect();
   }, [nodes.length === 0]);
 
+  // Переход к коммиту (после checkout — к новому HEAD): плавно, по центру видимой области
+  const focusDone = useRef(null);
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el || !focus?.hash || focusDone.current === focus.n) return;
+    const node = nodes.find((n) => n.hash === focus.hash);
+    if (!node) return;
+    focusDone.current = focus.n;
+    const center = node.row * m.rowH + m.rowH / 2;
+    const visible = el.clientHeight - HEADER_HEIGHT;
+    el.scrollTo({ top: Math.max(0, center - visible / 2), behavior: 'smooth' });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [focus, nodes]);
+
   // Прокручиваем к выбранному коммиту, если он вне экрана
   useEffect(() => {
     const el = scrollRef.current;
     const node = nodes.find((n) => n.hash === selectedHash);
     if (!el || !node) return;
+    if (focus?.hash === selectedHash) return; // к нему уже едем по центру (focus)
     const top = node.row * m.rowH;
     if (top < el.scrollTop || top + m.rowH > el.scrollTop + el.clientHeight - HEADER_HEIGHT) {
       el.scrollTo({ top: Math.max(0, top - el.clientHeight / 3), behavior: 'smooth' });
@@ -250,7 +278,7 @@ export default function CommitGraph({
   }
 
   const introDelay = (row) => `${Math.min(Math.max(row - first, 0), 30) * 20}ms`;
-  const nodeR = dots ? m.dotR : m.nodeR;
+  const nodeR = dotsEff ? gm.dotR : gm.nodeR;
 
   /* Перестановка колонок: перетаскиваем заголовок */
   const headerDrag = (id) => ({
@@ -318,6 +346,7 @@ export default function CommitGraph({
               key={id}
               id={id}
               width={cols[id]}
+              cellRef={id === 'graph' ? graphCellRef : undefined}
               last={i === columns.length - 1}
               dropSide={colDrag && colDrag.over === id && colDrag.id !== id ? (colDrag.after ? 'after' : 'before') : null}
               dragging={colDrag?.id === id}
@@ -363,14 +392,16 @@ export default function CommitGraph({
           <Row
             key={node.hash}
             node={node}
-            m={m}
+            m={gm}
             columns={columns}
             cols={cols}
             offsets={offsets}
             refsSide={refsSide}
             dateFormat={gv.dateFormat}
             pipeline={pipelines?.[node.hash] ?? null}
+            pipelineTip={pipelines?.[node.hash] ? pipelineTips?.[pipelines[node.hash].id] ?? null : null}
             fileHit={fileHits?.get(node.hash) ?? null}
+            onPipelineHover={onPipelineHover}
             onPipelineClick={onPipelineClick}
             selected={node.hash === selectedHash}
             hovered={node.hash === hoverHash}
@@ -423,11 +454,15 @@ export default function CommitGraph({
 
         {has('graph') && (
           <svg
-            className="pointer-events-none absolute top-0 overflow-visible"
-            style={{ left: offsets.graph }}
+            className="pointer-events-none absolute top-0 overflow-hidden"
+            style={{ left: offsets.graph, width, height }}
             width={width}
             height={height}
+            viewBox={`0 0 ${width} ${height}`}
+            preserveAspectRatio="xMinYMin meet"
             data-testid="graph-svg"
+            data-width={Math.round(graphW_)}
+            data-hidden-lanes={gm.hiddenLanes ?? 0}
             data-density={gv.density}
             data-nodes={gv.nodeStyle}
           >
@@ -444,10 +479,10 @@ export default function CommitGraph({
                 .map((n) => (
                   <line
                     key={`ref-${n.hash}`}
-                    x1={refsSide === 'left' ? 0 : laneX(n.lane, m) + nodeR}
-                    x2={refsSide === 'left' ? laneX(n.lane, m) - nodeR : width}
-                    y1={rowY(n.row, m)}
-                    y2={rowY(n.row, m)}
+                    x1={refsSide === 'left' ? 0 : laneX(n.lane, gm) + nodeR}
+                    x2={refsSide === 'left' ? laneX(n.lane, gm) - nodeR : graphW_}
+                    y1={rowY(n.row, gm)}
+                    y2={rowY(n.row, gm)}
                     stroke={laneColor(n.lane)}
                     strokeWidth={2}
                     strokeOpacity={0.85}
@@ -457,7 +492,7 @@ export default function CommitGraph({
             {visibleEdges.map((edge) => (
               <path
                 key={edge.id}
-                d={edgePath(edge, m)}
+                d={edgePath(edge, gm)}
                 pathLength={edge.dashed ? undefined : 1}
                 className={`graph-edge ${intro && !edge.dashed ? 'is-intro' : ''}`}
                 style={intro ? { animationDelay: introDelay(edge.from.row) } : undefined}
@@ -471,12 +506,25 @@ export default function CommitGraph({
               />
             ))}
 
+            {/* Справа есть прижатые дорожки — край колонки чуть затенён, узлы поверх */}
+            {gm.fitted && (
+              <>
+                <defs>
+                  <linearGradient id="graph-edge-fade" x1="0" x2="1" y1="0" y2="0">
+                    <stop offset="0" stopColor="var(--gk-base)" stopOpacity="0" />
+                    <stop offset="1" stopColor="var(--gk-base)" stopOpacity="0.85" />
+                  </linearGradient>
+                </defs>
+                <rect data-testid="graph-edge-fade" x={gm.maxX - gm.laneW} y={0} width={graphW_ - gm.maxX + gm.laneW} height={height} fill="url(#graph-edge-fade)" />
+              </>
+            )}
+
             {visibleNodes.map((node) => (
               <Node
                 key={node.hash}
                 node={node}
-                m={m}
-                dots={dots}
+                m={gm}
+                dots={dotsEff}
                 dim={Boolean(matchSet) && !matchSet.has(node.hash)}
                 selected={node.hash === selectedHash}
                 hovered={node.hash === hoverHash}
@@ -503,10 +551,34 @@ export default function CommitGraph({
 
 /* ---------------- Строка ---------------- */
 
-function HeaderCell({ id, width, last, dropSide, dragging, children, ...drag }) {
+/**
+ * Ширина элемента по ResizeObserver: [ширина, callback-ref]. Новое значение применяется синхронно (flushSync),
+ * в том же кадре, что и изменение раскладки, — граф не отстаёт от колонки, пока её тянут.
+ */
+function useElementWidth() {
+  const [w, setW] = useState(0);
+  const ro = useRef(null);
+  const ref = useCallback((el) => {
+    ro.current?.disconnect();
+    ro.current = null;
+    if (!el || typeof ResizeObserver === 'undefined') return;
+    const read = (entry) => entry?.borderBoxSize?.[0]?.inlineSize ?? el.getBoundingClientRect().width;
+    ro.current = new ResizeObserver((entries) => {
+      const next = Math.round(read(entries[entries.length - 1]) * 100) / 100;
+      flushSync(() => setW((prev) => (Math.abs(prev - next) < 0.5 ? prev : next)));
+    });
+    ro.current.observe(el);
+    setW(Math.round(el.getBoundingClientRect().width * 100) / 100);
+  }, []);
+  useEffect(() => () => ro.current?.disconnect(), []);
+  return [w, ref];
+}
+
+function HeaderCell({ id, width, last, dropSide, dragging, cellRef, children, ...drag }) {
   return (
     <div
       {...drag}
+      ref={cellRef}
       data-col={id}
       style={{ width }}
       className={`relative flex h-full shrink-0 cursor-grab items-center border-r border-gk-border/60 px-3 last-of-type:border-r-0 active:cursor-grabbing ${
@@ -570,7 +642,9 @@ function Row({
   delay,
   wipCount,
   pipeline,
+  pipelineTip,
   fileHit,
+  onPipelineHover,
   onPipelineClick,
   onHover,
   onSelect,
@@ -666,10 +740,14 @@ function Row({
                     onMouseDown={(e) => e.stopPropagation()}
                     onDoubleClick={(e) => e.stopPropagation()}
                     onClick={() => onPipelineClick?.(pipeline)}
-                    data-tip={`Пайплайн #${pipeline.id}: ${statusInfo(pipeline.status).label}\nКлик — подробности`}
+                    onMouseEnter={() => onPipelineHover?.(pipeline)}
+                    data-testid="pipeline-badge"
+                    data-status={pipeline.status}
+                    data-tip={`Пайплайн #${pipeline.id}: ${statusInfo(pipeline.status).label}${pipelineTip && pipelineTip.status === pipeline.status && pipelineTip.text ? `\n${pipelineTip.text}` : ''}\nКлик — ${pipeline.status === 'failed' ? 'лог упавшего задания' : 'подробности'}`}
+                    data-tip-wide
                     className="ml-2 flex h-5 w-5 shrink-0 items-center justify-center rounded-full transition-transform hover:scale-125"
                   >
-                    <StatusIcon status={pipeline.status} size={15} title={`Пайплайн #${pipeline.id}: ${statusInfo(pipeline.status).label}`} />
+                    <StatusIcon status={pipeline.status} size={15} title="" />
                   </button>
                 )}
               </>

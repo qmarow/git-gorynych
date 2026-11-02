@@ -233,7 +233,7 @@ export default function DiffView({
   useEffect(() => {
     const onKey = (e) => {
       if (document.querySelector('.fixed.inset-0')) return; // открыт диалог
-      if (e.key === 'Escape') {
+      if (e.key === 'Escape' && !e.defaultPrevented) {
         if (search.open) closeSearch();
         else onClose();
       }
