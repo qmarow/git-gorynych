@@ -23,6 +23,7 @@ import {
   X,
 } from 'lucide-react';
 import { kb } from '../lib/platform.js';
+import { t as tr, tj } from '../i18n/index.js';
 
 /* =================== Базовое модальное окно =================== */
 
@@ -82,8 +83,7 @@ function Details({ text }) {
   return (
     <div>
       <button onClick={() => setOpen((v) => !v)} className="flex items-center gap-0.5 text-xs text-gk-dim hover:text-gk-muted">
-        {open ? <ChevronDown size={12} /> : <ChevronRight size={12} />} Ответ Git
-      </button>
+        {tj('{0} Ответ Git', [open ? <ChevronDown size={12} /> : <ChevronRight size={12} />])}</button>
       {open && (
         <pre className="mt-1.5 max-h-48 select-text overflow-auto whitespace-pre-wrap rounded bg-gk-bg p-2.5 font-mono text-[11px] text-gk-muted">
           {text}
@@ -111,18 +111,18 @@ export function ErrorBox({ error }) {
 
 const ERROR_ICONS = { AUTH: KeyRound, FORBIDDEN: Lock, PROTECTED: ShieldAlert, HOOK_DECLINED: ShieldAlert };
 const ERROR_TITLES = {
-  AUTH: 'Требуется авторизация',
-  FORBIDDEN: 'Нет прав на запись',
-  PROTECTED: 'Ветка защищена',
-  HOOK_DECLINED: 'Push отклонён сервером',
-  NOT_FOUND: 'Репозиторий недоступен',
-  HOST_KEY: 'SSH: неизвестный сервер',
+  AUTH: tr('Требуется авторизация'),
+  FORBIDDEN: tr('Нет прав на запись'),
+  PROTECTED: tr('Ветка защищена'),
+  HOOK_DECLINED: tr('Push отклонён сервером'),
+  NOT_FOUND: tr('Репозиторий недоступен'),
+  HOST_KEY: tr('SSH: неизвестный сервер'),
 };
 
 export function ErrorDialog({ action, error, onClose, onCheckAccess }) {
   return (
     <Modal
-      title={`${action}: ${ERROR_TITLES[error.code] ?? 'ошибка'}`}
+      title={`${action}: ${ERROR_TITLES[error.code] ?? tr('ошибка')}`}
       icon={ERROR_ICONS[error.code] ?? AlertTriangle}
       iconClass="text-gk-red"
       onClose={onClose}
@@ -130,12 +130,10 @@ export function ErrorDialog({ action, error, onClose, onCheckAccess }) {
         <>
           {onCheckAccess && (
             <Button onClick={onCheckAccess}>
-              <RefreshCw size={13} /> Проверить доступ
-            </Button>
+              {tj('{0} Проверить доступ', [<RefreshCw size={13} />])}</Button>
           )}
           <Button variant="blue" onClick={onClose}>
-            Понятно
-          </Button>
+            {tr('Понятно')}</Button>
         </>
       }
     >
@@ -149,10 +147,10 @@ export function ErrorDialog({ action, error, onClose, onCheckAccess }) {
 function StatusRow({ label, state, note }) {
   const view =
     state === true
-      ? { icon: <Check size={14} className="text-gk-green" />, text: 'есть', cls: 'text-gk-green' }
+      ? { icon: <Check size={14} className="text-gk-green" />, text: tr('есть'), cls: 'text-gk-green' }
       : state === false
-        ? { icon: <X size={14} className="text-gk-red" />, text: 'нет', cls: 'text-gk-red' }
-        : { icon: <span className="block h-3.5 w-3.5 text-center text-gk-dim">—</span>, text: 'не проверено', cls: 'text-gk-dim' };
+        ? { icon: <X size={14} className="text-gk-red" />, text: tr('нет'), cls: 'text-gk-red' }
+        : { icon: <span className="block h-3.5 w-3.5 text-center text-gk-dim">—</span>, text: tr('не проверено'), cls: 'text-gk-dim' };
   return (
     <div className="flex items-center gap-2">
       <span className="w-28 text-gk-muted">{label}</span>
@@ -171,7 +169,7 @@ export function AccessDialog({ access, onClose, onRecheck, onCredentials }) {
 
   return (
     <Modal
-      title="Доступ к remote"
+      title={tr('Доступ к remote')}
       icon={ok ? ShieldCheck : ShieldAlert}
       iconClass={ok ? 'text-gk-green' : 'text-gk-red'}
       onClose={onClose}
@@ -180,16 +178,15 @@ export function AccessDialog({ access, onClose, onRecheck, onCredentials }) {
         <>
           {onCredentials && data?.protocol !== 'local' && (
             <Button onClick={onCredentials} disabled={checking} className="mr-auto whitespace-nowrap" data-testid="access-credentials">
-              <KeyRound size={13} /> {data?.canRead === false && error?.code === 'AUTH' ? 'Ввести учётные данные' : 'Ввести учётные данные / Сменить токен'}
+              <KeyRound size={13} /> {data?.canRead === false && error?.code === 'AUTH' ? tr('Ввести учётные данные') : tr('Ввести учётные данные / Сменить токен')}
             </Button>
           )}
           <Button onClick={onRecheck} disabled={checking} className="whitespace-nowrap">
             {checking ? <Loader2 size={13} className="animate-spin" /> : <RefreshCw size={13} />}
-            {checking ? 'Проверка…' : 'Проверить снова'}
+            {checking ? tr('Проверка…') : tr('Проверить снова')}
           </Button>
           <Button variant="blue" onClick={onClose}>
-            Закрыть
-          </Button>
+            {tr('Закрыть')}</Button>
         </>
       }
     >
@@ -207,47 +204,38 @@ export function AccessDialog({ access, onClose, onRecheck, onCredentials }) {
             </div>
             {data.branch && (
               <div className="flex gap-2">
-                <span className="w-28 text-gk-muted">Ветка</span>
-                <span className="font-mono">
-                  {data.branch} → {data.targetRef?.replace('refs/heads/', `${data.remote}/`)}
-                </span>
+                {tj('<0>Ветка</0><1>{2} → {3}</1>', [<span className="w-28 text-gk-muted" />, <span className="font-mono" />, data.branch, data.targetRef?.replace('refs/heads/', `${data.remote}/`)])}
               </div>
             )}
           </div>
 
           <div className="space-y-1.5 px-1">
-            <StatusRow label="Чтение (fetch)" state={data.canRead} />
-            <StatusRow label="Запись (push)" state={data.canWrite} />
+            <StatusRow label={tr('Чтение (fetch)')} state={data.canRead} />
+            <StatusRow label={tr('Запись (push)')} state={data.canWrite} />
             {data.canRead && data.branch && (
               <StatusRow
-                label="Ветка на remote"
+                label={tr('Ветка на remote')}
                 state={data.branchExists}
-                note={data.branchExists === false ? '— будет создана при первом Push' : null}
+                note={data.branchExists === false ? tr('— будет создана при первом Push') : null}
               />
             )}
           </div>
 
           {data.diverged && (
             <div className="flex items-start gap-2 rounded-md border border-gk-yellow/30 bg-gk-yellow/10 p-3 text-xs">
-              <AlertTriangle size={14} className="mt-0.5 shrink-0 text-gk-yellow" />
-              На remote есть коммиты, которых нет у вас: перед Push нужен Pull.
-            </div>
+              {tj('{0}На remote есть коммиты, которых нет у вас: перед Push нужен Pull.', [<AlertTriangle size={14} className="mt-0.5 shrink-0 text-gk-yellow" />])}</div>
           )}
 
           {error && <ErrorBox error={error} />}
 
           <p className="text-[11px] leading-relaxed text-gk-dim">
-            Права проверяются безопасно: <code>git ls-remote</code> и <code>git push --dry-run</code> ничего не меняют
-            на сервере. Правила защиты веток (protected branches) сервер применяет только при настоящем push — если
-            ветка защищена, это будет сообщено после попытки.
-          </p>
+            {tj('Права проверяются безопасно: <0>git ls-remote</0> и <1>git push --dry-run</1> ничего не меняют на сервере. Правила защиты веток (protected branches) сервер применяет только при настоящем push — если ветка защищена, это будет сообщено после попытки.', [<code />, <code />])}</p>
         </>
       ) : checking ? (
         <div className="flex items-center gap-2 text-gk-muted">
-          <Loader2 size={14} className="animate-spin" /> Проверяем доступ…
-        </div>
+          {tj('{0} Проверяем доступ…', [<Loader2 size={14} className="animate-spin" />])}</div>
       ) : (
-        <ErrorBox error={error ?? { message: 'Доступ ещё не проверялся' }} />
+        <ErrorBox error={error ?? { message: tr('Доступ ещё не проверялся') }} />
       )}
     </Modal>
   );
@@ -259,16 +247,16 @@ export function PushRejectedDialog({ branch, remote, onClose, onPull, onForce })
   const [confirm, setConfirm] = useState(false);
   return (
     <Modal
-      title="Push отклонён"
+      title={tr('Push отклонён')}
       icon={AlertTriangle}
       iconClass="text-gk-yellow"
       onClose={onClose}
       footer={
         <>
-          <Button onClick={onClose}>Отмена</Button>
+          <Button onClick={onClose}>{tr('Отмена')}</Button>
           {confirm ? (
             <Button variant="danger" onClick={onForce}>
-              Да, перезаписать {remote}/{branch}
+              {tj('Да, перезаписать {0}/{1}', [remote, branch])}
             </Button>
           ) : (
             <Button variant="danger" onClick={() => setConfirm(true)}>
@@ -276,23 +264,17 @@ export function PushRejectedDialog({ branch, remote, onClose, onPull, onForce })
             </Button>
           )}
           <Button variant="primary" onClick={onPull}>
-            Pull (rebase) и Push
-          </Button>
+            {tr('Pull (rebase) и Push')}</Button>
         </>
       }
     >
       <p>
-        На <b>{remote}</b> в ветке <b>{branch}</b> есть коммиты, которых нет у вас. Обычный push перезаписал бы их,
-        поэтому сервер его не примет.
-      </p>
+        {tj('На <0>{1}</0> в ветке <2>{3}</2> есть коммиты, которых нет у вас. Обычный push перезаписал бы их, поэтому сервер его не примет.', [<b />, remote, <b />, branch])}</p>
       <p className="text-xs text-gk-muted">
-        Рекомендуется: получить изменения через Pull (rebase), затем отправить свои коммиты.
-      </p>
+        {tr('Рекомендуется: получить изменения через Pull (rebase), затем отправить свои коммиты.')}</p>
       {confirm && (
         <div className="rounded-md border border-gk-red/30 bg-gk-red/10 p-3 text-xs leading-relaxed">
-          Force Push (с <code>--force-with-lease</code>) удалит с remote чужие коммиты, которых нет у вас. Защищённые
-          ветки сервер всё равно не даст перезаписать.
-        </div>
+          {tj('Force Push (с <0>--force-with-lease</0>) удалит с remote чужие коммиты, которых нет у вас. Защищённые ветки сервер всё равно не даст перезаписать.', [<code />])}</div>
       )}
     </Modal>
   );
@@ -300,7 +282,7 @@ export function PushRejectedDialog({ branch, remote, onClose, onPull, onForce })
 
 /* =================== Подтверждение =================== */
 
-export function ConfirmDialog({ title, children, confirmLabel = 'Подтвердить', danger = false, onConfirm, onClose }) {
+export function ConfirmDialog({ title, children, confirmLabel = tr('Подтвердить'), danger = false, onConfirm, onClose }) {
   return (
     <Modal
       title={title}
@@ -309,7 +291,7 @@ export function ConfirmDialog({ title, children, confirmLabel = 'Подтвер�
       onClose={onClose}
       footer={
         <>
-          <Button onClick={onClose}>Отмена</Button>
+          <Button onClick={onClose}>{tr('Отмена')}</Button>
           <Button
             variant={danger ? 'danger' : 'blue'}
             onClick={() => {
@@ -333,41 +315,37 @@ export function DeleteRemoteDialog({ remote, branch, locals = [], busy, error, o
   const close = () => !busy && onClose();
   return (
     <Modal
-      title="Удалить ветку с сервера"
+      title={tr('Удалить ветку с сервера')}
       icon={CloudOff}
       iconClass="text-gk-red"
       onClose={close}
       footer={
         <>
           <Button onClick={close} disabled={busy}>
-            Отмена
-          </Button>
+            {tr('Отмена')}</Button>
           <Button variant="danger" onClick={onConfirm} disabled={busy} autoFocus>
             {busy ? <Loader2 size={13} className="animate-spin" /> : <CloudOff size={13} />}
-            {busy ? 'Удаляем на сервере…' : 'Удалить с сервера'}
+            {busy ? tr('Удаляем на сервере…') : tr('Удалить с сервера')}
           </Button>
         </>
       }
     >
       <div className="space-y-3 text-[13px] leading-relaxed">
         <p>
-          Ветка <b className="font-mono font-medium text-gk-strong">{branch}</b> будет удалена на сервере{' '}
-          <b className="font-medium text-gk-strong">{remote}</b> (<code className="font-mono text-[12px] text-gk-muted">git push {remote} --delete {branch}</code>).
-        </p>
+          {tj('Ветка <0>{1}</0> будет удалена на сервере <2>{3}</2> (<4>git push {5} --delete {6}</4>).', [<b className="font-mono font-medium text-gk-strong" />, branch, <b className="font-medium text-gk-strong" />, remote, <code className="font-mono text-[12px] text-gk-muted" />, remote, branch])}</p>
         <div className="rounded-lg border border-gk-red/30 bg-gk-red/[0.07] px-3 py-2 text-[12.5px] text-gk-text">
-          Её больше не увидят все, кто работает с репозиторием. Открытые merge request из этой ветки закроются или станут недоступны.
-        </div>
+          {tr('Её больше не увидят все, кто работает с репозиторием. Открытые merge request из этой ветки закроются или станут недоступны.')}</div>
         <ul className="space-y-1 text-[12.5px] text-gk-muted">
           <li>
             {locals.length
-              ? <>Локальная ветка {locals.map((l, i) => <span key={l}>{i ? ', ' : ''}<b className="font-medium text-gk-text">{l}</b></span>)} останется у вас — её можно отправить снова (Push).</>
-              : 'Локальной копии этой ветки у вас нет.'}
+              ? <>{tj('Локальная ветка {0} останется у вас — её можно отправить снова (Push).', [locals.map((l, i) => <span key={l}>{i ? ', ' : ''}<b className="font-medium text-gk-text">{l}</b></span>)])}</>
+              : tr('Локальной копии этой ветки у вас нет.')}
           </li>
-          <li>Undo ({kb('Ctrl+Z')}) опубликует ветку обратно на тот же коммит.</li>
+          <li>{tj('Undo ({0}) опубликует ветку обратно на тот же коммит.', [kb('Ctrl+Z')])}</li>
         </ul>
         {error && (
           <div className="rounded-lg border border-gk-red/40 bg-gk-red/10 px-3 py-2 text-[12.5px]">
-            <div className="font-medium text-gk-red">{error.message ?? 'Программа занята другой операцией — повторите через секунду'}</div>
+            <div className="font-medium text-gk-red">{error.message ?? tr('Программа занята другой операцией — повторите через секунду')}</div>
             {error.hint && <div className="mt-0.5 text-gk-muted">{error.hint}</div>}
           </div>
         )}
@@ -390,16 +368,15 @@ export function TagDialog({ hash, label, busy, error, onClose, onSubmit }) {
 
   return (
     <Modal
-      title="Новый тег"
+      title={tr('Новый тег')}
       icon={Tag}
       iconClass="text-gk-yellow"
       onClose={onClose}
       footer={
         <>
-          <Button onClick={onClose}>Отмена</Button>
+          <Button onClick={onClose}>{tr('Отмена')}</Button>
           <Button variant="primary" disabled={!valid || busy} onClick={submit}>
-            {busy && <Loader2 size={13} className="animate-spin" />} Создать тег
-          </Button>
+            {tj('{0} Создать тег', [busy && <Loader2 size={13} className="animate-spin" />])}</Button>
         </>
       }
     >
@@ -412,18 +389,16 @@ export function TagDialog({ hash, label, busy, error, onClose, onSubmit }) {
         className="w-full rounded bg-gk-bg px-3 py-2 font-mono outline-none ring-1 ring-gk-border placeholder:text-gk-dim focus:ring-gk-blue"
       />
       <div className="text-xs text-gk-muted">
-        На коммите <span className="font-mono text-gk-text">{label}</span>
+        {tj('На коммите <0>{1}</0>', [<span className="font-mono text-gk-text" />, label])}
       </div>
       <label className="flex cursor-pointer items-center gap-2 text-xs">
-        <input type="checkbox" checked={annotated} onChange={(e) => setAnnotated(e.target.checked)} className="accent-gk-green" />
-        Аннотированный тег (с сообщением)
-      </label>
+        {tj('{0}Аннотированный тег (с сообщением)', [<input type="checkbox" checked={annotated} onChange={(e) => setAnnotated(e.target.checked)} className="accent-gk-green" />])}</label>
       {annotated && (
         <textarea
           value={message}
           onChange={(e) => setMessage(e.target.value)}
           rows={3}
-          placeholder="Сообщение тега"
+          placeholder={tr('Сообщение тега')}
           className="w-full resize-none rounded bg-gk-bg px-3 py-2 outline-none ring-1 ring-gk-border placeholder:text-gk-dim focus:ring-gk-blue"
         />
       )}
@@ -436,11 +411,11 @@ export function TagDialog({ hash, label, busy, error, onClose, onSubmit }) {
 
 // Типы веток git flow: приписка, от какой ветки создаётся, пример имени
 export const FLOW_TYPES = [
-  { id: 'feature', label: 'feature', hint: 'новая функциональность', base: 'develop', placeholder: 'login-form' },
-  { id: 'bugfix', label: 'bugfix', hint: 'исправление ошибки до релиза', base: 'develop', placeholder: 'crash-on-save' },
-  { id: 'release', label: 'release', hint: 'подготовка релиза', base: 'develop', placeholder: '1.4.0' },
-  { id: 'hotfix', label: 'hotfix', hint: 'срочное исправление в рабочей версии', base: 'master', placeholder: '1.3.1' },
-  { id: 'support', label: 'support', hint: 'поддержка старой версии', base: 'master', placeholder: '1.x' },
+  { id: 'feature', label: 'feature', hint: tr('новая функциональность'), base: 'develop', placeholder: 'login-form' },
+  { id: 'bugfix', label: 'bugfix', hint: tr('исправление ошибки до релиза'), base: 'develop', placeholder: 'crash-on-save' },
+  { id: 'release', label: 'release', hint: tr('подготовка релиза'), base: 'develop', placeholder: '1.4.0' },
+  { id: 'hotfix', label: 'hotfix', hint: tr('срочное исправление в рабочей версии'), base: 'master', placeholder: '1.3.1' },
+  { id: 'support', label: 'support', hint: tr('поддержка старой версии'), base: 'master', placeholder: '1.x' },
 ];
 const NO_PREFIX = 'none';
 const readPrefType = () => {
@@ -517,25 +492,23 @@ export function BranchDialog({ startHash, startLabel, busy, error, onClose, onSu
 
   return (
     <Modal
-      title="Новая ветка"
+      title={tr('Новая ветка')}
       icon={GitBranch}
       iconClass="text-gk-green"
       onClose={onClose}
       width={540}
       footer={
         <>
-          <Button onClick={onClose}>Отмена</Button>
+          <Button onClick={onClose}>{tr('Отмена')}</Button>
           <Button variant="primary" disabled={!full || busy} onClick={submit} data-testid="branch-create">
-            {busy && <Loader2 size={13} className="animate-spin" />} Создать ветку
-          </Button>
+            {tj('{0} Создать ветку', [busy && <Loader2 size={13} className="animate-spin" />])}</Button>
         </>
       }
     >
       {/* Тип ветки по git flow */}
       <div>
         <div className="mb-1.5 flex items-center gap-1.5 text-[11px] text-gk-muted">
-          Тип ветки (git flow)
-          {flow?.configured && <span className="text-gk-dim">· приписки из настроек git flow репозитория</span>}
+          {tj('Тип ветки (git flow){0}', [flow?.configured && <span className="text-gk-dim">{tr('· приписки из настроек git flow репозитория')}</span>])}
         </div>
         <div role="radiogroup" className="flex flex-wrap gap-1.5" data-testid="branch-types">
           {FLOW_TYPES.map((t) => (
@@ -545,7 +518,7 @@ export function BranchDialog({ startHash, startLabel, busy, error, onClose, onSu
               aria-checked={type === t.id}
               data-type={t.id}
               onClick={() => setType(t.id)}
-              data-tip={`${prefixOf(t.id)}… — ${t.hint}\nПо git flow создаётся от ${t.base === 'develop' ? flow?.develop ?? 'develop' : flow?.master ?? 'main / master'}`}
+              data-tip={tr('{0}… — {1}\nПо git flow создаётся от {2}', prefixOf(t.id), t.hint, t.base === 'develop' ? flow?.develop ?? 'develop' : flow?.master ?? 'main / master')}
               className={`rounded-full px-2.5 py-1 font-mono text-[12px] transition-colors ${
                 type === t.id ? 'bg-gk-green/20 text-gk-green ring-1 ring-gk-green/45' : 'bg-gk-fg/5 text-gk-muted hover:text-gk-text'
               }`}
@@ -562,8 +535,7 @@ export function BranchDialog({ startHash, startLabel, busy, error, onClose, onSu
               type === NO_PREFIX ? 'bg-gk-green/20 text-gk-green ring-1 ring-gk-green/45' : 'bg-gk-fg/5 text-gk-muted hover:text-gk-text'
             }`}
           >
-            без приписки
-          </button>
+            {tr('без приписки')}</button>
         </div>
       </div>
 
@@ -580,47 +552,40 @@ export function BranchDialog({ startHash, startLabel, busy, error, onClose, onSu
           onChange={(e) => onNameChange(e.target.value)}
           onKeyDown={(e) => e.key === 'Enter' && submit()}
           placeholder={flowType?.placeholder ?? 'my-branch'}
-          aria-label="Имя ветки"
+          aria-label={tr('Имя ветки')}
           className={`min-w-0 flex-1 bg-transparent py-2 pr-3 font-mono outline-none placeholder:text-gk-dim ${prefix ? 'pl-0' : 'pl-3'}`}
         />
       </div>
       {full && (
         <div className="text-xs text-gk-muted">
-          Будет создана ветка <span data-testid="branch-full" className="font-mono text-gk-text">{full}</span>
+          {tj('Будет создана ветка <0>{1}</0>', [<span data-testid="branch-full" className="font-mono text-gk-text" />, full])}
         </div>
       )}
 
       <div className="text-xs text-gk-muted">
-        От {base ? 'ветки' : 'коммита'} <span className="font-mono text-gk-text">{base ? base.name : startLabel}</span>
-        {base && (
+        {tj('От {0} <1>{2}</1>{3}', [base ? tr('ветки') : tr('коммита'), <span className="font-mono text-gk-text" />, base ? base.name : startLabel, base && (
           <button onClick={() => setBase(null)} className="ml-2 text-gk-blue hover:underline">
-            вернуть выбранный коммит
-          </button>
-        )}
+            {tr('вернуть выбранный коммит')}</button>
+        )])}
       </div>
       {flowType && (
         <div
           data-testid="branch-flow-base"
           className={`rounded-md px-3 py-2 text-[12px] leading-relaxed ${startOk ? 'bg-gk-fg/[0.03] text-gk-muted' : 'bg-gk-yellow/10 text-gk-text'}`}
         >
-          По git flow ветки <span className="font-mono">{prefix}</span> создаются от <span className="font-mono text-gk-text">{wantName}</span>.
-          {!flowBase && <> Такой ветки в репозитории нет — ветка будет создана от выбранного коммита.</>}
-          {flowBase && !startOk && (
+          {tj('По git flow ветки <0>{1}</0> создаются от <2>{3}</2>.{4}{5}{6}', [<span className="font-mono" />, prefix, <span className="font-mono text-gk-text" />, wantName, !flowBase && <> {tr(' Такой ветки в репозитории нет — ветка будет создана от выбранного коммита.')}</>, flowBase && !startOk && (
             <button
               onClick={() => setBase(flowBase)}
               data-testid="branch-use-flow-base"
               className="ml-1 inline-flex items-center gap-1 rounded bg-gk-blue/15 px-1.5 py-0.5 text-gk-blue hover:bg-gk-blue/25"
             >
-              <GitBranch size={11} /> Создать от {flowBase.name}
+              {tj('{0} Создать от {1}', [<GitBranch size={11} />, flowBase.name])}
             </button>
-          )}
-          {flowBase && startOk && <span className="text-gk-green"> ✓</span>}
+          ), flowBase && startOk && <span className="text-gk-green"> ✓</span>])}
         </div>
       )}
       <label className="flex cursor-pointer items-center gap-2 text-xs">
-        <input type="checkbox" checked={checkout} onChange={(e) => setCheckout(e.target.checked)} className="accent-gk-green" />
-        Переключиться на новую ветку
-      </label>
+        {tj('{0}Переключиться на новую ветку', [<input type="checkbox" checked={checkout} onChange={(e) => setCheckout(e.target.checked)} className="accent-gk-green" />])}</label>
       {error && <ErrorBox error={error} />}
     </Modal>
   );
@@ -640,21 +605,19 @@ export function SwitchToDialog({ node, locals = [], remotes = [], onBranch, onCr
   const remoteOnly = remotes.filter((r) => !localNames.has(r.name.slice(r.name.indexOf('/') + 1)));
   return (
     <Modal
-      title={none ? `Коммит ${short} не на ветке` : `Переключиться на ${short}`}
+      title={none ? tr('Коммит {0} не на ветке', short) : tr('Переключиться на {0}', short)}
       icon={none ? AlertTriangle : GitBranch}
       iconClass={none ? 'text-gk-yellow' : 'text-gk-blue'}
       onClose={onClose}
       width={none ? 560 : 460}
       footer={
         <>
-          <Button onClick={onClose}>Отмена</Button>
+          <Button onClick={onClose}>{tr('Отмена')}</Button>
           <Button onClick={onDetached} data-testid="switch-detached" className="whitespace-nowrap">
-            <GitCommitHorizontal size={13} /> Переключить HEAD (Detached)
-          </Button>
+            {tj('{0} Переключить HEAD (Detached)', [<GitCommitHorizontal size={13} />])}</Button>
           {none && (
             <Button variant="blue" onClick={onCreateBranch} autoFocus className="whitespace-nowrap">
-              <GitBranch size={13} /> Создать ветку здесь…
-            </Button>
+              {tj('{0} Создать ветку здесь…', [<GitBranch size={13} />])}</Button>
           )}
         </>
       }
@@ -664,21 +627,17 @@ export function SwitchToDialog({ node, locals = [], remotes = [], onBranch, onCr
       </div>
       {none ? (
         <p className="text-[12.5px] leading-relaxed text-gk-muted">
-          На этом коммите нет ни одной ветки. Если переключить HEAD прямо на коммит, вы окажетесь в состоянии <b className="text-gk-text">detached HEAD</b>:
-          новые коммиты не попадут ни в одну ветку. Удобнее сначала создать здесь ветку.
-        </p>
+          {tj('На этом коммите нет ни одной ветки. Если переключить HEAD прямо на коммит, вы окажетесь в состоянии <0>detached HEAD</0>: новые коммиты не попадут ни в одну ветку. Удобнее сначала создать здесь ветку.', [<b className="text-gk-text" />])}</p>
       ) : (
         <div className="space-y-1">
-          <p className="pb-1 text-[12.5px] text-gk-muted">На коммите несколько веток — на какую переключиться?</p>
+          <p className="pb-1 text-[12.5px] text-gk-muted">{tr('На коммите несколько веток — на какую переключиться?')}</p>
           {locals.map((r) => (
             <button
               key={r.name}
               onClick={() => onBranch(r)}
               className="flex w-full items-center gap-2 rounded-md border border-gk-border bg-gk-bg/60 px-3 py-2 text-left hover:border-gk-blue/60 hover:bg-gk-hover"
             >
-              <Laptop size={13} className="shrink-0 text-gk-green" />
-              <span className="flex-1 truncate font-medium text-gk-text">{r.name}</span>
-              <span className="text-[11px] text-gk-dim">локальная</span>
+              {tj('{0}<1>{2}</1><3>локальная</3>', [<Laptop size={13} className="shrink-0 text-gk-green" />, <span className="flex-1 truncate font-medium text-gk-text" />, r.name, <span className="text-[11px] text-gk-dim" />])}
             </button>
           ))}
           {remoteOnly.map((r) => (
@@ -687,9 +646,7 @@ export function SwitchToDialog({ node, locals = [], remotes = [], onBranch, onCr
               onClick={() => onBranch(r)}
               className="flex w-full items-center gap-2 rounded-md border border-gk-border bg-gk-bg/60 px-3 py-2 text-left hover:border-gk-blue/60 hover:bg-gk-hover"
             >
-              <Cloud size={13} className="shrink-0 text-gk-blue" />
-              <span className="flex-1 truncate font-medium text-gk-text">{r.name}</span>
-              <span className="text-[11px] text-gk-dim">создать локальную и следить</span>
+              {tj('{0}<1>{2}</1><3>создать локальную и следить</3>', [<Cloud size={13} className="shrink-0 text-gk-blue" />, <span className="flex-1 truncate font-medium text-gk-text" />, r.name, <span className="text-[11px] text-gk-dim" />])}
             </button>
           ))}
         </div>
@@ -712,15 +669,14 @@ export function RenameBranchDialog({ from, upstream, busy, error, onClose, onSub
   const submit = () => valid && !busy && onSubmit(next);
   return (
     <Modal
-      title={`Переименовать ветку ${from}`}
+      title={tr('Переименовать ветку {0}', from)}
       icon={GitBranch}
       onClose={onClose}
       footer={
         <>
-          <Button onClick={onClose}>Отмена</Button>
+          <Button onClick={onClose}>{tr('Отмена')}</Button>
           <Button variant="primary" disabled={!valid || busy} onClick={submit}>
-            {busy && <Loader2 size={13} className="animate-spin" />} Переименовать
-          </Button>
+            {tj('{0} Переименовать', [busy && <Loader2 size={13} className="animate-spin" />])}</Button>
         </>
       }
     >
@@ -729,18 +685,15 @@ export function RenameBranchDialog({ from, upstream, busy, error, onClose, onSub
         value={name}
         onChange={(e) => setName(e.target.value.replace(/\s/g, '-'))}
         onKeyDown={(e) => e.key === 'Enter' && submit()}
-        aria-label="Новое имя ветки"
+        aria-label={tr('Новое имя ветки')}
         spellCheck={false}
         className="w-full rounded bg-gk-bg px-3 py-2 font-mono outline-none ring-1 ring-gk-border placeholder:text-gk-dim focus:ring-gk-blue"
       />
       <p className="text-xs leading-relaxed text-gk-muted">
-        Меняется только локальная ветка (<span className="font-mono">git branch -m</span>), Undo вернёт прежнее имя.
-        {upstream && (
+        {tj('Меняется только локальная ветка (<0>git branch -m</0>), Undo вернёт прежнее имя.{1}', [<span className="font-mono" />, upstream && (
           <>
-            {' '}
-            Ветка на сервере <span className="font-mono text-gk-text">{upstream}</span> останется с прежним именем, а локальная продолжит за ней следить.
-          </>
-        )}
+            {tj(' Ветка на сервере <0>{1}</0> останется с прежним именем, а локальная продолжит за ней следить.', [<span className="font-mono text-gk-text" />, upstream])}</>
+        )])}
       </p>
       {error && <ErrorBox error={error} />}
     </Modal>
@@ -768,31 +721,31 @@ export function CheckoutWipDialog({ wip, busy, onChoose, onClose }) {
     {
       id: 'stash',
       icon: Archive,
-      title: 'Спрятать и переключиться',
+      title: tr('Спрятать и переключиться'),
       term: 'Stash',
       text: wip.detached
-        ? 'Изменения уйдут в stash — достать их можно из списка Stash.'
-        : `Изменения спрячутся под именем ${from} и сами вернутся, когда вы переключитесь обратно на ${from}.`,
-      disabled: blocked ? 'Сначала решите конфликты в файлах с пометкой U' : null,
+        ? tr('Изменения уйдут в stash — достать их можно из списка Stash.')
+        : tr('Изменения спрячутся под именем {0} и сами вернутся, когда вы переключитесь обратно на {1}.', from, from),
+      disabled: blocked ? tr('Сначала решите конфликты в файлах с пометкой U') : null,
       tone: 'text-gk-yellow',
     },
     {
       id: 'merge',
       icon: MoveRight,
-      title: `Перенести изменения в ${wip.to}`,
+      title: tr('Перенести изменения в {0}', wip.to),
       term: 'Move changes',
       text: overlap.length
-        ? `${overlap.length} ${overlap.length === 1 ? 'файл изменён' : 'файлов изменено'} и в ${wip.to} — возможен конфликт. Если он будет, копия изменений останется в Stash.`
-        : `Изменения поедут вместе с вами: в ${wip.to} они не пересекаются с чужими правками.`,
-      disabled: blocked ? 'Сначала решите конфликты в файлах с пометкой U' : null,
+        ? tr('{0} {1} и в {2} — возможен конфликт. Если он будет, копия изменений останется в Stash.', overlap.length, overlap.length === 1 ? tr('файл изменён') : tr('файлов изменено'), wip.to)
+        : tr('Изменения поедут вместе с вами: в {0} они не пересекаются с чужими правками.', wip.to),
+      disabled: blocked ? tr('Сначала решите конфликты в файлах с пометкой U') : null,
       tone: 'text-gk-blue',
     },
     {
       id: 'force',
       icon: Trash2,
-      title: 'Выбросить изменения и переключиться',
+      title: tr('Выбросить изменения и переключиться'),
       term: 'Discard',
-      text: 'Рабочая папка станет как в коммите ветки. Ctrl+Z вернёт и ветку, и выброшенные изменения.',
+      text: tr('Рабочая папка станет как в коммите ветки. Ctrl+Z вернёт и ветку, и выброшенные изменения.'),
       tone: 'text-gk-red',
       danger: true,
     },
@@ -800,30 +753,25 @@ export function CheckoutWipDialog({ wip, busy, onChoose, onClose }) {
   const submit = (id = choice) => !busy && onChoose(id, remember && id !== 'force');
   return (
     <Modal
-      title={`Переключиться на ${wip.to}`}
+      title={tr('Переключиться на {0}', wip.to)}
       icon={GitBranch}
       onClose={onClose}
       width={540}
       footer={
         <>
-          <label className="mr-auto flex cursor-pointer items-center gap-2 text-[12px] text-gk-muted" data-tip="Запомнить выбор для следующих переключений. Изменить — в Настройки → Ветки">
-            <input type="checkbox" checked={remember && choice !== 'force'} disabled={choice === 'force'} onChange={(e) => setRemember(e.target.checked)} className="accent-gk-blue" data-testid="wip-remember" />
-            Больше не спрашивать
-          </label>
-          <Button onClick={onClose}>Отмена</Button>
+          <label className="mr-auto flex cursor-pointer items-center gap-2 text-[12px] text-gk-muted" data-tip={tr('Запомнить выбор для следующих переключений. Изменить — в Настройки → Ветки')}>
+            {tj('{0}Больше не спрашивать', [<input type="checkbox" checked={remember && choice !== 'force'} disabled={choice === 'force'} onChange={(e) => setRemember(e.target.checked)} className="accent-gk-blue" data-testid="wip-remember" />])}</label>
+          <Button onClick={onClose}>{tr('Отмена')}</Button>
           <Button variant={choice === 'force' ? 'danger' : 'primary'} disabled={busy} onClick={() => submit()} data-testid="wip-submit">
             {busy ? <Loader2 size={13} className="animate-spin" /> : null}
-            {choice === 'stash' ? 'Спрятать и переключиться' : choice === 'merge' ? 'Перенести и переключиться' : 'Выбросить и переключиться'}
+            {choice === 'stash' ? tr('Спрятать и переключиться') : choice === 'merge' ? tr('Перенести и переключиться') : tr('Выбросить и переключиться')}
           </Button>
         </>
       }
     >
       <div data-testid="wip-dialog" data-recommended={recommended} className="space-y-3">
         <p className="text-gk-muted">
-          В <span className="font-medium text-gk-text">{from}</span> есть незакоммиченные изменения: {wip.files}{' '}
-          {wip.files === 1 ? 'файл' : wip.files < 5 ? 'файла' : 'файлов'}
-          {wip.untracked ? `, из них новых: ${wip.untracked}` : ''}. Что с ними сделать?
-        </p>
+          {tj('В <0>{1}</0> есть незакоммиченные изменения: {2} {3}{4}. Что с ними сделать?', [<span className="font-medium text-gk-text" />, from, wip.files, wip.files === 1 ? tr('файл') : wip.files < 5 ? tr('файла') : tr('файлов'), wip.untracked ? tr(', из них новых: {0}', wip.untracked) : ''])}</p>
         <div className="max-h-28 overflow-y-auto rounded-md border border-gk-border bg-gk-fg/[0.02] px-2 py-1 font-mono text-[11.5px]" data-testid="wip-files">
           {(wip.list ?? []).map((f) => {
             const [letter, color] = WIP_STATUS[f.untracked ? 'A' : f.status] ?? WIP_STATUS.M;
@@ -834,11 +782,11 @@ export function CheckoutWipDialog({ wip, busy, onChoose, onClose }) {
                   {letter}
                 </span>
                 <span className="min-w-0 flex-1 truncate text-gk-text">{f.path}</span>
-                {hit && <span className="shrink-0 font-sans text-[10.5px] text-gk-yellow" data-tip={`Изменён и в ${wip.to}`}>есть и в {wip.to}</span>}
+                {hit && <span className="shrink-0 font-sans text-[10.5px] text-gk-yellow" data-tip={tr('Изменён и в {0}', wip.to)}>{tj('есть и в {0}', [wip.to])}</span>}
               </div>
             );
           })}
-          {wip.files > (wip.list ?? []).length && <div className="py-0.5 font-sans text-gk-dim">… и ещё {wip.files - wip.list.length}</div>}
+          {wip.files > (wip.list ?? []).length && <div className="py-0.5 font-sans text-gk-dim">{tj('… и ещё {0}', [wip.files - wip.list.length])}</div>}
         </div>
         <div className="space-y-1.5" role="radiogroup">
           {options.map((o) => {
@@ -866,7 +814,7 @@ export function CheckoutWipDialog({ wip, busy, onChoose, onClose }) {
                   <span className="flex items-center gap-2 text-[13px] font-medium text-gk-strong">
                     {o.title}
                     <span className="text-[11px] font-normal text-gk-dim">{o.term}</span>
-                    {o.id === recommended && <span className="rounded bg-gk-green/15 px-1.5 text-[10.5px] font-normal text-gk-green">рекомендуем</span>}
+                    {o.id === recommended && <span className="rounded bg-gk-green/15 px-1.5 text-[10.5px] font-normal text-gk-green">{tr('рекомендуем')}</span>}
                   </span>
                   <span className="mt-0.5 block text-[12px] leading-snug text-gk-muted">{o.text}</span>
                 </span>

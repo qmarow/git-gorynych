@@ -2,6 +2,7 @@
 // needs — явные зависимости (сплошные стрелки); без needs задание GitLab ждёт весь предыдущий этап (пунктир).
 import { useMemo, useState } from 'react';
 import { Hand } from 'lucide-react';
+import { tj } from '../../i18n/index.js';
 
 const W = 188;
 const H = 46;
@@ -77,19 +78,15 @@ export default function DagView({ pipeline, selectedJob, onSelectJob, jobIssues 
   return (
     <div className="overflow-auto rounded-lg border border-gk-border bg-gk-fg/[0.015] p-3" data-testid="dag">
       <div className="mb-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px] text-gk-dim">
-        <span>Колонка — задания, которые могут идти одновременно</span>
-        <span className="flex items-center gap-1">
+        {tj('<0>Колонка — задания, которые могут идти одновременно</0>{1}{2}', [<span />, <span className="flex items-center gap-1">
           <svg width="22" height="6">
             <path d="M0 3H22" stroke="currentColor" strokeWidth="1.5" />
           </svg>
           needs
-        </span>
-        <span className="flex items-center gap-1">
-          <svg width="22" height="6">
+        </span>, <span className="flex items-center gap-1">
+          {tj('{0}ждёт предыдущий этап', [<svg width="22" height="6">
             <path d="M0 3H22" stroke="currentColor" strokeWidth="1.5" strokeDasharray="3 3" />
-          </svg>
-          ждёт предыдущий этап
-        </span>
+          </svg>])}</span>])}
       </div>
       <div className="relative" style={{ width: g.width + pad * 2, height: g.height + pad * 2 }}>
         <svg className="absolute inset-0" width={g.width + pad * 2} height={g.height + pad * 2} aria-hidden="true">

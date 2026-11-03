@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { AlertTriangle, CheckCircle2, ChevronDown, ChevronRight, Info, X } from 'lucide-react';
 import { kb } from '../lib/platform.js';
+import { tj } from '../i18n/index.js';
 
 const STYLES = {
   success: { icon: CheckCircle2, accent: 'text-gk-green', bar: 'bg-gk-green' },
@@ -47,8 +48,7 @@ function Toast({ toast, onClose }) {
                 onClick={() => setOpen((v) => !v)}
                 className="mt-1 flex items-center gap-0.5 text-[11px] text-gk-dim hover:text-gk-muted"
               >
-                {open ? <ChevronDown size={11} /> : <ChevronRight size={11} />} Подробнее
-              </button>
+                {tj('{0} Подробнее', [open ? <ChevronDown size={11} /> : <ChevronRight size={11} />])}</button>
               {open && (
                 <pre className="mt-1 max-h-40 select-text overflow-auto whitespace-pre-wrap rounded bg-gk-bg p-2 font-mono text-[11px] text-gk-muted">
                   {toast.details}

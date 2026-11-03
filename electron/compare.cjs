@@ -1,6 +1,7 @@
 // Сравнение двух любых коммитов: какие файлы и насколько отличаются, сколько коммитов между ними
 const { git, getCommitFiles, HASH_RE } = require('./git.cjs');
 const { GitError } = require('./errors.cjs');
+const { t: tr } = require('./i18n.cjs');
 
 const FS = '\x1f';
 const MAX_LOG = 200;
@@ -24,8 +25,8 @@ async function log(cwd, range) {
 
 /** a — «было», b — «стало» */
 async function compareCommits(cwd, { a, b }) {
-  if (!HASH_RE.test(a ?? '') || !HASH_RE.test(b ?? '')) throw new GitError('Некорректный коммит', { code: 'BAD_ARGS' });
-  if (a === b) throw new GitError('Выбран один и тот же коммит', { code: 'BAD_ARGS' });
+  if (!HASH_RE.test(a ?? '') || !HASH_RE.test(b ?? '')) throw new GitError(tr('Некорректный коммит'), { code: 'BAD_ARGS' });
+  if (a === b) throw new GitError(tr('Выбран один и тот же коммит'), { code: 'BAD_ARGS' });
   const [infoA, infoB, files, counts, base] = await Promise.all([
     info(cwd, a),
     info(cwd, b),
@@ -87,17 +88,17 @@ function unquote(raw) {
  * → { files: [{ path, oldPath, count, lines: [{ t: '+'|'-', line, text, ranges: [[from, to]] }] }], total, truncated }
  */
 async function searchChanges(cwd, { a, b, query, regex = false, caseSensitive = false } = {}) {
-  if (!HASH_RE.test(a ?? '') || !HASH_RE.test(b ?? '')) throw new GitError('Некорректный коммит', { code: 'BAD_ARGS' });
+  if (!HASH_RE.test(a ?? '') || !HASH_RE.test(b ?? '')) throw new GitError(tr('Некорректный коммит'), { code: 'BAD_ARGS' });
   const q = String(query ?? '');
   if (!q.trim()) return { files: [], total: 0, truncated: false };
-  if (q.length > 500) throw new GitError('Слишком длинный запрос', { code: 'BAD_ARGS' });
+  if (q.length > 500) throw new GitError(tr('Слишком длинный запрос'), { code: 'BAD_ARGS' });
   let re;
   try {
     re = new RegExp(regex ? q : q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), caseSensitive ? 'g' : 'gi');
   } catch (error) {
-    throw new GitError('Неверное регулярное выражение', { code: 'BAD_ARGS', hint: error.message });
+    throw new GitError(tr('Неверное регулярное выражение'), { code: 'BAD_ARGS', hint: error.message });
   }
-  if (re.test('')) throw new GitError('Выражение совпадает с пустой строкой', { code: 'BAD_ARGS' });
+  if (re.test('')) throw new GitError(tr('Выражение совпадает с пустой строкой'), { code: 'BAD_ARGS' });
 
   // Обычный текст — git сам отберёт файлы, где он есть в добавленных/удалённых строках (-G);
   // регулярку JavaScript в git не передаём: синтаксис другой, фильтруем сами
@@ -210,16 +211,16 @@ function caseFreeEre(q) {
 async function searchHistory(cwd, { hashes = [], query, regex = false, caseSensitive = false } = {}) {
   const q = String(query ?? '');
   if (!q.trim()) return { commits: [], total: 0, truncated: false };
-  if (q.length > 500) throw new GitError('Слишком длинный запрос', { code: 'BAD_ARGS' });
+  if (q.length > 500) throw new GitError(tr('Слишком длинный запрос'), { code: 'BAD_ARGS' });
   const list = (Array.isArray(hashes) ? hashes : []).filter((h) => HASH_RE.test(String(h))).slice(0, HIST_MAX_HASHES);
   if (!list.length) return { commits: [], total: 0, truncated: false };
   let re;
   try {
     re = new RegExp(regex ? q : q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), caseSensitive ? 'g' : 'gi');
   } catch (error) {
-    throw new GitError('Неверное регулярное выражение', { code: 'BAD_ARGS', hint: error.message });
+    throw new GitError(tr('Неверное регулярное выражение'), { code: 'BAD_ARGS', hint: error.message });
   }
-  if (re.test('')) throw new GitError('Выражение совпадает с пустой строкой', { code: 'BAD_ARGS' });
+  if (re.test('')) throw new GitError(tr('Выражение совпадает с пустой строкой'), { code: 'BAD_ARGS' });
 
   // git сам отбирает коммиты, где текст есть в добавленных/удалённых строках (-G); регулярку JavaScript
   // в git не передаём (синтаксис другой) — тогда отбираем сами, но смотрим меньше коммитов

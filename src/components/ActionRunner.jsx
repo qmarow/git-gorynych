@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { Check, CircleX, Loader2, CircleMinus, Play, RotateCcw, WandSparkles, X } from 'lucide-react';
 import { ACTION_ICONS, STEP_ICONS } from './ActionBuilder.jsx';
 import { STEP_TYPES, slugify } from '../lib/actions.js';
+import { t as tr, tj } from '../i18n/index.js';
 
 /**
  * Ход выполнения действия: шаги со статусами; при ошибке — причина и «Повторить с этого шага».
@@ -79,13 +80,13 @@ export function RunnerCard({ run, onClose, onRetry }) {
               onClick={() => onRetry(failed)}
               className="mt-2 flex items-center gap-1.5 rounded-md bg-gk-fg/10 px-2.5 py-1 text-[12px] text-gk-text hover:bg-gk-fg/15"
             >
-              <RotateCcw size={12} /> Повторить с шага {failed + 1}
+              {tj('{0} Повторить с шага {1}', [<RotateCcw size={12} />, failed + 1])}
             </button>
           )}
         </div>
       )}
       {run.finished && !run.error && (
-        <div className="border-t border-gk-green/25 bg-gk-green/[0.07] px-3 py-1.5 text-[12px] text-gk-green">Готово{run.summary ? ` — ${run.summary}` : ''}</div>
+        <div className="border-t border-gk-green/25 bg-gk-green/[0.07] px-3 py-1.5 text-[12px] text-gk-green">{tj('Готово{0}', [run.summary ? ` — ${run.summary}` : ''])}</div>
       )}
     </div>
   );
@@ -150,16 +151,14 @@ export function RunDialog({ action, inputs, branches, onRun, onClose }) {
         </div>
         <div className="flex justify-end gap-2 border-t border-gk-border px-4 py-2.5">
           <button type="button" onClick={onClose} className="rounded px-3 py-1.5 text-[12.5px] text-gk-muted hover:bg-gk-hover hover:text-gk-text">
-            Отмена
-          </button>
+            {tr('Отмена')}</button>
           <button
             type="submit"
             autoFocus={inputs.length === 0}
             disabled={!ready}
             className="flex items-center gap-1.5 rounded-md bg-gk-green px-3 py-1.5 text-[12.5px] font-semibold text-gk-ink hover:brightness-110 disabled:opacity-40"
           >
-            <Play size={13} /> Запустить
-          </button>
+            {tj('{0} Запустить', [<Play size={13} />])}</button>
         </div>
       </form>
     </div>

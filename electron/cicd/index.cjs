@@ -12,6 +12,7 @@ const settings = require('./settings.cjs');
 const M = require('./models.cjs');
 const runnerSetup = require('./runnerSetup.cjs');
 const { checkRunnerTags } = require('./tagCheck.cjs');
+const { t } = require('../i18n.cjs');
 
 const ADAPTERS = {
   gitlab: require('./gitlab.cjs'),
@@ -115,10 +116,10 @@ function httpCtx(r, login) {
     webUrl: `${r.siteBase}/${r.path}`,
     scopeHint:
       r.kind === 'github'
-        ? 'Токену нужны права repo и workflow (классический) или Actions, Administration и Secrets (fine-grained)'
+        ? t('Токену нужны права repo и workflow (классический) или Actions, Administration и Secrets (fine-grained)')
         : r.kind === 'gitea'
-          ? 'Токену нужны права write:repository (и read:user)'
-          : 'Паролю приложения нужны права Pipelines: Read/Write и Repositories: Read',
+          ? t('Токену нужны права write:repository (и read:user)')
+          : t('Паролю приложения нужны права Pipelines: Read/Write и Repositories: Read'),
   };
 }
 
@@ -151,8 +152,8 @@ const verifyState = (r, login) => checks.get(fp(r.kind, r.host, r.path, r.conf?.
 
 function loginProblemText(r, other, bad) {
   const label = LABELS[r.kind];
-  if (bad) return `Авторизация репозитория не подходит для ${label}: ${bad.reason}${bad.hint ? ` — ${bad.hint}` : ''}`;
-  if (other?.method === 'ssh') return `Репозиторий авторизован SSH-ключом — его принимает git, но не API ${label}. Добавьте в авторизацию репозитория токен для пайплайнов.`;
+  if (bad) return t('Авторизация репозитория не подходит для {0}: {1}{2}', label, bad.reason, bad.hint ? ` — ${bad.hint}` : '');
+  if (other?.method === 'ssh') return t('Репозиторий авторизован SSH-ключом — его принимает git, но не API {0}. Добавьте в авторизацию репозитория токен для пайплайнов.', label);
   return null;
 }
 
@@ -241,13 +242,13 @@ async function checkLogin(root, preferredRemote) {
 
 async function context(root, preferredRemote) {
   const r = await resolveRemote(root, preferredRemote);
-  if (!r) throw new GitError('У репозитория нет remote', { code: 'NO_REMOTE' });
+  if (!r) throw new GitError(t('У репозитория нет remote'), { code: 'NO_REMOTE' });
   if (r.kind === 'gitlab' || !r.kind) {
     const ctx = await gl.context(root, preferredRemote).catch((error) => {
       if (error.code === 'NOT_GITLAB') {
-        throw new GitError('Не удалось определить сервис CI/CD', {
+        throw new GitError(t('Не удалось определить сервис CI/CD'), {
           code: 'NO_PROVIDER',
-          hint: 'Укажите провайдера (GitLab, GitHub, Gitea, Bitbucket) и адрес API в настройках CI/CD репозитория',
+          hint: t('Укажите провайдера (GitLab, GitHub, Gitea, Bitbucket) и адрес API в настройках CI/CD репозитория'),
         });
       }
       throw error;
@@ -256,20 +257,20 @@ async function context(root, preferredRemote) {
   }
   const { login, other } = loginFor(r);
   if (!login) {
-    throw new GitError('Репозиторий не авторизован', {
+    throw new GitError(t('Репозиторий не авторизован'), {
       code: 'NO_TOKEN',
-      hint: loginProblemText(r, other) ?? `Авторизуйте репозиторий — эта же авторизация работает и для ${LABELS[r.kind]}`,
+      hint: loginProblemText(r, other) ?? t('Авторизуйте репозиторий — эта же авторизация работает и для {0}', LABELS[r.kind]),
     });
   }
   const st = await verify(r, login);
-  if (st.state === 'bad') throw new GitError('Авторизация репозитория не подходит для CI/CD', { code: 'NO_TOKEN', hint: loginProblemText(r, null, st) });
+  if (st.state === 'bad') throw new GitError(t('Авторизация репозитория не подходит для CI/CD'), { code: 'NO_TOKEN', hint: loginProblemText(r, null, st) });
   const ctx = { ...httpCtx(r, login), ...(st.flags ?? {}), root, preferredRemote };
   return { adapter: ADAPTERS[r.kind], ctx };
 }
 
 function require_(adapter, ctx, cap, label) {
   const caps = adapter.capabilities(ctx);
-  if (!caps[cap]) throw new GitError(caps.why?.[cap] ?? `${adapter.label}: ${label} недоступно`, { code: 'UNSUPPORTED' });
+  if (!caps[cap]) throw new GitError(caps.why?.[cap] ?? t('{0}: {1} недоступно', adapter.label, label), { code: 'UNSUPPORTED' });
   return caps;
 }
 
@@ -303,10 +304,10 @@ async function stagesOf(root, data) {
     for (const j of jobs) j.stage = levels.levelOf(j.name);
     const max = Math.max(0, ...jobs.map((j) => j.stage ?? 0));
     return Array.from({ length: max + 1 }, (_, i) => jobs.filter((j) => (j.stage ?? 0) === i))
-      .map((list, i) => ({ name: max === 0 ? data.pipeline.workflow ?? 'Задания' : i === 0 ? 'Старт' : `После шага ${i}`, status: M.aggregate(list), jobs: list.map((j) => ({ ...j, stage: i === 0 ? 'Старт' : `После шага ${i}` })) }))
+      .map((list, i) => ({ name: max === 0 ? data.pipeline.workflow ?? t('Задания') : i === 0 ? t('Старт') : t('После шага {0}', i), status: M.aggregate(list), jobs: list.map((j) => ({ ...j, stage: i === 0 ? t('Старт') : t('После шага {0}', i) })) }))
       .filter((s) => s.jobs.length);
   }
-  return jobs.length ? [{ name: data.pipeline.workflow ?? 'Задания', status: M.aggregate(jobs), jobs: jobs.map((j) => ({ ...j, stage: data.pipeline.workflow ?? 'Задания' })) }] : [];
+  return jobs.length ? [{ name: data.pipeline.workflow ?? t('Задания'), status: M.aggregate(jobs), jobs: jobs.map((j) => ({ ...j, stage: data.pipeline.workflow ?? t('Задания') })) }] : [];
 }
 
 /** Уровни заданий workflow по needs (из файла в этом коммите или в рабочей папке) */
@@ -371,20 +372,20 @@ const ACTION_CAPS = {
 };
 
 async function action(root, a, { preferredRemote } = {}) {
-  if (!a || !ACTION_CAPS[a.type]) throw new GitError('Неизвестное действие', { code: 'BAD_ARGS' });
+  if (!a || !ACTION_CAPS[a.type]) throw new GitError(t('Неизвестное действие'), { code: 'BAD_ARGS' });
   const { adapter, ctx } = await context(root, preferredRemote);
-  require_(adapter, ctx, ACTION_CAPS[a.type], 'действие');
+  require_(adapter, ctx, ACTION_CAPS[a.type], t('действие'));
   return adapter.action(ctx, a);
 }
 
 /** Запуск пайплайна: ветка, workflow (GitHub/Gitea, custom-пайплайн Bitbucket), inputs и переменные */
 async function run(root, params = {}, { preferredRemote } = {}) {
   const ref = String(params.ref ?? '').trim();
-  if (!ref) throw new GitError('Не указана ветка', { code: 'BAD_ARGS' });
+  if (!ref) throw new GitError(t('Не указана ветка'), { code: 'BAD_ARGS' });
   const { adapter, ctx } = await context(root, preferredRemote);
-  require_(adapter, ctx, 'canRunPipeline', 'запуск');
+  require_(adapter, ctx, 'canRunPipeline', t('запуск'));
   const variables = Array.isArray(params.variables) ? params.variables.filter((v) => v && String(v.key ?? '').trim()) : [];
-  if (variables.length && !adapter.capabilities(ctx).canRunWithVariables) throw new GitError(adapter.capabilities(ctx).why?.canRunWithVariables ?? 'Переменные при запуске не поддерживаются', { code: 'UNSUPPORTED' });
+  if (variables.length && !adapter.capabilities(ctx).canRunWithVariables) throw new GitError(adapter.capabilities(ctx).why?.canRunWithVariables ?? t('Переменные при запуске не поддерживаются'), { code: 'UNSUPPORTED' });
   return adapter.runPipeline(ctx, { ref, workflow: params.workflow ?? null, inputs: params.inputs ?? {}, variables: variables.map((v) => ({ ...v, key: String(v.key).trim() })) });
 }
 
@@ -438,7 +439,7 @@ async function runForm(root, { preferredRemote } = {}) {
     const sys = systems.find((s) => s.id === 'bitbucket');
     const data = sys ? read(sys.files[0]) : null;
     const custom = data?.pipelines?.custom && typeof data.pipelines.custom === 'object' ? data.pipelines.custom : {};
-    const workflows = [{ path: null, name: 'По ветке (branches / default)', value: null, dispatchable: true, inputs: [] }];
+    const workflows = [{ path: null, name: t('По ветке (branches / default)'), value: null, dispatchable: true, inputs: [] }];
     for (const [name, steps] of Object.entries(custom)) {
       const vars = [].concat(steps ?? []).find((s) => s && typeof s === 'object' && Array.isArray(s.variables))?.variables ?? [];
       workflows.push({
@@ -482,7 +483,7 @@ async function runForm(root, { preferredRemote } = {}) {
 async function runners(root, { preferredRemote } = {}) {
   const { adapter, ctx } = await context(root, preferredRemote);
   const caps = adapter.capabilities(ctx);
-  if (!caps.canListRunners) throw new GitError(caps.why?.canListRunners ?? 'Раннеры недоступны', { code: 'UNSUPPORTED' });
+  if (!caps.canListRunners) throw new GitError(caps.why?.canListRunners ?? t('Раннеры недоступны'), { code: 'UNSUPPORTED' });
   const list = await adapter.listRunners(ctx);
   return withCaps(adapter, ctx, { runners: list });
 }
@@ -490,22 +491,22 @@ async function runners(root, { preferredRemote } = {}) {
 async function runnerUpdate(root, { id, patch }, { preferredRemote } = {}) {
   const { adapter, ctx } = await context(root, preferredRemote);
   const p = patch ?? {};
-  if (p.labels) require_(adapter, ctx, 'canEditRunnerLabels', 'изменение меток');
-  if (p.paused !== undefined) require_(adapter, ctx, 'canPauseRunner', 'пауза');
-  if (['runUntagged', 'locked', 'description', 'maximumTimeout'].some((k) => p[k] !== undefined)) require_(adapter, ctx, 'canEditRunnerSettings', 'настройки раннера');
+  if (p.labels) require_(adapter, ctx, 'canEditRunnerLabels', t('изменение меток'));
+  if (p.paused !== undefined) require_(adapter, ctx, 'canPauseRunner', t('пауза'));
+  if (['runUntagged', 'locked', 'description', 'maximumTimeout'].some((k) => p[k] !== undefined)) require_(adapter, ctx, 'canEditRunnerSettings', t('настройки раннера'));
   return adapter.updateRunner(ctx, id, p);
 }
 
 async function runnerDelete(root, { id }, { preferredRemote } = {}) {
   const { adapter, ctx } = await context(root, preferredRemote);
-  require_(adapter, ctx, 'canDeleteRunner', 'удаление раннера');
+  require_(adapter, ctx, 'canDeleteRunner', t('удаление раннера'));
   return adapter.deleteRunner(ctx, id);
 }
 
 /** Удалить все раннеры не в сети (кроме общих — их удаляет администратор сервера) */
 async function runnersPrune(root, { ids = null } = {}, { preferredRemote } = {}) {
   const { adapter, ctx } = await context(root, preferredRemote);
-  require_(adapter, ctx, 'canDeleteRunner', 'удаление раннеров');
+  require_(adapter, ctx, 'canDeleteRunner', t('удаление раннеров'));
   const list = await adapter.listRunners(ctx);
   const dead = list.filter((r) => r.status === 'offline' && !r.isShared && !r.virtual && r.editable && (!ids || ids.includes(r.id)));
   const removed = [];
@@ -524,7 +525,7 @@ async function runnersPrune(root, { ids = null } = {}, { preferredRemote } = {})
 /** Токен для нового раннера + готовые команды */
 async function runnerRegister(root, opts = {}, { preferredRemote } = {}) {
   const { adapter, ctx } = await context(root, preferredRemote);
-  require_(adapter, ctx, 'canCreateRunnerToken', 'регистрация раннера');
+  require_(adapter, ctx, 'canCreateRunnerToken', t('регистрация раннера'));
   const labels = [...new Set((opts.labels ?? []).map((l) => String(l).trim()).filter(Boolean))];
   const reg = await adapter.registrationToken(ctx, { ...opts, labels });
   const name = String(opts.name || `git-gorynych-${Date.now().toString(36).slice(-4)}`).replace(/[^\w.-]+/g, '-');
@@ -547,10 +548,10 @@ async function localRunners(root, { preferredRemote } = {}) {
 
 async function localRunnerStart(root, { labels = [] } = {}, { preferredRemote } = {}) {
   const { adapter, ctx } = await context(root, preferredRemote);
-  require_(adapter, ctx, 'localRunner', 'локальный раннер');
+  require_(adapter, ctx, 'localRunner', t('локальный раннер'));
   const r = await resolveRemote(root, preferredRemote);
   const clean = [...new Set(labels.map((l) => String(l).trim()).filter(Boolean))];
-  const reg = await adapter.registrationToken(ctx, { labels: clean, description: 'git-Горыныч (локальный Docker)', runUntagged: !clean.length });
+  const reg = await adapter.registrationToken(ctx, { labels: clean, description: t('git-Горыныч (локальный Docker)'), runUntagged: !clean.length });
   try {
     const started = await runnerSetup.startLocal(adapter.id, { reg, labels: clean, repoKey: `${r.host}/${r.path}`.toLowerCase(), repoName: r.path.split('/').pop() });
     return { ...started, provider: adapter.id };
@@ -564,9 +565,9 @@ async function localRunnerStart(root, { labels = [] } = {}, { preferredRemote } 
 /* =================== Артефакты =================== */
 
 async function artifactDownload(root, { artifact, dest }, { preferredRemote } = {}) {
-  if (!artifact || !dest) throw new GitError('Не указан артефакт или файл', { code: 'BAD_ARGS' });
+  if (!artifact || !dest) throw new GitError(t('Не указан артефакт или файл'), { code: 'BAD_ARGS' });
   const { adapter, ctx } = await context(root, preferredRemote);
-  require_(adapter, ctx, 'canDownloadArtifacts', 'скачивание артефактов');
+  require_(adapter, ctx, 'canDownloadArtifacts', t('скачивание артефактов'));
   return adapter.downloadArtifact(ctx, artifact, dest);
 }
 
@@ -576,24 +577,24 @@ const SECRET_KEY = /^[A-Za-z_][A-Za-z0-9_]*$/;
 
 async function secrets(root, { preferredRemote } = {}) {
   const { adapter, ctx } = await context(root, preferredRemote);
-  require_(adapter, ctx, 'canManageSecrets', 'секреты');
+  require_(adapter, ctx, 'canManageSecrets', t('секреты'));
   return withCaps(adapter, ctx, { secrets: await adapter.listSecrets(ctx) });
 }
 
 async function secretSave(root, data = {}, { preferredRemote } = {}) {
   const key = String(data.key ?? '').trim();
-  if (!SECRET_KEY.test(key)) throw new GitError('Имя: латинские буквы, цифры и _, не с цифры', { code: 'INVALID_NAME' });
-  if (/^GITHUB_/i.test(key)) throw new GitError('Имена с GITHUB_ зарезервированы', { code: 'INVALID_NAME' });
-  if (typeof data.value !== 'string') throw new GitError('Введите значение', { code: 'BAD_ARGS' });
-  if (data.value.length > 48 * 1024) throw new GitError('Значение больше 48 КБ', { code: 'BAD_ARGS' });
+  if (!SECRET_KEY.test(key)) throw new GitError(t('Имя: латинские буквы, цифры и _, не с цифры'), { code: 'INVALID_NAME' });
+  if (/^GITHUB_/i.test(key)) throw new GitError(t('Имена с GITHUB_ зарезервированы'), { code: 'INVALID_NAME' });
+  if (typeof data.value !== 'string') throw new GitError(t('Введите значение'), { code: 'BAD_ARGS' });
+  if (data.value.length > 48 * 1024) throw new GitError(t('Значение больше 48 КБ'), { code: 'BAD_ARGS' });
   const { adapter, ctx } = await context(root, preferredRemote);
-  require_(adapter, ctx, 'canManageSecrets', 'секреты');
+  require_(adapter, ctx, 'canManageSecrets', t('секреты'));
   return adapter.saveSecret(ctx, { key, value: data.value, secret: Boolean(data.secret), original: data.original ?? null });
 }
 
 async function secretDelete(root, data = {}, { preferredRemote } = {}) {
   const { adapter, ctx } = await context(root, preferredRemote);
-  require_(adapter, ctx, 'canManageSecrets', 'секреты');
+  require_(adapter, ctx, 'canManageSecrets', t('секреты'));
   return adapter.deleteSecret(ctx, data);
 }
 
@@ -607,7 +608,7 @@ async function getSettings(root, { preferredRemote } = {}) {
 
 async function setSettings(root, data = {}, { preferredRemote } = {}) {
   const r = await resolveRemote(root, preferredRemote);
-  if (!r) throw new GitError('У репозитория нет remote', { code: 'NO_REMOTE' });
+  if (!r) throw new GitError(t('У репозитория нет remote'), { code: 'NO_REMOTE' });
   settings.set(r.host, r.path, { provider: data.provider || null, apiBase: data.apiBase || null });
   checks.clear();
   return getSettings(root, { preferredRemote });

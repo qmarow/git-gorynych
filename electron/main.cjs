@@ -20,13 +20,14 @@ const system = require('./system.cjs');
 const indexSync = require('./indexSync.cjs');
 const credentials = require('./credentials.cjs');
 const { serializeError, GitError } = require('./errors.cjs');
+const { t: tr } = require('./i18n.cjs');
 
 const DEV_SERVER_URL = process.env.VITE_DEV_SERVER_URL;
 let mainWindow = null;
 
 /* ---------- Название и папка данных ---------- */
 
-const APP_NAME = 'git-Горыныч';
+const APP_NAME = 'git-Горыныч'; // i18n-ignore — название программы
 app.setName(APP_NAME);
 // Папка данных — латиницей: в ней лежат скрипты askpass, которые запускает git, а кириллица в пути
 // на Windows ломает часть сборок Git/ssh. Задаём до первого обращения к userData.
@@ -54,7 +55,7 @@ function migrateUserData() {
       fs.writeFileSync(marker, `${name}\n${new Date().toISOString()}`);
       return;
     } catch (error) {
-      console.warn(`Не удалось перенести настройки из ${name}:`, error.message);
+      console.warn(tr('Не удалось перенести настройки из {0}:', name), error.message);
     }
   }
 }
@@ -78,7 +79,7 @@ function writeSettings(patch) {
     fs.mkdirSync(path.dirname(settingsFile()), { recursive: true });
     fs.writeFileSync(settingsFile(), JSON.stringify(next, null, 2));
   } catch (error) {
-    console.error('Не удалось сохранить настройки:', error);
+    console.error(tr('Не удалось сохранить настройки:'), error);
   }
 }
 
@@ -252,39 +253,39 @@ function buildMacMenu(model) {
     {
       label: app.name,
       submenu: [
-        model ? { label: `О программе ${APP_NAME}`, click: () => send(null, -1, 'about') } : { role: 'about' },
+        model ? { label: tr('О программе {0}', APP_NAME), click: () => send(null, -1, 'about') } : { role: 'about' },
         { type: 'separator' },
-        { label: 'Настройки…', accelerator: 'Cmd+,', registerAccelerator: false, enabled: Boolean(model), click: () => send(null, -1, 'settings') },
+        { label: tr('Настройки…'), accelerator: 'Cmd+,', registerAccelerator: false, enabled: Boolean(model), click: () => send(null, -1, 'settings') },
         { type: 'separator' },
         { role: 'services' },
         { type: 'separator' },
-        { role: 'hide', label: `Скрыть ${APP_NAME}` },
-        { role: 'hideOthers', label: 'Скрыть остальные' },
-        { role: 'unhide', label: 'Показать все' },
+        { role: 'hide', label: tr('Скрыть {0}', APP_NAME) },
+        { role: 'hideOthers', label: tr('Скрыть остальные') },
+        { role: 'unhide', label: tr('Показать все') },
         { type: 'separator' },
-        { role: 'quit', label: `Завершить ${APP_NAME}` },
+        { role: 'quit', label: tr('Завершить {0}', APP_NAME) },
       ],
     },
-    { label: 'Файл', submenu: fromModel('File', m.File) },
+    { label: tr('Файл'), submenu: fromModel('File', m.File) },
     {
-      label: 'Правка',
+      label: tr('Правка'),
       submenu: [
         ...fromModel('Edit', m.Edit),
         { type: 'separator' },
         // Системные пункты: без них на macOS не работают ⌘C / ⌘V / ⌘A в полях ввода
-        { role: 'cut', label: 'Вырезать' },
-        { role: 'copy', label: 'Копировать' },
-        { role: 'paste', label: 'Вставить' },
-        { role: 'selectAll', label: 'Выбрать всё' },
+        { role: 'cut', label: tr('Вырезать') },
+        { role: 'copy', label: tr('Копировать') },
+        { role: 'paste', label: tr('Вставить') },
+        { role: 'selectAll', label: tr('Выбрать всё') },
       ],
     },
-    { label: 'Вид', submenu: [...fromModel('View', m.View), { type: 'separator' }, { role: 'togglefullscreen', label: 'Полноэкранный режим' }] },
-    { label: 'Действия', submenu: fromModel('Actions', m.Actions) },
-    { role: 'windowMenu', label: 'Окно' },
-    { role: 'help', label: 'Справка', submenu: fromModel('Help', m.Help) },
+    { label: tr('Вид'), submenu: [...fromModel('View', m.View), { type: 'separator' }, { role: 'togglefullscreen', label: tr('Полноэкранный режим') }] },
+    { label: tr('Действия'), submenu: fromModel('Actions', m.Actions) },
+    { role: 'windowMenu', label: tr('Окно') },
+    { role: 'help', label: tr('Справка'), submenu: fromModel('Help', m.Help) },
   ];
   // Пустое подменю macOS не показывает — добавим заглушку
-  for (const t of template) if (Array.isArray(t.submenu) && t.submenu.length === 0) t.submenu.push({ label: 'Нет действий', enabled: false });
+  for (const t of template) if (Array.isArray(t.submenu) && t.submenu.length === 0) t.submenu.push({ label: tr('Нет действий'), enabled: false });
   Menu.setApplicationMenu(Menu.buildFromTemplate(template));
 }
 
@@ -312,6 +313,10 @@ ipcMain.handle('window:is-maximized', () => mainWindow?.isMaximized() ?? false);
 
 /* ---------- Оформление: IPC ---------- */
 
+// Язык интерфейса (см. electron/i18n.cjs): интерфейс сообщает его при запуске и при смене
+ipcMain.handle('app:set-language', (_e, lang) => require('./i18n.cjs').setLanguage(lang));
+ipcMain.handle('app:get-language', () => require('./i18n.cjs').getLanguage());
+
 ipcMain.handle('appearance:get', () => ({
   appearance: readSettings().appearance ?? null,
   supportsMaterial: supportsMaterial(),
@@ -325,16 +330,16 @@ ipcMain.handle('appearance:set', (_event, value) => {
 // Выбрать картинку для фона: копируем её к себе, чтобы не зависеть от исходного файла
 ipcMain.handle('appearance:pick-image', async () => {
   const result = await dialog.showOpenDialog(mainWindow, {
-    title: 'Картинка для фона',
+    title: tr('Картинка для фона'),
     properties: ['openFile'],
-    filters: [{ name: 'Изображения', extensions: Object.keys(IMAGE_TYPES).map((e) => e.slice(1)) }],
+    filters: [{ name: tr('Изображения'), extensions: Object.keys(IMAGE_TYPES).map((e) => e.slice(1)) }],
   });
   if (result.canceled || !result.filePaths[0]) return { ok: false, canceled: true };
   const src = result.filePaths[0];
   const ext = path.extname(src).toLowerCase();
-  if (!IMAGE_TYPES[ext]) return { ok: false, error: { message: 'Этот формат не поддерживается' } };
+  if (!IMAGE_TYPES[ext]) return { ok: false, error: { message: tr('Этот формат не поддерживается') } };
   const size = fs.statSync(src).size;
-  if (size > MAX_IMAGE) return { ok: false, error: { message: `Картинка слишком большая (${Math.round(size / 1048576)} МБ, максимум 25 МБ)` } };
+  if (size > MAX_IMAGE) return { ok: false, error: { message: tr('Картинка слишком большая ({0} МБ, максимум 25 МБ)', Math.round(size / 1048576)) } };
   fs.mkdirSync(BG_DIR(), { recursive: true });
   for (const f of fs.readdirSync(BG_DIR())) if (f.startsWith('current.')) fs.rmSync(path.join(BG_DIR(), f), { force: true });
   fs.copyFileSync(src, path.join(BG_DIR(), `current${ext}`));
@@ -363,7 +368,7 @@ const safe = (fn) => async (_event, ...args) => {
 
 ipcMain.handle('repo:open-dialog', async (_event, title) => {
   const result = await dialog.showOpenDialog(mainWindow, {
-    title: typeof title === 'string' ? title : 'Открыть Git-репозиторий',
+    title: typeof title === 'string' ? title : tr('Открыть Git-репозиторий'),
     properties: ['openDirectory'],
   });
   if (result.canceled || result.filePaths.length === 0) return null;
@@ -477,7 +482,7 @@ ipcMain.handle(
     const name = String(artifact?.fileName ?? `${artifact?.name ?? 'artifact'}.zip`).replace(/[\\/:*?"<>|]+/g, '_');
     let dest = typeof opts?.dest === 'string' && process.env.GK_TEST_USERDATA ? opts.dest : null;
     if (!dest) {
-      const res = await dialog.showSaveDialog(mainWindow, { title: 'Сохранить артефакт', defaultPath: path.join(app.getPath('downloads'), name), filters: [{ name: 'Архив', extensions: ['zip'] }] });
+      const res = await dialog.showSaveDialog(mainWindow, { title: tr('Сохранить артефакт'), defaultPath: path.join(app.getPath('downloads'), name), filters: [{ name: tr('Архив'), extensions: ['zip'] }] });
       if (res.canceled || !res.filePath) return { canceled: true };
       dest = res.filePath;
     }
@@ -531,7 +536,7 @@ async function credTarget(dir, url) {
     const raw = (await git.git(root, ['remote', 'get-url', remote]).catch(() => '')).trim();
     if (raw) return { url: raw, remote };
   }
-  throw new GitError('У репозитория нет remote', { code: 'NO_REMOTE' });
+  throw new GitError(tr('У репозитория нет remote'), { code: 'NO_REMOTE' });
 }
 // Вход привязан к репозиторию: описание — по адресу remote (или ссылке для клонирования)
 const describeTarget = async (dir, url) => {
@@ -568,7 +573,7 @@ ipcMain.handle(
     if (dir && !url && opts.remoteUrl) {
       const next = String(opts.remoteUrl).trim();
       if (!credentials.parseTarget(next).host || !credentials.repoKeyOf(next)) {
-        throw new GitError('Укажите полный адрес репозитория', { code: 'BAD_ARGS', hint: 'Например: https://gitlab.company.ru/group/project.git' });
+        throw new GitError(tr('Укажите полный адрес репозитория'), { code: 'BAD_ARGS', hint: tr('Например: https://gitlab.company.ru/group/project.git') });
       }
       const root = await git.resolveRepoRoot(dir);
       const cur = await credTarget(dir, null).catch(() => null);
@@ -598,7 +603,7 @@ ipcMain.handle(
       if (root) {
         described.api = await Promise.race([
           cicd.checkLogin(root).catch(() => null),
-          new Promise((r) => setTimeout(() => r({ state: 'unknown', reason: 'сервер не ответил' }), 8000)),
+          new Promise((r) => setTimeout(() => r({ state: 'unknown', reason: tr('сервер не ответил') }), 8000)),
         ]);
       }
     }
@@ -610,7 +615,7 @@ ipcMain.handle('creds:clear', safe(async (dir, url) => credentials.clear((await 
 ipcMain.handle(
   'creds:check-url',
   safe(async (url) => {
-    if (!credentials.repoKeyOf(url)) throw new GitError('Укажите адрес репозитория', { code: 'BAD_ARGS' });
+    if (!credentials.repoKeyOf(url)) throw new GitError(tr('Укажите адрес репозитория'), { code: 'BAD_ARGS' });
     const opts = await actions.networkOptions(os.homedir(), { url });
     await git.git(os.homedir(), ['ls-remote', '--heads', '--', url], { ...opts, timeout: 60000 });
     return { ok: true };
@@ -690,7 +695,7 @@ ipcMain.handle('creds:ssh-keys', safe(() => credentials.listSshKeys()));
 ipcMain.handle('creds:pick-key', async () => {
   const { dir } = credentials.listSshKeys();
   const result = await dialog.showOpenDialog(mainWindow, {
-    title: 'Приватный SSH-ключ',
+    title: tr('Приватный SSH-ключ'),
     defaultPath: fs.existsSync(dir) ? dir : os.homedir(),
     properties: ['openFile', 'showHiddenFiles'],
   });
@@ -720,7 +725,7 @@ ipcMain.handle(
   safe(async (dir) => {
     const t = await credTarget(dir, null);
     const next = credentials.sshUrlFor(t.url);
-    if (!next || !t.remote) throw new GitError('Адрес remote уже не https:// — менять нечего', { code: 'BAD_ARGS' });
+    if (!next || !t.remote) throw new GitError(tr('Адрес remote уже не https:// — менять нечего'), { code: 'BAD_ARGS' });
     const root = await git.resolveRepoRoot(dir);
     await git.git(root, ['remote', 'set-url', t.remote, next]);
     return { remote: t.remote, from: t.url, to: next, target: await describeTarget(dir, null) };
@@ -730,7 +735,7 @@ ipcMain.handle(
   'creds:copy-public-key',
   safe((keyPath) => {
     const key = credentials.publicKeyOf(keyPath);
-    if (!key) throw new GitError('Рядом с ключом нет файла .pub', { code: 'NOT_FOUND' });
+    if (!key) throw new GitError(tr('Рядом с ключом нет файла .pub'), { code: 'NOT_FOUND' });
     clipboard.writeText(key);
     return { publicKey: key };
   }),

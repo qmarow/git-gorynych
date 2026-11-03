@@ -3,6 +3,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { git, resolveRepoRoot, safeRelative, detectOperation } = require('./git.cjs');
 const { GitError } = require('./errors.cjs');
+const { t } = require('./i18n.cjs');
 
 /* ---------------- Кто есть «моё» и «их» ---------------- */
 
@@ -30,16 +31,16 @@ async function sideLabels(cwd) {
     const other = await revInfo(cwd, 'MERGE_HEAD');
     return {
       operation: op,
-      ours: { title: 'Моё', sub: (await currentBranch(cwd)) ?? head?.short ?? 'HEAD', hint: 'Ваша текущая ветка' },
-      theirs: { title: 'Их', sub: other?.name ?? other?.short ?? 'MERGE_HEAD', hint: other ? `Вливаемая ветка · «${other.subject}»` : 'Вливаемая ветка' },
+      ours: { title: t('Моё'), sub: (await currentBranch(cwd)) ?? head?.short ?? 'HEAD', hint: t('Ваша текущая ветка') },
+      theirs: { title: t('Их'), sub: other?.name ?? other?.short ?? 'MERGE_HEAD', hint: other ? t('Вливаемая ветка · «{0}»', other.subject) : t('Вливаемая ветка') },
     };
   }
   if (op === 'rebase') {
     const mine = await revInfo(cwd, 'REBASE_HEAD');
     return {
       operation: op,
-      ours: { title: 'Их', sub: head?.name ?? head?.short ?? 'upstream', hint: 'Ветка, на которую вы перебазируете (уже на сервере / в upstream)' },
-      theirs: { title: 'Моё', sub: mine ? `${mine.short} · ${mine.subject}` : 'ваш коммит', hint: 'Ваш коммит, который сейчас переносится' },
+      ours: { title: t('Их'), sub: head?.name ?? head?.short ?? 'upstream', hint: t('Ветка, на которую вы перебазируете (уже на сервере / в upstream)') },
+      theirs: { title: t('Моё'), sub: mine ? `${mine.short} · ${mine.subject}` : t('ваш коммит'), hint: t('Ваш коммит, который сейчас переносится') },
       swapped: true,
     };
   }
@@ -47,19 +48,19 @@ async function sideLabels(cwd) {
     const pick = await revInfo(cwd, op === 'cherry-pick' ? 'CHERRY_PICK_HEAD' : 'REVERT_HEAD');
     return {
       operation: op,
-      ours: { title: 'Моё', sub: (await currentBranch(cwd)) ?? head?.short ?? 'HEAD', hint: 'Ваша текущая ветка' },
+      ours: { title: t('Моё'), sub: (await currentBranch(cwd)) ?? head?.short ?? 'HEAD', hint: t('Ваша текущая ветка') },
       theirs: {
-        title: op === 'cherry-pick' ? 'Переносимый коммит' : 'Отмена коммита',
+        title: op === 'cherry-pick' ? t('Переносимый коммит') : t('Отмена коммита'),
         sub: pick ? `${pick.short} · ${pick.subject}` : '',
-        hint: op === 'cherry-pick' ? 'Изменения из cherry-pick' : 'Изменения revert',
+        hint: op === 'cherry-pick' ? t('Изменения из cherry-pick') : t('Изменения revert'),
       },
     };
   }
   // Конфликт после stash apply/pop: операции нет, но в индексе есть конфликтующие файлы
   return {
     operation: null,
-    ours: { title: 'Текущее', sub: (await currentBranch(cwd)) ?? 'рабочая версия', hint: 'Файл до применения stash' },
-    theirs: { title: 'Из stash', sub: 'спрятанные изменения', hint: 'Изменения из stash' },
+    ours: { title: t('Текущее'), sub: (await currentBranch(cwd)) ?? t('рабочая версия'), hint: t('Файл до применения stash') },
+    theirs: { title: t('Из stash'), sub: t('спрятанные изменения'), hint: t('Изменения из stash') },
   };
 }
 
@@ -160,11 +161,11 @@ async function getConflict(dir, file) {
 }
 
 async function saveResolution(dir, { path: file, content }) {
-  if (typeof content !== 'string') throw new GitError('Нет содержимого', { code: 'BAD_ARGS' });
+  if (typeof content !== 'string') throw new GitError(t('Нет содержимого'), { code: 'BAD_ARGS' });
   const root = await resolveRepoRoot(dir);
   const full = safeRelative(root, file);
   if (/^(<{7}|>{7})( |$)/m.test(content)) {
-    throw new GitError('В результате остались маркеры конфликта', { code: 'MARKERS_LEFT', hint: 'Решите все блоки конфликта.' });
+    throw new GitError(t('В результате остались маркеры конфликта'), { code: 'MARKERS_LEFT', hint: t('Решите все блоки конфликта.') });
   }
   fs.writeFileSync(full, content, 'utf8');
   await git(root, ['add', '--', file]);
@@ -180,7 +181,7 @@ async function resolveWhole(dir, { path: file, side }) {
     await git(root, ['rm', '-q', '--force', '--', file]);
     return { path: file, side };
   }
-  if (side !== 'ours' && side !== 'theirs') throw new GitError('Некорректная сторона', { code: 'BAD_ARGS' });
+  if (side !== 'ours' && side !== 'theirs') throw new GitError(t('Некорректная сторона'), { code: 'BAD_ARGS' });
   const stage = side === 'ours' ? '2' : '3';
   if (!stages[stage]) {
     // С этой стороны файл удалён — выбрать её значит удалить файл
@@ -201,9 +202,9 @@ async function markResolved(dir, { path: file, force = false }) {
   }
   const text = fs.readFileSync(full, 'utf8');
   if (!force && /^<{7}( |$)/m.test(text) && /^>{7}( |$)/m.test(text)) {
-    throw new GitError('В файле ещё есть маркеры конфликта', {
+    throw new GitError(t('В файле ещё есть маркеры конфликта'), {
       code: 'MARKERS_LEFT',
-      hint: 'Решите конфликт в редакторе или отметьте принудительно.',
+      hint: t('Решите конфликт в редакторе или отметьте принудительно.'),
     });
   }
   await git(root, ['add', '--', file]);

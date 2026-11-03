@@ -3,13 +3,18 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { git } = require('./git.cjs');
 const { GitError } = require('./errors.cjs');
+const { t: tr } = require('./i18n.cjs');
 
 /* ---------------- Шаблоны .gitignore ---------------- */
 
 const TEMPLATES = {
   common: {
-    label: 'Общий (ОС и редакторы)',
-    lines: ['# ОС', '.DS_Store', 'Thumbs.db', 'desktop.ini', '', '# Редакторы', '.idea/', '.vscode/*', '!.vscode/extensions.json', '*.swp', '', '# Логи и секреты', '*.log', '.env', '.env.*', '!.env.example'],
+    get label() {
+    return tr('Общий (ОС и редакторы)');
+  },
+    get lines() {
+    return [tr('# ОС'), '.DS_Store', 'Thumbs.db', 'desktop.ini', '', tr('# Редакторы'), '.idea/', '.vscode/*', '!.vscode/extensions.json', '*.swp', '', tr('# Логи и секреты'), '*.log', '.env', '.env.*', '!.env.example'];
+  },
   },
   node: {
     label: 'Node.js',
@@ -121,15 +126,15 @@ async function readIdentity(dir) {
 }
 
 async function inspectFolder(dir) {
-  if (typeof dir !== 'string' || !dir) throw new GitError('Не указана папка', { code: 'BAD_ARGS' });
+  if (typeof dir !== 'string' || !dir) throw new GitError(tr('Не указана папка'), { code: 'BAD_ARGS' });
   const full = path.resolve(dir);
   let stat;
   try {
     stat = fs.statSync(full);
   } catch {
-    throw new GitError(`Папка не найдена: ${full}`, { code: 'NOT_FOUND_PATH' });
+    throw new GitError(tr('Папка не найдена: {0}', full), { code: 'NOT_FOUND_PATH' });
   }
-  if (!stat.isDirectory()) throw new GitError('Это не папка', { code: 'NOT_A_DIR' });
+  if (!stat.isDirectory()) throw new GitError(tr('Это не папка'), { code: 'NOT_A_DIR' });
 
   let repoRoot = null;
   try {
@@ -166,7 +171,7 @@ async function inspectFolder(dir) {
 
 async function initRepository(dir, opts = {}) {
   const info = await inspectFolder(dir);
-  if (info.isRepoRoot) throw new GitError('Эта папка уже является Git-репозиторием', { code: 'ALREADY_REPO' });
+  if (info.isRepoRoot) throw new GitError(tr('Эта папка уже является Git-репозиторием'), { code: 'ALREADY_REPO' });
   const cwd = info.path;
   const steps = [];
   const step = async (label, fn) => {
@@ -185,23 +190,23 @@ async function initRepository(dir, opts = {}) {
   // 1. Ветка
   const branch = (opts.branch || info.identity.defaultBranch || 'main').trim();
   await git(cwd, ['check-ref-format', '--branch', branch]).catch(() => {
-    throw new GitError(`Недопустимое имя ветки: «${branch}»`, { code: 'INVALID_NAME' });
+    throw new GitError(tr('Недопустимое имя ветки: «{0}»', branch), { code: 'INVALID_NAME' });
   });
 
   // 2. Автор — нужен для коммита
   const name = opts.identity?.name?.trim();
   const email = opts.identity?.email?.trim();
   if (opts.commit && !(name || info.identity.name)) {
-    throw new GitError('Укажите имя автора для первого коммита', { code: 'NO_IDENTITY' });
+    throw new GitError(tr('Укажите имя автора для первого коммита'), { code: 'NO_IDENTITY' });
   }
   if (opts.commit && !(email || info.identity.email)) {
-    throw new GitError('Укажите email автора для первого коммита', { code: 'NO_IDENTITY' });
+    throw new GitError(tr('Укажите email автора для первого коммита'), { code: 'NO_IDENTITY' });
   }
   if (email && !/^[^\s@]+@[^\s@]+$/.test(email)) {
-    throw new GitError(`Некорректный email: «${email}»`, { code: 'BAD_EMAIL' });
+    throw new GitError(tr('Некорректный email: «{0}»', email), { code: 'BAD_EMAIL' });
   }
   const remote = opts.remote?.trim();
-  if (remote && /\s/.test(remote)) throw new GitError('Адрес remote не должен содержать пробелов', { code: 'BAD_REMOTE' });
+  if (remote && /\s/.test(remote)) throw new GitError(tr('Адрес remote не должен содержать пробелов'), { code: 'BAD_REMOTE' });
 
   await step('git init', async () => {
     try {
@@ -215,7 +220,7 @@ async function initRepository(dir, opts = {}) {
 
   if (name || email) {
     const scope = opts.identity?.global ? ['--global'] : [];
-    await step(opts.identity?.global ? 'Имя и email (для всех репозиториев)' : 'Имя и email (для этого репозитория)', async () => {
+    await step(opts.identity?.global ? tr('Имя и email (для всех репозиториев)') : tr('Имя и email (для этого репозитория)'), async () => {
       if (name) await git(cwd, ['config', ...scope, 'user.name', name]);
       if (email) await git(cwd, ['config', ...scope, 'user.email', email]);
     });
@@ -231,7 +236,7 @@ async function initRepository(dir, opts = {}) {
 
   let commit = null;
   if (opts.commit) {
-    commit = await step('Первый коммит', async () => {
+    commit = await step(tr('Первый коммит'), async () => {
       await git(cwd, ['add', '-A']);
       const staged = (await git(cwd, ['diff', '--cached', '--name-only', '-z'])).split('\0').filter(Boolean);
       if (staged.length === 0) return { files: 0, hash: null };
@@ -264,13 +269,13 @@ function lazyActions() {
 
 function validateUrl(url) {
   const u = typeof url === 'string' ? url.trim() : '';
-  if (!u) throw new GitError('Укажите адрес репозитория', { code: 'BAD_REMOTE' });
-  if (/\s/.test(u)) throw new GitError('Адрес не должен содержать пробелов', { code: 'BAD_REMOTE' });
+  if (!u) throw new GitError(tr('Укажите адрес репозитория'), { code: 'BAD_REMOTE' });
+  if (/\s/.test(u)) throw new GitError(tr('Адрес не должен содержать пробелов'), { code: 'BAD_REMOTE' });
   const ok = /^(https?:\/\/|ssh:\/\/|git:\/\/|file:\/\/|git@[^:]+:|[\w.-]+@[\w.-]+:)/i.test(u);
   if (!ok) {
-    throw new GitError('Не похоже на адрес Git-репозитория', {
+    throw new GitError(tr('Не похоже на адрес Git-репозитория'), {
       code: 'BAD_REMOTE',
-      hint: 'Пример: https://gitlab.com/user/project.git или git@gitlab.com:user/project.git',
+      hint: tr('Пример: https://gitlab.com/user/project.git или git@gitlab.com:user/project.git'),
     });
   }
   return u;
@@ -278,10 +283,10 @@ function validateUrl(url) {
 
 function hostHint(url) {
   if (/gitlab/i.test(url)) {
-    return 'GitLab по HTTPS: войдите через окно Git Credential Manager или используйте Personal Access Token (scope: read_repository и write_repository) вместо пароля. По SSH: добавьте публичный ключ в GitLab → Preferences → SSH Keys.';
+    return tr('GitLab по HTTPS: войдите через окно Git Credential Manager или используйте Personal Access Token (scope: read_repository и write_repository) вместо пароля. По SSH: добавьте публичный ключ в GitLab → Preferences → SSH Keys.');
   }
   if (/github/i.test(url)) {
-    return 'GitHub по HTTPS: войдите через окно Git Credential Manager или используйте Personal Access Token. По SSH: добавьте ключ в Settings → SSH and GPG keys.';
+    return tr('GitHub по HTTPS: войдите через окно Git Credential Manager или используйте Personal Access Token. По SSH: добавьте ключ в Settings → SSH and GPG keys.');
   }
   return null;
 }
@@ -390,23 +395,23 @@ async function probeRemote(dir, { url, branch } = {}) {
  */
 async function connectRepository(dir, opts = {}) {
   const info = await inspectFolder(dir);
-  if (info.isRepoRoot) throw new GitError('В этой папке уже есть Git-репозиторий', { code: 'ALREADY_REPO' });
+  if (info.isRepoRoot) throw new GitError(tr('В этой папке уже есть Git-репозиторий'), { code: 'ALREADY_REPO' });
   const url = validateUrl(opts.url);
   const cwd = info.path;
 
   const name = opts.identity?.name?.trim();
   const email = opts.identity?.email?.trim();
-  if (opts.commit && !(name || info.identity.name)) throw new GitError('Укажите имя автора для коммита', { code: 'NO_IDENTITY' });
-  if (opts.commit && !(email || info.identity.email)) throw new GitError('Укажите email автора для коммита', { code: 'NO_IDENTITY' });
-  if (email && !/^[^\s@]+@[^\s@]+$/.test(email)) throw new GitError(`Некорректный email: «${email}»`, { code: 'BAD_EMAIL' });
+  if (opts.commit && !(name || info.identity.name)) throw new GitError(tr('Укажите имя автора для коммита'), { code: 'NO_IDENTITY' });
+  if (opts.commit && !(email || info.identity.email)) throw new GitError(tr('Укажите email автора для коммита'), { code: 'NO_IDENTITY' });
+  if (email && !/^[^\s@]+@[^\s@]+$/.test(email)) throw new GitError(tr('Некорректный email: «{0}»', email), { code: 'BAD_EMAIL' });
 
   const heads = await remoteHeads(url, cwd);
   const branch = (heads.empty ? opts.branch || info.identity.defaultBranch || 'main' : opts.branch || heads.defaultBranch).trim();
   if (!heads.empty && !heads.branches.some((b) => b.name === branch)) {
-    throw new GitError(`На сервере нет ветки «${branch}»`, { code: 'NOT_FOUND_REF' });
+    throw new GitError(tr('На сервере нет ветки «{0}»', branch), { code: 'NOT_FOUND_REF' });
   }
   await git(cwd, ['check-ref-format', '--branch', branch]).catch(() => {
-    throw new GitError(`Недопустимое имя ветки: «${branch}»`, { code: 'INVALID_NAME' });
+    throw new GitError(tr('Недопустимое имя ветки: «{0}»', branch), { code: 'INVALID_NAME' });
   });
 
   const steps = [];
@@ -434,7 +439,7 @@ async function connectRepository(dir, opts = {}) {
 
   if (name || email) {
     const scope = opts.identity?.global ? ['--global'] : [];
-    await step('Имя и email автора', async () => {
+    await step(tr('Имя и email автора'), async () => {
       if (name) await git(cwd, ['config', ...scope, 'user.name', name]);
       if (email) await git(cwd, ['config', ...scope, 'user.email', email]);
     });
@@ -445,8 +450,8 @@ async function connectRepository(dir, opts = {}) {
   let restored = 0;
   let remoteHasGitignore = false;
   if (!heads.empty) {
-    await step(`Загрузка ${branch} с сервера`, () => git(cwd, ['fetch', 'origin', branch], netOpts));
-    await step('Наложение истории сервера', async () => {
+    await step(tr('Загрузка {0} с сервера', branch), () => git(cwd, ['fetch', 'origin', branch], netOpts));
+    await step(tr('Наложение истории сервера'), async () => {
       // Ветка указывает на коммит сервера, рабочие файлы остаются как есть
       await git(cwd, ['reset', '-q', '--mixed', `origin/${branch}`]);
       await git(cwd, ['branch', `--set-upstream-to=origin/${branch}`, branch]);
@@ -466,7 +471,7 @@ async function connectRepository(dir, opts = {}) {
 
   let commit = null;
   if (opts.commit) {
-    commit = await step('Коммит файлов проекта', async () => {
+    commit = await step(tr('Коммит файлов проекта'), async () => {
       await git(cwd, ['add', '-A']);
       const staged = (await git(cwd, ['diff', '--cached', '--name-only', '-z'])).split('\0').filter(Boolean);
       if (staged.length === 0) return { files: 0, hash: null };
@@ -491,7 +496,7 @@ async function connectRepository(dir, opts = {}) {
       } catch (error) {
         if (error.code === 'PROTECTED' && /gitlab/i.test(url)) {
           error.hint =
-            'В GitLab основная ветка защищена: пушить в неё могут только Maintainer. Попросите роль Maintainer, снимите защиту (Settings → Repository → Protected branches) или отправьте изменения в отдельную ветку.';
+            tr('В GitLab основная ветка защищена: пушить в неё могут только Maintainer. Попросите роль Maintainer, снимите защиту (Settings → Repository → Protected branches) или отправьте изменения в отдельную ветку.');
         }
         pushError = error.toJSON ? error.toJSON() : { code: 'UNKNOWN', message: String(error) };
         steps.push({ label: `push → origin/${branch}`, ok: false });

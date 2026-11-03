@@ -1,6 +1,7 @@
 // Сверка конфига CI с живыми раннерами: задание с tags (GitLab) или runs-on (GitHub, Gitea, Bitbucket),
 // которое не возьмёт ни один раннер в сети, повиснет в очереди (Pending).
 const { Positions } = require('../ciCheckBase.cjs');
+const { t: tr } = require('../i18n.cjs');
 
 const low = (s) => String(s).trim().toLowerCase();
 const isLive = (r) => r.status === 'online' || r.status === 'busy';
@@ -45,7 +46,7 @@ function checkRunnerTags(current, runners, { provider } = {}) {
     if (!groups.has(k)) groups.set(k, { ...r, jobs: [] });
     groups.get(k).jobs.push(r.job);
   }
-  const jobsText = (jobs) => `${jobs.slice(0, 4).map(q).join(', ')}${jobs.length > 4 ? ` и ещё ${jobs.length - 4}` : ''}`;
+  const jobsText = (jobs) => `${jobs.slice(0, 4).map(q).join(', ')}${jobs.length > 4 ? tr(' и ещё {0}', jobs.length - 4) : ''}`;
   for (const g of groups.values()) {
     const line = (g.keyPath ? pos.line(g.file, g.keyPath) : null) ?? (g.text ? pos.find?.(g.file, g.text) : null) ?? g.line ?? null;
     const base = { file: g.file, line, job: g.jobs[0], source: 'runners' };
@@ -58,11 +59,11 @@ function checkRunnerTags(current, runners, { provider } = {}) {
           ...base,
           id: 'runner-untagged',
           severity: 'warning',
-          title: any.length ? 'Все раннеры для заданий без тегов не в сети или на паузе' : 'Нет раннера, который берёт задания без тегов',
-          when: `При запуске ${jobsText(g.jobs)}`,
-          how: 'Задание повиснет в очереди (Pending): «This job is stuck because the project doesn’t have any runners online assigned to it».',
-          why: any.length ? `Подходят: ${any.map((r) => `${r.name} (${STATUS[r.status] ?? r.status})`).join(', ')}` : 'У всех раннеров проекта выключено «Run untagged jobs».',
-          fix: 'Добавьте заданию tags: [<тег живого раннера>] или включите раннеру «Брать задания без тегов».',
+          title: any.length ? tr('Все раннеры для заданий без тегов не в сети или на паузе') : tr('Нет раннера, который берёт задания без тегов'),
+          when: tr('При запуске {0}', jobsText(g.jobs)),
+          how: tr('Задание повиснет в очереди (Pending): «This job is stuck because the project doesn’t have any runners online assigned to it».'),
+          why: any.length ? tr('Подходят: {0}', any.map((r) => `${r.name} (${STATUS[r.status] ?? r.status})`).join(', ')) : tr('У всех раннеров проекта выключено «Run untagged jobs».'),
+          fix: tr('Добавьте заданию tags: [<тег живого раннера>] или включите раннеру «Брать задания без тегов».'),
         });
       }
       continue;
@@ -74,23 +75,23 @@ function checkRunnerTags(current, runners, { provider } = {}) {
     if (live.length) continue;
     const allLabels = new Set(runners.filter(isLive).flatMap((r) => r.labels.map(low)));
     const missing = g.tags.filter((t) => !allLabels.has(low(t)));
-    const what = missing.length === 1 ? `тегом "${missing[0]}"` : missing.length ? `тегами ${missing.map((t) => `"${t}"`).join(', ')}` : `набором тегов ${g.tags.map((t) => `"${t}"`).join(', ')}`;
+    const what = missing.length === 1 ? tr('тегом "{0}"', missing[0]) : missing.length ? tr('тегами {0}', missing.map((t) => `"${t}"`).join(', ')) : tr('набором тегов {0}', g.tags.map((t) => `"${t}"`).join(', '));
     let why;
-    if (fit.length) why = `Раннеры с этими тегами есть, но ${fit.map((r) => `${r.name} — ${STATUS[r.status] ?? r.status}`).join(', ')}.`;
-    else if (!missing.length) why = 'Каждый тег есть у какого-то раннера в сети, но ни у одного — все сразу: задание берёт только раннер, у которого есть все перечисленные теги.';
-    else why = `Ни у одного раннера в сети нет ${missing.length === 1 ? 'этого тега' : 'этих тегов'}.`;
+    if (fit.length) why = tr('Раннеры с этими тегами есть, но {0}.', fit.map((r) => `${r.name} — ${STATUS[r.status] ?? r.status}`).join(', '));
+    else if (!missing.length) why = tr('Каждый тег есть у какого-то раннера в сети, но ни у одного — все сразу: задание берёт только раннер, у которого есть все перечисленные теги.');
+    else why = tr('Ни у одного раннера в сети нет {0}.', missing.length === 1 ? tr('этого тега') : tr('этих тегов'));
     issues.push({
       ...base,
       id: 'runner-tags-missing',
       severity: 'warning',
-      title: `Нет активных раннеров с ${what} — пайплайн зависнет в очереди (Pending)!`,
-      when: `При запуске ${jobsText(g.jobs)}`,
+      title: tr('Нет активных раннеров с {0} — пайплайн зависнет в очереди (Pending)!', what),
+      when: tr('При запуске {0}', jobsText(g.jobs)),
       how:
         current.system === 'gitlab'
           ? 'GitLab: «This job is stuck because you don’t have any active runners online … with any of these tags assigned to them».'
-          : 'Задание будет ждать в статусе Queued, пока не появится подходящий раннер (до 24 часов), затем отменится.',
+          : tr('Задание будет ждать в статусе Queued, пока не появится подходящий раннер (до 24 часов), затем отменится.'),
       why,
-      fix: fit.length ? 'Запустите или снимите с паузы подходящий раннер (вкладка «Раннеры»).' : 'Проверьте опечатки в тегах или подключите раннер с этими тегами (вкладка «Раннеры» → «Подключить раннер»).',
+      fix: fit.length ? tr('Запустите или снимите с паузы подходящий раннер (вкладка «Раннеры»).') : tr('Проверьте опечатки в тегах или подключите раннер с этими тегами (вкладка «Раннеры» → «Подключить раннер»).'),
       tags: g.tags,
       missing,
     });
@@ -98,6 +99,14 @@ function checkRunnerTags(current, runners, { provider } = {}) {
   return issues;
 }
 
-const STATUS = { online: 'в сети', busy: 'занят', offline: 'не в сети', paused: 'на паузе' };
+const STATUS = { get online() {
+    return tr('в сети');
+  }, get busy() {
+    return tr('занят');
+  }, get offline() {
+    return tr('не в сети');
+  }, get paused() {
+    return tr('на паузе');
+  } };
 
 module.exports = { checkRunnerTags, requirements };

@@ -4,6 +4,7 @@ import { plural, relativeTime } from '../lib/format.js';
 import { detectLanguage, highlightLines, layerLine } from '../lib/highlight.js';
 import { isMod, kb } from '../lib/platform.js';
 import { StatusBadge } from './RebaseView.jsx';
+import { t, tj } from '../i18n/index.js';
 
 const api = window.api;
 
@@ -98,7 +99,7 @@ export default function CompareView({ repoPath, a, b, hidden, activePath, onSwap
   const dirs = useMemo(() => {
     const top = (p, depth) => {
       const parts = p.split('/');
-      return parts.length > depth ? parts.slice(0, depth).join('/') : '(корень)';
+      return parts.length > depth ? parts.slice(0, depth).join('/') : t('(корень)');
     };
     const group = (depth) => {
       const m = new Map();
@@ -113,12 +114,12 @@ export default function CompareView({ repoPath, a, b, hidden, activePath, onSwap
       return [...m.values()].sort((x, y) => y.additions + y.deletions - (x.additions + x.deletions));
     };
     let g = group(1);
-    if (g.length === 1 && g[0].dir !== '(корень)') g = group(2);
+    if (g.length === 1 && g[0].dir !== t('(корень)')) g = group(2);
     return g;
   }, [files]);
   const maxDir = Math.max(1, ...dirs.map((x) => x.additions + x.deletions));
 
-  const inDir = (path) => !dirFilter || (dirFilter === '(корень)' ? !path.includes('/') : path === dirFilter || path.startsWith(`${dirFilter}/`));
+  const inDir = (path) => !dirFilter || (dirFilter === t('(корень)') ? !path.includes('/') : path === dirFilter || path.startsWith(`${dirFilter}/`));
 
   // Результаты поиска по содержимому: файлы из сравнения (статус, объём) + найденные строки
   const contentResults = useMemo(() => {
@@ -146,39 +147,32 @@ export default function CompareView({ repoPath, a, b, hidden, activePath, onSwap
   const shown = useMemo(() => {
     const q = query.trim().toLowerCase();
     let list = files.filter((f) => (!q || f.path.toLowerCase().includes(q) || f.oldPath?.toLowerCase().includes(q)));
-    if (dirFilter) list = list.filter((f) => (dirFilter === '(корень)' ? !f.path.includes('/') : f.path === dirFilter || f.path.startsWith(`${dirFilter}/`)));
+    if (dirFilter) list = list.filter((f) => (dirFilter === t('(корень)') ? !f.path.includes('/') : f.path === dirFilter || f.path.startsWith(`${dirFilter}/`)));
     return sort === 'size' ? [...list].sort((x, y) => size(y) - size(x)) : list;
   }, [files, query, sort, dirFilter]);
 
   return (
     <div className={`flex min-h-0 flex-1 animate-fade-in flex-col bg-gk-bg ${hidden ? 'hidden' : ''}`}>
       <div className="glass flex h-11 shrink-0 items-center gap-2 border-b border-gk-border bg-gk-panel px-3">
-        <GitCompareArrows size={16} className="shrink-0 text-gk-blue" />
-        <span className="shrink-0 text-[13px] font-semibold text-gk-strong">Сравнение</span>
-        <CommitChip label="было" info={d?.a} hash={a} onClick={() => onLocate(a)} />
-        <button onClick={onSwap} title="Поменять местами" className="shrink-0 rounded p-1 text-gk-muted hover:bg-gk-hover hover:text-gk-text">
+        {tj('{0}<1>Сравнение</1>{2}{3}{4}{5}{6}', [<GitCompareArrows size={16} className="shrink-0 text-gk-blue" />, <span className="shrink-0 text-[13px] font-semibold text-gk-strong" />, <CommitChip label={t('было')} info={d?.a} hash={a} onClick={() => onLocate(a)} />, <button onClick={onSwap} title={t('Поменять местами')} className="shrink-0 rounded p-1 text-gk-muted hover:bg-gk-hover hover:text-gk-text">
           <ArrowLeftRight size={14} />
-        </button>
-        <CommitChip label="стало" info={d?.b} hash={b} onClick={() => onLocate(b)} />
-        <div className="flex-1" />
-        <button onClick={onClose} title="Закрыть (Esc)" className="rounded p-1.5 text-gk-muted hover:bg-gk-hover hover:text-gk-text">
+        </button>, <CommitChip label={t('стало')} info={d?.b} hash={b} onClick={() => onLocate(b)} />, <div className="flex-1" />, <button onClick={onClose} title={t('Закрыть (Esc)')} className="rounded p-1.5 text-gk-muted hover:bg-gk-hover hover:text-gk-text">
           <X size={15} />
-        </button>
+        </button>])}
       </div>
 
       {state.loading && !d ? (
         <div className="flex flex-1 items-center justify-center gap-2 text-[13px] text-gk-muted">
-          <Loader2 size={15} className="animate-spin" /> Сравниваем…
-        </div>
+          {tj('{0} Сравниваем…', [<Loader2 size={15} className="animate-spin" />])}</div>
       ) : state.error ? (
         <div className="m-6 rounded-lg border border-gk-red/30 bg-gk-red/10 px-4 py-3 text-[13px] text-gk-text">{state.error.message}</div>
       ) : (
         <div className={`min-h-0 flex-1 overflow-y-auto transition-opacity ${state.loading ? 'opacity-60' : ''}`}>
           {/* Сводка */}
           <div className="grid grid-cols-[repeat(auto-fit,minmax(150px,1fr))] gap-2 p-3">
-            <Stat value={files.length} label={plural(files.length, 'файл изменён', 'файла изменено', 'файлов изменено')} />
-            <Stat value={`+${d.additions}`} label={plural(d.additions, 'строка добавлена', 'строки добавлено', 'строк добавлено')} cls="text-gk-green" />
-            <Stat value={`−${d.deletions}`} label={plural(d.deletions, 'строка удалена', 'строки удалено', 'строк удалено')} cls="text-gk-red" />
+            <Stat value={files.length} label={plural(files.length, t('файл изменён'), t('файла изменено'), t('файлов изменено'))} />
+            <Stat value={`+${d.additions}`} label={plural(d.additions, t('строка добавлена'), t('строки добавлено'), t('строк добавлено'))} cls="text-gk-green" />
+            <Stat value={`−${d.deletions}`} label={plural(d.deletions, t('строка удалена'), t('строки удалено'), t('строк удалено'))} cls="text-gk-red" />
             <button
               onClick={() => setShowCommits((v) => !v)}
               className="rounded-lg border border-gk-border bg-gk-fg/[0.02] px-3 py-2 text-left transition-colors hover:bg-gk-fg/[0.05]"
@@ -193,8 +187,8 @@ export default function CompareView({ repoPath, a, b, hidden, activePath, onSwap
 
           {showCommits && (
             <div className="mx-3 mb-3 grid animate-fade-in gap-3 md:grid-cols-2">
-              {d.onlyB > 0 && <CommitList title={`Есть только в «стало» (${d.onlyB})`} commits={d.commitsB} total={d.onlyB} onLocate={onLocate} />}
-              {d.onlyA > 0 && <CommitList title={`Есть только в «было» (${d.onlyA})`} commits={d.commitsA} total={d.onlyA} onLocate={onLocate} />}
+              {d.onlyB > 0 && <CommitList title={t('Есть только в «стало» ({0})', d.onlyB)} commits={d.commitsB} total={d.onlyB} onLocate={onLocate} />}
+              {d.onlyA > 0 && <CommitList title={t('Есть только в «было» ({0})', d.onlyA)} commits={d.commitsA} total={d.onlyA} onLocate={onLocate} />}
             </div>
           )}
 
@@ -202,12 +196,10 @@ export default function CompareView({ repoPath, a, b, hidden, activePath, onSwap
           {dirs.length > 1 && (
             <div className="mx-3 mb-3 rounded-lg border border-gk-border bg-gk-fg/[0.015] p-3">
               <div className="mb-2 flex items-center text-[11px] font-semibold uppercase tracking-wider text-gk-muted">
-                Где больше всего изменений
-                {dirFilter && (
+                {tj('Где больше всего изменений{0}', [dirFilter && (
                   <button onClick={() => setDirFilter(null)} className="ml-auto rounded px-1.5 py-0.5 text-[11px] normal-case tracking-normal text-gk-blue hover:bg-gk-blue/10">
-                    показать все папки
-                  </button>
-                )}
+                    {t('показать все папки')}</button>
+                )])}
               </div>
               <div className="space-y-1">
                 {dirs.slice(0, 10).map((g) => (
@@ -237,9 +229,8 @@ export default function CompareView({ repoPath, a, b, hidden, activePath, onSwap
           <div className="mx-3 mb-4 overflow-hidden rounded-lg border border-gk-border">
             <div className="flex items-center gap-2 border-b border-gk-border bg-gk-fg/[0.03] px-2.5 py-1.5">
               <div className="flex shrink-0 overflow-hidden rounded text-[11.5px] ring-1 ring-gk-border" role="tablist">
-                <SortBtn active={mode === 'path'} onClick={() => setMode('path')} data-testid="compare-mode-path" title="Фильтр списка по пути файла">
-                  Путь
-                </SortBtn>
+                <SortBtn active={mode === 'path'} onClick={() => setMode('path')} data-testid="compare-mode-path" title={t('Фильтр списка по пути файла')}>
+                  {t('Путь')}</SortBtn>
                 <SortBtn
                   active={mode === 'content'}
                   onClick={() => {
@@ -247,10 +238,9 @@ export default function CompareView({ repoPath, a, b, hidden, activePath, onSwap
                     requestAnimationFrame(() => searchRef.current?.focus());
                   }}
                   data-testid="compare-mode-content"
-                  title={kb('Поиск текста в изменённых строках всех файлов (Ctrl+F)')}
+                  title={kb(t('Поиск текста в изменённых строках всех файлов (Ctrl+F)'))}
                 >
-                  Содержимое
-                </SortBtn>
+                  {t('Содержимое')}</SortBtn>
               </div>
               <div
                 className={`flex min-w-0 flex-1 items-center gap-1.5 rounded bg-gk-bg px-2 ring-1 focus-within:ring-gk-blue ${
@@ -262,7 +252,7 @@ export default function CompareView({ repoPath, a, b, hidden, activePath, onSwap
                   <input
                     value={query}
                     onChange={(e) => setQuery(e.target.value)}
-                    placeholder="Фильтр по пути"
+                    placeholder={t('Фильтр по пути')}
                     className="min-w-0 flex-1 bg-transparent py-1 text-[12px] text-gk-text outline-none placeholder:text-gk-dim"
                   />
                 ) : (
@@ -282,16 +272,16 @@ export default function CompareView({ repoPath, a, b, hidden, activePath, onSwap
                           setContent((c) => ({ ...c, regex: !c.regex }));
                         }
                       }}
-                      placeholder="Найти в изменённых строках всех файлов"
-                      aria-label="Найти в изменениях"
+                      placeholder={t('Найти в изменённых строках всех файлов')}
+                      aria-label={t('Найти в изменениях')}
                       spellCheck={false}
                       data-testid="compare-content-input"
                       className="min-w-0 flex-1 bg-transparent py-1 font-mono text-[12px] text-gk-text outline-none placeholder:font-sans placeholder:text-gk-dim"
                     />
-                    <OptBtn on={content.caseSensitive} onClick={() => setContent((c) => ({ ...c, caseSensitive: !c.caseSensitive }))} title="Учитывать регистр (Alt+C)" testid="compare-case">
+                    <OptBtn on={content.caseSensitive} onClick={() => setContent((c) => ({ ...c, caseSensitive: !c.caseSensitive }))} title={t('Учитывать регистр (Alt+C)')} testid="compare-case">
                       <CaseSensitive size={13} />
                     </OptBtn>
-                    <OptBtn on={content.regex} onClick={() => setContent((c) => ({ ...c, regex: !c.regex }))} title="Регулярное выражение (Alt+R)" testid="compare-regex">
+                    <OptBtn on={content.regex} onClick={() => setContent((c) => ({ ...c, regex: !c.regex }))} title={t('Регулярное выражение (Alt+R)')} testid="compare-regex">
                       <Regex size={13} />
                     </OptBtn>
                   </>
@@ -299,11 +289,9 @@ export default function CompareView({ repoPath, a, b, hidden, activePath, onSwap
               </div>
               <div className="flex shrink-0 overflow-hidden rounded text-[11.5px] ring-1 ring-gk-border">
                 <SortBtn active={sort === 'path'} onClick={() => setSort('path')}>
-                  по пути
-                </SortBtn>
+                  {t('по пути')}</SortBtn>
                 <SortBtn active={sort === 'size'} onClick={() => setSort('size')}>
-                  по объёму
-                </SortBtn>
+                  {t('по объёму')}</SortBtn>
               </div>
             </div>
             {mode === 'content' ? (
@@ -315,7 +303,7 @@ export default function CompareView({ repoPath, a, b, hidden, activePath, onSwap
                 onOpen={openMatch}
               />
             ) : shown.length === 0 ? (
-              <div className="px-3 py-6 text-center text-[12.5px] text-gk-dim">{files.length ? 'Ничего не найдено' : 'Файлы в этих коммитах одинаковые'}</div>
+              <div className="px-3 py-6 text-center text-[12.5px] text-gk-dim">{files.length ? t('Ничего не найдено') : t('Файлы в этих коммитах одинаковые')}</div>
             ) : (
               shown.map((f, i) => {
                 const parts = f.path.split('/');
@@ -341,7 +329,7 @@ export default function CompareView({ repoPath, a, b, hidden, activePath, onSwap
                       {parts.length > 0 && <span className="text-gk-muted">{parts.join('/')}/</span>}
                       <span className="text-gk-text">{name}</span>
                     </span>
-                    {f.additions !== null ? <Bar additions={f.additions} deletions={f.deletions} max={maxSize} /> : <span className="text-[11px] text-gk-dim">бинарный</span>}
+                    {f.additions !== null ? <Bar additions={f.additions} deletions={f.deletions} max={maxSize} /> : <span className="text-[11px] text-gk-dim">{t('бинарный')}</span>}
                     <span className="text-right font-mono text-[11px]">
                       {f.additions !== null && (
                         <>
@@ -361,9 +349,9 @@ export default function CompareView({ repoPath, a, b, hidden, activePath, onSwap
 }
 
 function relationText(d) {
-  if (d.relation === 'a-before-b') return `${plural(d.onlyB, 'коммит', 'коммита', 'коммитов')} от «было» до «стало»`;
-  if (d.relation === 'b-before-a') return `«стало» старше на ${d.onlyA} ${plural(d.onlyA, 'коммит', 'коммита', 'коммитов')}`;
-  return `разошлись: ${d.onlyA} и ${d.onlyB} ${plural(d.onlyB, 'коммит', 'коммита', 'коммитов')}`;
+  if (d.relation === 'a-before-b') return t('{0} от «было» до «стало»', plural(d.onlyB, t('коммит'), t('коммита'), t('коммитов')));
+  if (d.relation === 'b-before-a') return t('«стало» старше на {0} {1}', d.onlyA, plural(d.onlyA, t('коммит'), t('коммита'), t('коммитов')));
+  return t('разошлись: {0} и {1} {2}', d.onlyA, d.onlyB, plural(d.onlyB, t('коммит'), t('коммита'), t('коммитов')));
 }
 
 function CommitChip({ label, info, hash, onClick }) {
@@ -415,7 +403,7 @@ function CommitList({ title, commits, total, onLocate }) {
             <span className="shrink-0 text-[11px] text-gk-dim">{relativeTime(c.date)}</span>
           </button>
         ))}
-        {total > commits.length && <div className="px-3 py-1 text-[11px] text-gk-dim">…и ещё {total - commits.length}</div>}
+        {total > commits.length && <div className="px-3 py-1 text-[11px] text-gk-dim">{tj('…и ещё {0}', [total - commits.length])}</div>}
       </div>
     </div>
   );
@@ -453,27 +441,22 @@ function ContentResults({ query, found, results, activePath, onOpen }) {
   if (!query.trim()) {
     return (
       <div className="px-3 py-6 text-center text-[12.5px] leading-relaxed text-gk-dim">
-        Введите текст — найдём его в добавленных и удалённых строках всех файлов сравнения.
-        <br />
-        Клик по строке откроет файл прямо на совпадении.
-      </div>
+        {tj('Введите текст — найдём его в добавленных и удалённых строках всех файлов сравнения.{0}Клик по строке откроет файл прямо на совпадении.', [<br />])}</div>
     );
   }
   if (found.error) return <div className="px-3 py-4 text-[12.5px] text-gk-red">{found.error.message}{found.error.hint && <span className="text-gk-dim"> — {found.error.hint}</span>}</div>;
   if (!results) {
     return (
       <div className="flex items-center justify-center gap-2 px-3 py-6 text-[12.5px] text-gk-muted">
-        <Loader2 size={13} className="animate-spin" /> Ищем…
-      </div>
+        {tj('{0} Ищем…', [<Loader2 size={13} className="animate-spin" />])}</div>
     );
   }
-  if (!results.length) return <div className="px-3 py-6 text-center text-[12.5px] text-gk-dim">В изменённых строках не найдено</div>;
+  if (!results.length) return <div className="px-3 py-6 text-center text-[12.5px] text-gk-dim">{t('В изменённых строках не найдено')}</div>;
   const total = results.reduce((n, r) => n + r.count, 0);
   return (
     <div className={found.loading ? 'opacity-60 transition-opacity' : ''} data-testid="compare-content-results">
       <div className="border-b border-gk-border/60 px-2.5 py-1 text-[11.5px] text-gk-muted" data-testid="compare-content-summary">
-        {total} {plural(total, 'совпадение', 'совпадения', 'совпадений')} в {results.length} {plural(results.length, 'файле', 'файлах', 'файлах')}
-        {found.data?.truncated && <span className="text-gk-yellow"> · показаны первые {found.data.total}</span>}
+        {tj('{0} {1} в {2} {3}{4}', [total, plural(total, t('совпадение'), t('совпадения'), t('совпадений')), results.length, plural(results.length, t('файле'), t('файлах'), t('файлах')), found.data?.truncated && <span className="text-gk-yellow"> {tj(' · показаны первые {0}', [found.data.total])}</span>])}
       </div>
       {results.map((r) => {
         const parts = r.path.split('/');
@@ -508,7 +491,7 @@ function ContentResults({ query, found, results, activePath, onOpen }) {
                 }
                 className="mb-1 ml-9 text-[11.5px] text-gk-blue hover:underline"
               >
-                {open ? 'свернуть' : `ещё ${r.lines.length - PREVIEW_LINES}${r.count > r.lines.length ? '+' : ''}`}
+                {open ? t('свернуть') : t('ещё {0}{1}', r.lines.length - PREVIEW_LINES, r.count > r.lines.length ? '+' : '')}
               </button>
             )}
           </div>

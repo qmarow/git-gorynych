@@ -1,6 +1,7 @@
 // Шифрование секрета для GitHub Actions: libsodium crypto_box_seal (X25519 + XSalsa20-Poly1305).
 // Nonce = BLAKE2b-192(эфемерный открытый ключ ‖ открытый ключ репозитория).
 const nacl = require('../vendor/tweetnacl.cjs');
+const { t: tr } = require('../i18n.cjs');
 
 const MASK = (1n << 64n) - 1n;
 const IV = [
@@ -80,7 +81,7 @@ function blake2b(input, outLen = 64) {
 /** crypto_box_seal: base64-ключ репозитория + текст → base64 зашифрованного значения */
 function seal(publicKeyB64, plaintext) {
   const pk = new Uint8Array(Buffer.from(publicKeyB64, 'base64'));
-  if (pk.length !== 32) throw new Error('Некорректный открытый ключ репозитория');
+  if (pk.length !== 32) throw new Error(tr('Некорректный открытый ключ репозитория'));
   const eph = nacl.box.keyPair();
   const nonce = new Uint8Array(blake2b(Buffer.concat([Buffer.from(eph.publicKey), Buffer.from(pk)]), 24));
   const boxed = nacl.box(new Uint8Array(Buffer.from(String(plaintext), 'utf8')), nonce, pk, eph.secretKey);

@@ -1,4 +1,5 @@
 import { useCallback, useState } from 'react';
+import { t } from '../i18n/index.js';
 
 /**
  * Настройки вида таблицы коммитов: какие колонки видны, в каком порядке,
@@ -7,28 +8,28 @@ import { useCallback, useState } from 'react';
  */
 
 export const COLUMNS = [
-  { id: 'refs', label: 'Ветка / тег' },
-  { id: 'graph', label: 'Граф' },
-  { id: 'message', label: 'Сообщение коммита', locked: true }, // всегда видна и забирает свободное место
-  { id: 'sha', label: 'SHA', menuLabel: 'SHA (хэш коммита)' },
-  { id: 'author', label: 'Автор' },
-  { id: 'date', label: 'Дата / время' },
+  { id: 'refs', label: t('Ветка / тег') },
+  { id: 'graph', label: t('Граф') },
+  { id: 'message', label: t('Сообщение коммита'), locked: true }, // всегда видна и забирает свободное место
+  { id: 'sha', label: 'SHA', menuLabel: t('SHA (хэш коммита)') },
+  { id: 'author', label: t('Автор') },
+  { id: 'date', label: t('Дата / время') },
 ];
 export const COLUMN_IDS = COLUMNS.map((c) => c.id);
 export const columnById = (id) => COLUMNS.find((c) => c.id === id);
 
 export const DENSITY_OPTIONS = [
-  { id: 'compact', label: 'Компактный', hint: '26px' },
-  { id: 'standard', label: 'Стандартный', hint: '34px' },
-  { id: 'relaxed', label: 'Свободный', hint: '42px' },
+  { id: 'compact', label: t('Компактный'), hint: '26px' },
+  { id: 'standard', label: t('Стандартный'), hint: '34px' },
+  { id: 'relaxed', label: t('Свободный'), hint: '42px' },
 ];
 export const DATE_FORMAT_OPTIONS = [
-  { id: 'absolute', label: 'Абсолютный', hint: '26.10.26 23:13' },
-  { id: 'relative', label: 'Относительный', hint: '15 мин назад, вчера' },
+  { id: 'absolute', label: t('Абсолютный'), hint: '26.10.26 23:13' },
+  { id: 'relative', label: t('Относительный'), hint: t('15 мин назад, вчера') },
 ];
 export const NODE_STYLE_OPTIONS = [
-  { id: 'avatar', label: 'Аватары / инициалы' },
-  { id: 'dots', label: 'Компактные точки' },
+  { id: 'avatar', label: t('Аватары / инициалы') },
+  { id: 'dots', label: t('Компактные точки') },
 ];
 
 export const DEFAULT_VIEW = {

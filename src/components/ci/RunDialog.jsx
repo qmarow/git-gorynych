@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { GitBranch, Loader2, Play, Plus, Trash2, Zap } from 'lucide-react';
 import { Button, ErrorBox, Modal } from '../Dialogs.jsx';
 import { Toggle } from './common.jsx';
+import { t as tr, tj } from '../../i18n/index.js';
 
 const api = window.api;
 
@@ -11,7 +12,7 @@ function Field({ input, value, onChange }) {
   const label = (
     <span className="mb-1 flex items-baseline gap-1.5">
       <span className="font-mono text-[12px] text-gk-text">{input.key}</span>
-      {input.required && <span className="text-[11px] text-gk-red">обязательно</span>}
+      {input.required && <span className="text-[11px] text-gk-red">{tr('обязательно')}</span>}
       {input.description && <span className="truncate text-[11.5px] text-gk-dim">— {input.description}</span>}
     </span>
   );
@@ -102,49 +103,43 @@ export default function RunDialog({ repoPath, opts, caps, providerLabel, branche
 
   return (
     <Modal
-      title={`Запустить пайплайн · ${providerLabel}`}
+      title={tr('Запустить пайплайн · {0}', providerLabel)}
       icon={Zap}
       iconClass="text-gk-green"
       onClose={onClose}
       width={560}
       footer={
         <>
-          <Button onClick={onClose}>Отмена</Button>
+          <Button onClick={onClose}>{tr('Отмена')}</Button>
           <Button variant="primary" disabled={!canSubmit} onClick={submit} data-testid="run-submit">
-            {busy ? <Loader2 size={13} className="animate-spin" /> : <Play size={13} />} Запустить
-          </Button>
+            {tj('{0} Запустить', [busy ? <Loader2 size={13} className="animate-spin" /> : <Play size={13} />])}</Button>
         </>
       }
     >
       {form.loading && (
         <div className="flex items-center gap-2 text-gk-muted">
-          <Loader2 size={13} className="animate-spin" /> Читаем параметры запуска из конфига…
-        </div>
+          {tj('{0} Читаем параметры запуска из конфига…', [<Loader2 size={13} className="animate-spin" />])}</div>
       )}
       {form.error && <ErrorBox error={form.error} />}
       {d && (
         <div className="space-y-3" data-testid="run-dialog">
           <label className="block">
-            <span className="mb-1 flex items-center gap-1 text-[12px] text-gk-muted">
-              <GitBranch size={12} /> Ветка
-            </span>
-            <input
+            {tj('<0>{1} Ветка</0>{2}{3}', [<span className="mb-1 flex items-center gap-1 text-[12px] text-gk-muted" />, <GitBranch size={12} />, <input
               list="run-branches"
               value={ref}
               onChange={(e) => setRef(e.target.value)}
               data-testid="run-ref"
               className="w-full rounded-md bg-gk-bg px-2 py-1.5 font-mono text-[12.5px] outline-none ring-1 ring-gk-border focus:ring-gk-blue"
-            />
-            <datalist id="run-branches">
+            />, <datalist id="run-branches">
               {branchList.map((b) => (
                 <option key={b} value={b} />
               ))}
-            </datalist>
+            </datalist>])}
           </label>
 
           {(needsWorkflow || d.kind === 'bitbucket') && (
             <label className="block">
-              <span className="mb-1 block text-[12px] text-gk-muted">{d.kind === 'bitbucket' ? 'Пайплайн' : 'Workflow'}</span>
+              <span className="mb-1 block text-[12px] text-gk-muted">{d.kind === 'bitbucket' ? tr('Пайплайн') : 'Workflow'}</span>
               <select
                 data-testid="run-workflow"
                 value={workflow ? workflow.path ?? workflow.value ?? '' : ''}
@@ -159,21 +154,20 @@ export default function RunDialog({ repoPath, opts, caps, providerLabel, branche
                   <option key={w.path ?? w.value ?? 'default'} value={w.path ?? w.value ?? ''} disabled={!w.dispatchable}>
                     {w.name}
                     {w.path ? ` — ${w.path}` : ''}
-                    {!w.dispatchable ? ' (нет on: workflow_dispatch)' : ''}
+                    {!w.dispatchable ? tr(' (нет on: workflow_dispatch)') : ''}
                   </option>
                 ))}
               </select>
               {needsWorkflow && !d.workflows.some((w) => w.dispatchable) && (
                 <p className="mt-1 text-[11.5px] text-gk-yellow" data-testid="run-no-dispatch">
-                  Ни в одном workflow нет «on: workflow_dispatch» — вручную их не запустить. Добавьте этот триггер в файл и отправьте его на сервер.
-                </p>
+                  {tr('Ни в одном workflow нет «on: workflow_dispatch» — вручную их не запустить. Добавьте этот триггер в файл и отправьте его на сервер.')}</p>
               )}
             </label>
           )}
 
           {inputs.length > 0 && (
             <div className="space-y-2.5 rounded-lg border border-gk-border p-3" data-testid="run-inputs">
-              <div className="text-[11px] font-semibold uppercase tracking-wider text-gk-dim">{d.kind === 'bitbucket' ? 'Переменные пайплайна' : 'Входные параметры (inputs)'}</div>
+              <div className="text-[11px] font-semibold uppercase tracking-wider text-gk-dim">{d.kind === 'bitbucket' ? tr('Переменные пайплайна') : tr('Входные параметры (inputs)')}</div>
               {inputs.map((i) => (
                 <Field key={i.key} input={i} value={values[i.key]} onChange={(v) => setValues((s) => ({ ...s, [i.key]: v }))} />
               ))}
@@ -182,7 +176,7 @@ export default function RunDialog({ repoPath, opts, caps, providerLabel, branche
 
           {d.kind === 'gitlab' && d.variables?.length > 0 && (
             <div className="space-y-2.5 rounded-lg border border-gk-border p-3" data-testid="run-prefilled">
-              <div className="text-[11px] font-semibold uppercase tracking-wider text-gk-dim">Переменные из .gitlab-ci.yml</div>
+              <div className="text-[11px] font-semibold uppercase tracking-wider text-gk-dim">{tr('Переменные из .gitlab-ci.yml')}</div>
               {d.variables.map((v) => (
                 <Field key={v.key} input={{ ...v, type: 'string' }} value={vars[v.key]} onChange={(x) => setVars((s) => ({ ...s, [v.key]: x }))} />
               ))}
@@ -192,10 +186,8 @@ export default function RunDialog({ repoPath, opts, caps, providerLabel, branche
           {d.allowCustomVariables && caps?.canRunWithVariables && (
             <div className="space-y-1.5" data-testid="run-custom">
               <div className="flex items-center">
-                <span className="flex-1 text-[12px] text-gk-muted">Свои переменные окружения (KEY=VALUE)</span>
-                <button onClick={() => setCustom((c) => [...c, { key: '', value: '' }])} className="flex items-center gap-1 text-[12px] text-gk-blue hover:underline" data-testid="run-add-var">
-                  <Plus size={12} /> Переменная
-                </button>
+                {tj('<0>Свои переменные окружения (KEY=VALUE)</0>{1}', [<span className="flex-1 text-[12px] text-gk-muted" />, <button onClick={() => setCustom((c) => [...c, { key: '', value: '' }])} className="flex items-center gap-1 text-[12px] text-gk-blue hover:underline" data-testid="run-add-var">
+                  {tj('{0} Переменная', [<Plus size={12} />])}</button>])}
               </div>
               {custom.map((v, i) => (
                 <div key={i} className="flex items-center gap-1.5">
@@ -217,11 +209,11 @@ export default function RunDialog({ repoPath, opts, caps, providerLabel, branche
                   <span className="text-gk-dim">=</span>
                   <input
                     value={v.value}
-                    placeholder="значение"
+                    placeholder={tr('значение')}
                     onChange={(e) => setCustom((c) => c.map((x, k) => (k === i ? { ...x, value: e.target.value } : x)))}
                     className="min-w-0 flex-1 rounded-md bg-gk-bg px-2 py-1 font-mono text-[12px] outline-none ring-1 ring-gk-border focus:ring-gk-blue"
                   />
-                  <button onClick={() => setCustom((c) => c.filter((_, k) => k !== i))} className="rounded p-1 text-gk-dim hover:bg-gk-hover hover:text-gk-red" aria-label="Убрать">
+                  <button onClick={() => setCustom((c) => c.filter((_, k) => k !== i))} className="rounded p-1 text-gk-dim hover:bg-gk-hover hover:text-gk-red" aria-label={tr('Убрать')}>
                     <Trash2 size={12} />
                   </button>
                 </div>
@@ -229,7 +221,7 @@ export default function RunDialog({ repoPath, opts, caps, providerLabel, branche
             </div>
           )}
           {!caps?.canRunWithVariables && caps?.why?.canRunWithVariables && <p className="text-[11.5px] leading-snug text-gk-dim">{caps.why.canRunWithVariables}</p>}
-          {missing.length > 0 && <p className="text-[11.5px] text-gk-yellow">Заполните: {missing.join(', ')}</p>}
+          {missing.length > 0 && <p className="text-[11.5px] text-gk-yellow">{tj('Заполните: {0}', [missing.join(', ')])}</p>}
           <ErrorBox error={error} />
         </div>
       )}

@@ -1,11 +1,12 @@
 import { setScheme } from './scheme.js';
+import { t as tr } from '../i18n/index.js';
 
 // Оформление: темы, фоны, прозрачность панелей. Применяется через CSS-переменные на <html>.
 
 export const THEMES = [
   {
     id: 'kraken',
-    name: 'Тёмная',
+    name: tr('Тёмная'),
     base: '#0e1117',
     surface: [20, 23, 31],
     panel: [24, 27, 36],
@@ -23,7 +24,7 @@ export const THEMES = [
   },
   {
     id: 'light',
-    name: 'Светлая',
+    name: tr('Светлая'),
     scheme: 'light',
     base: '#eceff4',
     surface: [246, 247, 250],
@@ -45,7 +46,7 @@ export const THEMES = [
   },
   {
     id: 'midnight',
-    name: 'Полночь',
+    name: tr('Полночь'),
     base: '#11151f',
     surface: [22, 27, 38],
     panel: [27, 33, 46],
@@ -63,7 +64,7 @@ export const THEMES = [
   },
   {
     id: 'dracula',
-    name: 'Дракула',
+    name: tr('Дракула'),
     base: '#191a21',
     surface: [33, 34, 44],
     panel: [40, 42, 54],
@@ -81,7 +82,7 @@ export const THEMES = [
   },
   {
     id: 'monokai',
-    name: 'Монокай',
+    name: tr('Монокай'),
     base: '#1b1916',
     surface: [34, 31, 27],
     panel: [41, 37, 33],
@@ -99,7 +100,7 @@ export const THEMES = [
   },
   {
     id: 'forest',
-    name: 'Лес',
+    name: tr('Лес'),
     base: '#0b1410',
     surface: [16, 26, 22],
     panel: [20, 32, 27],
@@ -117,7 +118,7 @@ export const THEMES = [
   },
   {
     id: 'sakura',
-    name: 'Сакура',
+    name: tr('Сакура'),
     base: '#171118',
     surface: [30, 22, 31],
     panel: [37, 27, 38],
@@ -135,7 +136,7 @@ export const THEMES = [
   },
   {
     id: 'oled',
-    name: 'Чёрная',
+    name: tr('Чёрная'),
     base: '#000000',
     surface: [6, 6, 8],
     panel: [11, 11, 14],
@@ -154,17 +155,17 @@ export const THEMES = [
 ];
 
 export const BACKGROUNDS = [
-  { id: 'glow', name: 'Сияние', hint: 'Мягкие цветные пятна за стеклом' },
-  { id: 'aurora', name: 'Аврора', hint: 'Переливающиеся полосы, как северное сияние' },
-  { id: 'grid', name: 'Сетка', hint: 'Тонкая сетка и свечение сверху' },
-  { id: 'gradient', name: 'Градиент', hint: 'Спокойный статичный градиент' },
-  { id: 'solid', name: 'Однотонный', hint: 'Без эффектов' },
-  { id: 'image', name: 'Картинка', hint: 'Своё изображение с размытием и затемнением' },
-  { id: 'system', name: 'Windows', hint: 'Сквозь окно видно рабочий стол (Mica / Acrylic, Windows 11)' },
+  { id: 'glow', name: tr('Сияние'), hint: tr('Мягкие цветные пятна за стеклом') },
+  { id: 'aurora', name: tr('Аврора'), hint: tr('Переливающиеся полосы, как северное сияние') },
+  { id: 'grid', name: tr('Сетка'), hint: tr('Тонкая сетка и свечение сверху') },
+  { id: 'gradient', name: tr('Градиент'), hint: tr('Спокойный статичный градиент') },
+  { id: 'solid', name: tr('Однотонный'), hint: tr('Без эффектов') },
+  { id: 'image', name: tr('Картинка'), hint: tr('Своё изображение с размытием и затемнением') },
+  { id: 'system', name: 'Windows', hint: tr('Сквозь окно видно рабочий стол (Mica / Acrylic, Windows 11)') },
 ];
 
 /** «Как в системе»: светлая или тёмная тема по настройке Windows/macOS */
-export const AUTO_THEME = { id: 'auto', name: 'Как в системе', light: 'light', dark: 'kraken' };
+export const AUTO_THEME = { id: 'auto', name: tr('Как в системе'), light: 'light', dark: 'kraken' };
 
 const systemPrefersLight = () => {
   try {

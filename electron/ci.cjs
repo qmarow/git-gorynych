@@ -7,6 +7,7 @@ const { git, hasHead, safeRelative } = require('./git.cjs');
 const { GitError } = require('./errors.cjs');
 const ciEdit = require('./ciEdit.cjs');
 const { checkCi } = require('./ciCheck.cjs');
+const { t: tr } = require('./i18n.cjs');
 
 const MAX_FILE_SIZE = 512 * 1024;
 const MAX_INCLUDE_DEPTH = 6;
@@ -151,7 +152,7 @@ function readText(root, rel) {
   const full = safeRelative(root, rel);
   const stat = fs.statSync(full);
   if (stat.size > MAX_FILE_SIZE) {
-    throw new GitError(`Файл ${rel} слишком большой (${Math.round(stat.size / 1024)} КБ)`, { code: 'TOO_LARGE' });
+    throw new GitError(tr('Файл {0} слишком большой ({1} КБ)', rel, Math.round(stat.size / 1024)), { code: 'TOO_LARGE' });
   }
   return fs.readFileSync(full, 'utf8').replace(/^﻿/, '');
 }
@@ -239,7 +240,7 @@ function loadGitlab(root, mainFile) {
     try {
       text = readText(root, rel);
     } catch (error) {
-      errors.push({ file: via, message: `Не удалось прочитать ${rel}: ${error.message}`, line: null, severity: 'error' });
+      errors.push({ file: via, message: tr('Не удалось прочитать {0}: {1}', rel, error.message), line: null, severity: 'error' });
       return;
     }
     files.push({ path: rel, text });
@@ -253,13 +254,13 @@ function loadGitlab(root, mainFile) {
       includes.push(inc);
       if (inc.type !== 'local') continue;
       if (depth >= MAX_INCLUDE_DEPTH) {
-        inc.error = 'Слишком глубокая вложенность include';
+        inc.error = tr('Слишком глубокая вложенность include');
         continue;
       }
       const matched = expandLocalGlob(root, inc.value);
       inc.files = matched.filter((f) => isFile(path.join(root, f)));
       if (inc.files.length === 0) {
-        inc.error = 'Файл не найден в репозитории';
+        inc.error = tr('Файл не найден в репозитории');
         continue;
       }
       inc.resolved = true;
@@ -293,7 +294,7 @@ function loadGitlab(root, mainFile) {
     const entry = jobs.get(name);
     if (!entry) return null;
     if (stack.includes(name)) {
-      warnings.push(`Циклическое наследование: ${[...stack, name].join(' → ')}`);
+      warnings.push(tr('Циклическое наследование: {0}', [...stack, name].join(' → ')));
       return { config: entry.config, chain: [] };
     }
     let merged = {};
@@ -301,7 +302,7 @@ function loadGitlab(root, mainFile) {
     for (const parent of asArray(entry.config.extends)) {
       const p = resolveJob(parent, [...stack, name]);
       if (!p) {
-        warnings.push(`«${name}»: extends ссылается на неизвестное задание «${parent}»`);
+        warnings.push(tr('«{0}»: extends ссылается на неизвестное задание «{1}»', name, parent));
         continue;
       }
       chain.push(parent, ...p.chain.filter((c) => !chain.includes(c) && c !== name && c !== parent));
@@ -332,7 +333,7 @@ function loadGitlab(root, mainFile) {
         let target = jobName in globals ? globals[jobName] : resolveJob(jobName)?.config;
         for (const k of keys) target = target?.[k];
         if (target === undefined) {
-          const msg = `!reference [${value.__reference.join(', ')}] ссылается на то, чего нет`;
+          const msg = tr('!reference [{0}] ссылается на то, чего нет', value.__reference.join(', '));
           if (!warnings.includes(msg)) warnings.push(msg);
           return value;
         }
@@ -365,7 +366,7 @@ function loadGitlab(root, mainFile) {
   for (const job of visibleJobs) {
     let stage = stages.find((s) => s.name === job.stage);
     if (!stage) {
-      warnings.push(`«${job.name}»: этап «${job.stage}» не объявлен в stages — GitLab не запустит пайплайн`);
+      warnings.push(tr('«{0}»: этап «{1}» не объявлен в stages — GitLab не запустит пайплайн', job.name, job.stage));
       stage = { name: job.stage, jobs: [], undeclared: true };
       stages.splice(stages.length - 1, 0, stage);
     }
@@ -374,7 +375,7 @@ function loadGitlab(root, mainFile) {
   for (const job of visibleJobs) {
     for (const need of job.needs ?? []) {
       if (!need.optional && !visibleJobs.some((j) => j.name === need.job) && !need.external) {
-        warnings.push(`«${job.name}»: needs ссылается на задание «${need.job}», которого нет`);
+        warnings.push(tr('«{0}»: needs ссылается на задание «{1}», которого нет', job.name, need.job));
       }
     }
   }
@@ -382,10 +383,10 @@ function loadGitlab(root, mainFile) {
 
   const workflow = isPlainObject(globals.workflow) ? globals.workflow : null;
   const info = [];
-  if (workflow?.name) info.push({ label: 'Название пайплайна', value: String(workflow.name) });
+  if (workflow?.name) info.push({ label: tr('Название пайплайна'), value: String(workflow.name) });
   const image = imageName(defaults.image ?? globals.image);
-  if (image) info.push({ label: 'Образ по умолчанию', value: image });
-  if (defaults.tags) info.push({ label: 'Теги раннеров', value: asArray(defaults.tags).join(', ') });
+  if (image) info.push({ label: tr('Образ по умолчанию'), value: image });
+  if (defaults.tags) info.push({ label: tr('Теги раннеров'), value: asArray(defaults.tags).join(', ') });
 
   return {
     files,
@@ -394,9 +395,9 @@ function loadGitlab(root, mainFile) {
     includes,
     info,
     triggers: workflow?.rules ? asArray(workflow.rules).map(ruleText) : [],
-    triggersTitle: 'Когда создаётся пайплайн (workflow:rules)',
+    triggersTitle: tr('Когда создаётся пайплайн (workflow:rules)'),
     variables: variablesList(globals.variables),
-    pipelines: [{ id: 'main', title: 'Пайплайн', stages: usedStages }],
+    pipelines: [{ id: 'main', title: tr('Пайплайн'), stages: usedStages }],
     templates,
     // Для проверки конфигурации (ciCheck.cjs); в интерфейс не уходит
     _raw: { jobs, jobDefs, globalDefs, resolveJob, resolveReferences, globals, declaredStages, stageNames, includes },
@@ -434,16 +435,16 @@ function compact(value) {
 function ruleText(rule) {
   if (!isPlainObject(rule)) return { text: String(rule) };
   const parts = [];
-  if (rule.if) parts.push(`если ${rule.if}`);
+  if (rule.if) parts.push(tr('если {0}', rule.if));
   if (rule.changes) {
     const ch = isPlainObject(rule.changes) ? asArray(rule.changes.paths) : asArray(rule.changes);
-    parts.push(`изменены ${ch.join(', ')}`);
+    parts.push(tr('изменены {0}', ch.join(', ')));
   }
-  if (rule.exists) parts.push(`существует ${asArray(isPlainObject(rule.exists) ? rule.exists.paths : rule.exists).join(', ')}`);
-  if (parts.length === 0) parts.push('во всех остальных случаях');
+  if (rule.exists) parts.push(tr('существует {0}', asArray(isPlainObject(rule.exists) ? rule.exists.paths : rule.exists).join(', ')));
+  if (parts.length === 0) parts.push(tr('во всех остальных случаях'));
   const when = rule.when ?? 'on_success';
   return {
-    text: parts.join(' и '),
+    text: parts.join(tr(' и ')),
     when,
     allowFailure: rule.allow_failure ?? null,
     variables: isPlainObject(rule.variables) ? Object.keys(rule.variables) : [],
@@ -468,7 +469,7 @@ function gitlabJob(name, cfg, entry, chain, globals, defaults) {
   const fromDefault = (key) => {
     if (cfg[key] !== undefined) return { value: cfg[key], inherited: false };
     if (inheritKey(key) && defaults[key] !== undefined) return { value: defaults[key], inherited: 'default' };
-    if (inheritKey(key) && globals[key] !== undefined) return { value: globals[key], inherited: 'глобально' };
+    if (inheritKey(key) && globals[key] !== undefined) return { value: globals[key], inherited: tr('глобально') };
     return { value: undefined, inherited: false };
   };
   const image = fromDefault('image');
@@ -524,7 +525,7 @@ function gitlabJob(name, cfg, entry, chain, globals, defaults) {
     trigger: isTrigger ? (typeof cfg.trigger === 'string' ? cfg.trigger : cfg.trigger.project ?? toYaml(cfg.trigger.include ?? cfg.trigger)) : null,
     extends: chain,
     timeout: cfg.timeout ?? null,
-    retry: cfg.retry == null ? null : isPlainObject(cfg.retry) ? `${cfg.retry.max ?? '?'} раз` : `${cfg.retry} раз`,
+    retry: cfg.retry == null ? null : isPlainObject(cfg.retry) ? tr('{0} раз', cfg.retry.max ?? '?') : tr('{0} раз', cfg.retry),
     interruptible: cfg.interruptible ?? null,
     resourceGroup: cfg.resource_group ?? null,
     coverage: cfg.coverage ?? null,
@@ -552,8 +553,8 @@ function githubTriggers(on) {
       for (const key of ['branches', 'branches-ignore', 'tags', 'tags-ignore', 'paths', 'paths-ignore', 'types']) {
         if (cfg[key]) details.push(`${key}: ${asArray(cfg[key]).join(', ')}`);
       }
-      if (cfg.inputs && isPlainObject(cfg.inputs)) details.push(`параметры: ${Object.keys(cfg.inputs).join(', ')}`);
-      if (cfg.workflows) details.push(`после: ${asArray(cfg.workflows).join(', ')}`);
+      if (cfg.inputs && isPlainObject(cfg.inputs)) details.push(tr('параметры: {0}', Object.keys(cfg.inputs).join(', ')));
+      if (cfg.workflows) details.push(tr('после: {0}', asArray(cfg.workflows).join(', ')));
     }
     if (Array.isArray(cfg)) for (const c of cfg) if (c?.cron) details.push(`cron: ${c.cron}`);
     return { text: event + (details.length ? ` — ${details.join('; ')}` : '') };
@@ -579,7 +580,7 @@ function levelize(jobs, depsOf) {
   jobs.forEach((j) => visit(j));
   const max = Math.max(0, ...level.values());
   return Array.from({ length: max + 1 }, (_, i) => ({
-    name: i === 0 ? 'Старт' : `После шага ${i}`,
+    name: i === 0 ? tr('Старт') : tr('После шага {0}', i),
     jobs: jobs.filter((j) => level.get(j.name) === i),
   })).filter((s) => s.jobs.length);
 }
@@ -591,7 +592,7 @@ function loadGithub(root, file) {
   const jobLines = parsed.nestedLines(['jobs']);
   const warnings = [];
   const jobsCfg = isPlainObject(data.jobs) ? data.jobs : {};
-  if (!data.jobs) warnings.push('В файле нет раздела jobs');
+  if (!data.jobs) warnings.push(tr('В файле нет раздела jobs'));
 
   const jobs = Object.entries(jobsCfg).map(([id, cfg]) => {
     cfg = isPlainObject(cfg) ? cfg : {};
@@ -620,7 +621,7 @@ function loadGithub(root, file) {
       manual: false,
       environment: env ? (typeof env === 'string' ? { name: env } : { name: env.name, url: env.url ?? null }) : null,
       steps: asArray(cfg.steps).map((s, i) => ({
-        name: s?.name ?? (s?.uses ? s.uses : s?.run ? String(s.run).split('\n')[0] : `Шаг ${i + 1}`),
+        name: s?.name ?? (s?.uses ? s.uses : s?.run ? String(s.run).split('\n')[0] : tr('Шаг {0}', i + 1)),
         uses: s?.uses ?? null,
         run: s?.run != null ? String(s.run) : null,
         condition: s?.if != null ? String(s.if) : null,
@@ -630,7 +631,7 @@ function loadGithub(root, file) {
       variables: variablesList(cfg.env),
       services: isPlainObject(cfg.services) ? Object.entries(cfg.services).map(([k, v]) => `${k} (${imageName(v) ?? '?'})`) : [],
       parallel: matrix.length ? `matrix: ${matrix.join('; ')}` : null,
-      timeout: cfg['timeout-minutes'] != null ? `${cfg['timeout-minutes']} мин` : null,
+      timeout: cfg['timeout-minutes'] != null ? tr('{0} мин', cfg['timeout-minutes']) : null,
       permissions: cfg.permissions ? toYaml(cfg.permissions) : null,
       outputs: isPlainObject(cfg.outputs) ? Object.keys(cfg.outputs) : [],
       extends: [],
@@ -640,7 +641,7 @@ function loadGithub(root, file) {
   });
   for (const job of jobs) {
     for (const need of job.needs ?? []) {
-      if (!jobs.some((j) => j.jobId === need.job)) warnings.push(`«${job.jobId}»: needs ссылается на «${need.job}», которого нет`);
+      if (!jobs.some((j) => j.jobId === need.job)) warnings.push(tr('«{0}»: needs ссылается на «{1}», которого нет', job.jobId, need.job));
     }
   }
   // needs ссылается на id заданий, а показываем name — сопоставим
@@ -649,9 +650,9 @@ function loadGithub(root, file) {
 
   const info = [];
   if (data.name) info.push({ label: 'Workflow', value: String(data.name) });
-  if (data['run-name']) info.push({ label: 'Имя запуска', value: String(data['run-name']) });
+  if (data['run-name']) info.push({ label: tr('Имя запуска'), value: String(data['run-name']) });
   if (data.concurrency) info.push({ label: 'Concurrency', value: typeof data.concurrency === 'string' ? data.concurrency : data.concurrency.group ?? toYaml(data.concurrency) });
-  if (data.permissions) info.push({ label: 'Права токена', value: typeof data.permissions === 'string' ? data.permissions : Object.entries(data.permissions).map(([k, v]) => `${k}: ${v}`).join(', ') });
+  if (data.permissions) info.push({ label: tr('Права токена'), value: typeof data.permissions === 'string' ? data.permissions : Object.entries(data.permissions).map(([k, v]) => `${k}: ${v}`).join(', ') });
 
   return {
     files: [{ path: file, text }],
@@ -660,7 +661,7 @@ function loadGithub(root, file) {
     includes: [],
     info,
     triggers: githubTriggers(data.on ?? data[true]), // `on:` в YAML 1.1 иногда читается как true
-    triggersTitle: 'Когда запускается (on)',
+    triggersTitle: tr('Когда запускается (on)'),
     variables: variablesList(data.env),
     pipelines: [{ id: 'main', title: data.name ? String(data.name) : file, stages: levelize(jobs, (j) => (j.needs ?? []).map((n) => n.job)) }],
     templates: [],
@@ -684,12 +685,12 @@ function loadBitbucket(root, file) {
     n += 1;
     return {
       id: `s${n}`,
-      name: s.name ? String(s.name) : `Шаг ${idx + 1}`,
+      name: s.name ? String(s.name) : tr('Шаг {0}', idx + 1),
       source: file,
       line: null,
       kind: 'job',
       image: imageName(s.image) ?? defaultImage,
-      imageInherited: s.image ? false : defaultImage ? 'глобально' : false,
+      imageInherited: s.image ? false : defaultImage ? tr('глобально') : false,
       manual: s.trigger === 'manual',
       when: s.trigger === 'manual' ? 'manual' : 'on_success',
       runsOnLabels: s['runs-on'] ? asArray(s['runs-on']).map(String) : null,
@@ -701,7 +702,7 @@ function loadBitbucket(root, file) {
       cache: s.caches ? asArray(s.caches).join(', ') : null,
       variables: [],
       extends: [],
-      rules: s.condition?.changesets ? [{ text: `изменены ${asArray(s.condition.changesets.includePaths).join(', ')}` }] : [],
+      rules: s.condition?.changesets ? [{ text: tr('изменены {0}', asArray(s.condition.changesets.includePaths).join(', ')) }] : [],
       needs: null,
       raw: toYaml(s),
     };
@@ -712,7 +713,7 @@ function loadBitbucket(root, file) {
     asArray(list).forEach((item, i) => {
       if (isPlainObject(item) && item.parallel) {
         const steps = Array.isArray(item.parallel) ? item.parallel : asArray(item.parallel.steps);
-        stages.push({ name: `Параллельно`, jobs: steps.map((s, k) => stepJob(s, k)) });
+        stages.push({ name: tr('Параллельно'), jobs: steps.map((s, k) => stepJob(s, k)) });
       } else if (isPlainObject(item) && item.stage) {
         stages.push({ name: item.stage.name ?? `Stage ${i + 1}`, jobs: asArray(item.stage.steps).map((s, k) => stepJob(s, k)) });
       } else {
@@ -723,23 +724,23 @@ function loadBitbucket(root, file) {
     pipelines.push({ id: title, title, stages });
   };
 
-  if (pipelinesCfg.default) build('default — все ветки', pipelinesCfg.default);
+  if (pipelinesCfg.default) build(tr('default — все ветки'), pipelinesCfg.default);
   for (const group of ['branches', 'tags', 'bookmarks', 'pull-requests', 'custom']) {
     if (!isPlainObject(pipelinesCfg[group])) continue;
     for (const [pattern, list] of Object.entries(pipelinesCfg[group])) build(`${group}: ${pattern}`, list);
   }
 
   const info = [];
-  if (defaultImage) info.push({ label: 'Образ по умолчанию', value: defaultImage });
-  if (definitions.services) info.push({ label: 'Сервисы', value: Object.keys(definitions.services).join(', ') });
+  if (defaultImage) info.push({ label: tr('Образ по умолчанию'), value: defaultImage });
+  if (definitions.services) info.push({ label: tr('Сервисы'), value: Object.keys(definitions.services).join(', ') });
   return {
     files: [{ path: file, text }],
     errors: parsed.errors,
-    warnings: pipelines.length ? [] : ['Не найден раздел pipelines'],
+    warnings: pipelines.length ? [] : [tr('Не найден раздел pipelines')],
     includes: [],
     info,
     triggers: pipelines.map((p) => ({ text: p.title })),
-    triggersTitle: 'Пайплайны',
+    triggersTitle: tr('Пайплайны'),
     variables: [],
     pipelines,
     templates: [],
@@ -794,14 +795,14 @@ function loadCircle(root, file) {
     pipelines.push({ id: wfName, title: wfName, stages: levelize(jobs, (j) => (j.needs ?? []).map((n) => n.job)) });
   }
   if (!pipelines.length && Object.keys(jobDefs).length) {
-    pipelines.push({ id: 'jobs', title: 'jobs', stages: [{ name: 'Задания', jobs: Object.keys(jobDefs).map((k) => makeJob(k, k)) }] });
+    pipelines.push({ id: 'jobs', title: 'jobs', stages: [{ name: tr('Задания'), jobs: Object.keys(jobDefs).map((k) => makeJob(k, k)) }] });
   }
   return {
     files: [{ path: file, text }],
     errors: parsed.errors,
     warnings: [],
     includes: data.orbs ? Object.entries(data.orbs).map(([k, v]) => ({ type: 'orb', value: `${k}: ${v}`, resolved: false })) : [],
-    info: data.version ? [{ label: 'Версия конфига', value: String(data.version) }] : [],
+    info: data.version ? [{ label: tr('Версия конфига'), value: String(data.version) }] : [],
     triggers: pipelines.map((p) => ({ text: `workflow ${p.title}` })),
     triggersTitle: 'Workflows',
     variables: [],
@@ -853,22 +854,22 @@ function loadAzure(root, file) {
     for (const j of jobs) if (j.needs) j.needs = j.needs.map((x) => ({ job: nameOf.get(x.job) ?? x.job }));
     stages = levelize(jobs, (j) => (j.needs ?? []).map((x) => x.job));
   } else {
-    stages = [{ name: 'Шаги', jobs: [makeJob({ displayName: 'Задание', steps: data.steps, pool: data.pool })] }];
+    stages = [{ name: tr('Шаги'), jobs: [makeJob({ displayName: tr('Задание'), steps: data.steps, pool: data.pool })] }];
   }
   const triggers = [];
-  if (data.trigger !== undefined) triggers.push({ text: `push: ${data.trigger === 'none' ? 'выключен' : compact(data.trigger)}` });
-  if (data.pr !== undefined) triggers.push({ text: `pull request: ${data.pr === 'none' ? 'выключен' : compact(data.pr)}` });
+  if (data.trigger !== undefined) triggers.push({ text: `push: ${data.trigger === 'none' ? tr('выключен') : compact(data.trigger)}` });
+  if (data.pr !== undefined) triggers.push({ text: `pull request: ${data.pr === 'none' ? tr('выключен') : compact(data.pr)}` });
   for (const s of asArray(data.schedules)) if (s?.cron) triggers.push({ text: `cron: ${s.cron}${s.displayName ? ` (${s.displayName})` : ''}` });
   return {
     files: [{ path: file, text }],
     errors: parsed.errors,
     warnings: [],
     includes: asArray(data.resources?.repositories).map((r) => ({ type: 'repository', value: `${r.repository}: ${r.name}`, resolved: false })),
-    info: data.pool ? [{ label: 'Пул', value: typeof data.pool === 'string' ? data.pool : data.pool.vmImage ?? data.pool.name ?? toYaml(data.pool) }] : [],
+    info: data.pool ? [{ label: tr('Пул'), value: typeof data.pool === 'string' ? data.pool : data.pool.vmImage ?? data.pool.name ?? toYaml(data.pool) }] : [],
     triggers,
-    triggersTitle: 'Когда запускается',
+    triggersTitle: tr('Когда запускается'),
     variables: Array.isArray(data.variables) ? data.variables.filter((v) => v?.name).map((v) => ({ name: v.name, value: String(v.value ?? '') })) : variablesList(data.variables),
-    pipelines: [{ id: 'main', title: 'Пайплайн', stages }],
+    pipelines: [{ id: 'main', title: tr('Пайплайн'), stages }],
     templates: [],
   };
 }
@@ -963,24 +964,24 @@ function loadJenkins(root, file) {
   const columns = [];
   for (const st of all.filter((x) => !all.some((y) => inside(x, y)))) {
     if (!st.children.length) columns.push({ name: st.name, jobs: [makeJob(st)] });
-    else if (/\bparallel\s*\{/.test(st.own)) columns.push({ name: `${st.name} · параллельно`, jobs: leaves(st).map(makeJob) });
+    else if (/\bparallel\s*\{/.test(st.own)) columns.push({ name: tr('{0} · параллельно', st.name), jobs: leaves(st).map(makeJob) });
     else for (const leaf of leaves(st)) columns.push({ name: `${st.name} › ${leaf.name}`, jobs: [makeJob(leaf)] });
   }
 
   const info = [];
   const agent = /^\s*agent\s+(\w+|\{[^}]*\})/m.exec(text)?.[1];
-  if (agent) info.push({ label: 'Агент', value: agent.replace(/\s+/g, ' ') });
-  if (/^\s*pipeline\s*\{/m.test(text)) info.push({ label: 'Синтаксис', value: 'Declarative Pipeline' });
-  else if (/\bnode\s*[({]/.test(text)) info.push({ label: 'Синтаксис', value: 'Scripted Pipeline' });
+  if (agent) info.push({ label: tr('Агент'), value: agent.replace(/\s+/g, ' ') });
+  if (/^\s*pipeline\s*\{/m.test(text)) info.push({ label: tr('Синтаксис'), value: 'Declarative Pipeline' });
+  else if (/\bnode\s*[({]/.test(text)) info.push({ label: tr('Синтаксис'), value: 'Scripted Pipeline' });
   const triggers = (blockOf(text, 'triggers') ?? []).filter((l) => l.trim()).map((l) => ({ text: l.trim() }));
   return {
     files: [{ path: file, text }],
     errors: [],
-    warnings: columns.length ? [] : ['Не удалось найти этапы stage(...) — показан только файл'],
+    warnings: columns.length ? [] : [tr('Не удалось найти этапы stage(...) — показан только файл')],
     includes: [...text.matchAll(/@Library\(\s*['"]([^'"]+)['"]/g)].map((x) => ({ type: 'library', value: x[1], resolved: false })),
     info,
     triggers,
-    triggersTitle: 'Триггеры',
+    triggersTitle: tr('Триггеры'),
     variables: [],
     pipelines: [{ id: 'main', title: 'Pipeline', stages: columns }],
     templates: [],
@@ -997,7 +998,7 @@ function loadGeneric(root, file) {
     errors: parsed.errors,
     warnings: [],
     includes: [],
-    info: Object.keys(parsed.data).length ? [{ label: 'Разделы', value: Object.keys(parsed.data).join(', ') }] : [],
+    info: Object.keys(parsed.data).length ? [{ label: tr('Разделы'), value: Object.keys(parsed.data).join(', ') }] : [],
     triggers: [],
     triggersTitle: '',
     variables: [],

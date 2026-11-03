@@ -3,6 +3,7 @@ const { execFile, execFileSync } = require('node:child_process');
 const fs = require('node:fs');
 const path = require('node:path');
 const { GitError, fromProcessError } = require('./errors.cjs');
+const { t } = require('./i18n.cjs');
 
 /* ---------------- Поиск git.exe ---------------- */
 
@@ -95,7 +96,7 @@ function git(cwd, args, { env, timeout = 0, input = null, encoding = 'utf8' } = 
         if (error && error.code === 'ENOENT') {
           gitBinary = null; // при следующем вызове поищем снова (вдруг Git уже установили)
           const err = fromProcessError(error, stdout, stderr);
-          err.details = `Искали git.exe в:\n${gitSearched.join('\n') || '(PATH)'}`;
+          err.details = t('Искали git.exe в:\n{0}', gitSearched.join('\n') || '(PATH)');
           reject(err);
         } else if (error) reject(fromProcessError(error, stdout, stderr));
         else resolve(stdout);
@@ -115,7 +116,7 @@ async function resolveRepoRoot(dir) {
     return path.normalize(out.trim());
   } catch (error) {
     if (error.code === 'GIT_MISSING') throw error;
-    throw new GitError(`Папка не является Git-репозиторием: ${dir}`, { code: 'NOT_A_REPO' });
+    throw new GitError(t('Папка не является Git-репозиторием: {0}', dir), { code: 'NOT_A_REPO' });
   }
 }
 
@@ -503,7 +504,7 @@ async function loadRepository(dir, { limit = DEFAULT_LIMIT } = {}) {
 
 async function getCommitFiles(dir, hash, parentHash) {
   if (!HASH_RE.test(hash) || (parentHash && !HASH_RE.test(parentHash))) {
-    throw new Error('Некорректный хэш коммита');
+    throw new Error(t('Некорректный хэш коммита'));
   }
   const range = parentHash ? [parentHash, hash] : ['--root', hash];
   const base = ['diff-tree', '--no-commit-id', '-r', '-M', '-z', '--ignore-cr-at-eol'];
@@ -548,7 +549,7 @@ async function getCommitFiles(dir, hash, parentHash) {
  * Для каждого файла возвращаем diffHash/diffParent — по ним строится diff.
  */
 async function getStashDetails(dir, hash) {
-  if (!HASH_RE.test(hash || '')) throw new GitError('Некорректный stash', { code: 'BAD_ARGS' });
+  if (!HASH_RE.test(hash || '')) throw new GitError(t('Некорректный stash'), { code: 'BAD_ARGS' });
   const parents = (await git(dir, ['rev-list', '--parents', '-n', '1', hash])).trim().split(' ').slice(1);
   const [base, , untracked] = parents;
   const tracked = (await getCommitFiles(dir, hash, base)).map((f) => ({ ...f, diffHash: hash, diffParent: base }));
@@ -624,10 +625,10 @@ function parseUnifiedDiff(text) {
 }
 
 function safeRelative(root, rel) {
-  if (typeof rel !== 'string' || !rel || path.isAbsolute(rel)) throw new GitError('Некорректный путь', { code: 'BAD_ARGS' });
+  if (typeof rel !== 'string' || !rel || path.isAbsolute(rel)) throw new GitError(t('Некорректный путь'), { code: 'BAD_ARGS' });
   const full = path.resolve(root, rel);
   const relBack = path.relative(root, full);
-  if (relBack.startsWith('..') || path.isAbsolute(relBack)) throw new GitError('Путь вне репозитория', { code: 'BAD_ARGS' });
+  if (relBack.startsWith('..') || path.isAbsolute(relBack)) throw new GitError(t('Путь вне репозитория'), { code: 'BAD_ARGS' });
   return full;
 }
 
@@ -677,7 +678,7 @@ async function getFileDiff(dir, { mode, hash, parent, path: filePath, oldPath, i
   let args;
   if (mode === 'commit') {
     if (!HASH_RE.test(hash || '') || (parent && !HASH_RE.test(parent))) {
-      throw new GitError('Некорректный коммит', { code: 'BAD_ARGS' });
+      throw new GitError(t('Некорректный коммит'), { code: 'BAD_ARGS' });
     }
     const range = parent ? [parent, hash] : ['--root', hash];
     args = ['diff-tree', '-p', '-M', '--no-commit-id', '--no-color', ...ws, ...range];
@@ -686,7 +687,7 @@ async function getFileDiff(dir, { mode, hash, parent, path: filePath, oldPath, i
   } else if (mode === 'unstaged') {
     args = conflicted && (await hasHead(root)) ? ['diff', 'HEAD', '--no-color', ...ws] : ['diff', '--no-color', ...ws];
   } else {
-    throw new GitError('Неизвестный режим diff', { code: 'BAD_ARGS' });
+    throw new GitError(t('Неизвестный режим diff'), { code: 'BAD_ARGS' });
   }
 
   // Важно: core.autocrlf НЕ переопределяем — на Windows рабочие файлы с CRLF, а в репозитории LF,
@@ -715,7 +716,7 @@ async function getFileDiff(dir, { mode, hash, parent, path: filePath, oldPath, i
 
 function assertPaths(paths) {
   if (!Array.isArray(paths) || paths.some((p) => typeof p !== 'string' || !p)) {
-    throw new Error('Некорректный список файлов');
+    throw new Error(t('Некорректный список файлов'));
   }
 }
 
@@ -737,7 +738,7 @@ async function unstage(dir, paths) {
 }
 
 async function commit(dir, summary, description) {
-  if (!summary || !summary.trim()) throw new Error('Пустое сообщение коммита');
+  if (!summary || !summary.trim()) throw new Error(t('Пустое сообщение коммита'));
   const args = ['commit', '-m', summary.trim()];
   if (description && description.trim()) args.push('-m', description.trim());
   await git(dir, args);
@@ -784,10 +785,10 @@ async function readCommitTemplate(cwd) {
   try {
     const st = fs.statSync(abs);
     if (!st.isFile()) throw new Error('not a file');
-    if (st.size > TEMPLATE_MAX) return { path: file, body: '', hint: '', error: 'Файл шаблона слишком большой (больше 64 КБ)' };
+    if (st.size > TEMPLATE_MAX) return { path: file, body: '', hint: '', error: t('Файл шаблона слишком большой (больше 64 КБ)') };
     raw = fs.readFileSync(abs, 'utf8');
   } catch {
-    return { path: file, body: '', hint: '', error: `Файл шаблона не найден: ${abs}` };
+    return { path: file, body: '', hint: '', error: t('Файл шаблона не найден: {0}', abs) };
   }
   let cc = '#';
   try {
@@ -805,12 +806,12 @@ async function readCommitTemplate(cwd) {
  */
 async function branchLog(cwd, { branch, direction = 'in', limit = 50 } = {}) {
   if (typeof branch !== 'string' || !branch || branch.startsWith('-') || /[\s~^:?*[\\]|\.\.|@\{/.test(branch)) {
-    throw new GitError('Некорректное имя ветки', { code: 'BAD_ARGS' });
+    throw new GitError(t('Некорректное имя ветки'), { code: 'BAD_ARGS' });
   }
   const local = `refs/heads/${branch}`;
   // for-each-ref по полному имени — без путаницы с одноимённым тегом (rev-parse x@{u} понимает только короткое имя)
   const upstream = (await git(cwd, ['for-each-ref', '--format=%(upstream)', local]).catch(() => '')).trim();
-  if (!upstream) throw new GitError(`У ветки «${branch}» нет upstream`, { code: 'NO_UPSTREAM' });
+  if (!upstream) throw new GitError(t('У ветки «{0}» нет upstream', branch), { code: 'NO_UPSTREAM' });
   const range = direction === 'out' ? `${upstream}..${local}` : `${local}..${upstream}`;
   const n = Math.max(1, Math.min(200, Number(limit) || 50));
   const [out, count] = await Promise.all([

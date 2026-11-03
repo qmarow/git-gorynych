@@ -2,6 +2,7 @@
 // и «прогон» типичных событий (push, merge request, тег, расписание, ручной запуск) — какие задания попадут в пайплайн.
 const { isObj, arr, q, suggest, didYouMean, parseExpr, evalExpr, durationSeconds, SECRET_NAME, SECRET_VALUE, looksLikeVarRef } = require('./ciCheckBase.cjs');
 const { checkScripts } = require('./ciCheckScripts.cjs');
+const { t: tr } = require('./i18n.cjs');
 
 /* =================== Справочники GitLab =================== */
 
@@ -25,10 +26,18 @@ const REPORTS = [
   'secret_detection', 'terraform',
 ];
 const REMOVED_REPORTS = {
-  cobertura: 'coverage_report: { coverage_format: cobertura, path: … } (cobertura удалён в GitLab 15.0)',
-  performance: 'browser_performance (performance удалён в GitLab 15.0)',
-  license_management: 'cyclonedx / сканирование лицензий (удалено в GitLab 16.0)',
-  license_scanning: 'cyclonedx / сканирование лицензий (удалено в GitLab 16.0)',
+  get cobertura() {
+    return tr('coverage_report: { coverage_format: cobertura, path: … } (cobertura удалён в GitLab 15.0)');
+  },
+  get performance() {
+    return tr('browser_performance (performance удалён в GitLab 15.0)');
+  },
+  get license_management() {
+    return tr('cyclonedx / сканирование лицензий (удалено в GitLab 16.0)');
+  },
+  get license_scanning() {
+    return tr('cyclonedx / сканирование лицензий (удалено в GitLab 16.0)');
+  },
 };
 const JOB_WHEN = ['on_success', 'on_failure', 'always', 'manual', 'delayed', 'never'];
 const RULE_WHEN = ['on_success', 'on_failure', 'always', 'manual', 'delayed', 'never'];
@@ -91,9 +100,9 @@ const OLD_VARS = {
   CI_BUILD_MANUAL: 'CI_JOB_MANUAL',
 };
 
-const CONFIG_WHEN = 'Сразу при push — GitLab проверяет весь файл ещё до создания пайплайна';
-const rejected = (msg) => `GitLab не создаст пайплайн и покажет ошибку: «${msg}». Ни одно задание не запустится.`;
-const STOP = 'Пайплайн не создаётся ни для какого события, пока ошибка не исправлена.';
+const CONFIG_WHEN_TEXT = () => tr('Сразу при push — GitLab проверяет весь файл ещё до создания пайплайна');
+const rejected = (msg) => tr('GitLab не создаст пайплайн и покажет ошибку: «{0}». Ни одно задание не запустится.', msg);
+const STOP_TEXT = () => tr('Пайплайн не создаётся ни для какого события, пока ошибка не исправлена.');
 
 /* =================== Проверка =================== */
 
@@ -131,21 +140,21 @@ function checkGitlab(result, ctx) {
     const e = raw.jobs.get(name);
     return { file: e?.source ?? main, line: e?.line ?? null };
   };
-  const jobIssue = (name, keyPath, o) => add({ when: CONFIG_WHEN, ...locate(name, keyPath), job: name, ...o });
-  const globIssue = (keyPath, o) => add({ when: CONFIG_WHEN, ...globalLoc(keyPath), ...o });
+  const jobIssue = (name, keyPath, o) => add({ when: CONFIG_WHEN_TEXT(), ...locate(name, keyPath), job: name, ...o });
+  const globIssue = (keyPath, o) => add({ when: CONFIG_WHEN_TEXT(), ...globalLoc(keyPath), ...o });
 
   /* ---------- Повторяющиеся ключи ---------- */
   for (const f of result.files) {
     for (const d of pos.duplicates(f.path)) {
-      const where = d.path.length ? `в ${q(d.path.join(' → '))}` : 'на верхнем уровне';
+      const where = d.path.length ? tr('в {0}', q(d.path.join(' → '))) : tr('на верхнем уровне');
       add({
         id: 'yaml-duplicate-key',
         severity: 'warning',
-        title: `Ключ ${q(d.key)} повторяется ${where}`,
-        when: CONFIG_WHEN,
-        how: 'Ошибки не будет: YAML молча возьмёт последнее значение, а первое (строка ' + (d.first ?? '?') + ') будет потеряно целиком.',
-        why: 'В одном блоке YAML ключ может встречаться только один раз; повтор обычно — результат копирования.',
-        fix: 'Удалите лишний блок или объедините их в один.',
+        title: tr('Ключ {0} повторяется {1}', q(d.key), where),
+        when: CONFIG_WHEN_TEXT(),
+        how: tr('Ошибки не будет: YAML молча возьмёт последнее значение, а первое (строка ') + (d.first ?? '?') + tr(') будет потеряно целиком.'),
+        why: tr('В одном блоке YAML ключ может встречаться только один раз; повтор обычно — результат копирования.'),
+        fix: tr('Удалите лишний блок или объедините их в один.'),
         file: f.path,
         line: d.line,
       });
@@ -165,13 +174,13 @@ function checkGitlab(result, ctx) {
       add({
         id: near ? 'global-typo' : 'job-not-hash',
         severity: 'error',
-        title: near ? `Неизвестный раздел ${q(def.name)} — похоже на ${q(near)}` : `${q(def.name)}: задание должно быть набором ключей`,
-        when: CONFIG_WHEN,
+        title: near ? tr('Неизвестный раздел {0} — похоже на {1}', q(def.name), q(near)) : tr('{0}: задание должно быть набором ключей', q(def.name)),
+        when: CONFIG_WHEN_TEXT(),
         how: rejected(`jobs:${def.name} config should be a hash`),
         why: near
-          ? `Всё, что не является служебным разделом (${near} и др.), GitLab считает заданием, а задание не может быть ${Array.isArray(def.value) ? 'списком' : 'строкой'}.`
-          : 'На верхнем уровне все ключи, кроме служебных (stages, variables, default…), — это задания; задание описывается картой с script/stage и т.д.',
-        fix: near ? `Переименуйте ${q(def.name)} в ${q(near)}.` : `Оформите как задание:\n${def.name}:\n  script:\n    - ${typeof def.value === 'string' ? def.value : '…'}`,
+          ? tr('Всё, что не является служебным разделом ({0} и др.), GitLab считает заданием, а задание не может быть {1}.', near, Array.isArray(def.value) ? tr('списком') : tr('строкой'))
+          : tr('На верхнем уровне все ключи, кроме служебных (stages, variables, default…), — это задания; задание описывается картой с script/stage и т.д.'),
+        fix: near ? tr('Переименуйте {0} в {1}.', q(def.name), q(near)) : tr('Оформите как задание:\n{0}:\n  script:\n    - {1}', def.name, typeof def.value === 'string' ? def.value : '…'),
         file: def.source,
         line: def.line,
       });
@@ -184,11 +193,11 @@ function checkGitlab(result, ctx) {
       add({
         id: 'no-visible-jobs',
         severity: 'error',
-        title: 'В конфигурации нет ни одного задания',
-        when: CONFIG_WHEN,
+        title: tr('В конфигурации нет ни одного задания'),
+        when: CONFIG_WHEN_TEXT(),
         how: rejected('jobs config should contain at least one visible job'),
-        why: raw.jobs.size ? 'Есть только скрытые задания (имя начинается с точки) — они служат шаблонами и сами не запускаются.' : 'В файле только служебные разделы.',
-        fix: 'Добавьте задание без точки в начале имени, например:\nbuild:\n  script:\n    - echo "ok"',
+        why: raw.jobs.size ? tr('Есть только скрытые задания (имя начинается с точки) — они служат шаблонами и сами не запускаются.') : tr('В файле только служебные разделы.'),
+        fix: tr('Добавьте задание без точки в начале имени, например:\nbuild:\n  script:\n    - echo "ok"'),
         file: main,
         line: 1,
       });
@@ -197,22 +206,22 @@ function checkGitlab(result, ctx) {
 
   // Типы служебных разделов
   if (globals.stages !== undefined && !Array.isArray(globals.stages)) {
-    globIssue(['stages'], { id: 'stages-not-list', severity: 'error', title: 'stages должен быть списком', how: rejected('stages config should be an array of strings'), why: 'Этапы перечисляются списком в порядке выполнения.', fix: 'stages:\n  - build\n  - test\n  - deploy' });
+    globIssue(['stages'], { id: 'stages-not-list', severity: 'error', title: tr('stages должен быть списком'), how: rejected('stages config should be an array of strings'), why: tr('Этапы перечисляются списком в порядке выполнения.'), fix: 'stages:\n  - build\n  - test\n  - deploy' });
   }
   if (globals.types !== undefined) {
-    globIssue(['types'], { id: 'types-removed', severity: 'warning', title: 'Раздел types устарел', how: 'В новых версиях GitLab (17.0+) ключ удалён — файл перестанет проходить проверку.', why: 'types — старое название stages.', fix: 'Переименуйте types в stages.' });
+    globIssue(['types'], { id: 'types-removed', severity: 'warning', title: tr('Раздел types устарел'), how: tr('В новых версиях GitLab (17.0+) ключ удалён — файл перестанет проходить проверку.'), why: tr('types — старое название stages.'), fix: tr('Переименуйте types в stages.') });
   }
   if (globals.variables !== undefined && !isObj(globals.variables)) {
-    globIssue(['variables'], { id: 'variables-not-hash', severity: 'error', title: 'variables должен быть набором «ИМЯ: значение»', how: rejected('variables config should be a hash of key value pairs'), why: 'Переменные задаются картой, а не списком.', fix: 'variables:\n  NODE_ENV: production' });
+    globIssue(['variables'], { id: 'variables-not-hash', severity: 'error', title: tr('variables должен быть набором «ИМЯ: значение»'), how: rejected('variables config should be a hash of key value pairs'), why: tr('Переменные задаются картой, а не списком.'), fix: 'variables:\n  NODE_ENV: production' });
   }
   for (const key of ['image', 'services', 'cache', 'before_script', 'after_script']) {
     if (key in globals && raw.globalDefs.some((d) => d.key === key)) {
       globIssue([key], {
         id: 'global-deprecated',
         severity: 'info',
-        title: `Глобальный ${key} устарел — используйте default:`,
-        how: 'Сейчас работает, но GitLab пометил такую запись устаревшей и может убрать её.',
-        why: `Ключи заданий на верхнем уровне (${key}) заменены разделом default.`,
+        title: tr('Глобальный {0} устарел — используйте default:', key),
+        how: tr('Сейчас работает, но GitLab пометил такую запись устаревшей и может убрать её.'),
+        why: tr('Ключи заданий на верхнем уровне ({0}) заменены разделом default.', key),
         fix: `default:\n  ${key}: …`,
       });
     }
@@ -223,10 +232,10 @@ function checkGitlab(result, ctx) {
         globIssue(['default', k], {
           id: 'default-unknown-key',
           severity: 'error',
-          title: `default: неизвестный ключ ${q(k)}`,
+          title: tr('default: неизвестный ключ {0}', q(k)),
           how: rejected(`default config contains unknown keys: ${k}`),
-          why: `В default допустимы только: ${DEFAULT_KEYS.join(', ')}.${k === 'stage' || k === 'variables' || k === 'rules' || k === 'only' ? ` ${q(k)} задаётся в каждом задании (variables — на верхнем уровне).` : ''}${didYouMean(k, DEFAULT_KEYS)}`,
-          fix: 'Уберите ключ из default или перенесите в задания.',
+          why: tr('В default допустимы только: {0}.{1}{2}', DEFAULT_KEYS.join(', '), k === 'stage' || k === 'variables' || k === 'rules' || k === 'only' ? tr(' {0} задаётся в каждом задании (variables — на верхнем уровне).', q(k)) : '', didYouMean(k, DEFAULT_KEYS)),
+          fix: tr('Уберите ключ из default или перенесите в задания.'),
         });
       }
     }
@@ -235,11 +244,11 @@ function checkGitlab(result, ctx) {
   /* ---------- workflow ---------- */
   const workflow = isObj(globals.workflow) ? globals.workflow : null;
   if (globals.workflow !== undefined && !workflow) {
-    globIssue(['workflow'], { id: 'workflow-not-hash', severity: 'error', title: 'workflow должен быть картой', how: rejected('workflow config should be a hash'), why: 'workflow содержит rules / name / auto_cancel.', fix: 'workflow:\n  rules:\n    - if: $CI_COMMIT_BRANCH' });
+    globIssue(['workflow'], { id: 'workflow-not-hash', severity: 'error', title: tr('workflow должен быть картой'), how: rejected('workflow config should be a hash'), why: tr('workflow содержит rules / name / auto_cancel.'), fix: 'workflow:\n  rules:\n    - if: $CI_COMMIT_BRANCH' });
   }
   if (workflow) {
     for (const k of Object.keys(workflow)) {
-      if (!WORKFLOW_KEYS.includes(k)) globIssue(['workflow', k], { id: 'workflow-unknown-key', severity: 'error', title: `workflow: неизвестный ключ ${q(k)}`, how: rejected(`workflow config contains unknown keys: ${k}`), why: `Допустимы: ${WORKFLOW_KEYS.join(', ')}.${didYouMean(k, WORKFLOW_KEYS)}`, fix: 'Уберите или переименуйте ключ.' });
+      if (!WORKFLOW_KEYS.includes(k)) globIssue(['workflow', k], { id: 'workflow-unknown-key', severity: 'error', title: tr('workflow: неизвестный ключ {0}', q(k)), how: rejected(`workflow config contains unknown keys: ${k}`), why: tr('Допустимы: {0}.{1}', WORKFLOW_KEYS.join(', '), didYouMean(k, WORKFLOW_KEYS)), fix: tr('Уберите или переименуйте ключ.') });
     }
     if (workflow.rules !== undefined) checkRules(workflow.rules, { workflow: true, at: (kp) => globalLoc(['workflow', 'rules', ...kp]), who: 'workflow' });
   }
@@ -250,42 +259,42 @@ function checkGitlab(result, ctx) {
     const at = { file: inc.from, line: pos.find(inc.from, String(inc.value).split(/[:@]/)[0].trim()) ?? L(inc.from, ['include']) };
     if (inc.type === 'local') {
       if (/\$/.test(inc.value)) {
-        add({ id: 'include-variable', severity: 'info', title: `include ${inc.value}: путь с переменной`, when: CONFIG_WHEN, how: 'Проверить файл заранее нельзя: он определяется переменной в момент создания пайплайна.', why: 'В include разрешены только некоторые переменные (проекта, группы, предопределённые).', fix: 'Убедитесь, что при всех значениях переменной файл существует.', ...at });
+        add({ id: 'include-variable', severity: 'info', title: tr('include {0}: путь с переменной', inc.value), when: CONFIG_WHEN_TEXT(), how: tr('Проверить файл заранее нельзя: он определяется переменной в момент создания пайплайна.'), why: tr('В include разрешены только некоторые переменные (проекта, группы, предопределённые).'), fix: tr('Убедитесь, что при всех значениях переменной файл существует.'), ...at });
       } else if (!/\.ya?ml$/i.test(inc.value) && !/[*]$/.test(inc.value)) {
-        add({ id: 'include-not-yaml', severity: 'error', title: `include ${inc.value}: не YAML-файл`, when: CONFIG_WHEN, how: rejected(`Included file \`${inc.value}\` does not have YAML extension!`), why: 'Подключать можно только файлы .yml / .yaml.', fix: 'Переименуйте файл в .yml или укажите правильный.', ...at });
-      } else if (inc.error && inc.error.includes('не найден')) {
+        add({ id: 'include-not-yaml', severity: 'error', title: tr('include {0}: не YAML-файл', inc.value), when: CONFIG_WHEN_TEXT(), how: rejected(`Included file \`${inc.value}\` does not have YAML extension!`), why: tr('Подключать можно только файлы .yml / .yaml.'), fix: tr('Переименуйте файл в .yml или укажите правильный.'), ...at });
+      } else if (inc.error && inc.error.includes(tr('не найден'))) {
         add({
           id: 'include-local-missing',
           severity: 'error',
-          title: `include ${inc.value}: файла нет в репозитории`,
-          when: CONFIG_WHEN,
+          title: tr('include {0}: файла нет в репозитории', inc.value),
+          when: CONFIG_WHEN_TEXT(),
           how: rejected(`Local file \`${inc.value}\` does not exist!`),
-          why: `Файл ищется от корня репозитория в той же ветке/коммите${/[*]/.test(inc.value) ? '; под шаблон не подходит ни один файл' : ''}.`,
-          fix: 'Проверьте путь (от корня, регистр букв) и что файл закоммичен.',
+          why: tr('Файл ищется от корня репозитория в той же ветке/коммите{0}.', /[*]/.test(inc.value) ? tr('; под шаблон не подходит ни один файл') : ''),
+          fix: tr('Проверьте путь (от корня, регистр букв) и что файл закоммичен.'),
           ...at,
         });
       } else if (inc.error) {
-        add({ id: 'include-depth', severity: 'error', title: `include ${inc.value}: ${inc.error}`, when: CONFIG_WHEN, how: rejected('Maximum of nested includes reached'), why: 'GitLab ограничивает вложенность подключений.', fix: 'Сократите цепочку include.', ...at });
+        add({ id: 'include-depth', severity: 'error', title: `include ${inc.value}: ${inc.error}`, when: CONFIG_WHEN_TEXT(), how: rejected('Maximum of nested includes reached'), why: tr('GitLab ограничивает вложенность подключений.'), fix: tr('Сократите цепочку include.'), ...at });
       }
     } else if (inc.type === 'remote') {
-      if (/^http:\/\//i.test(inc.value)) add({ id: 'include-http', severity: 'warning', title: `include ${inc.value}: по незащищённому http`, when: CONFIG_WHEN, how: 'Файл может быть подменён по дороге — и подменённые задания выполнятся с вашими переменными и токенами.', why: 'remote-файлы скачиваются при каждом создании пайплайна.', fix: 'Используйте https:// или храните файл в репозитории (include: local / project).', ...at });
+      if (/^http:\/\//i.test(inc.value)) add({ id: 'include-http', severity: 'warning', title: tr('include {0}: по незащищённому http', inc.value), when: CONFIG_WHEN_TEXT(), how: tr('Файл может быть подменён по дороге — и подменённые задания выполнятся с вашими переменными и токенами.'), why: tr('remote-файлы скачиваются при каждом создании пайплайна.'), fix: tr('Используйте https:// или храните файл в репозитории (include: local / project).'), ...at });
       offline.push(inc);
     } else if (inc.type === 'unknown') {
-      add({ id: 'include-unknown', severity: 'error', title: 'include: непонятная запись', when: CONFIG_WHEN, how: rejected('Include config contains unknown keys'), why: 'Подключение должно содержать один из ключей: local, project (+ file), remote, template, component.', fix: 'include:\n  - local: ci/build.yml', ...at });
+      add({ id: 'include-unknown', severity: 'error', title: tr('include: непонятная запись'), when: CONFIG_WHEN_TEXT(), how: rejected('Include config contains unknown keys'), why: tr('Подключение должно содержать один из ключей: local, project (+ file), remote, template, component.'), fix: 'include:\n  - local: ci/build.yml', ...at });
     } else offline.push(inc);
     if (inc.type === 'project' && !/:\s*\S/.test(inc.value)) {
-      add({ id: 'include-project-no-file', severity: 'error', title: 'include project без file', when: CONFIG_WHEN, how: rejected('Include config is missing the file key'), why: 'Для подключения из другого проекта нужно указать file.', fix: 'include:\n  - project: group/ci\n    file: /templates/build.yml', ...at });
+      add({ id: 'include-project-no-file', severity: 'error', title: tr('include project без file'), when: CONFIG_WHEN_TEXT(), how: rejected('Include config is missing the file key'), why: tr('Для подключения из другого проекта нужно указать file.'), fix: 'include:\n  - project: group/ci\n    file: /templates/build.yml', ...at });
     }
   }
   if (offline.length) {
     add({
       id: 'include-offline',
       severity: 'info',
-      title: `Не проверены подключения из сети: ${offline.length}`,
-      when: CONFIG_WHEN,
-      how: 'Если такой файл недоступен или в нём ошибка, GitLab не создаст пайплайн.',
-      why: `${offline.map((i) => `${i.type}: ${i.value}`).slice(0, 4).join('; ')}${offline.length > 4 ? '…' : ''} — эти файлы лежат вне репозитория, без сети их не проверить; задания из них в проверке не учтены.`,
-      fix: 'Проверьте итоговую конфигурацию в GitLab: CI/CD → Editor → Full configuration (или Validate).',
+      title: tr('Не проверены подключения из сети: {0}', offline.length),
+      when: CONFIG_WHEN_TEXT(),
+      how: tr('Если такой файл недоступен или в нём ошибка, GitLab не создаст пайплайн.'),
+      why: tr('{0}{1} — эти файлы лежат вне репозитория, без сети их не проверить; задания из них в проверке не учтены.', offline.map((i) => `${i.type}: ${i.value}`).slice(0, 4).join('; '), offline.length > 4 ? '…' : ''),
+      fix: tr('Проверьте итоговую конфигурацию в GitLab: CI/CD → Editor → Full configuration (или Validate).'),
       file: offline[0].from,
       line: pos.find(offline[0].from, String(offline[0].value).split(/[:@]/)[0].trim()),
     });
@@ -297,7 +306,7 @@ function checkGitlab(result, ctx) {
   for (const [name, defs] of byName) {
     const files = [...new Set(defs.map((d) => d.source))];
     if (files.length > 1) {
-      add({ id: 'job-redefined', severity: 'info', title: `${q(name)} описано в нескольких файлах`, when: CONFIG_WHEN, how: `Итоговое задание — слияние описаний: ключи из ${files.at(-1) === main ? 'основного файла' : q(files.at(-1))} перекрывают ключи из ${files.slice(0, -1).map(q).join(', ')}; списки (script, rules) заменяются целиком.`, why: 'Так работает include: одноимённые задания объединяются.', fix: 'Если это сделано намеренно — всё в порядке; иначе переименуйте одно из заданий.', file: defs.at(-1).source, line: defs.at(-1).line, job: name });
+      add({ id: 'job-redefined', severity: 'info', title: tr('{0} описано в нескольких файлах', q(name)), when: CONFIG_WHEN_TEXT(), how: tr('Итоговое задание — слияние описаний: ключи из {0} перекрывают ключи из {1}; списки (script, rules) заменяются целиком.', files.at(-1) === main ? tr('основного файла') : q(files.at(-1)), files.slice(0, -1).map(q).join(', ')), why: tr('Так работает include: одноимённые задания объединяются.'), fix: tr('Если это сделано намеренно — всё в порядке; иначе переименуйте одно из заданий.'), file: defs.at(-1).source, line: defs.at(-1).line, job: name });
     }
   }
 
@@ -307,7 +316,7 @@ function checkGitlab(result, ctx) {
   for (const [name, parents] of extendsGraph) {
     const e = raw.jobs.get(name);
     if (e.config.extends !== undefined && !(typeof e.config.extends === 'string' || (Array.isArray(e.config.extends) && e.config.extends.every((x) => typeof x === 'string')))) {
-      jobIssue(name, ['extends'], { id: 'extends-type', severity: 'error', title: `${q(name)}: extends должен быть именем или списком имён`, how: rejected(`jobs:${name}:extends config should be an array of strings or a string`), why: 'extends указывает имена заданий-шаблонов.', fix: 'extends: .template или extends: [.a, .b]' });
+      jobIssue(name, ['extends'], { id: 'extends-type', severity: 'error', title: tr('{0}: extends должен быть именем или списком имён', q(name)), how: rejected(`jobs:${name}:extends config should be an array of strings or a string`), why: tr('extends указывает имена заданий-шаблонов.'), fix: tr('extends: .template или extends: [.a, .b]') });
       continue;
     }
     for (const p of parents) {
@@ -315,10 +324,10 @@ function checkGitlab(result, ctx) {
         jobIssue(name, ['extends'], {
           id: 'extends-unknown',
           severity: offline.length ? 'warning' : 'error',
-          title: `${q(name)}: extends ссылается на несуществующее ${q(p)}`,
+          title: tr('{0}: extends ссылается на несуществующее {1}', q(name), q(p)),
           how: rejected(`${name}: unknown keys in \`extends\` (${p})`),
-          why: `Задания или шаблона ${q(p)} нет ни в этом файле, ни в подключённых локальных.${didYouMean(p, [...raw.jobs.keys()])}${offline.length ? ' (Возможно, он в подключении из сети — тогда всё в порядке.)' : ''}`,
-          fix: 'Поправьте имя или добавьте шаблон.',
+          why: tr('Задания или шаблона {0} нет ни в этом файле, ни в подключённых локальных.{1}{2}', q(p), didYouMean(p, [...raw.jobs.keys()]), offline.length ? tr(' (Возможно, он в подключении из сети — тогда всё в порядке.)') : ''),
+          fix: tr('Поправьте имя или добавьте шаблон.'),
         });
       }
     }
@@ -338,10 +347,10 @@ function checkGitlab(result, ctx) {
       const key = [...new Set(r.cycle)].sort().join('|');
       if (!extendsReported.has(key)) {
         extendsReported.add(key);
-        jobIssue(name, ['extends'], { id: 'extends-cycle', severity: 'error', title: `Циклическое наследование: ${r.cycle.join(' → ')}`, how: rejected('circular dependency detected in `extends`'), why: 'Задания наследуют друг друга по кругу — итоговую конфигурацию собрать невозможно.', fix: 'Разорвите цикл: вынесите общее в отдельный шаблон.' });
+        jobIssue(name, ['extends'], { id: 'extends-cycle', severity: 'error', title: tr('Циклическое наследование: {0}', r.cycle.join(' → ')), how: rejected('circular dependency detected in `extends`'), why: tr('Задания наследуют друг друга по кругу — итоговую конфигурацию собрать невозможно.'), fix: tr('Разорвите цикл: вынесите общее в отдельный шаблон.') });
       }
     } else if (r.depth > 11) {
-      jobIssue(name, ['extends'], { id: 'extends-depth', severity: 'error', title: `${q(name)}: слишком глубокое наследование (${r.depth})`, how: rejected('nesting too deep in `extends`'), why: 'GitLab допускает не более 11 уровней extends.', fix: 'Упростите цепочку шаблонов.' });
+      jobIssue(name, ['extends'], { id: 'extends-depth', severity: 'error', title: tr('{0}: слишком глубокое наследование ({1})', q(name), r.depth), how: rejected('nesting too deep in `extends`'), why: tr('GitLab допускает не более 11 уровней extends.'), fix: tr('Упростите цепочку шаблонов.') });
     }
   }
   const refsUsed = new Set();
@@ -362,11 +371,11 @@ function checkGitlab(result, ctx) {
         add({
           id: 'reference-missing',
           severity: offline.length && !raw.jobs.has(target) ? 'warning' : 'error',
-          title: `!reference [${ref.join(', ')}] — такого нет`,
-          when: CONFIG_WHEN,
+          title: tr('!reference [{0}] — такого нет', ref.join(', ')),
+          when: CONFIG_WHEN_TEXT(),
           how: rejected(`!reference ["${ref.join('", "')}"] could not be found`),
-          why: raw.jobs.has(target) || target in globals ? `У ${q(target)} нет ключа ${q(keys.join(' → '))}.` : `Задания ${q(target)} нет.${didYouMean(target, [...raw.jobs.keys()])}`,
-          fix: 'Поправьте имя задания/ключа в !reference.',
+          why: raw.jobs.has(target) || target in globals ? tr('У {0} нет ключа {1}.', q(target), q(keys.join(' → '))) : tr('Задания {0} нет.{1}', q(target), didYouMean(target, [...raw.jobs.keys()])),
+          fix: tr('Поправьте имя задания/ключа в !reference.'),
           file: d.source,
           line: L(d.source, keyPath) ?? d.line,
           job: d.name,
@@ -382,7 +391,7 @@ function checkGitlab(result, ctx) {
       // Якоря YAML (&anchor) тоже используют скрытые задания — их ищем в тексте
       const text = result.files.find((f) => f.path === e.source)?.text ?? '';
       const anchored = new RegExp(`^\\s*${n.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\s*:\\s*&`, 'm').test(text);
-      if (!anchored) add({ id: 'template-unused', severity: 'info', title: `Шаблон ${q(n)} нигде не используется`, when: CONFIG_WHEN, how: 'Ничего не сломается — он просто не участвует в пайплайне.', why: 'Ни одно задание не наследует его через extends и не ссылается через !reference.', fix: 'Удалите шаблон или подключите его через extends.', file: e.source, line: e.line, job: n });
+      if (!anchored) add({ id: 'template-unused', severity: 'info', title: tr('Шаблон {0} нигде не используется', q(n)), when: CONFIG_WHEN_TEXT(), how: tr('Ничего не сломается — он просто не участвует в пайплайне.'), why: tr('Ни одно задание не наследует его через extends и не ссылается через !reference.'), fix: tr('Удалите шаблон или подключите его через extends.'), file: e.source, line: e.line, job: n });
     }
   }
 
@@ -390,8 +399,8 @@ function checkGitlab(result, ctx) {
   const declared = raw.declaredStages;
   const stageNames = raw.stageNames;
   const dupStages = declared.filter((s, i) => declared.indexOf(s) !== i);
-  if (dupStages.length) globIssue(['stages'], { id: 'stages-duplicate', severity: 'warning', title: `Этап объявлен дважды: ${[...new Set(dupStages)].join(', ')}`, how: 'GitLab оставит только первое упоминание; порядок этапов может оказаться не тем, что ожидается.', why: 'Каждый этап должен встречаться в stages один раз.', fix: 'Удалите повтор.' });
-  if (declared.some((s) => s === '.pre' || s === '.post')) globIssue(['stages'], { id: 'stages-pre-post', severity: 'info', title: '.pre и .post в stages указывать не нужно', how: 'Ничего не сломается: эти этапы есть всегда и всегда идут первым и последним.', why: 'Их позиция фиксирована, указанный порядок игнорируется.', fix: 'Уберите .pre / .post из stages.' });
+  if (dupStages.length) globIssue(['stages'], { id: 'stages-duplicate', severity: 'warning', title: tr('Этап объявлен дважды: {0}', [...new Set(dupStages)].join(', ')), how: tr('GitLab оставит только первое упоминание; порядок этапов может оказаться не тем, что ожидается.'), why: tr('Каждый этап должен встречаться в stages один раз.'), fix: tr('Удалите повтор.') });
+  if (declared.some((s) => s === '.pre' || s === '.post')) globIssue(['stages'], { id: 'stages-pre-post', severity: 'info', title: tr('.pre и .post в stages указывать не нужно'), how: tr('Ничего не сломается: эти этапы есть всегда и всегда идут первым и последним.'), why: tr('Их позиция фиксирована, указанный порядок игнорируется.'), fix: tr('Уберите .pre / .post из stages.') });
 
   /* ---------- Разбор заданий ---------- */
   const resolved = new Map(); // имя → итоговая конфигурация
@@ -416,7 +425,7 @@ function checkGitlab(result, ctx) {
     const own = raw.jobs.get(name).config;
     const ji = (keyPath, o) => jobIssue(name, keyPath, o);
 
-    if (name.length > 255) ji([], { id: 'job-name-long', severity: 'error', title: 'Слишком длинное имя задания', how: rejected('job name is too long (maximum is 255 characters)'), why: 'Имя задания ограничено 255 символами.', fix: 'Сократите имя.' });
+    if (name.length > 255) ji([], { id: 'job-name-long', severity: 'error', title: tr('Слишком длинное имя задания'), how: rejected('job name is too long (maximum is 255 characters)'), why: tr('Имя задания ограничено 255 символами.'), fix: tr('Сократите имя.') });
 
     // Неизвестные ключи
     for (const k of Object.keys(cfg)) {
@@ -425,10 +434,10 @@ function checkGitlab(result, ctx) {
       ji([k], {
         id: 'job-unknown-key',
         severity: 'error',
-        title: `${q(name)}: неизвестный ключ ${q(k)}${near ? ` — опечатка в ${q(near)}?` : ''}`,
+        title: tr('{0}: неизвестный ключ {1}{2}', q(name), q(k), near ? tr(' — опечатка в {0}?', q(near)) : ''),
         how: rejected(`jobs:${name} config contains unknown keys: ${k}`),
-        why: near ? `GitLab не знает ключа ${q(k)}; ближайший допустимый — ${q(near)}.` : `GitLab проверяет все ключи задания; ${q(k)} среди них нет.${k in own ? '' : ' Ключ пришёл из шаблона в extends.'}`,
-        fix: near ? `Переименуйте ${q(k)} в ${q(near)}.` : 'Удалите ключ или вынесите данные в variables.',
+        why: near ? tr('GitLab не знает ключа {0}; ближайший допустимый — {1}.', q(k), q(near)) : tr('GitLab проверяет все ключи задания; {0} среди них нет.{1}', q(k), k in own ? '' : tr(' Ключ пришёл из шаблона в extends.')),
+        fix: near ? tr('Переименуйте {0} в {1}.', q(k), q(near)) : tr('Удалите ключ или вынесите данные в variables.'),
       });
     }
 
@@ -441,20 +450,20 @@ function checkGitlab(result, ctx) {
       ji([], {
         id: near ? 'global-typo' : 'job-no-script',
         severity: 'error',
-        title: near ? `${q(name)} — опечатка в ${q(near)}?` : `${q(name)}: нет script`,
+        title: near ? tr('{0} — опечатка в {1}?', q(name), q(near)) : tr('{0}: нет script', q(name)),
         how: rejected(`jobs:${name} config should implement the script:, run:, or trigger: keyword`),
         why: near
-          ? `Раздел ${q(name)} не служебный, поэтому GitLab считает его заданием, а у задания нет script.`
-          : `У задания нет команд для выполнения${cfg.extends || chainOf(name).length ? ' — и шаблоны в extends их не добавляют' : ''}.`,
-        fix: near ? `Переименуйте в ${q(near)}.` : `Добавьте script, например:\n${name}:\n  script:\n    - echo "…"`,
+          ? tr('Раздел {0} не служебный, поэтому GitLab считает его заданием, а у задания нет script.', q(name))
+          : tr('У задания нет команд для выполнения{0}.', cfg.extends || chainOf(name).length ? tr(' — и шаблоны в extends их не добавляют') : ''),
+        fix: near ? tr('Переименуйте в {0}.', q(near)) : tr('Добавьте script, например:\n{0}:\n  script:\n    - echo "…"', name),
       });
     }
-    if (hasScript && hasTrigger) ji(['trigger'], { id: 'trigger-with-script', severity: 'error', title: `${q(name)}: trigger и script одновременно`, how: rejected(`jobs:${name} config key may not be used with \`trigger\`: script`), why: 'Задание с trigger само ничего не выполняет — оно запускает другой пайплайн.', fix: 'Разделите на два задания: одно со script, другое с trigger.' });
+    if (hasScript && hasTrigger) ji(['trigger'], { id: 'trigger-with-script', severity: 'error', title: tr('{0}: trigger и script одновременно', q(name)), how: rejected(`jobs:${name} config key may not be used with \`trigger\`: script`), why: tr('Задание с trigger само ничего не выполняет — оно запускает другой пайплайн.'), fix: tr('Разделите на два задания: одно со script, другое с trigger.') });
     if (hasScript) {
       const s = cfg.script;
       const lines = arr(s).flat(10);
       if (s === null || s === '' || (Array.isArray(s) && lines.length === 0)) {
-        ji(['script'], { id: 'script-empty', severity: 'error', title: `${q(name)}: пустой script`, how: rejected(`jobs:${name}:script config can't be blank`), why: 'В script должна быть хотя бы одна команда.', fix: 'Добавьте команду или удалите задание.' });
+        ji(['script'], { id: 'script-empty', severity: 'error', title: tr('{0}: пустой script', q(name)), how: rejected(`jobs:${name}:script config can't be blank`), why: tr('В script должна быть хотя бы одна команда.'), fix: tr('Добавьте команду или удалите задание.') });
       }
       for (const key of ['script', 'before_script', 'after_script']) {
         arr(cfg[key]).flat(10).forEach((item, i) => {
@@ -463,13 +472,13 @@ function checkGitlab(result, ctx) {
             ji([key, i], {
               id: 'script-colon',
               severity: 'error',
-              title: `${q(name)}: строка ${key} прочитана как «ключ: значение»`,
+              title: tr('{0}: строка {1} прочитана как «ключ: значение»', q(name), key),
               how: rejected(`jobs:${name}:${key} config should be a string or a nested array of strings up to 10 levels deep`),
-              why: `В строке ${q(`${k}: ${item[k]}`)} есть «: » — YAML считает это картой, а не командой.`,
-              fix: `Возьмите строку в кавычки: - '${k}: ${item[k]}'`,
+              why: tr('В строке {0} есть «: » — YAML считает это картой, а не командой.', q(`${k}: ${item[k]}`)),
+              fix: tr('Возьмите строку в кавычки: - \'{0}: {1}\'', k, item[k]),
             });
           } else if (typeof item === 'boolean' || typeof item === 'number') {
-            ji([key, i], { id: 'script-scalar', severity: 'warning', title: `${q(name)}: в ${key} значение ${item}`, how: `Выполнится команда ${q(String(item))} — скорее всего «command not found».`, why: 'YAML прочитал строку как число/логическое значение.', fix: 'Проверьте строку и возьмите её в кавычки.' });
+            ji([key, i], { id: 'script-scalar', severity: 'warning', title: tr('{0}: в {1} значение {2}', q(name), key, item), how: tr('Выполнится команда {0} — скорее всего «command not found».', q(String(item))), why: tr('YAML прочитал строку как число/логическое значение.'), fix: tr('Проверьте строку и возьмите её в кавычки.') });
           }
         });
       }
@@ -478,37 +487,37 @@ function checkGitlab(result, ctx) {
     // Этап
     const stage = stageOf(name);
     usedStages.add(stage);
-    if (cfg.stage !== undefined && typeof cfg.stage !== 'string') ji(['stage'], { id: 'stage-type', severity: 'error', title: `${q(name)}: stage должен быть строкой`, how: rejected(`jobs:${name}:stage config should be a string`), why: 'Задание относится к одному этапу.', fix: 'stage: test' });
+    if (cfg.stage !== undefined && typeof cfg.stage !== 'string') ji(['stage'], { id: 'stage-type', severity: 'error', title: tr('{0}: stage должен быть строкой', q(name)), how: rejected(`jobs:${name}:stage config should be a string`), why: tr('Задание относится к одному этапу.'), fix: 'stage: test' });
     else if (!stageNames.includes(stage)) {
       const near = suggest(stage, stageNames);
       ji(['stage'], {
         id: 'stage-undeclared',
         severity: 'error',
-        title: `${q(name)}: этапа ${q(stage)} нет в stages`,
+        title: tr('{0}: этапа {1} нет в stages', q(name), q(stage)),
         how: rejected(`${name} job: chosen stage ${stage} does not exist; available stages are ${stageNames.join(', ')}`),
-        why: declared.length ? `Объявлены этапы: ${declared.join(', ')}.${near ? ` Возможно, имелось в виду ${q(near)}.` : ''}` : `stages не объявлен, поэтому доступны только build, test, deploy (+ .pre, .post).${near ? ` Возможно, ${q(near)}.` : ''}`,
-        fix: near ? `Исправьте на stage: ${near} или добавьте ${q(stage)} в stages.` : `Добавьте ${q(stage)} в stages.`,
+        why: declared.length ? tr('Объявлены этапы: {0}.{1}', declared.join(', '), near ? tr(' Возможно, имелось в виду {0}.', q(near)) : '') : tr('stages не объявлен, поэтому доступны только build, test, deploy (+ .pre, .post).{0}', near ? tr(' Возможно, {0}.', q(near)) : ''),
+        fix: near ? tr('Исправьте на stage: {0} или добавьте {1} в stages.', near, q(stage)) : tr('Добавьте {0} в stages.', q(stage)),
       });
     }
 
     // when / start_in
     if (cfg.when !== undefined && !JOB_WHEN.includes(cfg.when)) {
-      ji(['when'], { id: 'when-invalid', severity: 'error', title: `${q(name)}: when: ${cfg.when}`, how: rejected(`jobs:${name} when should be one of: ${JOB_WHEN.filter((w) => w !== 'never').join(', ')}`), why: `Неизвестное значение.${didYouMean(cfg.when, JOB_WHEN)}`, fix: `Используйте одно из: ${JOB_WHEN.join(', ')}.` });
+      ji(['when'], { id: 'when-invalid', severity: 'error', title: `${q(name)}: when: ${cfg.when}`, how: rejected(`jobs:${name} when should be one of: ${JOB_WHEN.filter((w) => w !== 'never').join(', ')}`), why: tr('Неизвестное значение.{0}', didYouMean(cfg.when, JOB_WHEN)), fix: tr('Используйте одно из: {0}.', JOB_WHEN.join(', ')) });
     }
-    if (cfg.when === 'never') ji(['when'], { id: 'when-never', severity: 'warning', title: `${q(name)}: when: never — задание никогда не запустится`, how: 'Задания не будет ни в одном пайплайне.', why: 'when: never на уровне задания отключает его полностью (обычно never пишут внутри rules).', fix: 'Удалите задание или перенесите условие в rules.' });
-    if (cfg.when === 'delayed' && cfg.start_in === undefined) ji(['when'], { id: 'delayed-no-start', severity: 'error', title: `${q(name)}: when: delayed без start_in`, how: rejected(`jobs:${name} start in should be specified for delayed job`), why: 'Отложенному заданию нужно знать, через сколько стартовать.', fix: 'start_in: 30 minutes' });
-    if (cfg.start_in !== undefined && cfg.when !== 'delayed' && !arr(cfg.rules).some((r) => r?.when === 'delayed')) ji(['start_in'], { id: 'start-in-not-delayed', severity: 'error', title: `${q(name)}: start_in без when: delayed`, how: rejected(`jobs:${name} start in must be blank when not delayed`), why: 'start_in имеет смысл только для отложенных заданий.', fix: 'Добавьте when: delayed или уберите start_in.' });
+    if (cfg.when === 'never') ji(['when'], { id: 'when-never', severity: 'warning', title: tr('{0}: when: never — задание никогда не запустится', q(name)), how: tr('Задания не будет ни в одном пайплайне.'), why: tr('when: never на уровне задания отключает его полностью (обычно never пишут внутри rules).'), fix: tr('Удалите задание или перенесите условие в rules.') });
+    if (cfg.when === 'delayed' && cfg.start_in === undefined) ji(['when'], { id: 'delayed-no-start', severity: 'error', title: tr('{0}: when: delayed без start_in', q(name)), how: rejected(`jobs:${name} start in should be specified for delayed job`), why: tr('Отложенному заданию нужно знать, через сколько стартовать.'), fix: 'start_in: 30 minutes' });
+    if (cfg.start_in !== undefined && cfg.when !== 'delayed' && !arr(cfg.rules).some((r) => r?.when === 'delayed')) ji(['start_in'], { id: 'start-in-not-delayed', severity: 'error', title: tr('{0}: start_in без when: delayed', q(name)), how: rejected(`jobs:${name} start in must be blank when not delayed`), why: tr('start_in имеет смысл только для отложенных заданий.'), fix: tr('Добавьте when: delayed или уберите start_in.') });
     if (cfg.start_in !== undefined) {
       const sec = durationSeconds(cfg.start_in);
-      if (sec == null) ji(['start_in'], { id: 'start-in-format', severity: 'error', title: `${q(name)}: не разобрать start_in: ${cfg.start_in}`, how: rejected(`jobs:${name}:start_in config should be a duration`), why: 'Длительность пишется как «30 minutes», «1 hour», «2 days».', fix: 'start_in: 30 minutes' });
-      else if (sec > 7 * 86400) ji(['start_in'], { id: 'start-in-limit', severity: 'error', title: `${q(name)}: start_in больше недели`, how: rejected(`jobs:${name} start in should not exceed the limit`), why: 'Максимальная задержка — 1 неделя.', fix: 'Уменьшите start_in или используйте расписание.' });
+      if (sec == null) ji(['start_in'], { id: 'start-in-format', severity: 'error', title: tr('{0}: не разобрать start_in: {1}', q(name), cfg.start_in), how: rejected(`jobs:${name}:start_in config should be a duration`), why: tr('Длительность пишется как «30 minutes», «1 hour», «2 days».'), fix: 'start_in: 30 minutes' });
+      else if (sec > 7 * 86400) ji(['start_in'], { id: 'start-in-limit', severity: 'error', title: tr('{0}: start_in больше недели', q(name)), how: rejected(`jobs:${name} start in should not exceed the limit`), why: tr('Максимальная задержка — 1 неделя.'), fix: tr('Уменьшите start_in или используйте расписание.') });
     }
 
     // rules / only / except
     if (cfg.rules !== undefined) {
       checkRules(cfg.rules, { at: (kp) => locate(name, ['rules', ...kp]), who: q(name), job: name, cfg });
       for (const k of ['only', 'except']) {
-        if (cfg[k] !== undefined) ji([k], { id: 'rules-with-only', severity: 'error', title: `${q(name)}: rules вместе с ${k}`, how: rejected(`jobs:${name} config key may not be used with \`rules\`: ${k}`), why: `rules заменяет ${k}; вместе их использовать нельзя${k in own ? '' : ` (${k} пришёл из шаблона)`}.`, fix: `Перенесите условие из ${k} в rules.` });
+        if (cfg[k] !== undefined) ji([k], { id: 'rules-with-only', severity: 'error', title: tr('{0}: rules вместе с {1}', q(name), k), how: rejected(`jobs:${name} config key may not be used with \`rules\`: ${k}`), why: tr('rules заменяет {0}; вместе их использовать нельзя{1}.', k, k in own ? '' : tr(' ({0} пришёл из шаблона)', k)), fix: tr('Перенесите условие из {0} в rules.', k) });
       }
     }
     for (const k of ['only', 'except']) if (cfg[k] !== undefined && cfg.rules === undefined) checkOnly(name, k, cfg[k]);
@@ -516,32 +525,32 @@ function checkGitlab(result, ctx) {
     // needs
     if (cfg.needs !== undefined) {
       const needs = arr(cfg.needs);
-      if (needs.length > 50) ji(['needs'], { id: 'needs-limit', severity: 'error', title: `${q(name)}: needs больше 50`, how: rejected(`${name} job: one job can only need 50 others`), why: 'Ограничение GitLab.', fix: 'Сократите список или объедините задания.' });
+      if (needs.length > 50) ji(['needs'], { id: 'needs-limit', severity: 'error', title: tr('{0}: needs больше 50', q(name)), how: rejected(`${name} job: one job can only need 50 others`), why: tr('Ограничение GitLab.'), fix: tr('Сократите список или объедините задания.') });
       needs.forEach((n, i) => {
         const target = typeof n === 'string' ? n : n?.job;
         if (isObj(n) && (n.pipeline || n.project)) return;
         if (target == null) {
-          ji(['needs', i], { id: 'needs-format', severity: 'error', title: `${q(name)}: в needs запись без job`, how: rejected(`jobs:${name}:needs config contains unknown keys`), why: 'Каждая запись needs — имя задания или { job: имя }.', fix: 'needs:\n  - job: build\n    artifacts: true' });
+          ji(['needs', i], { id: 'needs-format', severity: 'error', title: tr('{0}: в needs запись без job', q(name)), how: rejected(`jobs:${name}:needs config contains unknown keys`), why: tr('Каждая запись needs — имя задания или { job: имя }.'), fix: 'needs:\n  - job: build\n    artifacts: true' });
           return;
         }
         const optional = isObj(n) && n.optional === true;
-        if (target === name) ji(['needs', i], { id: 'needs-self', severity: 'error', title: `${q(name)} зависит само от себя`, how: rejected(`${name} job: needs itself (circular dependency)`), why: 'Задание не может ждать завершения самого себя.', fix: 'Уберите себя из needs.' });
+        if (target === name) ji(['needs', i], { id: 'needs-self', severity: 'error', title: tr('{0} зависит само от себя', q(name)), how: rejected(`${name} job: needs itself (circular dependency)`), why: tr('Задание не может ждать завершения самого себя.'), fix: tr('Уберите себя из needs.') });
         else if (!raw.jobs.has(target) || String(target).startsWith('.')) {
           if (!optional) {
             ji(['needs', i], {
               id: 'needs-unknown',
               severity: offline.length && !raw.jobs.has(target) ? 'warning' : 'error',
-              title: `${q(name)}: needs на несуществующее ${q(target)}`,
+              title: tr('{0}: needs на несуществующее {1}', q(name), q(target)),
               how: rejected(`'${name}' job needs '${target}' job, but '${target}' does not exist in the pipeline. This might be because of the only, except, or rules keywords. To need a job that sometimes does not exist in the pipeline, use needs:optional.`),
-              why: String(target).startsWith('.') ? `${q(target)} — скрытое задание (шаблон), оно не выполняется и не может быть в needs.` : `Задания ${q(target)} нет.${didYouMean(target, visible)}`,
-              fix: 'Исправьте имя или добавьте optional: true.',
+              why: String(target).startsWith('.') ? tr('{0} — скрытое задание (шаблон), оно не выполняется и не может быть в needs.', q(target)) : tr('Задания {0} нет.{1}', q(target), didYouMean(target, visible)),
+              fix: tr('Исправьте имя или добавьте optional: true.'),
             });
           }
         } else if (stageIndex(target) > stageIndex(name)) {
-          ji(['needs', i], { id: 'needs-later-stage', severity: 'error', title: `${q(name)} ждёт ${q(target)} из более позднего этапа`, how: rejected(`${name} job: need ${target} is not defined in current or prior stages`), why: `${q(target)} в этапе ${q(stageOf(target))}, который идёт после ${q(stage)}.`, fix: `Перенесите ${q(name)} в этап не раньше ${q(stageOf(target))} или ${q(target)} — раньше.` });
+          ji(['needs', i], { id: 'needs-later-stage', severity: 'error', title: tr('{0} ждёт {1} из более позднего этапа', q(name), q(target)), how: rejected(`${name} job: need ${target} is not defined in current or prior stages`), why: tr('{0} в этапе {1}, который идёт после {2}.', q(target), q(stageOf(target)), q(stage)), fix: tr('Перенесите {0} в этап не раньше {1} или {2} — раньше.', q(name), q(stageOf(target)), q(target)) });
         }
         if (isObj(n)) {
-          for (const k of Object.keys(n)) if (!['job', 'artifacts', 'optional', 'pipeline', 'project', 'ref', 'parallel'].includes(k)) ji(['needs', i, k], { id: 'needs-unknown-key', severity: 'error', title: `${q(name)}: needs — неизвестный ключ ${q(k)}`, how: rejected(`jobs:${name}:needs:need config contains unknown keys: ${k}`), why: `Допустимы: job, artifacts, optional, pipeline, project, ref, parallel.${didYouMean(k, ['job', 'artifacts', 'optional'])}`, fix: 'Уберите ключ.' });
+          for (const k of Object.keys(n)) if (!['job', 'artifacts', 'optional', 'pipeline', 'project', 'ref', 'parallel'].includes(k)) ji(['needs', i, k], { id: 'needs-unknown-key', severity: 'error', title: tr('{0}: needs — неизвестный ключ {1}', q(name), q(k)), how: rejected(`jobs:${name}:needs:need config contains unknown keys: ${k}`), why: tr('Допустимы: job, artifacts, optional, pipeline, project, ref, parallel.{0}', didYouMean(k, ['job', 'artifacts', 'optional'])), fix: tr('Уберите ключ.') });
         }
       });
     }
@@ -550,9 +559,9 @@ function checkGitlab(result, ctx) {
     if (cfg.dependencies !== undefined) {
       const needNames = cfg.needs === undefined ? null : arr(cfg.needs).map((n) => (typeof n === 'string' ? n : n?.job));
       arr(cfg.dependencies).forEach((dep, i) => {
-        if (!raw.jobs.has(dep) || String(dep).startsWith('.')) ji(['dependencies', i], { id: 'dependencies-unknown', severity: 'error', title: `${q(name)}: dependencies на несуществующее ${q(dep)}`, how: rejected(`${name} job: undefined dependency: ${dep}`), why: `Задания ${q(dep)} нет.${didYouMean(dep, visible)}`, fix: 'Поправьте имя.' });
-        else if (needNames && !needNames.includes(dep)) ji(['dependencies', i], { id: 'dependencies-not-in-needs', severity: 'error', title: `${q(name)}: ${q(dep)} в dependencies, но не в needs`, how: rejected(`${name} job: dependencies the ${dep} should be part of needs`), why: 'Когда задан needs, dependencies может ссылаться только на задания из needs.', fix: `Добавьте ${q(dep)} в needs.` });
-        else if (!needNames && stageIndex(dep) >= stageIndex(name)) ji(['dependencies', i], { id: 'dependencies-later-stage', severity: 'error', title: `${q(name)}: ${q(dep)} не из предыдущего этапа`, how: rejected(`${name} job: dependency ${dep} is not defined in current or prior stages`), why: `Артефакты можно брать только у заданий из предыдущих этапов, а ${q(dep)} — в этапе ${q(stageOf(dep))}.`, fix: 'Перенесите задание или используйте needs.' });
+        if (!raw.jobs.has(dep) || String(dep).startsWith('.')) ji(['dependencies', i], { id: 'dependencies-unknown', severity: 'error', title: tr('{0}: dependencies на несуществующее {1}', q(name), q(dep)), how: rejected(`${name} job: undefined dependency: ${dep}`), why: tr('Задания {0} нет.{1}', q(dep), didYouMean(dep, visible)), fix: tr('Поправьте имя.') });
+        else if (needNames && !needNames.includes(dep)) ji(['dependencies', i], { id: 'dependencies-not-in-needs', severity: 'error', title: tr('{0}: {1} в dependencies, но не в needs', q(name), q(dep)), how: rejected(`${name} job: dependencies the ${dep} should be part of needs`), why: tr('Когда задан needs, dependencies может ссылаться только на задания из needs.'), fix: tr('Добавьте {0} в needs.', q(dep)) });
+        else if (!needNames && stageIndex(dep) >= stageIndex(name)) ji(['dependencies', i], { id: 'dependencies-later-stage', severity: 'error', title: tr('{0}: {1} не из предыдущего этапа', q(name), q(dep)), how: rejected(`${name} job: dependency ${dep} is not defined in current or prior stages`), why: tr('Артефакты можно брать только у заданий из предыдущих этапов, а {0} — в этапе {1}.', q(dep), q(stageOf(dep))), fix: tr('Перенесите задание или используйте needs.') });
       });
     }
 
@@ -563,9 +572,9 @@ function checkGitlab(result, ctx) {
     if (cfg.image !== undefined) checkImage(cfg.image, name, ['image']);
     for (const [i, svc] of arr(cfg.services ?? defaults.services ?? globals.services).entries()) {
       const svcName = typeof svc === 'string' ? svc : svc?.name;
-      if (!svcName) ji(['services', i], { id: 'service-no-name', severity: 'error', title: `${q(name)}: у сервиса нет name`, how: rejected(`jobs:${name}:services:service config must have a name`), why: 'Сервис — это образ Docker.', fix: 'services:\n  - name: postgres:16\n    alias: db' });
-      else checkImageName(svcName, name, ['services', i], 'сервис');
-      if (isObj(svc) && svc.alias && !/^[a-z0-9][a-z0-9.,-]*$/i.test(String(svc.alias))) ji(['services', i, 'alias'], { id: 'service-alias', severity: 'error', title: `${q(name)}: недопустимый alias сервиса ${q(svc.alias)}`, how: 'Задание упадёт при запуске сервиса: имя хоста недопустимо.', why: 'alias становится именем хоста: только буквы, цифры, точка, дефис.', fix: 'Например alias: db' });
+      if (!svcName) ji(['services', i], { id: 'service-no-name', severity: 'error', title: tr('{0}: у сервиса нет name', q(name)), how: rejected(`jobs:${name}:services:service config must have a name`), why: tr('Сервис — это образ Docker.'), fix: 'services:\n  - name: postgres:16\n    alias: db' });
+      else checkImageName(svcName, name, ['services', i], tr('сервис'));
+      if (isObj(svc) && svc.alias && !/^[a-z0-9][a-z0-9.,-]*$/i.test(String(svc.alias))) ji(['services', i, 'alias'], { id: 'service-alias', severity: 'error', title: tr('{0}: недопустимый alias сервиса {1}', q(name), q(svc.alias)), how: tr('Задание упадёт при запуске сервиса: имя хоста недопустимо.'), why: tr('alias становится именем хоста: только буквы, цифры, точка, дефис.'), fix: tr('Например alias: db') });
     }
     if (!dindAt && arr(cfg.services ?? defaults.services).some((s) => /docker.*dind/i.test(typeof s === 'string' ? s : s?.name ?? ''))) dindAt = { ...locate(name, ['services']), job: name };
 
@@ -578,53 +587,53 @@ function checkGitlab(result, ctx) {
     if (cfg.parallel !== undefined) {
       const p = cfg.parallel;
       if (typeof p === 'number') {
-        if (!Number.isInteger(p) || p < 1 || p > 200) ji(['parallel'], { id: 'parallel-range', severity: 'error', title: `${q(name)}: parallel: ${p}`, how: rejected(`jobs:${name}:parallel config must be ${p > 200 ? 'less than or equal to 200' : 'greater than or equal to 1'}`), why: 'parallel — целое число от 1 до 200.', fix: 'parallel: 5' });
+        if (!Number.isInteger(p) || p < 1 || p > 200) ji(['parallel'], { id: 'parallel-range', severity: 'error', title: `${q(name)}: parallel: ${p}`, how: rejected(`jobs:${name}:parallel config must be ${p > 200 ? 'less than or equal to 200' : 'greater than or equal to 1'}`), why: tr('parallel — целое число от 1 до 200.'), fix: 'parallel: 5' });
       } else if (isObj(p) && p.matrix !== undefined) {
         const matrix = arr(p.matrix);
         let total = 0;
         matrix.forEach((m, i) => {
           if (!isObj(m)) {
-            ji(['parallel', 'matrix', i], { id: 'matrix-format', severity: 'error', title: `${q(name)}: запись parallel:matrix не карта`, how: rejected(`jobs:${name}:parallel:matrix config should be an array of hashes`), why: 'Каждая запись матрицы — набор «ПЕРЕМЕННАЯ: [значения]».', fix: 'parallel:\n  matrix:\n    - NODE: ["18", "20"]' });
+            ji(['parallel', 'matrix', i], { id: 'matrix-format', severity: 'error', title: tr('{0}: запись parallel:matrix не карта', q(name)), how: rejected(`jobs:${name}:parallel:matrix config should be an array of hashes`), why: tr('Каждая запись матрицы — набор «ПЕРЕМЕННАЯ: [значения]».'), fix: 'parallel:\n  matrix:\n    - NODE: ["18", "20"]' });
             return;
           }
           total += Object.values(m).reduce((n, v) => n * Math.max(1, arr(v).length), 1);
-          for (const [k, v] of Object.entries(m)) if (arr(v).some((x) => isObj(x) || Array.isArray(x))) ji(['parallel', 'matrix', i, k], { id: 'matrix-value', severity: 'error', title: `${q(name)}: в матрице ${k} — вложенная структура`, how: rejected(`jobs:${name}:parallel:matrix config should be an array of hashes with arrays of strings`), why: 'Значения матрицы — строки или числа.', fix: 'Перечислите значения списком строк.' });
+          for (const [k, v] of Object.entries(m)) if (arr(v).some((x) => isObj(x) || Array.isArray(x))) ji(['parallel', 'matrix', i, k], { id: 'matrix-value', severity: 'error', title: tr('{0}: в матрице {1} — вложенная структура', q(name), k), how: rejected(`jobs:${name}:parallel:matrix config should be an array of hashes with arrays of strings`), why: tr('Значения матрицы — строки или числа.'), fix: tr('Перечислите значения списком строк.') });
         });
-        if (total > 200) ji(['parallel', 'matrix'], { id: 'matrix-limit', severity: 'error', title: `${q(name)}: матрица даёт ${total} заданий`, how: rejected(`jobs:${name}:parallel:matrix config generates too many jobs (maximum is 200)`), why: 'Не более 200 комбинаций на задание.', fix: 'Сократите число значений.' });
-      } else ji(['parallel'], { id: 'parallel-format', severity: 'error', title: `${q(name)}: непонятный parallel`, how: rejected(`jobs:${name}:parallel config should be an integer or a hash`), why: 'parallel — число или { matrix: [...] }.', fix: 'parallel: 3' });
+        if (total > 200) ji(['parallel', 'matrix'], { id: 'matrix-limit', severity: 'error', title: tr('{0}: матрица даёт {1} заданий', q(name), total), how: rejected(`jobs:${name}:parallel:matrix config generates too many jobs (maximum is 200)`), why: tr('Не более 200 комбинаций на задание.'), fix: tr('Сократите число значений.') });
+      } else ji(['parallel'], { id: 'parallel-format', severity: 'error', title: tr('{0}: непонятный parallel', q(name)), how: rejected(`jobs:${name}:parallel config should be an integer or a hash`), why: tr('parallel — число или { matrix: [...] }.'), fix: 'parallel: 3' });
     }
     if (cfg.retry !== undefined) {
       const r = cfg.retry;
       const max = isObj(r) ? r.max : r;
-      if (max !== undefined && (!Number.isInteger(max) || max < 0 || max > 2)) ji(['retry'], { id: 'retry-range', severity: 'error', title: `${q(name)}: retry ${max}`, how: rejected(`jobs:${name}:retry config must be between 0 and 2`), why: 'GitLab повторяет задание не более 2 раз.', fix: 'retry: 2' });
+      if (max !== undefined && (!Number.isInteger(max) || max < 0 || max > 2)) ji(['retry'], { id: 'retry-range', severity: 'error', title: `${q(name)}: retry ${max}`, how: rejected(`jobs:${name}:retry config must be between 0 and 2`), why: tr('GitLab повторяет задание не более 2 раз.'), fix: 'retry: 2' });
       if (isObj(r)) {
-        for (const w of arr(r.when)) if (!RETRY_WHEN.includes(w)) ji(['retry', 'when'], { id: 'retry-when', severity: 'error', title: `${q(name)}: retry:when ${q(w)}`, how: rejected(`jobs:${name}:retry when unknown value: ${w}`), why: `Неизвестная причина повтора.${didYouMean(w, RETRY_WHEN)}`, fix: `Допустимы: ${RETRY_WHEN.slice(0, 6).join(', ')}…` });
-        for (const k of Object.keys(r)) if (!['max', 'when', 'exit_codes'].includes(k)) ji(['retry', k], { id: 'retry-key', severity: 'error', title: `${q(name)}: retry — неизвестный ключ ${q(k)}`, how: rejected(`jobs:${name}:retry config contains unknown keys: ${k}`), why: 'Допустимы max, when, exit_codes.', fix: 'Уберите ключ.' });
+        for (const w of arr(r.when)) if (!RETRY_WHEN.includes(w)) ji(['retry', 'when'], { id: 'retry-when', severity: 'error', title: `${q(name)}: retry:when ${q(w)}`, how: rejected(`jobs:${name}:retry when unknown value: ${w}`), why: tr('Неизвестная причина повтора.{0}', didYouMean(w, RETRY_WHEN)), fix: tr('Допустимы: {0}…', RETRY_WHEN.slice(0, 6).join(', ')) });
+        for (const k of Object.keys(r)) if (!['max', 'when', 'exit_codes'].includes(k)) ji(['retry', k], { id: 'retry-key', severity: 'error', title: tr('{0}: retry — неизвестный ключ {1}', q(name), q(k)), how: rejected(`jobs:${name}:retry config contains unknown keys: ${k}`), why: tr('Допустимы max, when, exit_codes.'), fix: tr('Уберите ключ.') });
       }
     }
     if (cfg.timeout !== undefined) {
       const sec = durationSeconds(cfg.timeout);
-      if (sec == null) ji(['timeout'], { id: 'timeout-format', severity: 'error', title: `${q(name)}: не разобрать timeout: ${cfg.timeout}`, how: rejected(`jobs:${name}:timeout config should be a duration`), why: 'Длительность пишется как «1h 30m», «90 minutes».', fix: 'timeout: 1h 30m' });
-      else if (sec > 30 * 86400) ji(['timeout'], { id: 'timeout-limit', severity: 'error', title: `${q(name)}: timeout больше месяца`, how: rejected(`jobs:${name}:timeout config should not exceed the limit`), why: 'Максимум — 1 месяц.', fix: 'Уменьшите timeout.' });
+      if (sec == null) ji(['timeout'], { id: 'timeout-format', severity: 'error', title: tr('{0}: не разобрать timeout: {1}', q(name), cfg.timeout), how: rejected(`jobs:${name}:timeout config should be a duration`), why: tr('Длительность пишется как «1h 30m», «90 minutes».'), fix: 'timeout: 1h 30m' });
+      else if (sec > 30 * 86400) ji(['timeout'], { id: 'timeout-limit', severity: 'error', title: tr('{0}: timeout больше месяца', q(name)), how: rejected(`jobs:${name}:timeout config should not exceed the limit`), why: tr('Максимум — 1 месяц.'), fix: tr('Уменьшите timeout.') });
     }
     if (cfg.allow_failure !== undefined && typeof cfg.allow_failure !== 'boolean') {
       const ok = isObj(cfg.allow_failure) && Object.keys(cfg.allow_failure).every((k) => k === 'exit_codes') && arr(cfg.allow_failure.exit_codes).every(Number.isInteger);
-      if (!ok) ji(['allow_failure'], { id: 'allow-failure-format', severity: 'error', title: `${q(name)}: allow_failure: ${JSON.stringify(cfg.allow_failure)}`, how: rejected(`jobs:${name}:allow_failure config should be a hash or a boolean value`), why: 'allow_failure — true/false или { exit_codes: [коды] }.', fix: 'allow_failure: true' });
+      if (!ok) ji(['allow_failure'], { id: 'allow-failure-format', severity: 'error', title: `${q(name)}: allow_failure: ${JSON.stringify(cfg.allow_failure)}`, how: rejected(`jobs:${name}:allow_failure config should be a hash or a boolean value`), why: tr('allow_failure — true/false или { exit_codes: [коды] }.'), fix: 'allow_failure: true' });
     }
     if (cfg.coverage !== undefined) {
       const m = /^\/(.+)\/([a-z]*)$/.exec(String(cfg.coverage));
-      if (!m) ji(['coverage'], { id: 'coverage-format', severity: 'error', title: `${q(name)}: coverage не регулярное выражение`, how: rejected(`jobs:${name}:coverage config must be a regular expression`), why: 'coverage пишется между слэшами.', fix: "coverage: '/Lines:\\s+(\\d+\\.?\\d*)%/'" });
+      if (!m) ji(['coverage'], { id: 'coverage-format', severity: 'error', title: tr('{0}: coverage не регулярное выражение', q(name)), how: rejected(`jobs:${name}:coverage config must be a regular expression`), why: tr('coverage пишется между слэшами.'), fix: "coverage: '/Lines:\\s+(\\d+\\.?\\d*)%/'" });
       else {
         try {
           new RegExp(m[1]);
         } catch (e) {
-          ji(['coverage'], { id: 'coverage-regex', severity: 'error', title: `${q(name)}: ошибка в регулярке coverage`, how: rejected(`jobs:${name}:coverage config must be a regular expression`), why: e.message, fix: 'Исправьте выражение.' });
+          ji(['coverage'], { id: 'coverage-regex', severity: 'error', title: tr('{0}: ошибка в регулярке coverage', q(name)), how: rejected(`jobs:${name}:coverage config must be a regular expression`), why: e.message, fix: tr('Исправьте выражение.') });
         }
       }
     }
-    if (cfg.interruptible !== undefined && typeof cfg.interruptible !== 'boolean') ji(['interruptible'], { id: 'interruptible-type', severity: 'error', title: `${q(name)}: interruptible должен быть true/false`, how: rejected(`jobs:${name} interruptible should be a boolean value`), why: `Сейчас: ${JSON.stringify(cfg.interruptible)}.`, fix: 'interruptible: true' });
+    if (cfg.interruptible !== undefined && typeof cfg.interruptible !== 'boolean') ji(['interruptible'], { id: 'interruptible-type', severity: 'error', title: tr('{0}: interruptible должен быть true/false', q(name)), how: rejected(`jobs:${name} interruptible should be a boolean value`), why: tr('Сейчас: {0}.', JSON.stringify(cfg.interruptible)), fix: 'interruptible: true' });
     if (cfg.tags !== undefined) {
-      if (!Array.isArray(cfg.tags) || cfg.tags.some((t) => typeof t !== 'string' && typeof t !== 'number')) ji(['tags'], { id: 'tags-type', severity: 'error', title: `${q(name)}: tags должен быть списком строк`, how: rejected(`jobs:${name}:tags config should be an array of strings`), why: 'Теги перечисляются списком.', fix: 'tags:\n  - docker' });
+      if (!Array.isArray(cfg.tags) || cfg.tags.some((t) => typeof t !== 'string' && typeof t !== 'number')) ji(['tags'], { id: 'tags-type', severity: 'error', title: tr('{0}: tags должен быть списком строк', q(name)), how: rejected(`jobs:${name}:tags config should be an array of strings`), why: tr('Теги перечисляются списком.'), fix: 'tags:\n  - docker' });
       else if (cfg.tags.length) {
         const key = cfg.tags.join(', ');
         if (!tagSets.has(key)) tagSets.set(key, { jobs: [], ...locate(name, ['tags']) });
@@ -632,8 +641,8 @@ function checkGitlab(result, ctx) {
       }
     }
     if (cfg.inherit !== undefined) {
-      if (!isObj(cfg.inherit)) ji(['inherit'], { id: 'inherit-type', severity: 'error', title: `${q(name)}: inherit должен быть картой`, how: rejected(`jobs:${name}:inherit config should be a hash`), why: 'inherit: { default: …, variables: … }.', fix: 'inherit:\n  default: false' });
-      else for (const k of Object.keys(cfg.inherit)) if (!['default', 'variables'].includes(k)) ji(['inherit', k], { id: 'inherit-key', severity: 'error', title: `${q(name)}: inherit — неизвестный ключ ${q(k)}`, how: rejected(`jobs:${name}:inherit config contains unknown keys: ${k}`), why: 'Допустимы default и variables.', fix: 'Уберите ключ.' });
+      if (!isObj(cfg.inherit)) ji(['inherit'], { id: 'inherit-type', severity: 'error', title: tr('{0}: inherit должен быть картой', q(name)), how: rejected(`jobs:${name}:inherit config should be a hash`), why: 'inherit: { default: …, variables: … }.', fix: 'inherit:\n  default: false' });
+      else for (const k of Object.keys(cfg.inherit)) if (!['default', 'variables'].includes(k)) ji(['inherit', k], { id: 'inherit-key', severity: 'error', title: tr('{0}: inherit — неизвестный ключ {1}', q(name), q(k)), how: rejected(`jobs:${name}:inherit config contains unknown keys: ${k}`), why: tr('Допустимы default и variables.'), fix: tr('Уберите ключ.') });
     }
 
     // environment
@@ -643,12 +652,12 @@ function checkGitlab(result, ctx) {
     if (hasTrigger) {
       const t = cfg.trigger;
       if (isObj(t)) {
-        if (t.project && t.include) ji(['trigger'], { id: 'trigger-both', severity: 'error', title: `${q(name)}: trigger с project и include одновременно`, how: rejected(`jobs:${name}:trigger config contains unknown keys`), why: 'Либо дочерний пайплайн (include), либо пайплайн другого проекта (project).', fix: 'Оставьте одно.' });
-        if (t.strategy !== undefined && !['depend', 'mirror'].includes(t.strategy)) ji(['trigger', 'strategy'], { id: 'trigger-strategy', severity: 'error', title: `${q(name)}: trigger:strategy ${t.strategy}`, how: rejected(`jobs:${name}:trigger:strategy should be one of: depend, mirror`), why: 'Допустимы depend и mirror.', fix: 'strategy: depend' });
+        if (t.project && t.include) ji(['trigger'], { id: 'trigger-both', severity: 'error', title: tr('{0}: trigger с project и include одновременно', q(name)), how: rejected(`jobs:${name}:trigger config contains unknown keys`), why: tr('Либо дочерний пайплайн (include), либо пайплайн другого проекта (project).'), fix: tr('Оставьте одно.') });
+        if (t.strategy !== undefined && !['depend', 'mirror'].includes(t.strategy)) ji(['trigger', 'strategy'], { id: 'trigger-strategy', severity: 'error', title: `${q(name)}: trigger:strategy ${t.strategy}`, how: rejected(`jobs:${name}:trigger:strategy should be one of: depend, mirror`), why: tr('Допустимы depend и mirror.'), fix: 'strategy: depend' });
         for (const inc of arr(t.include)) {
           const local = typeof inc === 'string' ? inc : inc?.local;
           if (local && !/\$/.test(local) && !repo.hasFile(local) && !result.files.some((f) => f.path === local.replace(/^\//, ''))) {
-            ji(['trigger', 'include'], { id: 'trigger-include-missing', severity: 'error', title: `${q(name)}: дочерний пайплайн ${local} не найден`, when: `Когда дойдёт очередь до задания ${q(name)}`, how: `Дочерний пайплайн не создастся, задание ${q(name)} упадёт: «Included file \`${local}\` is empty or does not exist!».`, why: 'Файла нет в репозитории.', fix: 'Проверьте путь от корня репозитория.' });
+            ji(['trigger', 'include'], { id: 'trigger-include-missing', severity: 'error', title: tr('{0}: дочерний пайплайн {1} не найден', q(name), local), when: tr('Когда дойдёт очередь до задания {0}', q(name)), how: tr('Дочерний пайплайн не создастся, задание {0} упадёт: «Included file `{1}` is empty or does not exist!».', q(name), local), why: tr('Файла нет в репозитории.'), fix: tr('Проверьте путь от корня репозитория.') });
           }
         }
       }
@@ -659,31 +668,31 @@ function checkGitlab(result, ctx) {
       const publish = cfg.pages?.publish ?? cfg.publish ?? 'public';
       const paths = arr(cfg.artifacts?.paths).map(String);
       if (!paths.some((p) => p.replace(/\/+$/, '') === String(publish).replace(/\/+$/, ''))) {
-        ji(paths.length ? ['artifacts', 'paths'] : [], { id: 'pages-no-public', severity: 'warning', title: `${q(name)}: в артефактах нет папки ${publish}`, when: `После задания ${q(name)}`, how: `Сайт не опубликуется: задание pages:deploy упадёт — «pages:deploy … The ${publish} folder is missing from the artifacts».`, why: `GitLab Pages публикует содержимое папки ${q(publish)} из артефактов задания.`, fix: `artifacts:\n  paths:\n    - ${publish}` });
+        ji(paths.length ? ['artifacts', 'paths'] : [], { id: 'pages-no-public', severity: 'warning', title: tr('{0}: в артефактах нет папки {1}', q(name), publish), when: tr('После задания {0}', q(name)), how: tr('Сайт не опубликуется: задание pages:deploy упадёт — «pages:deploy … The {0} folder is missing from the artifacts».', publish), why: tr('GitLab Pages публикует содержимое папки {0} из артефактов задания.', q(publish)), fix: `artifacts:\n  paths:\n    - ${publish}` });
       }
     }
     // release
     if (cfg.release !== undefined) {
       const rel = cfg.release;
-      if (!isObj(rel) || !rel.tag_name) ji(['release'], { id: 'release-no-tag', severity: 'error', title: `${q(name)}: release без tag_name`, how: rejected(`jobs:${name}:release tag name can't be blank`), why: 'Релиз привязан к тегу.', fix: 'release:\n  tag_name: $CI_COMMIT_TAG\n  description: "…"' });
-      if (isObj(rel) && !rel.description) ji(['release'], { id: 'release-no-description', severity: 'error', title: `${q(name)}: release без description`, how: rejected(`jobs:${name}:release description can't be blank`), why: 'Описание релиза обязательно.', fix: 'description: "Релиз $CI_COMMIT_TAG"' });
+      if (!isObj(rel) || !rel.tag_name) ji(['release'], { id: 'release-no-tag', severity: 'error', title: tr('{0}: release без tag_name', q(name)), how: rejected(`jobs:${name}:release tag name can't be blank`), why: tr('Релиз привязан к тегу.'), fix: 'release:\n  tag_name: $CI_COMMIT_TAG\n  description: "…"' });
+      if (isObj(rel) && !rel.description) ji(['release'], { id: 'release-no-description', severity: 'error', title: tr('{0}: release без description', q(name)), how: rejected(`jobs:${name}:release description can't be blank`), why: tr('Описание релиза обязательно.'), fix: tr('description: "Релиз $CI_COMMIT_TAG"') });
       const img = String(typeof cfg.image === 'string' ? cfg.image : cfg.image?.name ?? '');
-      if (!/release-cli|glab|cli/.test(img)) ji(['release'], { id: 'release-image', severity: 'warning', title: `${q(name)}: release в образе без release-cli`, when: `При выполнении задания ${q(name)}`, how: 'Задание упадёт: «release-cli: command not found» (или «glab: not found»).', why: 'Ключ release выполняется утилитой release-cli / glab, которой нет в обычных образах.', fix: 'image: registry.gitlab.com/gitlab-org/release-cli:latest' });
+      if (!/release-cli|glab|cli/.test(img)) ji(['release'], { id: 'release-image', severity: 'warning', title: tr('{0}: release в образе без release-cli', q(name)), when: tr('При выполнении задания {0}', q(name)), how: tr('Задание упадёт: «release-cli: command not found» (или «glab: not found»).'), why: tr('Ключ release выполняется утилитой release-cli / glab, которой нет в обычных образах.'), fix: 'image: registry.gitlab.com/gitlab-org/release-cli:latest' });
     }
   }
   for (const s of declared) {
-    if (!usedStages.has(s) && s !== '.pre' && s !== '.post') globIssue(['stages'], { id: 'stage-unused', severity: 'info', title: `Этап ${q(s)} объявлен, но в нём нет заданий`, how: 'Ничего не сломается — пустой этап просто не показывается.', why: 'Ни одно задание не указывает stage: ' + s + '.', fix: 'Уберите этап или проверьте stage у заданий (опечатка?).' });
+    if (!usedStages.has(s) && s !== '.pre' && s !== '.post') globIssue(['stages'], { id: 'stage-unused', severity: 'info', title: tr('Этап {0} объявлен, но в нём нет заданий', q(s)), how: tr('Ничего не сломается — пустой этап просто не показывается.'), why: tr('Ни одно задание не указывает stage: ') + s + '.', fix: tr('Уберите этап или проверьте stage у заданий (опечатка?).') });
   }
   checkVariables(globals.variables, (kp) => globalLoc(['variables', ...kp]), 'variables', null);
   if (defaults.image !== undefined) checkImage(defaults.image, null, ['default', 'image']);
   else if (globals.image !== undefined) checkImage(globals.image, null, ['image']);
   if (onlyJobs.length) {
-    add({ id: 'only-deprecated', severity: 'info', title: `only/except устарели (${onlyJobs.length} задан.)`, when: CONFIG_WHEN, how: 'Сейчас работает, но новые возможности (needs, variables, changes:compare_to в правилах) доступны только через rules.', why: `only/except больше не развиваются. Используются в: ${onlyJobs.map((o) => q(o.name)).slice(0, 6).join(', ')}${onlyJobs.length > 6 ? '…' : ''}.`, fix: 'Например, only: [main] →\nrules:\n  - if: $CI_COMMIT_BRANCH == "main"', file: onlyJobs[0].file, line: onlyJobs[0].line, job: onlyJobs[0].name });
+    add({ id: 'only-deprecated', severity: 'info', title: tr('only/except устарели ({0} задан.)', onlyJobs.length), when: CONFIG_WHEN_TEXT(), how: tr('Сейчас работает, но новые возможности (needs, variables, changes:compare_to в правилах) доступны только через rules.'), why: tr('only/except больше не развиваются. Используются в: {0}{1}.', onlyJobs.map((o) => q(o.name)).slice(0, 6).join(', '), onlyJobs.length > 6 ? '…' : ''), fix: tr('Например, only: [main] →\nrules:\n  - if: $CI_COMMIT_BRANCH == "main"'), file: onlyJobs[0].file, line: onlyJobs[0].line, job: onlyJobs[0].name });
   }
   for (const [tags, t] of tagSets) {
-    add({ id: 'tags-runner', severity: 'info', title: `Нужен раннер с тегами: ${tags}`, when: `При запуске заданий ${t.jobs.map(q).slice(0, 4).join(', ')}${t.jobs.length > 4 ? '…' : ''}`, how: 'Если такого раннера нет, задание повиснет в pending: «This job is stuck because you don’t have any active runners online … with any of these tags assigned to them».', why: 'Задание берёт только раннер, у которого есть все перечисленные теги.', fix: 'Проверьте Settings → CI/CD → Runners.', file: t.file, line: t.line, job: t.jobs[0] });
+    add({ id: 'tags-runner', severity: 'info', title: tr('Нужен раннер с тегами: {0}', tags), when: tr('При запуске заданий {0}{1}', t.jobs.map(q).slice(0, 4).join(', '), t.jobs.length > 4 ? '…' : ''), how: tr('Если такого раннера нет, задание повиснет в pending: «This job is stuck because you don’t have any active runners online … with any of these tags assigned to them».'), why: tr('Задание берёт только раннер, у которого есть все перечисленные теги.'), fix: tr('Проверьте Settings → CI/CD → Runners.'), file: t.file, line: t.line, job: t.jobs[0] });
   }
-  if (dindAt) add({ id: 'dind-privileged', severity: 'info', title: 'docker:dind требует privileged-раннер', when: `При выполнении задания ${q(dindAt.job)}`, how: 'На раннере без privileged = true сервис не стартует: «mount: permission denied» / «Cannot connect to the Docker daemon».', why: 'Docker-in-Docker запускает свой демон внутри контейнера, а это нужно разрешить в настройках раннера.', fix: 'Проверьте, что у раннера privileged = true (config.toml), или используйте kaniko/buildah.', ...dindAt });
+  if (dindAt) add({ id: 'dind-privileged', severity: 'info', title: tr('docker:dind требует privileged-раннер'), when: tr('При выполнении задания {0}', q(dindAt.job)), how: tr('На раннере без privileged = true сервис не стартует: «mount: permission denied» / «Cannot connect to the Docker daemon».'), why: tr('Docker-in-Docker запускает свой демон внутри контейнера, а это нужно разрешить в настройках раннера.'), fix: tr('Проверьте, что у раннера privileged = true (config.toml), или используйте kaniko/buildah.'), ...dindAt });
 
   // Циклы needs
   const needsOf = (n) => arr(resolved.get(n)?.needs).map((x) => (typeof x === 'string' ? x : x?.job)).filter((x) => x && visible.includes(x) && x !== n);
@@ -705,7 +714,7 @@ function checkGitlab(result, ctx) {
       const key = [...new Set(cycle)].sort().join('|');
       if (!cycleSeen.has(key)) {
         cycleSeen.add(key);
-        jobIssue(cycle[0], ['needs'], { id: 'needs-cycle', severity: 'error', title: `Задания ждут друг друга по кругу: ${cycle.join(' → ')}`, how: rejected('circular dependency detected in `needs`'), why: 'Ни одно из заданий не может стартовать первым.', fix: 'Уберите одну из зависимостей.' });
+        jobIssue(cycle[0], ['needs'], { id: 'needs-cycle', severity: 'error', title: tr('Задания ждут друг друга по кругу: {0}', cycle.join(' → ')), how: rejected('circular dependency detected in `needs`'), why: tr('Ни одно из заданий не может стартовать первым.'), fix: tr('Уберите одну из зависимостей.') });
       }
     }
   }
@@ -781,18 +790,18 @@ function checkGitlab(result, ctx) {
   function checkVarName(v, at, where) {
     if (PREDEFINED.has(v) || yamlVars.has(v)) return;
     if (OLD_VARS[v]) {
-      add({ id: 'var-removed', severity: 'error', title: `$${v} больше не существует`, when: where === 'script' ? `При выполнении задания ${q(at.job)}` : CONFIG_WHEN, how: `Переменная будет пустой: ${where === 'script' ? 'команда получит пустую строку' : 'условие никогда не сработает так, как задумано'}.`, why: `Переменные CI_BUILD_* удалены в GitLab 9.0; теперь это $${OLD_VARS[v]}.`, fix: `Замените на $${OLD_VARS[v]}.`, ...at });
+      add({ id: 'var-removed', severity: 'error', title: tr('${0} больше не существует', v), when: where === 'script' ? tr('При выполнении задания {0}', q(at.job)) : CONFIG_WHEN_TEXT(), how: tr('Переменная будет пустой: {0}.', where === 'script' ? tr('команда получит пустую строку') : tr('условие никогда не сработает так, как задумано')), why: tr('Переменные CI_BUILD_* удалены в GitLab 9.0; теперь это ${0}.', OLD_VARS[v]), fix: tr('Замените на ${0}.', OLD_VARS[v]), ...at });
       return;
     }
     const near = suggest(v, [...PREDEFINED]);
     add({
       id: 'var-unknown-predefined',
       severity: near ? 'warning' : 'info',
-      title: `$${v} — нет такой предопределённой переменной`,
-      when: where === 'script' ? `При выполнении задания ${q(at.job)}` : CONFIG_WHEN,
-      how: where === 'script' ? 'Ошибки не будет, но на месте переменной окажется пустая строка.' : 'Ошибки не будет, но переменная всегда пустая — условие будет вести себя так, будто её нет.',
-      why: near ? `Похоже на опечатку: есть $${near}.` : 'Имена с CI_ / GITLAB_ зарезервированы GitLab, а такой среди них нет (если это переменная из настроек проекта — всё в порядке).',
-      fix: near ? `Замените на $${near}.` : 'Проверьте имя.',
+      title: tr('${0} — нет такой предопределённой переменной', v),
+      when: where === 'script' ? tr('При выполнении задания {0}', q(at.job)) : CONFIG_WHEN_TEXT(),
+      how: where === 'script' ? tr('Ошибки не будет, но на месте переменной окажется пустая строка.') : tr('Ошибки не будет, но переменная всегда пустая — условие будет вести себя так, будто её нет.'),
+      why: near ? tr('Похоже на опечатку: есть ${0}.', near) : tr('Имена с CI_ / GITLAB_ зарезервированы GitLab, а такой среди них нет (если это переменная из настроек проекта — всё в порядке).'),
+      fix: near ? tr('Замените на ${0}.', near) : tr('Проверьте имя.'),
       ...at,
     });
   }
@@ -800,7 +809,7 @@ function checkGitlab(result, ctx) {
   function checkRules(rules, { workflow = false, at, who, job, cfg } = {}) {
     const where = workflow ? 'workflow:rules' : `jobs:${job}:rules`;
     if (!Array.isArray(rules)) {
-      add({ id: 'rules-not-list', severity: 'error', title: `${who}: rules должен быть списком`, when: CONFIG_WHEN, how: rejected(`${where} config should be an array of hashes`), why: 'Каждое правило — отдельный элемент списка, начинается с «- ».', fix: 'rules:\n  - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH', ...at([]), job });
+      add({ id: 'rules-not-list', severity: 'error', title: tr('{0}: rules должен быть списком', who), when: CONFIG_WHEN_TEXT(), how: rejected(`${where} config should be an array of hashes`), why: tr('Каждое правило — отдельный элемент списка, начинается с «- ».'), fix: 'rules:\n  - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH', ...at([]), job });
       return;
     }
     const keys = workflow ? WORKFLOW_RULE_KEYS : RULE_KEYS;
@@ -809,23 +818,23 @@ function checkGitlab(result, ctx) {
     rules.forEach((rule, i) => {
       if (Array.isArray(rule)) return; // вложенный !reference — уже раскрыт
       if (!isObj(rule)) {
-        add({ id: 'rule-not-hash', severity: 'error', title: `${who}: правило ${i + 1} — не карта`, when: CONFIG_WHEN, how: rejected(`${where}:rule config should be a hash`), why: `Сейчас правило — ${typeof rule === 'string' ? `строка ${q(rule)}` : JSON.stringify(rule)}.`, fix: typeof rule === 'string' ? `- if: ${rule}` : '- if: …', ...at([i]), job });
+        add({ id: 'rule-not-hash', severity: 'error', title: tr('{0}: правило {1} — не карта', who, i + 1), when: CONFIG_WHEN_TEXT(), how: rejected(`${where}:rule config should be a hash`), why: tr('Сейчас правило — {0}.', typeof rule === 'string' ? tr('строка {0}', q(rule)) : JSON.stringify(rule)), fix: typeof rule === 'string' ? `- if: ${rule}` : '- if: …', ...at([i]), job });
         return;
       }
       for (const k of Object.keys(rule)) {
-        if (!keys.includes(k)) add({ id: 'rule-unknown-key', severity: 'error', title: `${who}: в правиле ${i + 1} неизвестный ключ ${q(k)}`, when: CONFIG_WHEN, how: rejected(`${where}:rule config contains unknown keys: ${k}`), why: `Допустимы: ${keys.join(', ')}.${didYouMean(k, keys)}${workflow && ['allow_failure', 'needs', 'start_in'].includes(k) ? ` ${q(k)} работает только в rules заданий.` : ''}`, fix: 'Исправьте или уберите ключ.', ...at([i, k]), job });
+        if (!keys.includes(k)) add({ id: 'rule-unknown-key', severity: 'error', title: tr('{0}: в правиле {1} неизвестный ключ {2}', who, i + 1, q(k)), when: CONFIG_WHEN_TEXT(), how: rejected(`${where}:rule config contains unknown keys: ${k}`), why: tr('Допустимы: {0}.{1}{2}', keys.join(', '), didYouMean(k, keys), workflow && ['allow_failure', 'needs', 'start_in'].includes(k) ? tr(' {0} работает только в rules заданий.', q(k)) : ''), fix: tr('Исправьте или уберите ключ.'), ...at([i, k]), job });
       }
       if (rule.when !== undefined && !allowedWhen.includes(rule.when)) {
-        add({ id: 'rule-when', severity: 'error', title: `${who}: правило ${i + 1}: when: ${rule.when}`, when: CONFIG_WHEN, how: rejected(`${where}:rule when unknown value: ${rule.when}`), why: workflow ? 'В workflow:rules допустимы только always и never.' : `Допустимы: ${RULE_WHEN.join(', ')}.${didYouMean(rule.when, RULE_WHEN)}`, fix: workflow ? 'when: always' : 'when: on_success', ...at([i, 'when']), job });
+        add({ id: 'rule-when', severity: 'error', title: tr('{0}: правило {1}: when: {2}', who, i + 1, rule.when), when: CONFIG_WHEN_TEXT(), how: rejected(`${where}:rule when unknown value: ${rule.when}`), why: workflow ? tr('В workflow:rules допустимы только always и never.') : tr('Допустимы: {0}.{1}', RULE_WHEN.join(', '), didYouMean(rule.when, RULE_WHEN)), fix: workflow ? 'when: always' : 'when: on_success', ...at([i, 'when']), job });
       }
-      if (rule.when === 'delayed' && rule.start_in === undefined && cfg?.start_in === undefined) add({ id: 'rule-delayed', severity: 'error', title: `${who}: правило ${i + 1}: delayed без start_in`, when: CONFIG_WHEN, how: rejected(`${where}:rule start in should be specified for delayed job`), why: 'Нужно указать задержку.', fix: 'start_in: 10 minutes', ...at([i]), job });
+      if (rule.when === 'delayed' && rule.start_in === undefined && cfg?.start_in === undefined) add({ id: 'rule-delayed', severity: 'error', title: tr('{0}: правило {1}: delayed без start_in', who, i + 1), when: CONFIG_WHEN_TEXT(), how: rejected(`${where}:rule start in should be specified for delayed job`), why: tr('Нужно указать задержку.'), fix: 'start_in: 10 minutes', ...at([i]), job });
       if (rule.if !== undefined) {
         if (typeof rule.if !== 'string') {
-          add({ id: 'rule-if-type', severity: 'error', title: `${who}: правило ${i + 1}: if должен быть строкой`, when: CONFIG_WHEN, how: rejected(`${where}:rule if should be a string`), why: `YAML прочитал значение как ${typeof rule.if}.`, fix: "Возьмите выражение в кавычки: if: '$VAR == \"x\"'", ...at([i, 'if']), job });
+          add({ id: 'rule-if-type', severity: 'error', title: tr('{0}: правило {1}: if должен быть строкой', who, i + 1), when: CONFIG_WHEN_TEXT(), how: rejected(`${where}:rule if should be a string`), why: tr('YAML прочитал значение как {0}.', typeof rule.if), fix: tr('Возьмите выражение в кавычки: if: \'$VAR == "x"\''), ...at([i, 'if']), job });
         } else {
           const parsed = parseExpr(rule.if);
           if (parsed.error) {
-            add({ id: 'rule-if-syntax', severity: 'error', title: `${who}: ошибка в условии ${q(rule.if)}`, when: CONFIG_WHEN, how: rejected(`${where}:rule if invalid expression syntax`), why: `${parsed.error[0].toUpperCase()}${parsed.error.slice(1)}.`, fix: 'Пример: if: \'$CI_COMMIT_BRANCH == "main" && $CI_PIPELINE_SOURCE == "push"\'', ...at([i, 'if']), job });
+            add({ id: 'rule-if-syntax', severity: 'error', title: tr('{0}: ошибка в условии {1}', who, q(rule.if)), when: CONFIG_WHEN_TEXT(), how: rejected(`${where}:rule if invalid expression syntax`), why: `${parsed.error[0].toUpperCase()}${parsed.error.slice(1)}.`, fix: tr('Пример: if: \'$CI_COMMIT_BRANCH == "main" && $CI_PIPELINE_SOURCE == "push"\''), ...at([i, 'if']), job });
           } else {
             for (const v of parsed.vars) checkVarName(v, { ...at([i, 'if']), job }, 'rules');
             checkComparisons(parsed.ast, { ...at([i, 'if']), job }, who);
@@ -835,29 +844,29 @@ function checkGitlab(result, ctx) {
       if (rule.exists !== undefined) {
         const paths = arr(isObj(rule.exists) ? rule.exists.paths : rule.exists).map(String);
         if (paths.length && !(isObj(rule.exists) && rule.exists.project) && paths.every((p) => !/\$/.test(p) && !repo.glob(p) && !repo.hasFile(p))) {
-          add({ id: 'rule-exists-none', severity: 'warning', title: `${who}: правило ${i + 1}: exists — таких файлов нет`, when: CONFIG_WHEN, how: 'Правило никогда не сработает, пока такие файлы не появятся в репозитории.', why: `Под ${paths.map(q).join(', ')} не подходит ни один файл репозитория.`, fix: 'Проверьте путь/шаблон (от корня репозитория, регистр букв).', ...at([i, 'exists']), job });
+          add({ id: 'rule-exists-none', severity: 'warning', title: tr('{0}: правило {1}: exists — таких файлов нет', who, i + 1), when: CONFIG_WHEN_TEXT(), how: tr('Правило никогда не сработает, пока такие файлы не появятся в репозитории.'), why: tr('Под {0} не подходит ни один файл репозитория.', paths.map(q).join(', ')), fix: tr('Проверьте путь/шаблон (от корня репозитория, регистр букв).'), ...at([i, 'exists']), job });
         }
       }
       if (rule.changes !== undefined) {
         const ch = isObj(rule.changes) ? rule.changes : { paths: rule.changes };
-        if (isObj(rule.changes)) for (const k of Object.keys(rule.changes)) if (!['paths', 'compare_to'].includes(k)) add({ id: 'rule-changes-key', severity: 'error', title: `${who}: правило ${i + 1}: changes — неизвестный ключ ${q(k)}`, when: CONFIG_WHEN, how: rejected(`${where}:rule:changes config contains unknown keys: ${k}`), why: 'Допустимы paths и compare_to.', fix: 'changes:\n  paths:\n    - src/**/*', ...at([i, 'changes', k]), job });
+        if (isObj(rule.changes)) for (const k of Object.keys(rule.changes)) if (!['paths', 'compare_to'].includes(k)) add({ id: 'rule-changes-key', severity: 'error', title: tr('{0}: правило {1}: changes — неизвестный ключ {2}', who, i + 1, q(k)), when: CONFIG_WHEN_TEXT(), how: rejected(`${where}:rule:changes config contains unknown keys: ${k}`), why: tr('Допустимы paths и compare_to.'), fix: 'changes:\n  paths:\n    - src/**/*', ...at([i, 'changes', k]), job });
         const paths = arr(ch.paths).map(String);
         if (paths.length && paths.every((p) => !/\$/.test(p) && !repo.glob(p) && !repo.hasFile(p) && !repo.hasDir(p))) {
-          add({ id: 'rule-changes-none', severity: 'info', title: `${who}: правило ${i + 1}: changes — сейчас таких файлов нет`, when: 'При push и в merge request', how: 'Правило не сработает при обычных изменениях (только если такие файлы добавят).', why: `Под ${paths.map(q).join(', ')} сейчас не подходит ни один файл.`, fix: 'Проверьте шаблон: «src/**/*» — все файлы в src, «*.md» — только в корне.', ...at([i, 'changes']), job });
+          add({ id: 'rule-changes-none', severity: 'info', title: tr('{0}: правило {1}: changes — сейчас таких файлов нет', who, i + 1), when: tr('При push и в merge request'), how: tr('Правило не сработает при обычных изменениях (только если такие файлы добавят).'), why: tr('Под {0} сейчас не подходит ни один файл.', paths.map(q).join(', ')), fix: tr('Проверьте шаблон: «src/**/*» — все файлы в src, «*.md» — только в корне.'), ...at([i, 'changes']), job });
         }
       }
       const isCatchAll = rule.if === undefined && rule.changes === undefined && rule.exists === undefined;
       if (catchAll >= 0) {
-        add({ id: 'rule-unreachable', severity: 'warning', title: `${who}: правило ${i + 1} никогда не проверяется`, when: CONFIG_WHEN, how: 'Ошибки не будет, но это правило ни на что не влияет.', why: `Правило ${catchAll + 1} без условий срабатывает всегда, а GitLab берёт первое подходящее правило.`, fix: 'Переставьте правило без условий в конец списка.', ...at([i]), job });
+        add({ id: 'rule-unreachable', severity: 'warning', title: tr('{0}: правило {1} никогда не проверяется', who, i + 1), when: CONFIG_WHEN_TEXT(), how: tr('Ошибки не будет, но это правило ни на что не влияет.'), why: tr('Правило {0} без условий срабатывает всегда, а GitLab берёт первое подходящее правило.', catchAll + 1), fix: tr('Переставьте правило без условий в конец списка.'), ...at([i]), job });
         catchAll = Infinity; // сообщаем один раз
       } else if (isCatchAll && i < rules.length - 1) catchAll = i;
     });
     const real = rules.filter(isObj);
     if (!workflow && real.length && real.every((r) => r.when === 'never')) {
-      add({ id: 'rules-all-never', severity: 'warning', title: `${who}: все правила — when: never`, when: CONFIG_WHEN, how: 'Задание не попадёт ни в один пайплайн.', why: 'Если ни одно правило не включает задание, оно исключается; здесь все правила только исключают.', fix: 'Добавьте в конец правило «- when: on_success» (или нужное условие).', ...at([]), job });
+      add({ id: 'rules-all-never', severity: 'warning', title: tr('{0}: все правила — when: never', who), when: CONFIG_WHEN_TEXT(), how: tr('Задание не попадёт ни в один пайплайн.'), why: tr('Если ни одно правило не включает задание, оно исключается; здесь все правила только исключают.'), fix: tr('Добавьте в конец правило «- when: on_success» (или нужное условие).'), ...at([]), job });
     }
     if (workflow && real.length && real.every((r) => r.when === 'never')) {
-      add({ id: 'workflow-all-never', severity: 'error', title: 'workflow:rules: все правила — when: never', when: CONFIG_WHEN, how: 'Пайплайн не будет создаваться никогда.', why: 'Если ни одно правило workflow не сработало с when: always, пайплайн не создаётся.', fix: 'Добавьте в конец «- when: always» или правило с нужным условием.', ...at([]) });
+      add({ id: 'workflow-all-never', severity: 'error', title: tr('workflow:rules: все правила — when: never'), when: CONFIG_WHEN_TEXT(), how: tr('Пайплайн не будет создаваться никогда.'), why: tr('Если ни одно правило workflow не сработало с when: always, пайплайн не создаётся.'), fix: tr('Добавьте в конец «- when: always» или правило с нужным условием.'), ...at([]) });
     }
   }
 
@@ -875,18 +884,18 @@ function checkGitlab(result, ctx) {
       if (!v) return;
       if (v === 'CI_PIPELINE_SOURCE' && !PIPELINE_SOURCES.includes(s)) {
         const near = suggest(s, PIPELINE_SOURCES);
-        add({ id: 'pipeline-source-value', severity: 'warning', title: `${who}: CI_PIPELINE_SOURCE никогда не равен ${q(s)}`, when: CONFIG_WHEN, how: `Условие ${n.op === '==' ? 'никогда не выполнится' : 'выполнится всегда'}.`, why: `Возможные значения: ${PIPELINE_SOURCES.slice(0, 10).join(', ')}…${near ? ` Возможно, имелось в виду ${q(near)}.` : ''}`, fix: near ? `Замените на "${near}".` : 'Проверьте значение.', ...at });
+        add({ id: 'pipeline-source-value', severity: 'warning', title: tr('{0}: CI_PIPELINE_SOURCE никогда не равен {1}', who, q(s)), when: CONFIG_WHEN_TEXT(), how: tr('Условие {0}.', n.op === '==' ? tr('никогда не выполнится') : tr('выполнится всегда')), why: tr('Возможные значения: {0}…{1}', PIPELINE_SOURCES.slice(0, 10).join(', '), near ? tr(' Возможно, имелось в виду {0}.', q(near)) : ''), fix: near ? tr('Замените на "{0}".', near) : tr('Проверьте значение.'), ...at });
       }
       if (['CI_COMMIT_BRANCH', 'CI_COMMIT_REF_NAME', 'CI_MERGE_REQUEST_TARGET_BRANCH_NAME', 'CI_MERGE_REQUEST_SOURCE_BRANCH_NAME', 'CI_DEFAULT_BRANCH'].includes(v) && branches.size && !branches.has(s)) {
         const swapped = (s === 'master' && defBranch === 'main') || (s === 'main' && defBranch === 'master');
         add({
           id: swapped ? 'branch-main-master' : 'branch-missing',
           severity: swapped ? 'warning' : 'info',
-          title: `${who}: ветки ${q(s)} нет в репозитории`,
-          when: CONFIG_WHEN,
-          how: swapped ? `Условие с ${q(s)} никогда не сработает — основная ветка здесь ${q(defBranch)}.` : `Условие сработает, только когда появится ветка ${q(s)}.`,
-          why: `Сравнивается $${v} с ${q(s)}, а в репозитории ${swapped ? `основная ветка — ${q(defBranch)}` : 'такой ветки нет (ни локально, ни на удалённом сервере)'}.`,
-          fix: swapped ? `Используйте $CI_DEFAULT_BRANCH вместо "${s}" — так условие не зависит от названия ветки.` : 'Если это опечатка — исправьте; для основной ветки лучше $CI_DEFAULT_BRANCH.',
+          title: tr('{0}: ветки {1} нет в репозитории', who, q(s)),
+          when: CONFIG_WHEN_TEXT(),
+          how: swapped ? tr('Условие с {0} никогда не сработает — основная ветка здесь {1}.', q(s), q(defBranch)) : tr('Условие сработает, только когда появится ветка {0}.', q(s)),
+          why: tr('Сравнивается ${0} с {1}, а в репозитории {2}.', v, q(s), swapped ? tr('основная ветка — {0}', q(defBranch)) : tr('такой ветки нет (ни локально, ни на удалённом сервере)')),
+          fix: swapped ? tr('Используйте $CI_DEFAULT_BRANCH вместо "{0}" — так условие не зависит от названия ветки.', s) : tr('Если это опечатка — исправьте; для основной ветки лучше $CI_DEFAULT_BRANCH.'),
           ...at,
         });
       }
@@ -898,10 +907,10 @@ function checkGitlab(result, ctx) {
     const at = (kp) => locate(name, [key, ...kp]);
     const refs = isObj(spec) ? spec.refs : spec;
     if (isObj(spec)) {
-      for (const k of Object.keys(spec)) if (!ONLY_KEYS.includes(k)) add({ id: 'only-unknown-key', severity: 'error', title: `${q(name)}: ${key} — неизвестный ключ ${q(k)}`, when: CONFIG_WHEN, how: rejected(`jobs:${name}:${key} config contains unknown keys: ${k}`), why: `Допустимы: ${ONLY_KEYS.join(', ')}.${didYouMean(k, ONLY_KEYS)}`, fix: 'Исправьте ключ (а лучше перейдите на rules).', ...at([k]), job: name });
+      for (const k of Object.keys(spec)) if (!ONLY_KEYS.includes(k)) add({ id: 'only-unknown-key', severity: 'error', title: tr('{0}: {1} — неизвестный ключ {2}', q(name), key, q(k)), when: CONFIG_WHEN_TEXT(), how: rejected(`jobs:${name}:${key} config contains unknown keys: ${k}`), why: tr('Допустимы: {0}.{1}', ONLY_KEYS.join(', '), didYouMean(k, ONLY_KEYS)), fix: tr('Исправьте ключ (а лучше перейдите на rules).'), ...at([k]), job: name });
       for (const [i, expr] of arr(spec.variables).entries()) {
         const p = parseExpr(expr);
-        if (p.error) add({ id: 'only-variables-syntax', severity: 'error', title: `${q(name)}: ошибка в ${key}:variables ${q(expr)}`, when: CONFIG_WHEN, how: rejected(`jobs:${name}:${key}:variables invalid expression syntax`), why: `${p.error}.`, fix: 'Пример: - $CI_COMMIT_MESSAGE =~ /deploy/', ...at(['variables', i]), job: name });
+        if (p.error) add({ id: 'only-variables-syntax', severity: 'error', title: tr('{0}: ошибка в {1}:variables {2}', q(name), key, q(expr)), when: CONFIG_WHEN_TEXT(), how: rejected(`jobs:${name}:${key}:variables invalid expression syntax`), why: `${p.error}.`, fix: tr('Пример: - $CI_COMMIT_MESSAGE =~ /deploy/'), ...at(['variables', i]), job: name });
       }
     }
     for (const [i, r] of arr(refs).entries()) {
@@ -909,7 +918,7 @@ function checkGitlab(result, ctx) {
       if (ONLY_REFS.includes(s) || s.startsWith('/') || /@/.test(s)) continue;
       const near = suggest(s, ONLY_REFS);
       if (near && !branches.has(s)) {
-        add({ id: 'only-keyword-typo', severity: 'warning', title: `${q(name)}: ${key}: ${s} — это имя ветки, а не ${q(near)}`, when: CONFIG_WHEN, how: `GitLab поймёт ${q(s)} как название ветки или тега и ${key === 'only' ? 'будет запускать задание только для неё' : 'исключит только её'}.`, why: `Ключевое слово пишется ${q(near)}.`, fix: `Замените на ${near}.`, ...at(isObj(spec) ? ['refs', i] : [i]), job: name });
+        add({ id: 'only-keyword-typo', severity: 'warning', title: tr('{0}: {1}: {2} — это имя ветки, а не {3}', q(name), key, s, q(near)), when: CONFIG_WHEN_TEXT(), how: tr('GitLab поймёт {0} как название ветки или тега и {1}.', q(s), key === 'only' ? tr('будет запускать задание только для неё') : tr('исключит только её')), why: tr('Ключевое слово пишется {0}.', q(near)), fix: tr('Замените на {0}.', near), ...at(isObj(spec) ? ['refs', i] : [i]), job: name });
       }
     }
     if (!onlyJobs.some((o) => o.name === name)) onlyJobs.push({ name, ...at([]) });
@@ -918,46 +927,46 @@ function checkGitlab(result, ctx) {
   function checkVariables(vars, at, where, job) {
     if (vars === undefined || vars === null) return;
     if (!isObj(vars)) {
-      if (job) add({ id: 'variables-not-hash', severity: 'error', title: `${q(job)}: variables должен быть набором «ИМЯ: значение»`, when: CONFIG_WHEN, how: rejected(`${where} config should be a hash of key value pairs`), why: Array.isArray(vars) ? 'Сейчас это список (через «- »).' : 'Сейчас это не карта.', fix: 'variables:\n  NAME: value', ...at([]), job });
+      if (job) add({ id: 'variables-not-hash', severity: 'error', title: tr('{0}: variables должен быть набором «ИМЯ: значение»', q(job)), when: CONFIG_WHEN_TEXT(), how: rejected(`${where} config should be a hash of key value pairs`), why: Array.isArray(vars) ? tr('Сейчас это список (через «- »).') : tr('Сейчас это не карта.'), fix: 'variables:\n  NAME: value', ...at([]), job });
       return;
     }
     for (const [k, v] of Object.entries(vars)) {
       const loc = { ...at([k]), job };
-      if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(k)) add({ id: 'variable-name', severity: 'warning', title: `Имя переменной ${q(k)} недоступно в shell`, when: job ? `При выполнении задания ${q(job)}` : 'При выполнении заданий', how: `В скрипте $${k} не раскроется (${/-/.test(k) ? 'дефис' : 'символ'} в имени не допускается shell).`, why: 'Имена переменных окружения — латинские буквы, цифры и «_», не с цифры.', fix: `Переименуйте, например ${k.replace(/[^A-Za-z0-9_]/g, '_').replace(/^(\d)/, '_$1')}.`, ...loc });
+      if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(k)) add({ id: 'variable-name', severity: 'warning', title: tr('Имя переменной {0} недоступно в shell', q(k)), when: job ? tr('При выполнении задания {0}', q(job)) : tr('При выполнении заданий'), how: tr('В скрипте ${0} не раскроется ({1} в имени не допускается shell).', k, /-/.test(k) ? tr('дефис') : tr('символ')), why: tr('Имена переменных окружения — латинские буквы, цифры и «_», не с цифры.'), fix: tr('Переименуйте, например {0}.', k.replace(/[^A-Za-z0-9_]/g, '_').replace(/^(\d)/, '_$1')), ...loc });
       if (typeof v === 'boolean') {
-        add({ id: 'variable-boolean', severity: 'error', title: `${k}: ${v} — логическое значение без кавычек`, when: CONFIG_WHEN, how: rejected(`${where} config should be a hash of key value pairs, value can be a hash`), why: 'Значения переменных — строки; YAML прочитал true/false/yes/no как логическое значение.', fix: `${k}: "${v}"`, ...loc });
+        add({ id: 'variable-boolean', severity: 'error', title: tr('{0}: {1} — логическое значение без кавычек', k, v), when: CONFIG_WHEN_TEXT(), how: rejected(`${where} config should be a hash of key value pairs, value can be a hash`), why: tr('Значения переменных — строки; YAML прочитал true/false/yes/no как логическое значение.'), fix: `${k}: "${v}"`, ...loc });
       } else if (Array.isArray(v)) {
-        add({ id: 'variable-array', severity: 'error', title: `${k}: значение — список`, when: CONFIG_WHEN, how: rejected(`${where} config should be a hash of key value pairs, value can be a hash`), why: 'Переменная не может быть списком.', fix: `${k}: "a b c"`, ...loc });
+        add({ id: 'variable-array', severity: 'error', title: tr('{0}: значение — список', k), when: CONFIG_WHEN_TEXT(), how: rejected(`${where} config should be a hash of key value pairs, value can be a hash`), why: tr('Переменная не может быть списком.'), fix: `${k}: "a b c"`, ...loc });
       } else if (isObj(v)) {
-        for (const kk of Object.keys(v)) if (!['value', 'description', 'options', 'expand'].includes(kk)) add({ id: 'variable-key', severity: 'error', title: `${k}: неизвестный ключ ${q(kk)}`, when: CONFIG_WHEN, how: rejected(`${where}:${k} config uses invalid data keys: ${kk}`), why: 'Допустимы value, description, options, expand.', fix: 'Уберите ключ.', ...loc });
-        if (v.options !== undefined && v.value !== undefined && !arr(v.options).map(String).includes(String(v.value))) add({ id: 'variable-options', severity: 'error', title: `${k}: значение ${q(v.value)} не входит в options`, when: CONFIG_WHEN, how: rejected(`${where}:${k} config value must be present in options`), why: `options: ${arr(v.options).join(', ')}.`, fix: 'Добавьте значение в options или исправьте value.', ...loc });
-        if (v.options !== undefined && job) add({ id: 'variable-options-job', severity: 'warning', title: `${k}: options в переменной задания`, when: CONFIG_WHEN, how: 'options работают только у глобальных переменных (форма ручного запуска).', why: 'Здесь они ничего не дадут.', fix: 'Перенесите переменную в глобальный variables.', ...loc });
+        for (const kk of Object.keys(v)) if (!['value', 'description', 'options', 'expand'].includes(kk)) add({ id: 'variable-key', severity: 'error', title: tr('{0}: неизвестный ключ {1}', k, q(kk)), when: CONFIG_WHEN_TEXT(), how: rejected(`${where}:${k} config uses invalid data keys: ${kk}`), why: tr('Допустимы value, description, options, expand.'), fix: tr('Уберите ключ.'), ...loc });
+        if (v.options !== undefined && v.value !== undefined && !arr(v.options).map(String).includes(String(v.value))) add({ id: 'variable-options', severity: 'error', title: tr('{0}: значение {1} не входит в options', k, q(v.value)), when: CONFIG_WHEN_TEXT(), how: rejected(`${where}:${k} config value must be present in options`), why: `options: ${arr(v.options).join(', ')}.`, fix: tr('Добавьте значение в options или исправьте value.'), ...loc });
+        if (v.options !== undefined && job) add({ id: 'variable-options-job', severity: 'warning', title: tr('{0}: options в переменной задания', k), when: CONFIG_WHEN_TEXT(), how: tr('options работают только у глобальных переменных (форма ручного запуска).'), why: tr('Здесь они ничего не дадут.'), fix: tr('Перенесите переменную в глобальный variables.'), ...loc });
       }
       const value = isObj(v) ? v.value : v;
       if (typeof value === 'string' || typeof value === 'number') {
         const s = String(value);
         const strong = SECRET_VALUE.find(([re]) => re.test(s));
-        if (strong) add({ id: 'secret-value', severity: 'error', title: `${k}: в файле открытым текстом ${strong[1]}`, when: 'Уже сейчас — файл в истории Git', how: 'Любой, у кого есть доступ к репозиторию (или к его копии), получит этот ключ; в логах заданий значение тоже не скрывается.', why: 'Переменные из .gitlab-ci.yml не маскируются и не защищены.', fix: 'Отзовите ключ, создайте новый и сохраните его в Settings → CI/CD → Variables (Masked, Protected); в файле оставьте только имя.', ...loc });
-        else if (SECRET_NAME.test(k) && s.length >= 6 && !looksLikeVarRef(s) && !/^(true|false|none|null|changeme|example|placeholder|\*+|x+)$/i.test(s) && !/\$/.test(s)) add({ id: 'secret-name', severity: 'warning', title: `${k}: похоже на секрет в открытом виде`, when: 'Уже сейчас — файл в истории Git', how: 'Значение видно всем, у кого есть доступ к репозиторию, и не маскируется в логах.', why: `Имя ${q(k)} похоже на пароль/токен, а значение задано прямо в файле.`, fix: 'Перенесите значение в Settings → CI/CD → Variables (Masked) и удалите из файла.', ...loc });
+        if (strong) add({ id: 'secret-value', severity: 'error', title: tr('{0}: в файле открытым текстом {1}', k, tr(strong[1])), when: tr('Уже сейчас — файл в истории Git'), how: tr('Любой, у кого есть доступ к репозиторию (или к его копии), получит этот ключ; в логах заданий значение тоже не скрывается.'), why: tr('Переменные из .gitlab-ci.yml не маскируются и не защищены.'), fix: tr('Отзовите ключ, создайте новый и сохраните его в Settings → CI/CD → Variables (Masked, Protected); в файле оставьте только имя.'), ...loc });
+        else if (SECRET_NAME.test(k) && s.length >= 6 && !looksLikeVarRef(s) && !/^(true|false|none|null|changeme|example|placeholder|\*+|x+)$/i.test(s) && !/\$/.test(s)) add({ id: 'secret-name', severity: 'warning', title: tr('{0}: похоже на секрет в открытом виде', k), when: tr('Уже сейчас — файл в истории Git'), how: tr('Значение видно всем, у кого есть доступ к репозиторию, и не маскируется в логах.'), why: tr('Имя {0} похоже на пароль/токен, а значение задано прямо в файле.', q(k)), fix: tr('Перенесите значение в Settings → CI/CD → Variables (Masked) и удалите из файла.'), ...loc });
       }
     }
   }
 
-  function checkImageName(img, job, keyPath, what = 'образ') {
+  function checkImageName(img, job, keyPath, what = tr('образ')) {
     const s = String(img).trim();
     const ji = (o) => (job ? jobIssue(job, keyPath, o) : globIssue(keyPath, o));
     const who = job ? q(job) : 'default';
-    const runWhen = job ? `При запуске задания ${q(job)}` : 'При запуске каждого задания с этим образом';
-    if (!s) return ji({ id: 'image-empty', severity: 'error', title: `${who}: пустой ${what}`, how: rejected(`${job ? `jobs:${job}` : 'default'}:image config should be a hash or a string`), why: 'Имя образа не задано.', fix: 'image: node:20' });
-    if (/\s/.test(s)) return ji({ id: 'image-space', severity: 'error', title: `${who}: пробел в имени образа ${q(s)}`, when: runWhen, how: 'Задание упадёт: «invalid reference format».', why: 'В имени образа не может быть пробелов.', fix: 'Проверьте имя.' });
+    const runWhen = job ? tr('При запуске задания {0}', q(job)) : tr('При запуске каждого задания с этим образом');
+    if (!s) return ji({ id: 'image-empty', severity: 'error', title: tr('{0}: пустой {1}', who, what), how: rejected(`${job ? `jobs:${job}` : 'default'}:image config should be a hash or a string`), why: tr('Имя образа не задано.'), fix: 'image: node:20' });
+    if (/\s/.test(s)) return ji({ id: 'image-space', severity: 'error', title: tr('{0}: пробел в имени образа {1}', who, q(s)), when: runWhen, how: tr('Задание упадёт: «invalid reference format».'), why: tr('В имени образа не может быть пробелов.'), fix: tr('Проверьте имя.') });
     const repoPart = s.replace(/@sha256:.*$/, '').replace(/:[^/:]+$/, '');
     if (/\$/.test(s)) {
       const vars = [...s.matchAll(/\$\{?([A-Za-z_][A-Za-z0-9_]*)/g)].map((m) => m[1]).filter((v) => !PREDEFINED.has(v) && !yamlVars.has(v));
-      if (vars.length) ji({ id: 'image-variable', severity: 'info', title: `${who}: ${what} ${s} зависит от $${vars[0]}`, when: runWhen, how: `Если $${vars[0]} не задана в настройках проекта, задание упадёт: «invalid reference format» или «pull access denied».`, why: 'Переменная не объявлена в файле.', fix: `Объявите значение по умолчанию в variables: ${vars[0]}: …` });
+      if (vars.length) ji({ id: 'image-variable', severity: 'info', title: tr('{0}: {1} {2} зависит от ${3}', who, what, s, vars[0]), when: runWhen, how: tr('Если ${0} не задана в настройках проекта, задание упадёт: «invalid reference format» или «pull access denied».', vars[0]), why: tr('Переменная не объявлена в файле.'), fix: tr('Объявите значение по умолчанию в variables: {0}: …', vars[0]) });
       return;
     }
-    if (/[A-Z]/.test(repoPart)) ji({ id: 'image-uppercase', severity: 'error', title: `${who}: заглавные буквы в имени образа ${q(s)}`, when: runWhen, how: 'Задание упадёт: «invalid reference format: repository name must be lowercase».', why: 'Имена образов Docker — только строчные.', fix: `image: ${repoPart.toLowerCase()}${s.slice(repoPart.length)}` });
-    else if (!/[:@]/.test(s.replace(/^[^/]+:\d+\//, '')) || /:latest$/.test(s)) ji({ id: 'image-latest', severity: 'info', title: `${who}: ${what} ${s} без версии`, when: runWhen, how: 'Сегодня работает, а после выхода новой версии образа задание может внезапно сломаться.', why: 'Без тега берётся :latest — он меняется со временем.', fix: `Укажите версию: ${repoPart}:<версия>` });
+    if (/[A-Z]/.test(repoPart)) ji({ id: 'image-uppercase', severity: 'error', title: tr('{0}: заглавные буквы в имени образа {1}', who, q(s)), when: runWhen, how: tr('Задание упадёт: «invalid reference format: repository name must be lowercase».'), why: tr('Имена образов Docker — только строчные.'), fix: `image: ${repoPart.toLowerCase()}${s.slice(repoPart.length)}` });
+    else if (!/[:@]/.test(s.replace(/^[^/]+:\d+\//, '')) || /:latest$/.test(s)) ji({ id: 'image-latest', severity: 'info', title: tr('{0}: {1} {2} без версии', who, what, s), when: runWhen, how: tr('Сегодня работает, а после выхода новой версии образа задание может внезапно сломаться.'), why: tr('Без тега берётся :latest — он меняется со временем.'), fix: tr('Укажите версию: {0}:<версия>', repoPart) });
   }
 
   function checkImage(image, job, keyPath) {
@@ -967,82 +976,82 @@ function checkGitlab(result, ctx) {
     if (image === undefined) return;
     if (image === null || image === '') return checkImageName('', job, keyPath);
     if (isObj(image)) {
-      for (const k of Object.keys(image)) if (!['name', 'entrypoint', 'docker', 'pull_policy', 'kubernetes'].includes(k)) issue([...keyPath, k], { id: 'image-key', severity: 'error', title: `${who}: image — неизвестный ключ ${q(k)}`, how: rejected(`${jn}:image config contains unknown keys: ${k}`), why: 'Допустимы name, entrypoint, docker, pull_policy, kubernetes.', fix: 'Уберите ключ.' });
-      if (!image.name) return issue(keyPath, { id: 'image-no-name', severity: 'error', title: `${who}: у image нет name`, how: rejected(`${jn}:image config must have a name`), why: 'Нужно указать образ.', fix: 'image:\n  name: node:20' });
+      for (const k of Object.keys(image)) if (!['name', 'entrypoint', 'docker', 'pull_policy', 'kubernetes'].includes(k)) issue([...keyPath, k], { id: 'image-key', severity: 'error', title: tr('{0}: image — неизвестный ключ {1}', who, q(k)), how: rejected(`${jn}:image config contains unknown keys: ${k}`), why: tr('Допустимы name, entrypoint, docker, pull_policy, kubernetes.'), fix: tr('Уберите ключ.') });
+      if (!image.name) return issue(keyPath, { id: 'image-no-name', severity: 'error', title: tr('{0}: у image нет name', who), how: rejected(`${jn}:image config must have a name`), why: tr('Нужно указать образ.'), fix: 'image:\n  name: node:20' });
       return checkImageName(image.name, job, [...keyPath, 'name']);
     }
-    if (typeof image !== 'string') return issue(keyPath, { id: 'image-type', severity: 'error', title: `${who}: image должен быть строкой`, how: rejected(`${jn}:image config should be a hash or a string`), why: `Сейчас: ${JSON.stringify(image)}.`, fix: 'image: node:20' });
+    if (typeof image !== 'string') return issue(keyPath, { id: 'image-type', severity: 'error', title: tr('{0}: image должен быть строкой', who), how: rejected(`${jn}:image config should be a hash or a string`), why: tr('Сейчас: {0}.', JSON.stringify(image)), fix: 'image: node:20' });
     return checkImageName(image, job, keyPath);
   }
 
   function checkArtifacts(name, a) {
     const ji = (kp, o) => jobIssue(name, ['artifacts', ...kp], o);
-    if (!isObj(a)) return ji([], { id: 'artifacts-type', severity: 'error', title: `${q(name)}: artifacts должен быть картой`, how: rejected(`jobs:${name}:artifacts config should be a hash`), why: 'artifacts содержит paths, expire_in и т.д.', fix: 'artifacts:\n  paths:\n    - dist/' });
-    for (const k of Object.keys(a)) if (!ARTIFACT_KEYS.includes(k)) ji([k], { id: 'artifacts-unknown-key', severity: 'error', title: `${q(name)}: artifacts — неизвестный ключ ${q(k)}`, how: rejected(`jobs:${name}:artifacts config contains unknown keys: ${k}`), why: `Допустимы: ${ARTIFACT_KEYS.join(', ')}.${didYouMean(k, ARTIFACT_KEYS)}`, fix: 'Исправьте ключ.' });
-    if (a.paths !== undefined && !Array.isArray(a.paths)) ji(['paths'], { id: 'artifacts-paths-type', severity: 'error', title: `${q(name)}: artifacts:paths должен быть списком`, how: rejected(`jobs:${name}:artifacts:paths config should be an array of strings`), why: 'Даже один путь пишется списком.', fix: `paths:\n  - ${a.paths}` });
+    if (!isObj(a)) return ji([], { id: 'artifacts-type', severity: 'error', title: tr('{0}: artifacts должен быть картой', q(name)), how: rejected(`jobs:${name}:artifacts config should be a hash`), why: tr('artifacts содержит paths, expire_in и т.д.'), fix: 'artifacts:\n  paths:\n    - dist/' });
+    for (const k of Object.keys(a)) if (!ARTIFACT_KEYS.includes(k)) ji([k], { id: 'artifacts-unknown-key', severity: 'error', title: tr('{0}: artifacts — неизвестный ключ {1}', q(name), q(k)), how: rejected(`jobs:${name}:artifacts config contains unknown keys: ${k}`), why: tr('Допустимы: {0}.{1}', ARTIFACT_KEYS.join(', '), didYouMean(k, ARTIFACT_KEYS)), fix: tr('Исправьте ключ.') });
+    if (a.paths !== undefined && !Array.isArray(a.paths)) ji(['paths'], { id: 'artifacts-paths-type', severity: 'error', title: tr('{0}: artifacts:paths должен быть списком', q(name)), how: rejected(`jobs:${name}:artifacts:paths config should be an array of strings`), why: tr('Даже один путь пишется списком.'), fix: `paths:\n  - ${a.paths}` });
     for (const [i, p] of arr(a.paths).entries()) {
       const s = String(p);
-      if (s.startsWith('/') || s.startsWith('../') || s === '..' || s.startsWith('~')) ji(['paths', i], { id: 'artifacts-outside', severity: 'warning', title: `${q(name)}: путь артефакта ${q(s)} вне папки проекта`, when: `В конце задания ${q(name)}`, how: `Файлы не сохранятся: «WARNING: ${s}: not supported: outside build directory» и «ERROR: No files to upload».`, why: 'Артефакты можно брать только внутри $CI_PROJECT_DIR.', fix: 'Копируйте файлы в папку проекта и указывайте относительный путь.' });
+      if (s.startsWith('/') || s.startsWith('../') || s === '..' || s.startsWith('~')) ji(['paths', i], { id: 'artifacts-outside', severity: 'warning', title: tr('{0}: путь артефакта {1} вне папки проекта', q(name), q(s)), when: tr('В конце задания {0}', q(name)), how: tr('Файлы не сохранятся: «WARNING: {0}: not supported: outside build directory» и «ERROR: No files to upload».', s), why: tr('Артефакты можно брать только внутри $CI_PROJECT_DIR.'), fix: tr('Копируйте файлы в папку проекта и указывайте относительный путь.') });
     }
-    if (!arr(a.paths).length && !a.untracked && !isObj(a.reports) && a.paths === undefined) ji([], { id: 'artifacts-empty', severity: 'warning', title: `${q(name)}: в artifacts не указано, что сохранять`, when: `В конце задания ${q(name)}`, how: 'Раннер ничего не загрузит: «WARNING: No files to upload».', why: 'Нет ни paths, ни reports, ни untracked.', fix: 'artifacts:\n  paths:\n    - dist/' });
-    if (a.expire_in !== undefined && String(a.expire_in) !== 'never' && durationSeconds(a.expire_in) == null) ji(['expire_in'], { id: 'artifacts-expire', severity: 'error', title: `${q(name)}: не разобрать expire_in: ${a.expire_in}`, how: rejected(`jobs:${name}:artifacts expire in should be a duration`), why: 'Пишется как «1 week», «30 days» или «never».', fix: 'expire_in: 1 week' });
-    if (a.when !== undefined && !SIMPLE_WHEN.includes(a.when)) ji(['when'], { id: 'artifacts-when', severity: 'error', title: `${q(name)}: artifacts:when ${a.when}`, how: rejected(`jobs:${name}:artifacts when should be on_success, on_failure or always`), why: `Неизвестное значение.${didYouMean(a.when, SIMPLE_WHEN)}`, fix: 'when: always' });
+    if (!arr(a.paths).length && !a.untracked && !isObj(a.reports) && a.paths === undefined) ji([], { id: 'artifacts-empty', severity: 'warning', title: tr('{0}: в artifacts не указано, что сохранять', q(name)), when: tr('В конце задания {0}', q(name)), how: tr('Раннер ничего не загрузит: «WARNING: No files to upload».'), why: tr('Нет ни paths, ни reports, ни untracked.'), fix: 'artifacts:\n  paths:\n    - dist/' });
+    if (a.expire_in !== undefined && String(a.expire_in) !== 'never' && durationSeconds(a.expire_in) == null) ji(['expire_in'], { id: 'artifacts-expire', severity: 'error', title: tr('{0}: не разобрать expire_in: {1}', q(name), a.expire_in), how: rejected(`jobs:${name}:artifacts expire in should be a duration`), why: tr('Пишется как «1 week», «30 days» или «never».'), fix: 'expire_in: 1 week' });
+    if (a.when !== undefined && !SIMPLE_WHEN.includes(a.when)) ji(['when'], { id: 'artifacts-when', severity: 'error', title: `${q(name)}: artifacts:when ${a.when}`, how: rejected(`jobs:${name}:artifacts when should be on_success, on_failure or always`), why: tr('Неизвестное значение.{0}', didYouMean(a.when, SIMPLE_WHEN)), fix: 'when: always' });
     if (isObj(a.reports)) {
       for (const [k, v] of Object.entries(a.reports)) {
-        if (REMOVED_REPORTS[k]) ji(['reports', k], { id: 'report-removed', severity: 'error', title: `${q(name)}: отчёт ${q(k)} больше не поддерживается`, how: rejected(`jobs:${name}:artifacts:reports config contains unknown keys: ${k}`), why: 'Тип отчёта удалён из GitLab.', fix: `Используйте ${REMOVED_REPORTS[k]}.` });
-        else if (!REPORTS.includes(k)) ji(['reports', k], { id: 'report-unknown', severity: 'error', title: `${q(name)}: неизвестный тип отчёта ${q(k)}`, how: rejected(`jobs:${name}:artifacts:reports config contains unknown keys: ${k}`), why: `Неизвестный тип.${didYouMean(k, REPORTS)}`, fix: 'Проверьте название отчёта.' });
-        if (k === 'coverage_report' && (!isObj(v) || !v.coverage_format || !v.path)) ji(['reports', k], { id: 'coverage-report-format', severity: 'error', title: `${q(name)}: coverage_report без coverage_format/path`, how: rejected(`jobs:${name}:artifacts:reports:coverage_report config must have coverage_format and path`), why: 'Нужны оба ключа.', fix: 'coverage_report:\n  coverage_format: cobertura\n  path: coverage/cobertura-coverage.xml' });
-        if (k === 'coverage_report' && isObj(v) && v.coverage_format && !['cobertura', 'jacoco'].includes(v.coverage_format)) ji(['reports', k, 'coverage_format'], { id: 'coverage-format-value', severity: 'error', title: `${q(name)}: coverage_format ${v.coverage_format}`, how: rejected('coverage_format must be cobertura or jacoco'), why: 'Поддерживаются cobertura и jacoco.', fix: 'coverage_format: cobertura' });
+        if (REMOVED_REPORTS[k]) ji(['reports', k], { id: 'report-removed', severity: 'error', title: tr('{0}: отчёт {1} больше не поддерживается', q(name), q(k)), how: rejected(`jobs:${name}:artifacts:reports config contains unknown keys: ${k}`), why: tr('Тип отчёта удалён из GitLab.'), fix: tr('Используйте {0}.', REMOVED_REPORTS[k]) });
+        else if (!REPORTS.includes(k)) ji(['reports', k], { id: 'report-unknown', severity: 'error', title: tr('{0}: неизвестный тип отчёта {1}', q(name), q(k)), how: rejected(`jobs:${name}:artifacts:reports config contains unknown keys: ${k}`), why: tr('Неизвестный тип.{0}', didYouMean(k, REPORTS)), fix: tr('Проверьте название отчёта.') });
+        if (k === 'coverage_report' && (!isObj(v) || !v.coverage_format || !v.path)) ji(['reports', k], { id: 'coverage-report-format', severity: 'error', title: tr('{0}: coverage_report без coverage_format/path', q(name)), how: rejected(`jobs:${name}:artifacts:reports:coverage_report config must have coverage_format and path`), why: tr('Нужны оба ключа.'), fix: 'coverage_report:\n  coverage_format: cobertura\n  path: coverage/cobertura-coverage.xml' });
+        if (k === 'coverage_report' && isObj(v) && v.coverage_format && !['cobertura', 'jacoco'].includes(v.coverage_format)) ji(['reports', k, 'coverage_format'], { id: 'coverage-format-value', severity: 'error', title: `${q(name)}: coverage_format ${v.coverage_format}`, how: rejected('coverage_format must be cobertura or jacoco'), why: tr('Поддерживаются cobertura и jacoco.'), fix: 'coverage_format: cobertura' });
       }
     }
   }
 
   function checkCache(name, cache, kp) {
     const list = arr(cache);
-    if (list.length > 4) jobIssue(name, kp, { id: 'cache-limit', severity: 'error', title: `${q(name)}: больше 4 кэшей`, how: rejected(`jobs:${name}:cache config no more than 4 caches can be created`), why: 'Ограничение GitLab.', fix: 'Объедините кэши.' });
+    if (list.length > 4) jobIssue(name, kp, { id: 'cache-limit', severity: 'error', title: tr('{0}: больше 4 кэшей', q(name)), how: rejected(`jobs:${name}:cache config no more than 4 caches can be created`), why: tr('Ограничение GitLab.'), fix: tr('Объедините кэши.') });
     list.forEach((c, idx) => {
       const ckp = Array.isArray(cache) ? [...kp, idx] : kp;
       const ji = (sub, o) => jobIssue(name, [...ckp, ...sub], o);
-      if (!isObj(c)) return ji([], { id: 'cache-type', severity: 'error', title: `${q(name)}: cache должен быть картой`, how: rejected(`jobs:${name}:cache config should be a hash`), why: 'cache содержит key, paths, policy.', fix: 'cache:\n  key: $CI_COMMIT_REF_SLUG\n  paths:\n    - node_modules/' });
-      for (const k of Object.keys(c)) if (!CACHE_KEYS.includes(k)) ji([k], { id: 'cache-unknown-key', severity: 'error', title: `${q(name)}: cache — неизвестный ключ ${q(k)}`, how: rejected(`jobs:${name}:cache config contains unknown keys: ${k}`), why: `Допустимы: ${CACHE_KEYS.join(', ')}.${didYouMean(k, CACHE_KEYS)}`, fix: 'Исправьте ключ.' });
+      if (!isObj(c)) return ji([], { id: 'cache-type', severity: 'error', title: tr('{0}: cache должен быть картой', q(name)), how: rejected(`jobs:${name}:cache config should be a hash`), why: tr('cache содержит key, paths, policy.'), fix: 'cache:\n  key: $CI_COMMIT_REF_SLUG\n  paths:\n    - node_modules/' });
+      for (const k of Object.keys(c)) if (!CACHE_KEYS.includes(k)) ji([k], { id: 'cache-unknown-key', severity: 'error', title: tr('{0}: cache — неизвестный ключ {1}', q(name), q(k)), how: rejected(`jobs:${name}:cache config contains unknown keys: ${k}`), why: tr('Допустимы: {0}.{1}', CACHE_KEYS.join(', '), didYouMean(k, CACHE_KEYS)), fix: tr('Исправьте ключ.') });
       if (typeof c.key === 'string' || typeof c.key === 'number') {
         const k = String(c.key);
-        if (/\/|%2F/i.test(k) || k === '.' || k === '..' || /%2E/i.test(k)) ji(['key'], { id: 'cache-key-slash', severity: 'error', title: `${q(name)}: в cache:key есть «/» или это «.»`, how: rejected(`jobs:${name}:cache:key config cannot contain the "/" character or be "."`), why: 'Ключ кэша становится частью имени файла.', fix: 'Используйте $CI_COMMIT_REF_SLUG вместо $CI_COMMIT_REF_NAME (в нём нет «/»).' });
-        if (/\$CI_COMMIT_REF_NAME|\$CI_COMMIT_BRANCH/.test(k)) ji(['key'], { id: 'cache-key-refname', severity: 'warning', title: `${q(name)}: cache:key с именем ветки`, when: `В ветках со «/» в имени (feature/x)`, how: 'Кэш не сохранится: имя ветки со слэшем недопустимо в ключе.', why: '$CI_COMMIT_REF_NAME может содержать «/».', fix: 'Используйте $CI_COMMIT_REF_SLUG.' });
+        if (/\/|%2F/i.test(k) || k === '.' || k === '..' || /%2E/i.test(k)) ji(['key'], { id: 'cache-key-slash', severity: 'error', title: tr('{0}: в cache:key есть «/» или это «.»', q(name)), how: rejected(`jobs:${name}:cache:key config cannot contain the "/" character or be "."`), why: tr('Ключ кэша становится частью имени файла.'), fix: tr('Используйте $CI_COMMIT_REF_SLUG вместо $CI_COMMIT_REF_NAME (в нём нет «/»).') });
+        if (/\$CI_COMMIT_REF_NAME|\$CI_COMMIT_BRANCH/.test(k)) ji(['key'], { id: 'cache-key-refname', severity: 'warning', title: tr('{0}: cache:key с именем ветки', q(name)), when: tr('В ветках со «/» в имени (feature/x)'), how: tr('Кэш не сохранится: имя ветки со слэшем недопустимо в ключе.'), why: tr('$CI_COMMIT_REF_NAME может содержать «/».'), fix: tr('Используйте $CI_COMMIT_REF_SLUG.') });
       } else if (isObj(c.key)) {
         const files = arr(c.key.files);
-        if (files.length > 2) ji(['key', 'files'], { id: 'cache-key-files', severity: 'error', title: `${q(name)}: cache:key:files больше двух`, how: rejected(`jobs:${name}:cache:key:files config has too many entries (maximum 2)`), why: 'Ключ можно строить максимум по двум файлам.', fix: 'Оставьте 1–2 файла (обычно lock-файл).' });
-        for (const f of files) if (!/\$|\*/.test(String(f)) && !repo.hasFile(String(f))) ji(['key', 'files'], { id: 'cache-key-file-missing', severity: 'warning', title: `${q(name)}: cache:key:files — нет файла ${f}`, when: `При выполнении задания ${q(name)}`, how: 'Кэш будет общим с ключом «default» для всех веток и не будет сбрасываться при изменении зависимостей.', why: `Файла ${q(f)} нет в репозитории.`, fix: 'Укажите существующий lock-файл.' });
-        for (const k of Object.keys(c.key)) if (!['files', 'prefix', 'files_commits'].includes(k)) ji(['key', k], { id: 'cache-key-key', severity: 'error', title: `${q(name)}: cache:key — неизвестный ключ ${q(k)}`, how: rejected(`jobs:${name}:cache:key config contains unknown keys: ${k}`), why: 'Допустимы files и prefix.', fix: 'Уберите ключ.' });
+        if (files.length > 2) ji(['key', 'files'], { id: 'cache-key-files', severity: 'error', title: tr('{0}: cache:key:files больше двух', q(name)), how: rejected(`jobs:${name}:cache:key:files config has too many entries (maximum 2)`), why: tr('Ключ можно строить максимум по двум файлам.'), fix: tr('Оставьте 1–2 файла (обычно lock-файл).') });
+        for (const f of files) if (!/\$|\*/.test(String(f)) && !repo.hasFile(String(f))) ji(['key', 'files'], { id: 'cache-key-file-missing', severity: 'warning', title: tr('{0}: cache:key:files — нет файла {1}', q(name), f), when: tr('При выполнении задания {0}', q(name)), how: tr('Кэш будет общим с ключом «default» для всех веток и не будет сбрасываться при изменении зависимостей.'), why: tr('Файла {0} нет в репозитории.', q(f)), fix: tr('Укажите существующий lock-файл.') });
+        for (const k of Object.keys(c.key)) if (!['files', 'prefix', 'files_commits'].includes(k)) ji(['key', k], { id: 'cache-key-key', severity: 'error', title: tr('{0}: cache:key — неизвестный ключ {1}', q(name), q(k)), how: rejected(`jobs:${name}:cache:key config contains unknown keys: ${k}`), why: tr('Допустимы files и prefix.'), fix: tr('Уберите ключ.') });
       }
-      if (c.policy !== undefined && !['pull', 'push', 'pull-push'].includes(c.policy) && !/\$/.test(String(c.policy))) ji(['policy'], { id: 'cache-policy', severity: 'error', title: `${q(name)}: cache:policy ${c.policy}`, how: rejected(`jobs:${name}:cache policy should be pull-push, push, or pull`), why: `Неизвестное значение.${didYouMean(c.policy, ['pull', 'push', 'pull-push'])}`, fix: 'policy: pull' });
-      if (c.when !== undefined && !SIMPLE_WHEN.includes(c.when)) ji(['when'], { id: 'cache-when', severity: 'error', title: `${q(name)}: cache:when ${c.when}`, how: rejected(`jobs:${name}:cache when should be on_success, on_failure or always`), why: 'Неизвестное значение.', fix: 'when: on_success' });
-      if (c.paths !== undefined && !Array.isArray(c.paths)) ji(['paths'], { id: 'cache-paths-type', severity: 'error', title: `${q(name)}: cache:paths должен быть списком`, how: rejected(`jobs:${name}:cache:paths config should be an array of strings`), why: 'Даже один путь пишется списком.', fix: `paths:\n  - ${c.paths}` });
-      if (!arr(c.paths).length && !c.untracked) ji([], { id: 'cache-empty', severity: 'warning', title: `${q(name)}: в cache не указано, что кэшировать`, when: `В конце задания ${q(name)}`, how: 'Кэш не будет создан: раннер пропустит шаг сохранения кэша.', why: 'Нет ни paths, ни untracked.', fix: 'paths:\n  - node_modules/' });
-      for (const [i, p] of arr(c.paths).entries()) if (/^(\/|\.\.\/|~)/.test(String(p))) ji(['paths', i], { id: 'cache-outside', severity: 'warning', title: `${q(name)}: путь кэша ${q(p)} вне папки проекта`, when: `В конце задания ${q(name)}`, how: `«WARNING: ${p}: not supported: outside build directory» — путь не попадёт в кэш.`, why: 'Кэшировать можно только внутри папки проекта.', fix: 'Перенесите кэш внутрь проекта (например, npm_config_cache: .npm).' });
+      if (c.policy !== undefined && !['pull', 'push', 'pull-push'].includes(c.policy) && !/\$/.test(String(c.policy))) ji(['policy'], { id: 'cache-policy', severity: 'error', title: `${q(name)}: cache:policy ${c.policy}`, how: rejected(`jobs:${name}:cache policy should be pull-push, push, or pull`), why: tr('Неизвестное значение.{0}', didYouMean(c.policy, ['pull', 'push', 'pull-push'])), fix: 'policy: pull' });
+      if (c.when !== undefined && !SIMPLE_WHEN.includes(c.when)) ji(['when'], { id: 'cache-when', severity: 'error', title: `${q(name)}: cache:when ${c.when}`, how: rejected(`jobs:${name}:cache when should be on_success, on_failure or always`), why: tr('Неизвестное значение.'), fix: 'when: on_success' });
+      if (c.paths !== undefined && !Array.isArray(c.paths)) ji(['paths'], { id: 'cache-paths-type', severity: 'error', title: tr('{0}: cache:paths должен быть списком', q(name)), how: rejected(`jobs:${name}:cache:paths config should be an array of strings`), why: tr('Даже один путь пишется списком.'), fix: `paths:\n  - ${c.paths}` });
+      if (!arr(c.paths).length && !c.untracked) ji([], { id: 'cache-empty', severity: 'warning', title: tr('{0}: в cache не указано, что кэшировать', q(name)), when: tr('В конце задания {0}', q(name)), how: tr('Кэш не будет создан: раннер пропустит шаг сохранения кэша.'), why: tr('Нет ни paths, ни untracked.'), fix: 'paths:\n  - node_modules/' });
+      for (const [i, p] of arr(c.paths).entries()) if (/^(\/|\.\.\/|~)/.test(String(p))) ji(['paths', i], { id: 'cache-outside', severity: 'warning', title: tr('{0}: путь кэша {1} вне папки проекта', q(name), q(p)), when: tr('В конце задания {0}', q(name)), how: tr('«WARNING: {0}: not supported: outside build directory» — путь не попадёт в кэш.', p), why: tr('Кэшировать можно только внутри папки проекта.'), fix: tr('Перенесите кэш внутрь проекта (например, npm_config_cache: .npm).') });
     });
   }
 
   function checkEnvironment(name, env) {
     const ji = (kp, o) => jobIssue(name, ['environment', ...kp], o);
     const e = typeof env === 'string' ? { name: env } : env;
-    if (!isObj(e)) return ji([], { id: 'env-type', severity: 'error', title: `${q(name)}: environment должен быть строкой или картой`, how: rejected(`jobs:${name}:environment config should be a hash or a string`), why: 'Задайте имя окружения.', fix: 'environment: production' });
-    for (const k of Object.keys(e)) if (!ENV_KEYS.includes(k)) ji([k], { id: 'env-unknown-key', severity: 'error', title: `${q(name)}: environment — неизвестный ключ ${q(k)}`, how: rejected(`jobs:${name}:environment config contains unknown keys: ${k}`), why: `Допустимы: ${ENV_KEYS.join(', ')}.${didYouMean(k, ENV_KEYS)}`, fix: 'Исправьте ключ.' });
-    if (!e.name) ji([], { id: 'env-no-name', severity: 'error', title: `${q(name)}: у окружения нет name`, how: rejected(`jobs:${name}:environment name can't be blank`), why: 'Окружение определяется именем.', fix: 'environment:\n  name: production' });
-    else if (!/^[A-Za-z0-9 _\-/${}.]+$/.test(String(e.name))) ji(['name'], { id: 'env-name', severity: 'error', title: `${q(name)}: недопустимое имя окружения ${q(e.name)}`, how: rejected(`jobs:${name}:environment name can contain only letters, digits, '-', '_', '/', '$', '{', '}', '.', and spaces`), why: 'В имени есть запрещённые символы.', fix: 'Например: review/$CI_COMMIT_REF_SLUG' });
-    if (e.url !== undefined && !/^https?:\/\//i.test(String(e.url)) && !/^\$/.test(String(e.url))) ji(['url'], { id: 'env-url', severity: 'error', title: `${q(name)}: environment:url ${e.url} — не адрес`, how: rejected(`jobs:${name}:environment url must be a valid url`), why: 'URL должен начинаться с http:// или https://.', fix: `url: https://${e.url}` });
-    if (e.action !== undefined && !ENV_ACTIONS.includes(e.action)) ji(['action'], { id: 'env-action', severity: 'error', title: `${q(name)}: environment:action ${e.action}`, how: rejected(`jobs:${name}:environment action should be start, stop, prepare, verify, or access`), why: `Неизвестное значение.${didYouMean(e.action, ENV_ACTIONS)}`, fix: 'action: stop' });
-    if (e.deployment_tier !== undefined && !TIERS.includes(e.deployment_tier)) ji(['deployment_tier'], { id: 'env-tier', severity: 'error', title: `${q(name)}: deployment_tier ${e.deployment_tier}`, how: rejected(`jobs:${name}:environment deployment_tier must be one of: ${TIERS.join(', ')}`), why: `Неизвестное значение.${didYouMean(e.deployment_tier, TIERS)}`, fix: 'deployment_tier: production' });
-    if (e.auto_stop_in !== undefined && String(e.auto_stop_in) !== 'never' && durationSeconds(e.auto_stop_in) == null) ji(['auto_stop_in'], { id: 'env-auto-stop', severity: 'error', title: `${q(name)}: не разобрать auto_stop_in: ${e.auto_stop_in}`, how: rejected(`jobs:${name}:environment auto stop in should be a duration`), why: 'Пишется как «1 week», «2 days».', fix: 'auto_stop_in: 1 week' });
+    if (!isObj(e)) return ji([], { id: 'env-type', severity: 'error', title: tr('{0}: environment должен быть строкой или картой', q(name)), how: rejected(`jobs:${name}:environment config should be a hash or a string`), why: tr('Задайте имя окружения.'), fix: 'environment: production' });
+    for (const k of Object.keys(e)) if (!ENV_KEYS.includes(k)) ji([k], { id: 'env-unknown-key', severity: 'error', title: tr('{0}: environment — неизвестный ключ {1}', q(name), q(k)), how: rejected(`jobs:${name}:environment config contains unknown keys: ${k}`), why: tr('Допустимы: {0}.{1}', ENV_KEYS.join(', '), didYouMean(k, ENV_KEYS)), fix: tr('Исправьте ключ.') });
+    if (!e.name) ji([], { id: 'env-no-name', severity: 'error', title: tr('{0}: у окружения нет name', q(name)), how: rejected(`jobs:${name}:environment name can't be blank`), why: tr('Окружение определяется именем.'), fix: 'environment:\n  name: production' });
+    else if (!/^[A-Za-z0-9 _\-/${}.]+$/.test(String(e.name))) ji(['name'], { id: 'env-name', severity: 'error', title: tr('{0}: недопустимое имя окружения {1}', q(name), q(e.name)), how: rejected(`jobs:${name}:environment name can contain only letters, digits, '-', '_', '/', '$', '{', '}', '.', and spaces`), why: tr('В имени есть запрещённые символы.'), fix: tr('Например: review/$CI_COMMIT_REF_SLUG') });
+    if (e.url !== undefined && !/^https?:\/\//i.test(String(e.url)) && !/^\$/.test(String(e.url))) ji(['url'], { id: 'env-url', severity: 'error', title: tr('{0}: environment:url {1} — не адрес', q(name), e.url), how: rejected(`jobs:${name}:environment url must be a valid url`), why: tr('URL должен начинаться с http:// или https://.'), fix: `url: https://${e.url}` });
+    if (e.action !== undefined && !ENV_ACTIONS.includes(e.action)) ji(['action'], { id: 'env-action', severity: 'error', title: `${q(name)}: environment:action ${e.action}`, how: rejected(`jobs:${name}:environment action should be start, stop, prepare, verify, or access`), why: tr('Неизвестное значение.{0}', didYouMean(e.action, ENV_ACTIONS)), fix: 'action: stop' });
+    if (e.deployment_tier !== undefined && !TIERS.includes(e.deployment_tier)) ji(['deployment_tier'], { id: 'env-tier', severity: 'error', title: `${q(name)}: deployment_tier ${e.deployment_tier}`, how: rejected(`jobs:${name}:environment deployment_tier must be one of: ${TIERS.join(', ')}`), why: tr('Неизвестное значение.{0}', didYouMean(e.deployment_tier, TIERS)), fix: 'deployment_tier: production' });
+    if (e.auto_stop_in !== undefined && String(e.auto_stop_in) !== 'never' && durationSeconds(e.auto_stop_in) == null) ji(['auto_stop_in'], { id: 'env-auto-stop', severity: 'error', title: tr('{0}: не разобрать auto_stop_in: {1}', q(name), e.auto_stop_in), how: rejected(`jobs:${name}:environment auto stop in should be a duration`), why: tr('Пишется как «1 week», «2 days».'), fix: 'auto_stop_in: 1 week' });
     if (e.on_stop !== undefined) {
       const stopJob = String(e.on_stop);
       const sc = resolved.get(stopJob);
-      if (!sc || stopJob.startsWith('.')) ji(['on_stop'], { id: 'env-on-stop-missing', severity: 'error', title: `${q(name)}: on_stop ссылается на несуществующее ${q(stopJob)}`, how: rejected(`${name} job: on_stop job ${stopJob} is not defined`), why: `Задания ${q(stopJob)} нет.${didYouMean(stopJob, visible)}`, fix: 'Добавьте задание остановки окружения или поправьте имя.' });
+      if (!sc || stopJob.startsWith('.')) ji(['on_stop'], { id: 'env-on-stop-missing', severity: 'error', title: tr('{0}: on_stop ссылается на несуществующее {1}', q(name), q(stopJob)), how: rejected(`${name} job: on_stop job ${stopJob} is not defined`), why: tr('Задания {0} нет.{1}', q(stopJob), didYouMean(stopJob, visible)), fix: tr('Добавьте задание остановки окружения или поправьте имя.') });
       else {
         const se = typeof sc.environment === 'string' ? { name: sc.environment } : sc.environment;
-        if (!isObj(se) || se.action !== 'stop') jobIssue(stopJob, ['environment'], { id: 'env-stop-action', severity: 'error', title: `${q(stopJob)}: нет environment:action: stop`, how: rejected(`${name} job: on_stop job ${stopJob} is not defined as a stop job (environment:action: stop is missing)`), why: `${q(stopJob)} указан в on_stop у ${q(name)}, значит должен останавливать окружение.`, fix: `${stopJob}:\n  environment:\n    name: ${e.name}\n    action: stop` });
-        else if (se.name !== e.name) jobIssue(stopJob, ['environment', 'name'], { id: 'env-stop-name', severity: 'error', title: `${q(stopJob)}: другое имя окружения`, how: rejected(`${name} job: on_stop job ${stopJob} has different environment name`), why: `Окружение ${q(name)} — ${q(e.name)}, а у ${q(stopJob)} — ${q(se.name)}.`, fix: `Используйте одно имя: ${e.name}.` });
-        if (sc.when !== 'manual' && !arr(sc.rules).some((r) => r?.when === 'manual')) jobIssue(stopJob, [], { id: 'env-stop-auto', severity: 'warning', title: `${q(stopJob)} запустится автоматически`, when: 'В каждом пайплайне с этим заданием', how: 'Окружение будет остановлено сразу после развёртывания.', why: 'Задание остановки без when: manual выполняется как обычное.', fix: 'when: manual' });
+        if (!isObj(se) || se.action !== 'stop') jobIssue(stopJob, ['environment'], { id: 'env-stop-action', severity: 'error', title: tr('{0}: нет environment:action: stop', q(stopJob)), how: rejected(`${name} job: on_stop job ${stopJob} is not defined as a stop job (environment:action: stop is missing)`), why: tr('{0} указан в on_stop у {1}, значит должен останавливать окружение.', q(stopJob), q(name)), fix: `${stopJob}:\n  environment:\n    name: ${e.name}\n    action: stop` });
+        else if (se.name !== e.name) jobIssue(stopJob, ['environment', 'name'], { id: 'env-stop-name', severity: 'error', title: tr('{0}: другое имя окружения', q(stopJob)), how: rejected(`${name} job: on_stop job ${stopJob} has different environment name`), why: tr('Окружение {0} — {1}, а у {2} — {3}.', q(name), q(e.name), q(stopJob), q(se.name)), fix: tr('Используйте одно имя: {0}.', e.name) });
+        if (sc.when !== 'manual' && !arr(sc.rules).some((r) => r?.when === 'manual')) jobIssue(stopJob, [], { id: 'env-stop-auto', severity: 'warning', title: tr('{0} запустится автоматически', q(stopJob)), when: tr('В каждом пайплайне с этим заданием'), how: tr('Окружение будет остановлено сразу после развёртывания.'), why: tr('Задание остановки без when: manual выполняется как обычное.'), fix: 'when: manual' });
       }
     }
   }
@@ -1056,15 +1065,15 @@ function checkGitlab(result, ctx) {
     const base = { CI: 'true', GITLAB_CI: 'true', CI_DEFAULT_BRANCH: def, CI_COMMIT_SHA: '0123456789abcdef0123456789abcdef01234567', CI_COMMIT_SHORT_SHA: '01234567', CI_PIPELINE_ID: '1001', CI_PIPELINE_IID: '1', CI_PROJECT_NAME: 'project', CI_PROJECT_PATH: 'group/project', CI_SERVER_HOST: 'gitlab.example.com' };
     const branch = (b, source, extra = {}) => ({ ...base, CI_PIPELINE_SOURCE: source, CI_COMMIT_BRANCH: b, CI_COMMIT_REF_NAME: b, CI_COMMIT_REF_SLUG: slug(b), CI_COMMIT_REF_PROTECTED: b === def ? 'true' : 'false', CI_COMMIT_BEFORE_SHA: source === 'push' ? 'fedcba9876543210fedcba9876543210fedcba98' : '0000000000000000000000000000000000000000', ...extra });
     const list = [
-      { id: 'push-default', title: `Push в ${def}`, ref: { type: 'branch', name: def }, vars: branch(def, 'push') },
-      { id: 'push-branch', title: `Push в ${feature}`, ref: { type: 'branch', name: feature }, vars: branch(feature, 'push') },
+      { id: 'push-default', title: tr('Push в {0}', def), ref: { type: 'branch', name: def }, vars: branch(def, 'push') },
+      { id: 'push-branch', title: tr('Push в {0}', feature), ref: { type: 'branch', name: feature }, vars: branch(feature, 'push') },
       { id: 'mr', title: `Merge request ${feature} → ${def}`, ref: { type: 'mr', name: feature }, vars: { ...base, CI_PIPELINE_SOURCE: 'merge_request_event', CI_COMMIT_REF_NAME: feature, CI_COMMIT_REF_SLUG: slug(feature), CI_MERGE_REQUEST_ID: '501', CI_MERGE_REQUEST_IID: '12', CI_MERGE_REQUEST_SOURCE_BRANCH_NAME: feature, CI_MERGE_REQUEST_TARGET_BRANCH_NAME: def, CI_MERGE_REQUEST_EVENT_TYPE: 'detached', CI_MERGE_REQUEST_REF_PATH: 'refs/merge-requests/12/head', CI_MERGE_REQUEST_TARGET_BRANCH_PROTECTED: 'true', CI_COMMIT_REF_PROTECTED: 'false', CI_COMMIT_BEFORE_SHA: '0000000000000000000000000000000000000000' } },
-      { id: 'tag', title: 'Тег v1.0.0', ref: { type: 'tag', name: 'v1.0.0' }, vars: { ...base, CI_PIPELINE_SOURCE: 'push', CI_COMMIT_TAG: 'v1.0.0', CI_COMMIT_REF_NAME: 'v1.0.0', CI_COMMIT_REF_SLUG: 'v1-0-0', CI_COMMIT_REF_PROTECTED: 'false', CI_COMMIT_BEFORE_SHA: '0000000000000000000000000000000000000000' } },
-      { id: 'schedule', title: `Расписание (${def})`, ref: { type: 'branch', name: def }, vars: branch(def, 'schedule') },
-      { id: 'web', title: `Запуск вручную (${def})`, ref: { type: 'branch', name: def }, vars: branch(def, 'web') },
+      { id: 'tag', title: tr('Тег v1.0.0'), ref: { type: 'tag', name: 'v1.0.0' }, vars: { ...base, CI_PIPELINE_SOURCE: 'push', CI_COMMIT_TAG: 'v1.0.0', CI_COMMIT_REF_NAME: 'v1.0.0', CI_COMMIT_REF_SLUG: 'v1-0-0', CI_COMMIT_REF_PROTECTED: 'false', CI_COMMIT_BEFORE_SHA: '0000000000000000000000000000000000000000' } },
+      { id: 'schedule', title: tr('Расписание ({0})', def), ref: { type: 'branch', name: def }, vars: branch(def, 'schedule') },
+      { id: 'web', title: tr('Запуск вручную ({0})', def), ref: { type: 'branch', name: def }, vars: branch(def, 'web') },
     ];
     // Скрытый сценарий: push в ветку, по которой открыт MR — для поиска двойных пайплайнов
-    const dup = { id: 'push-branch-mr', title: `Push в ${feature} с открытым MR`, ref: { type: 'branch', name: feature }, vars: branch(feature, 'push', { CI_OPEN_MERGE_REQUESTS: 'group/project!12' }) };
+    const dup = { id: 'push-branch-mr', title: tr('Push в {0} с открытым MR', feature), ref: { type: 'branch', name: feature }, vars: branch(feature, 'push', { CI_OPEN_MERGE_REQUESTS: 'group/project!12' }) };
     const globalVars = Object.fromEntries(Object.entries(isObj(globals.variables) ? globals.variables : {}).map(([k, v]) => [k, isObj(v) ? String(v.value ?? '') : v == null ? '' : String(v)]));
 
     const out = [];
@@ -1082,10 +1091,10 @@ function checkGitlab(result, ctx) {
       add({
         id: 'duplicate-pipelines',
         severity: 'warning',
-        title: 'Двойные пайплайны: для ветки и для merge request',
-        when: `При каждом push в ветку с открытым merge request`,
-        how: `Запустятся два пайплайна на один коммит: «branch» (${pb.jobs.length} задан.) и «merge request» (${mr.jobs.length} задан.) — раннеры заняты вдвое, статус MR может зависеть от любого из них.`,
-        why: 'Правила допускают и push-пайплайны для любой ветки, и пайплайны merge request, а условие «если MR уже открыт — не создавать пайплайн ветки» не задано.',
+        title: tr('Двойные пайплайны: для ветки и для merge request'),
+        when: tr('При каждом push в ветку с открытым merge request'),
+        how: tr('Запустятся два пайплайна на один коммит: «branch» ({0} задан.) и «merge request» ({1} задан.) — раннеры заняты вдвое, статус MR может зависеть от любого из них.', pb.jobs.length, mr.jobs.length),
+        why: tr('Правила допускают и push-пайплайны для любой ветки, и пайплайны merge request, а условие «если MR уже открыт — не создавать пайплайн ветки» не задано.'),
         fix: 'workflow:\n  rules:\n    - if: $CI_PIPELINE_SOURCE == "merge_request_event"\n    - if: $CI_COMMIT_BRANCH && $CI_OPEN_MERGE_REQUESTS\n      when: never\n    - if: $CI_COMMIT_BRANCH',
         file: workflow ? globalLoc(['workflow']).file : main,
         line: workflow ? globalLoc(['workflow']).line : 1,
@@ -1097,11 +1106,11 @@ function checkGitlab(result, ctx) {
       add({
         id: 'mr-nothing-runs',
         severity: 'warning',
-        title: 'При открытом merge request не запускается ничего',
-        when: 'При push в ветку, по которой открыт merge request',
-        how: `Пайплайн ветки не создаётся (${pb.reason}), а пайплайн merge request пустой (${mr.reason}) — изменения уходят без проверок.`,
-        why: 'Правила запрещают пайплайн ветки при открытом MR, но задания не настроены для пайплайнов MR.',
-        fix: 'Добавьте заданиям правило - if: $CI_PIPELINE_SOURCE == "merge_request_event" или разрешите MR в workflow:rules.',
+        title: tr('При открытом merge request не запускается ничего'),
+        when: tr('При push в ветку, по которой открыт merge request'),
+        how: tr('Пайплайн ветки не создаётся ({0}), а пайплайн merge request пустой ({1}) — изменения уходят без проверок.', pb.reason, mr.reason),
+        why: tr('Правила запрещают пайплайн ветки при открытом MR, но задания не настроены для пайплайнов MR.'),
+        fix: tr('Добавьте заданиям правило - if: $CI_PIPELINE_SOURCE == "merge_request_event" или разрешите MR в workflow:rules.'),
         file: main,
         line: workflow ? globalLoc(['workflow']).line : 1,
       });
@@ -1109,7 +1118,7 @@ function checkGitlab(result, ctx) {
     // Ни одного пайплайна для основных событий
     const mainRuns = out.filter((r) => ['push-default', 'push-branch', 'mr', 'tag'].includes(r.id));
     if (visible.length && mainRuns.every((r) => !r.created) && !mainRuns.some((r) => r.uncertain)) {
-      add({ id: 'pipeline-never', severity: 'warning', title: 'Пайплайн не создаётся ни при push, ни для MR, ни для тега', when: 'При push, merge request и теге', how: 'Ничего не будет запускаться — GitLab молча не создаст пайплайн.', why: mainRuns.map((r) => `${r.title}: ${r.reason}`).join('; '), fix: 'Проверьте workflow:rules и rules заданий.', file: main, line: workflow ? globalLoc(['workflow']).line : 1 });
+      add({ id: 'pipeline-never', severity: 'warning', title: tr('Пайплайн не создаётся ни при push, ни для MR, ни для тега'), when: tr('При push, merge request и теге'), how: tr('Ничего не будет запускаться — GitLab молча не создаст пайплайн.'), why: mainRuns.map((r) => `${r.title}: ${r.reason}`).join('; '), fix: tr('Проверьте workflow:rules и rules заданий.'), file: main, line: workflow ? globalLoc(['workflow']).line : 1 });
     }
     // Задания, которые не попадают ни в один сценарий
     for (const name of visible) {
@@ -1118,7 +1127,7 @@ function checkGitlab(result, ctx) {
       const cfg = resolved.get(name);
       if (cfg.when === 'never' || (Array.isArray(cfg.rules) && cfg.rules.filter(isObj).every((r) => r.when === 'never'))) continue;
       if (Array.isArray(cfg.rules) && cfg.rules.some((r) => isObj(r) && typeof r.if === 'string' && parseExpr(r.if).error)) continue;
-      jobIssue(name, cfg.rules ? ['rules'] : cfg.only ? ['only'] : [], { id: 'job-never-runs', severity: 'info', title: `${q(name)} не попадает ни в один типичный пайплайн`, when: out.map((r) => r.title).join(', '), how: 'Задание не запустится при push, MR, теге, по расписанию и при ручном запуске.', why: out.map((r) => r.excluded.find((x) => x.name === name)?.why).filter(Boolean)[0] ?? 'Условия rules/only не выполняются.', fix: 'Если задание запускается через API/триггер или по особой переменной — всё в порядке; иначе проверьте условия.' });
+      jobIssue(name, cfg.rules ? ['rules'] : cfg.only ? ['only'] : [], { id: 'job-never-runs', severity: 'info', title: tr('{0} не попадает ни в один типичный пайплайн', q(name)), when: out.map((r) => r.title).join(', '), how: tr('Задание не запустится при push, MR, теге, по расписанию и при ручном запуске.'), why: out.map((r) => r.excluded.find((x) => x.name === name)?.why).filter(Boolean)[0] ?? tr('Условия rules/only не выполняются.'), fix: tr('Если задание запускается через API/триггер или по особой переменной — всё в порядке; иначе проверьте условия.') });
     }
     return out;
   }
@@ -1131,7 +1140,7 @@ function checkGitlab(result, ctx) {
       const m = evalRules(workflow.rules, vars, sc);
       if (!m.rule || m.rule.when === 'never') {
         res.workflowBlocked = true;
-        res.reason = !m.rule ? 'ни одно правило workflow:rules не подошло' : `workflow:rules, правило ${m.index + 1}: when: never`;
+        res.reason = !m.rule ? tr('ни одно правило workflow:rules не подошло') : tr('workflow:rules, правило {0}: when: never', m.index + 1);
         res.uncertain = m.uncertain.length ? m.uncertain.join(', ') : null;
         return res;
       }
@@ -1151,16 +1160,16 @@ function checkGitlab(result, ctx) {
         uncertain = m.uncertain;
         if (!m.rule) {
           included = false;
-          why = 'ни одно правило rules не подошло';
+          why = tr('ни одно правило rules не подошло');
         } else if (m.rule.when === 'never') {
           included = false;
-          why = `правило ${m.index + 1}: when: never`;
+          why = tr('правило {0}: when: never', m.index + 1);
         } else {
           included = true;
           when = m.rule.when ?? cfg.when ?? 'on_success';
           // when: manual в rules — по умолчанию allow_failure: false (в отличие от when: manual у задания)
           allowFailure = m.rule.allow_failure ?? (m.rule.when === 'manual' ? false : allowFailure);
-          why = `правило ${m.index + 1}`;
+          why = tr('правило {0}', m.index + 1);
         }
       } else if (cfg.when === 'never') {
         included = false;
@@ -1173,7 +1182,7 @@ function checkGitlab(result, ctx) {
         uncertain = [...o.uncertain, ...e.uncertain];
         included = o.match && !e.match;
         if (cfg.when === 'manual') allowFailure = cfg.allow_failure ?? true;
-        why = !o.match ? (cfg.only ? 'не подходит под only' : 'без rules задание по умолчанию только для веток и тегов (only: branches, tags)') : e.match ? 'исключено except' : cfg.only ? 'подходит под only' : 'без условий';
+        why = !o.match ? (cfg.only ? tr('не подходит под only') : tr('без rules задание по умолчанию только для веток и тегов (only: branches, tags)')) : e.match ? tr('исключено except') : cfg.only ? tr('подходит под only') : tr('без условий');
         res.defaultOnly = res.defaultOnly ?? [];
         if (!cfg.only && !cfg.except && !o.match) res.defaultOnly.push(name);
       }
@@ -1182,26 +1191,26 @@ function checkGitlab(result, ctx) {
     }
     const realJobs = res.jobs.filter((j) => !['.pre', '.post'].includes(j.stage));
     res.created = realJobs.length > 0;
-    if (!res.jobs.length) res.reason = 'ни одно задание не подошло под условия';
-    else if (!realJobs.length) res.reason = 'есть только задания этапов .pre/.post';
-    else res.reason = res.workflowRule ? `workflow:rules, правило ${res.workflowRule}` : 'есть подходящие задания';
+    if (!res.jobs.length) res.reason = tr('ни одно задание не подошло под условия');
+    else if (!realJobs.length) res.reason = tr('есть только задания этапов .pre/.post');
+    else res.reason = res.workflowRule ? tr('workflow:rules, правило {0}', res.workflowRule) : tr('есть подходящие задания');
     res.uncertain = [...new Set(res.jobs.concat(res.excluded).map((j) => j.uncertain).filter(Boolean))].join(', ') || null;
     if (!res.created) {
       if (sc.id === 'web' || sc.id === 'push-default') {
         add({
           id: 'scenario-empty',
           severity: sc.id === 'web' ? 'warning' : 'info',
-          title: `${sc.title}: пайплайн не создастся`,
+          title: tr('{0}: пайплайн не создастся', sc.title),
           when: sc.title,
-          how: sc.id === 'web' ? 'При нажатии «Run pipeline» GitLab ответит: «Pipeline will not run for the selected trigger. The rules configuration prevented any jobs from being added to the pipeline.»' : 'Пайплайн просто не появится.',
+          how: sc.id === 'web' ? tr('При нажатии «Run pipeline» GitLab ответит: «Pipeline will not run for the selected trigger. The rules configuration prevented any jobs from being added to the pipeline.»') : tr('Пайплайн просто не появится.'),
           why: res.reason + (res.jobs.length ? '' : '.'),
-          fix: sc.id === 'web' ? 'Если ручной запуск нужен — добавьте правило: - if: $CI_PIPELINE_SOURCE == "web"' : 'Проверьте rules заданий.',
+          fix: sc.id === 'web' ? tr('Если ручной запуск нужен — добавьте правило: - if: $CI_PIPELINE_SOURCE == "web"') : tr('Проверьте rules заданий.'),
           file: main,
           line: workflow ? globalLoc(['workflow']).line : 1,
           scenario: sc.id,
         });
       }
-      if (sc.id === 'mr' && res.defaultOnly?.length) res.reason += ' (задания без rules попадают в пайплайн MR, только если его разрешает workflow:rules)';
+      if (sc.id === 'mr' && res.defaultOnly?.length) res.reason += tr(' (задания без rules попадают в пайплайн MR, только если его разрешает workflow:rules)');
       return res;
     }
     // Проблемы сценария: зависимости от заданий, которых нет в этом пайплайне
@@ -1214,27 +1223,27 @@ function checkGitlab(result, ctx) {
         const ex = res.excluded.find((x) => x.name === target);
         const msg = `'${j.name}' job needs '${target}' job, but '${target}' does not exist in the pipeline. This might be because of the only, except, or rules keywords. To need a job that sometimes does not exist in the pipeline, use needs:optional.`;
         res.problems.push(msg);
-        jobIssue(j.name, ['needs'], { id: 'scenario-needs-missing', severity: j.uncertain || ex?.uncertain ? 'warning' : 'error', title: `${sc.title}: ${q(j.name)} ждёт ${q(target)}, которого не будет`, when: sc.title, how: `GitLab не создаст пайплайн: «${msg}»`, why: `${q(j.name)} попадает в пайплайн (${j.why}), а ${q(target)} — нет (${ex?.why ?? 'исключено'}).`, fix: `Сделайте условия ${q(j.name)} и ${q(target)} одинаковыми или добавьте optional: true:\nneeds:\n  - job: ${target}\n    optional: true`, scenario: sc.id });
+        jobIssue(j.name, ['needs'], { id: 'scenario-needs-missing', severity: j.uncertain || ex?.uncertain ? 'warning' : 'error', title: tr('{0}: {1} ждёт {2}, которого не будет', sc.title, q(j.name), q(target)), when: sc.title, how: tr('GitLab не создаст пайплайн: «{0}»', msg), why: tr('{0} попадает в пайплайн ({1}), а {2} — нет ({3}).', q(j.name), j.why, q(target), ex?.why ?? tr('исключено')), fix: tr('Сделайте условия {0} и {1} одинаковыми или добавьте optional: true:\nneeds:\n  - job: {2}\n    optional: true', q(j.name), q(target), target), scenario: sc.id });
       }
       if (cfg.needs === undefined) {
         for (const dep of arr(cfg.dependencies)) {
           if (!visible.includes(dep) || inPipe.has(dep)) continue;
           res.problems.push(`${j.name} job: undefined dependency: ${dep}`);
-          jobIssue(j.name, ['dependencies'], { id: 'scenario-dependency-missing', severity: 'error', title: `${sc.title}: ${q(j.name)} берёт артефакты у ${q(dep)}, которого не будет`, when: sc.title, how: `GitLab не создаст пайплайн: «${j.name} job: undefined dependency: ${dep}»`, why: `${q(dep)} исключено в этом пайплайне (${res.excluded.find((x) => x.name === dep)?.why ?? '—'}).`, fix: 'Согласуйте условия заданий или уберите зависимость.', scenario: sc.id });
+          jobIssue(j.name, ['dependencies'], { id: 'scenario-dependency-missing', severity: 'error', title: tr('{0}: {1} берёт артефакты у {2}, которого не будет', sc.title, q(j.name), q(dep)), when: sc.title, how: tr('GitLab не создаст пайплайн: «{0} job: undefined dependency: {1}»', j.name, dep), why: tr('{0} исключено в этом пайплайне ({1}).', q(dep), res.excluded.find((x) => x.name === dep)?.why ?? '—'), fix: tr('Согласуйте условия заданий или уберите зависимость.'), scenario: sc.id });
         }
       }
       const env = isObj(cfg.environment) ? cfg.environment : null;
       if (env?.on_stop && visible.includes(String(env.on_stop)) && !inPipe.has(String(env.on_stop))) {
         res.problems.push(`${j.name} job: on_stop job ${env.on_stop} is not defined`);
-        jobIssue(j.name, ['environment', 'on_stop'], { id: 'scenario-on-stop-missing', severity: 'error', title: `${sc.title}: задание остановки ${q(env.on_stop)} не попадает в пайплайн`, when: sc.title, how: `GitLab не создаст пайплайн: «${j.name} job: on_stop job ${env.on_stop} is not defined»`, why: `${q(j.name)} есть в пайплайне, а ${q(env.on_stop)} — нет.`, fix: `Дайте ${q(env.on_stop)} те же rules, что у ${q(j.name)} (с when: manual).`, scenario: sc.id });
+        jobIssue(j.name, ['environment', 'on_stop'], { id: 'scenario-on-stop-missing', severity: 'error', title: tr('{0}: задание остановки {1} не попадает в пайплайн', sc.title, q(env.on_stop)), when: sc.title, how: tr('GitLab не создаст пайплайн: «{0} job: on_stop job {1} is not defined»', j.name, env.on_stop), why: tr('{0} есть в пайплайне, а {1} — нет.', q(j.name), q(env.on_stop)), fix: tr('Дайте {0} те же rules, что у {1} (с when: manual).', q(env.on_stop), q(j.name)), scenario: sc.id });
       }
       if (isObj(cfg.release) && /\$CI_COMMIT_TAG\b/.test(String(cfg.release.tag_name)) && sc.ref.type !== 'tag') {
-        jobIssue(j.name, ['release', 'tag_name'], { id: 'scenario-release-no-tag', severity: 'warning', title: `${sc.title}: ${q(j.name)} создаёт релиз без тега`, when: sc.title, how: 'Задание упадёт: $CI_COMMIT_TAG пустой — «tag_name is missing» / «release tag name can\'t be blank».', why: 'Задание с release: tag_name: $CI_COMMIT_TAG попадает в пайплайн без тега.', fix: 'rules:\n  - if: $CI_COMMIT_TAG', scenario: sc.id });
+        jobIssue(j.name, ['release', 'tag_name'], { id: 'scenario-release-no-tag', severity: 'warning', title: tr('{0}: {1} создаёт релиз без тега', sc.title, q(j.name)), when: sc.title, how: tr('Задание упадёт: $CI_COMMIT_TAG пустой — «tag_name is missing» / «release tag name can\'t be blank».'), why: tr('Задание с release: tag_name: $CI_COMMIT_TAG попадает в пайплайн без тега.'), fix: 'rules:\n  - if: $CI_COMMIT_TAG', scenario: sc.id });
       }
       // Ручное задание, которое останавливает пайплайн
       if (j.when === 'manual' && j.allowFailure === false) {
         const later = res.jobs.filter((o) => stageIndex(o.name) > stageIndex(j.name) && resolved.get(o.name).needs === undefined).map((o) => o.name);
-        jobIssue(j.name, cfg.rules ? ['rules'] : ['when'], { id: 'manual-blocking', severity: 'info', title: `${q(j.name)} — ручное и блокирующее`, when: sc.title, how: `Пайплайн остановится в статусе «blocked» и будет ждать нажатия ▶${later.length ? `; задания ${later.slice(0, 4).map(q).join(', ')} не стартуют до этого` : ''}.`, why: cfg.rules ? 'У when: manual внутри rules allow_failure по умолчанию false (в отличие от when: manual у самого задания).' : 'allow_failure: false у ручного задания.', fix: 'Если ждать не нужно — добавьте allow_failure: true рядом с when: manual.', scenario: sc.id });
+        jobIssue(j.name, cfg.rules ? ['rules'] : ['when'], { id: 'manual-blocking', severity: 'info', title: tr('{0} — ручное и блокирующее', q(j.name)), when: sc.title, how: tr('Пайплайн остановится в статусе «blocked» и будет ждать нажатия ▶{0}.', later.length ? tr('; задания {0} не стартуют до этого', later.slice(0, 4).map(q).join(', ')) : ''), why: cfg.rules ? tr('У when: manual внутри rules allow_failure по умолчанию false (в отличие от when: manual у самого задания).') : tr('allow_failure: false у ручного задания.'), fix: tr('Если ждать не нужно — добавьте allow_failure: true рядом с when: manual.'), scenario: sc.id });
       }
     }
     return res;
@@ -1272,8 +1281,8 @@ function checkGitlab(result, ctx) {
       }
       if (ok && r.changes !== undefined) {
         // Для тегов, расписаний, ручного запуска и новых веток changes всегда «истина»
-        if (sc.vars.CI_PIPELINE_SOURCE === 'push' && !sc.vars.CI_COMMIT_TAG) uncertain.push('изменённые файлы (changes)');
-        else if (sc.vars.CI_PIPELINE_SOURCE === 'merge_request_event') uncertain.push('изменённые файлы (changes)');
+        if (sc.vars.CI_PIPELINE_SOURCE === 'push' && !sc.vars.CI_COMMIT_TAG) uncertain.push(tr('изменённые файлы (changes)'));
+        else if (sc.vars.CI_PIPELINE_SOURCE === 'merge_request_event') uncertain.push(tr('изменённые файлы (changes)'));
       }
       if (ok) return { rule: r, index: i, uncertain: [...new Set(uncertain)] };
     }
@@ -1333,7 +1342,7 @@ function checkGitlab(result, ctx) {
           return evalExpr(p.ast, vars);
         });
     }
-    if (spec.changes !== undefined && match && (sc.vars.CI_PIPELINE_SOURCE === 'push' && !sc.vars.CI_COMMIT_TAG)) uncertain.push('изменённые файлы (changes)');
+    if (spec.changes !== undefined && match && (sc.vars.CI_PIPELINE_SOURCE === 'push' && !sc.vars.CI_COMMIT_TAG)) uncertain.push(tr('изменённые файлы (changes)'));
     return { match, uncertain };
   }
 }

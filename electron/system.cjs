@@ -3,10 +3,11 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { spawn } = require('node:child_process');
 const { GitError } = require('./errors.cjs');
+const { t } = require('./i18n.cjs');
 
 function requireDir(dir) {
   if (typeof dir !== 'string' || !dir || !fs.existsSync(dir) || !fs.statSync(dir).isDirectory()) {
-    throw new GitError('Папка не найдена', { code: 'NOT_FOUND', hint: String(dir ?? '') });
+    throw new GitError(t('Папка не найдена'), { code: 'NOT_FOUND', hint: String(dir ?? '') });
   }
   return path.resolve(dir);
 }
@@ -43,9 +44,9 @@ async function firstThatStarts(candidates) {
       lastError = error;
     }
   }
-  throw new GitError('Не удалось открыть терминал', {
+  throw new GitError(t('Не удалось открыть терминал'), {
     code: 'NO_TERMINAL',
-    hint: 'Не найден ни один из известных терминалов. Откройте папку вручную.',
+    hint: t('Не найден ни один из известных терминалов. Откройте папку вручную.'),
     details: lastError?.message ?? '',
   });
 }
@@ -65,7 +66,7 @@ function terminalCandidates(dir, platform = process.platform, exists = fs.exists
       { name: 'Windows Terminal', cmd: 'wt.exe', args: ['-d', dir] },
       { name: 'PowerShell', cmd: 'powershell.exe', args: ['-NoExit', '-NoLogo'], options: { cwd: dir } },
       // cwd уже нужная папка — лишние кавычки в аргументах cmd.exe разбирает плохо
-      { name: 'Командная строка', cmd: 'cmd.exe', args: ['/K'], options: { cwd: dir } },
+      { name: t('Командная строка'), cmd: 'cmd.exe', args: ['/K'], options: { cwd: dir } },
     ];
   }
   return [
@@ -88,7 +89,7 @@ async function openTerminal(dir) {
 async function openFolder(shell, dir) {
   const target = requireDir(dir);
   const error = await shell.openPath(target); // пустая строка — успех
-  if (error) throw new GitError('Не удалось открыть папку', { code: 'OPEN_FAILED', details: error });
+  if (error) throw new GitError(t('Не удалось открыть папку'), { code: 'OPEN_FAILED', details: error });
   return { path: target };
 }
 

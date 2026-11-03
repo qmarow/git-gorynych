@@ -1,4 +1,5 @@
 import { useSyncExternalStore } from 'react';
+import { t } from '../i18n/index.js';
 
 /**
  * Режимы фоновой проверки сервера и её текущее состояние.
@@ -7,10 +8,10 @@ import { useSyncExternalStore } from 'react';
  */
 
 export const SYNC_MODES = [
-  { id: 'realtime', label: 'Реалтайм', sec: 5, hint: 'каждые 5 секунд' },
-  { id: 'fast', label: 'Быстро', sec: 15, hint: 'каждые 15 секунд' },
-  { id: 'standard', label: 'Стандартно', sec: 30, hint: 'каждые 30 секунд' },
-  { id: 'rare', label: 'Редко', sec: 300, hint: 'каждые 5 минут' },
+  { id: 'realtime', label: t('Реалтайм'), sec: 5, hint: t('каждые 5 секунд') },
+  { id: 'fast', label: t('Быстро'), sec: 15, hint: t('каждые 15 секунд') },
+  { id: 'standard', label: t('Стандартно'), sec: 30, hint: t('каждые 30 секунд') },
+  { id: 'rare', label: t('Редко'), sec: 300, hint: t('каждые 5 минут') },
 ];
 export const DEFAULT_SYNC_MODE = 'realtime';
 export const BACKGROUND_SEC = 90; // окно не в фокусе или свёрнуто

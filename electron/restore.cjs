@@ -5,6 +5,7 @@ const os = require('node:os');
 const path = require('node:path');
 const { git, resolveRepoRoot, safeRelative, HASH_RE } = require('./git.cjs');
 const { GitError } = require('./errors.cjs');
+const { t } = require('./i18n.cjs');
 
 const MAX_SNAPSHOT = 20 * 1024 * 1024;
 const EMPTY_TREE = '4b825dc642cb6eb9a060e54bf8d69288fbee4904';
@@ -19,7 +20,7 @@ function readFileOrNull(full) {
 }
 
 function requireHash(hash) {
-  if (typeof hash !== 'string' || !HASH_RE.test(hash)) throw new GitError('Некорректный коммит', { code: 'BAD_ARGS' });
+  if (typeof hash !== 'string' || !HASH_RE.test(hash)) throw new GitError(t('Некорректный коммит'), { code: 'BAD_ARGS' });
 }
 
 async function firstParent(cwd, hash) {
@@ -66,11 +67,11 @@ async function restoreFile(cwd, { hash, path: file, side = 'after', sourcePath =
   } else if (before !== null) {
     fs.rmSync(full, { force: true });
   } else {
-    throw new GitError('Файла нет ни в рабочей папке, ни в той версии — менять нечего', { code: 'UP_TO_DATE' });
+    throw new GitError(t('Файла нет ни в рабочей папке, ни в той версии — менять нечего'), { code: 'UP_TO_DATE' });
   }
   const snap = snapshot(root, file, before);
   if (snap && snap.before && snap.after && snap.before.equals(snap.after)) {
-    throw new GitError('Файл уже совпадает с этой версией', { code: 'UP_TO_DATE' });
+    throw new GitError(t('Файл уже совпадает с этой версией'), { code: 'UP_TO_DATE' });
   }
   return { path: file, source: source ?? EMPTY_TREE, side, deleted: !present, snapshot: snap };
 }
@@ -85,21 +86,21 @@ async function restoreFile(cwd, { hash, path: file, side = 'after', sourcePath =
  */
 async function restoreFromStash(cwd, { hash, files }) {
   requireHash(hash);
-  if (!Array.isArray(files) || files.length === 0) throw new GitError('Не выбраны файлы', { code: 'BAD_ARGS' });
+  if (!Array.isArray(files) || files.length === 0) throw new GitError(t('Не выбраны файлы'), { code: 'BAD_ARGS' });
   const root = await resolveRepoRoot(cwd);
   const parents = (await git(root, ['rev-list', '--parents', '-n', '1', hash])).trim().split(' ').slice(1);
-  if (parents.length < 2) throw new GitError('Это не stash', { code: 'BAD_ARGS' });
+  if (parents.length < 2) throw new GitError(t('Это не stash'), { code: 'BAD_ARGS' });
   const untrackedCommit = parents[2] ?? null;
 
   // Что сделать с каждым путём: взять из источника или удалить
   const plan = new Map(); // path -> { source } | { remove: true }
   for (const f of files) {
-    if (!f || typeof f.path !== 'string') throw new GitError('Некорректный файл', { code: 'BAD_ARGS' });
+    if (!f || typeof f.path !== 'string') throw new GitError(t('Некорректный файл'), { code: 'BAD_ARGS' });
     safeRelative(root, f.path);
     if (f.status === 'D') plan.set(f.path, { remove: true });
     else {
       const source = f.untracked ? untrackedCommit : hash;
-      if (!source) throw new GitError(`Файла ${f.path} нет в stash`, { code: 'NOT_FOUND' });
+      if (!source) throw new GitError(t('Файла {0} нет в stash', f.path), { code: 'NOT_FOUND' });
       plan.set(f.path, { source });
     }
     if (f.oldPath && f.oldPath !== f.path) {
@@ -115,7 +116,7 @@ async function restoreFromStash(cwd, { hash, files }) {
   const bySource = new Map();
   for (const [file, step] of plan) {
     if (!step.source) continue;
-    if (!(await existsIn(root, step.source, file))) throw new GitError(`Файла ${file} нет в stash`, { code: 'NOT_FOUND' });
+    if (!(await existsIn(root, step.source, file))) throw new GitError(t('Файла {0} нет в stash', file), { code: 'NOT_FOUND' });
     if (!bySource.has(step.source)) bySource.set(step.source, []);
     bySource.get(step.source).push(file);
   }
@@ -135,7 +136,7 @@ async function restoreFromStash(cwd, { hash, files }) {
     if (!same) changed++;
     if (snap && !same) snapshots.push(snap);
   }
-  if (changed === 0) throw new GitError('Эти файлы в рабочей папке уже такие же, как в stash', { code: 'UP_TO_DATE' });
+  if (changed === 0) throw new GitError(t('Эти файлы в рабочей папке уже такие же, как в stash'), { code: 'UP_TO_DATE' });
   return { files: files.length, changed, snapshots, complete: snapshots.length === changed };
 }
 
@@ -179,7 +180,7 @@ async function rawDiff(root, { mode, hash, file, oldPath }) {
   }
   if (mode === 'staged') return git(root, ['diff', '--cached', ...base, ...paths]);
   if (mode === 'unstaged') return git(root, ['diff', ...base, ...paths]);
-  throw new GitError('Неизвестный режим', { code: 'BAD_ARGS' });
+  throw new GitError(t('Неизвестный режим'), { code: 'BAD_ARGS' });
 }
 
 async function applyPatch(root, patch, args) {
@@ -210,41 +211,41 @@ const OPS = {
  */
 async function applyHunks(cwd, { op, mode, hash, path: file, oldPath, hunks: wanted }) {
   const spec = OPS[op];
-  if (!spec || !spec.modes.includes(mode)) throw new GitError('Неизвестное действие с фрагментом', { code: 'BAD_ARGS' });
+  if (!spec || !spec.modes.includes(mode)) throw new GitError(t('Неизвестное действие с фрагментом'), { code: 'BAD_ARGS' });
   const root = await resolveRepoRoot(cwd);
   const full = safeRelative(root, file);
   if (oldPath) safeRelative(root, oldPath);
 
   const diff = await rawDiff(root, { mode, hash, file, oldPath });
   if (/^Binary files /m.test(diff) || /^GIT binary patch/m.test(diff)) {
-    throw new GitError('Бинарный файл — по фрагментам не меняется', {
+    throw new GitError(t('Бинарный файл — по фрагментам не меняется'), {
       code: 'BINARY',
-      hint: op === 'revert' ? 'Используйте «Вернуть файл к версии…» для всего файла.' : null,
+      hint: op === 'revert' ? t('Используйте «Вернуть файл к версии…» для всего файла.') : null,
     });
   }
   const all = splitHunks(diff);
-  if (!all.length) throw new GitError('В файле нет изменений', { code: 'UP_TO_DATE' });
+  if (!all.length) throw new GitError(t('В файле нет изменений'), { code: 'UP_TO_DATE' });
 
   let chosen = all;
   if (Array.isArray(wanted) && wanted.length) {
     const keys = new Set(wanted.map(hunkKey));
     chosen = all.filter((h) => keys.has(h.key));
     if (chosen.length !== keys.size) {
-      throw new GitError('Фрагмент не найден — diff изменился', {
+      throw new GitError(t('Фрагмент не найден — diff изменился'), {
         code: 'HUNK_STALE',
-        hint: 'Обновите просмотр. Если включено «игнорировать пробелы», выключите его: фрагменты считаются по точному тексту.',
+        hint: t('Обновите просмотр. Если включено «игнорировать пробелы», выключите его: фрагменты считаются по точному тексту.'),
       });
     }
   }
 
   if (spec.worktree && !fs.existsSync(full)) {
-    throw new GitError('Файла нет в рабочей папке', {
+    throw new GitError(t('Файла нет в рабочей папке'), {
       code: 'NOT_FOUND',
       hint:
         op === 'revert'
-          ? 'Используйте «Вернуть файл к версии до этого коммита» — он создаст файл заново.'
+          ? t('Используйте «Вернуть файл к версии до этого коммита» — он создаст файл заново.')
           : op === 'apply'
-            ? 'Восстановите файл из stash целиком.'
+            ? t('Восстановите файл из stash целиком.')
             : null,
     });
   }
@@ -253,20 +254,20 @@ async function applyHunks(cwd, { op, mode, hash, path: file, oldPath, hunks: wan
     await applyPatch(root, buildPatch(file, chosen), spec.args);
   } catch (error) {
     if (op === 'apply') {
-      throw new GitError('Фрагмент не применяется: эти строки в рабочей папке уже другие', {
+      throw new GitError(t('Фрагмент не применяется: эти строки в рабочей папке уже другие'), {
         code: 'PATCH_FAILED',
-        hint: 'Восстановите файл из stash целиком (он заменит текущую версию; Undo вернёт).',
+        hint: t('Восстановите файл из stash целиком (он заменит текущую версию; Undo вернёт).'),
         details: error.details,
       });
     }
     if (op === 'revert') {
-      throw new GitError('Этот фрагмент уже изменён в рабочей папке — автоматически отменить нельзя', {
+      throw new GitError(t('Этот фрагмент уже изменён в рабочей папке — автоматически отменить нельзя'), {
         code: 'PATCH_FAILED',
-        hint: 'Строки вокруг него поменялись после коммита. Можно вернуть файл целиком к версии до этого коммита.',
+        hint: t('Строки вокруг него поменялись после коммита. Можно вернуть файл целиком к версии до этого коммита.'),
         details: error.details,
       });
     }
-    throw new GitError('Фрагмент не применяется — файл изменился', { code: 'PATCH_FAILED', hint: 'Обновите просмотр и повторите.', details: error.details });
+    throw new GitError(t('Фрагмент не применяется — файл изменился'), { code: 'PATCH_FAILED', hint: t('Обновите просмотр и повторите.'), details: error.details });
   }
   return {
     op,
@@ -286,9 +287,9 @@ async function writeSnapshot(cwd, snap, which) {
   const current = readFileOrNull(full);
   const same = expected === null ? current === null : current !== null && current.equals(expected);
   if (!same) {
-    throw new GitError(`Нельзя отменить: файл ${snap.path} изменился после операции`, {
+    throw new GitError(t('Нельзя отменить: файл {0} изменился после операции', snap.path), {
       code: 'HISTORY_STALE',
-      hint: 'Файл правили после отката — верните его вручную или через diff.',
+      hint: t('Файл правили после отката — верните его вручную или через diff.'),
     });
   }
   const data = snap[which];

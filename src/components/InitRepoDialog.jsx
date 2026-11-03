@@ -1,3 +1,4 @@
+import { getLanguage } from '../i18n/index.js';
 import { useMemo, useState } from 'react';
 import {
   AlertTriangle,
@@ -19,8 +20,10 @@ import {
   User,
 } from 'lucide-react';
 import { Button, ErrorBox, Modal } from './Dialogs.jsx';
+import { t as tr, tj, locale } from '../i18n/index.js';
 
 export const plural = (n, one, few, many) => {
+  if (getLanguage() !== 'ru') return n === 1 ? one : many; // в английском две формы: one и many (few = many)
   const m10 = n % 10;
   const m100 = n % 100;
   if (m10 === 1 && m100 !== 11) return one;
@@ -29,10 +32,10 @@ export const plural = (n, one, few, many) => {
 };
 
 function formatBytes(b) {
-  if (b < 1024) return `${b} Б`;
-  if (b < 1024 * 1024) return `${(b / 1024).toFixed(1)} КБ`;
-  if (b < 1024 * 1024 * 1024) return `${(b / 1024 / 1024).toFixed(1)} МБ`;
-  return `${(b / 1024 / 1024 / 1024).toFixed(1)} ГБ`;
+  if (b < 1024) return tr('{0} Б', b);
+  if (b < 1024 * 1024) return tr('{0} КБ', (b / 1024).toFixed(1));
+  if (b < 1024 * 1024 * 1024) return tr('{0} МБ', (b / 1024 / 1024).toFixed(1));
+  return tr('{0} ГБ', (b / 1024 / 1024 / 1024).toFixed(1));
 }
 
 /**
@@ -142,23 +145,23 @@ export default function InitRepoDialog({
     ? [
         'git init',
         'remote origin',
-        probeData && !probeData.empty && `загрузка ${remoteBranch}`,
+        probeData && !probeData.empty && tr('загрузка {0}', remoteBranch),
         useGitignore && !ignoreBlocked && '.gitignore',
-        commit && 'коммит',
+        commit && tr('коммит'),
         commit && push && 'push',
       ].filter(Boolean)
     : [
     'git init',
     useGitignore && !info.hasGitignore && '.gitignore',
     readme && !info.hasReadme && 'README',
-    commit && 'первый коммит',
+    commit && tr('первый коммит'),
     remote.trim() && 'remote',
   ].filter(Boolean);
-  const connectHint = connect && !probeData ? (probe.status === 'loading' ? 'Проверяем репозиторий…' : 'Вставьте адрес и нажмите «Проверить»') : null;
+  const connectHint = connect && !probeData ? (probe.status === 'loading' ? tr('Проверяем репозиторий…') : tr('Вставьте адрес и нажмите «Проверить»')) : null;
 
   return (
     <Modal
-      title={connect ? 'Подключить к удалённому репозиторию' : 'Новый Git-репозиторий'}
+      title={connect ? tr('Подключить к удалённому репозиторию') : tr('Новый Git-репозиторий')}
       icon={FolderGit2}
       iconClass="text-gk-green"
       onClose={busy ? () => {} : onClose}
@@ -173,7 +176,7 @@ export default function InitRepoDialog({
               }}
               className="min-w-0 flex-1 truncate text-left text-[11px] text-gk-yellow hover:underline"
             >
-              {emailBad ? 'Проверьте email автора ↓' : 'Укажите имя и email автора коммита ↓'}
+              {emailBad ? tr('Проверьте email автора ↓') : tr('Укажите имя и email автора коммита ↓')}
             </button>
           ) : connectHint ? (
             <span className="min-w-0 flex-1 truncate text-[11px] text-gk-muted">{connectHint}</span>
@@ -183,11 +186,10 @@ export default function InitRepoDialog({
             </span>
           )}
           <Button onClick={onClose} disabled={busy}>
-            Отмена
-          </Button>
+            {tr('Отмена')}</Button>
           <Button variant="primary" onClick={submit} disabled={!canSubmit}>
             {busy ? <Loader2 size={13} className="animate-spin" /> : <Check size={14} />}
-            {busy ? (connect ? 'Подключаем…' : 'Создаём…') : connect ? (commit && push ? 'Подключить и отправить' : 'Подключить') : 'Создать репозиторий'}
+            {busy ? (connect ? tr('Подключаем…') : tr('Создаём…')) : connect ? (commit && push ? tr('Подключить и отправить') : tr('Подключить')) : tr('Создать репозиторий')}
           </Button>
         </div>
       }
@@ -212,21 +214,20 @@ export default function InitRepoDialog({
             </div>
             <div className="mt-1 text-xs text-gk-muted">
               {info.empty
-                ? 'Пустая папка'
-                : `${info.files.toLocaleString('ru-RU')}${info.truncated ? '+' : ''} ${plural(info.files, 'файл', 'файла', 'файлов')} · ${info.dirs.toLocaleString('ru-RU')} ${plural(info.dirs, 'папка', 'папки', 'папок')} · ${formatBytes(info.bytes)}`}
+                ? tr('Пустая папка')
+                : `${info.files.toLocaleString(locale())}${info.truncated ? '+' : ''} ${plural(info.files, tr('файл'), tr('файла'), tr('файлов'))} · ${info.dirs.toLocaleString(locale())} ${plural(info.dirs, tr('папка'), tr('папки'), tr('папок'))} · ${formatBytes(info.bytes)}`}
             </div>
           </div>
           <button onClick={onChangeFolder} disabled={busy} className="shrink-0 text-xs text-gk-blue hover:underline">
-            Другая папка
-          </button>
+            {tr('Другая папка')}</button>
         </div>
 
         {/* Подсказки */}
         {/* Режим */}
         <div className="grid grid-cols-2 gap-1 rounded-lg bg-gk-sink/20 p-1 ring-1 ring-gk-border">
           {[
-            { id: 'init', icon: FolderGit2, title: 'Новый репозиторий', sub: 'git init с нуля' },
-            { id: 'connect', icon: Link2, title: 'Подключить существующий', sub: 'уже создан на GitLab / GitHub' },
+            { id: 'init', icon: FolderGit2, title: tr('Новый репозиторий'), sub: tr('git init с нуля') },
+            { id: 'connect', icon: Link2, title: tr('Подключить существующий'), sub: tr('уже создан на GitLab / GitHub') },
           ].map((m) => (
             <button
               key={m.id}
@@ -263,38 +264,30 @@ export default function InitRepoDialog({
 
         {!connect && reason === 'open' && !info.parentRepo && (
           <Notice icon={Info} tone="blue">
-            В этой папке ещё нет Git. Создадим репозиторий прямо здесь — файлы проекта останутся на месте.
-          </Notice>
+            {tr('В этой папке ещё нет Git. Создадим репозиторий прямо здесь — файлы проекта останутся на месте.')}</Notice>
         )}
         {info.parentRepo && (
           <Notice icon={AlertTriangle} tone="yellow">
-            Папка уже находится внутри репозитория <b className="break-all">{info.parentRepo}</b>. Новый репозиторий
-            будет вложенным — обычно это не нужно.
-            <button onClick={onOpenParent} className="ml-1 font-medium text-gk-blue hover:underline">
-              Открыть его
-            </button>
+            {tj('Папка уже находится внутри репозитория <0>{1}</0>. Новый репозиторий будет вложенным — обычно это не нужно.{2}', [<b className="break-all" />, info.parentRepo, <button onClick={onOpenParent} className="ml-1 font-medium text-gk-blue hover:underline">
+              {tr('Открыть его')}</button>])}
           </Notice>
         )}
         {heavyIncluded.length > 0 && (
           <Notice icon={AlertTriangle} tone="yellow">
-            В коммит попадут служебные папки:{' '}
-            {heavyIncluded.map((h) => `${h.dir} (${h.files.toLocaleString('ru-RU')})`).join(', ')}. Включите
-            .gitignore, чтобы их исключить.
-          </Notice>
+            {tj('В коммит попадут служебные папки: {0}. Включите .gitignore, чтобы их исключить.', [heavyIncluded.map((h) => `${h.dir} (${h.files.toLocaleString(locale())})`).join(', ')])}</Notice>
         )}
         {heavy.some((h) => h.ignored && h.files > 0) && (
           <Notice icon={ShieldCheck} tone="green">
-            Исключены через .gitignore:{' '}
-            {heavy
+            {tj('Исключены через .gitignore: {0}', [heavy
               .filter((h) => h.ignored && h.files > 0)
-              .map((h) => `${h.dir} (${h.files.toLocaleString('ru-RU')} ${plural(h.files, 'файл', 'файла', 'файлов')})`)
-              .join(', ')}
+              .map((h) => `${h.dir} (${h.files.toLocaleString(locale())} ${plural(h.files, tr('файл'), tr('файла'), tr('файлов'))})`)
+              .join(', ')])}
           </Notice>
         )}
 
         {/* Ветка */}
         {(!connect || probeData?.empty) && (
-        <Field icon={GitBranch} label={connect ? 'Ветка для первого push' : 'Основная ветка'}>
+        <Field icon={GitBranch} label={connect ? tr('Ветка для первого push') : tr('Основная ветка')}>
           <input
             value={branch}
             onChange={(e) => setBranch(e.target.value.replace(/\s/g, '-'))}
@@ -309,10 +302,10 @@ export default function InitRepoDialog({
           label=".gitignore"
           hint={
             info.hasGitignore
-              ? 'Уже есть в проекте — оставим без изменений'
+              ? tr('Уже есть в проекте — оставим без изменений')
               : remoteIgnore
-                ? 'Уже есть в репозитории на сервере — возьмём его'
-                : 'Какие файлы Git будет игнорировать'
+                ? tr('Уже есть в репозитории на сервере — возьмём его')
+                : tr('Какие файлы Git будет игнорировать')
           }
         >
           <Switch checked={useGitignore && !ignoreBlocked} disabled={ignoreBlocked} onChange={setUseGitignore} />
@@ -335,15 +328,13 @@ export default function InitRepoDialog({
                   >
                     {on && '✓ '}
                     {t.label}
-                    {info.types.includes(key) && <span className="ml-1 opacity-70">· найден</span>}
+                    {info.types.includes(key) && <span className="ml-1 opacity-70">{tr('· найден')}</span>}
                   </button>
                 );
               })}
             </div>
             <button onClick={() => setShowIgnore((v) => !v)} className="flex items-center gap-1 text-xs text-gk-muted hover:text-gk-text">
-              {showIgnore ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
-              {showIgnore ? 'Скрыть' : 'Показать и отредактировать'} ({ignoreText.split('\n').filter((l) => l && !l.startsWith('#')).length} правил)
-            </button>
+              {tj('{0}{1} ({2} правил)', [showIgnore ? <ChevronDown size={12} /> : <ChevronRight size={12} />, showIgnore ? tr('Скрыть') : tr('Показать и отредактировать'), ignoreText.split('\n').filter((l) => l && !l.startsWith('#')).length])}</button>
             {showIgnore && (
               <textarea
                 value={ignoreText}
@@ -358,7 +349,7 @@ export default function InitRepoDialog({
 
         {/* README */}
         {!connect && (
-        <Field icon={FileText} label="README.md" hint={info.hasReadme ? 'Уже есть в проекте' : 'Файл с названием проекта'}>
+        <Field icon={FileText} label="README.md" hint={info.hasReadme ? tr('Уже есть в проекте') : tr('Файл с названием проекта')}>
           <Switch checked={readme && !info.hasReadme} disabled={info.hasReadme} onChange={setReadme} />
         </Field>
         )}
@@ -366,15 +357,15 @@ export default function InitRepoDialog({
         {/* Первый коммит */}
         <Field
           icon={GitCommitHorizontal}
-          label={connect ? 'Коммит файлов проекта' : 'Первый коммит'}
+          label={connect ? tr('Коммит файлов проекта') : tr('Первый коммит')}
           hint={
             connect
               ? probeData && !probeData.empty
-                ? `Поверх последнего коммита с сервера «${probeData.lastCommit?.message ?? ''}»`
-                : 'Ваши файлы станут первым коммитом репозитория'
+                ? tr('Поверх последнего коммита с сервера «{0}»', probeData.lastCommit?.message ?? '')
+                : tr('Ваши файлы станут первым коммитом репозитория')
               : info.empty && !readme
-                ? 'Папка пуста — коммитить пока нечего'
-                : 'Сохранить текущее состояние всех файлов'
+                ? tr('Папка пуста — коммитить пока нечего')
+                : tr('Сохранить текущее состояние всех файлов')
           }
         >
           <Switch checked={commit} onChange={setCommit} />
@@ -391,26 +382,20 @@ export default function InitRepoDialog({
             {/* Автор */}
             {!editIdentity ? (
               <div className="flex items-center gap-2 text-xs text-gk-muted">
-                <User size={13} />
-                Автор: <span className="text-gk-text">{info.identity.name}</span>
-                <span>&lt;{info.identity.email}&gt;</span>
-                <button onClick={() => setEditIdentity(true)} className="text-gk-blue hover:underline">
-                  изменить
-                </button>
+                {tj('{0}Автор: <1>{2}</1><3><{4}></3>{5}', [<User size={13} />, <span className="text-gk-text" />, info.identity.name, <span />, info.identity.email, <button onClick={() => setEditIdentity(true)} className="text-gk-blue hover:underline">
+                  {tr('изменить')}</button>])}
               </div>
             ) : (
               <div id="init-identity" className="space-y-2 rounded-lg bg-gk-fg/[0.03] p-3 ring-1 ring-gk-border">
                 {needIdentity && (
                   <div className="flex items-start gap-2 text-xs text-gk-yellow">
-                    <User size={13} className="mt-0.5 shrink-0" />
-                    Git ещё не знает, кто вы. Имя и email будут указаны в коммитах.
-                  </div>
+                    {tj('{0}Git ещё не знает, кто вы. Имя и email будут указаны в коммитах.', [<User size={13} className="mt-0.5 shrink-0" />])}</div>
                 )}
                 <div className="flex gap-2">
                   <input
                     value={name}
                     onChange={(e) => setName(e.target.value)}
-                    placeholder="Имя"
+                    placeholder={tr('Имя')}
                     className="min-w-0 flex-1 rounded bg-gk-bg px-2.5 py-1.5 text-[13px] outline-none ring-1 ring-gk-border focus:ring-gk-blue"
                   />
                   <input
@@ -423,14 +408,12 @@ export default function InitRepoDialog({
                   />
                 </div>
                 <label className="flex cursor-pointer items-center gap-2 text-xs text-gk-muted">
-                  <input
+                  {tj('{0}Использовать для всех репозиториев на этом компьютере', [<input
                     type="checkbox"
                     checked={globalIdentity}
                     onChange={(e) => setGlobalIdentity(e.target.checked)}
                     className="accent-gk-green"
-                  />
-                  Использовать для всех репозиториев на этом компьютере
-                </label>
+                  />])}</label>
               </div>
             )}
           </div>
@@ -439,8 +422,8 @@ export default function InitRepoDialog({
         {connect && commit && (
           <Field
             icon={CloudUpload}
-            label="Сразу отправить на сервер (push)"
-            hint={probeData ? `в ${probeData.empty ? branch || 'main' : remoteBranch} на ${probeData.host ?? 'сервере'}` : 'После подключения'}
+            label={tr('Сразу отправить на сервер (push)')}
+            hint={probeData ? tr('в {0} на {1}', probeData.empty ? branch || 'main' : remoteBranch, probeData.host ?? tr('сервере')) : tr('После подключения')}
           >
             <Switch checked={push} onChange={setPush} />
           </Field>
@@ -448,7 +431,7 @@ export default function InitRepoDialog({
 
         {/* Remote */}
         {!connect && (
-        <Field icon={Globe} label="Remote origin" hint="Необязательно — можно добавить позже">
+        <Field icon={Globe} label="Remote origin" hint={tr('Необязательно — можно добавить позже')}>
           <input
             value={remote}
             onChange={(e) => setRemote(e.target.value.trim())}
@@ -471,7 +454,7 @@ function FileList({ files, max = 6 }) {
   return (
     <span className="font-mono text-[11px]">
       {shown.join(', ')}
-      {files.length > max && ` и ещё ${files.length - max}`}
+      {files.length > max && tr(' и ещё {0}', files.length - max)}
     </span>
   );
 }
@@ -492,19 +475,14 @@ function ConnectSection({ url, setUrl, probe, probeData, onProbe, remoteBranch, 
           className="min-w-0 flex-1 rounded bg-gk-bg px-3 py-2 font-mono text-[12px] outline-none ring-1 ring-gk-border placeholder:text-gk-dim focus:ring-gk-blue"
         />
         <Button variant="blue" onClick={() => onProbe()} disabled={!url.trim() || loading || busy}>
-          {loading ? <Loader2 size={13} className="animate-spin" /> : <RefreshCw size={13} />}
-          Проверить
-        </Button>
+          {tj('{0}Проверить', [loading ? <Loader2 size={13} className="animate-spin" /> : <RefreshCw size={13} />])}</Button>
       </div>
       <p className="-mt-1 ml-6 text-[11px] text-gk-dim">
-        Скопируйте адрес на странице проекта в GitLab: кнопка «Code» → «Clone with HTTPS» или «Clone with SSH». Проверка
-        ничего не меняет ни в папке, ни на сервере.
-      </p>
+        {tr('Скопируйте адрес на странице проекта в GitLab: кнопка «Code» → «Clone with HTTPS» или «Clone with SSH». Проверка ничего не меняет ни в папке, ни на сервере.')}</p>
 
       {loading && (
         <div className="ml-6 flex items-center gap-2 text-xs text-gk-muted">
-          <Loader2 size={13} className="animate-spin" /> Подключаемся к серверу… Если появится окно входа — авторизуйтесь в нём.
-        </div>
+          {tj('{0} Подключаемся к серверу… Если появится окно входа — авторизуйтесь в нём.', [<Loader2 size={13} className="animate-spin" />])}</div>
       )}
       {probe.status === 'error' && (
         <div className="ml-6">
@@ -512,26 +490,22 @@ function ConnectSection({ url, setUrl, probe, probeData, onProbe, remoteBranch, 
         </div>
       )}
       {stale && (
-        <div className="ml-6 text-xs text-gk-yellow">Адрес изменился — нажмите «Проверить» ещё раз.</div>
+        <div className="ml-6 text-xs text-gk-yellow">{tr('Адрес изменился — нажмите «Проверить» ещё раз.')}</div>
       )}
 
       {probeData && (
         <div className="ml-6 space-y-2 rounded-lg bg-gk-fg/[0.04] p-3 text-xs ring-1 ring-gk-border">
           <div className="flex items-center gap-2 text-gk-green">
-            <Check size={14} />
-            <span className="font-medium">Доступ есть{probeData.host ? ` · ${probeData.host}` : ''}</span>
+            {tj('{0}<1>Доступ есть{2}</1>', [<Check size={14} />, <span className="font-medium" />, probeData.host ? ` · ${probeData.host}` : ''])}
           </div>
 
           {probeData.empty ? (
             <div className="leading-relaxed text-gk-text">
-              Репозиторий пустой. Ваши файлы станут первым коммитом и будут отправлены на сервер.
-            </div>
+              {tr('Репозиторий пустой. Ваши файлы станут первым коммитом и будут отправлены на сервер.')}</div>
           ) : (
             <>
               <div className="flex items-center gap-2 text-gk-text">
-                <GitBranch size={13} className="text-gk-muted" />
-                Ветка
-                <select
+                {tj('{0}Ветка{1}', [<GitBranch size={13} className="text-gk-muted" />, <select
                   value={remoteBranch}
                   onChange={(e) => onBranchChange(e.target.value)}
                   className="rounded bg-gk-bg px-2 py-1 font-mono text-[12px] outline-none ring-1 ring-gk-border focus:ring-gk-blue"
@@ -539,40 +513,32 @@ function ConnectSection({ url, setUrl, probe, probeData, onProbe, remoteBranch, 
                   {probeData.branches.map((b) => (
                     <option key={b.name} value={b.name}>
                       {b.name}
-                      {b.name === probeData.headBranch ? ' (по умолчанию)' : ''}
+                      {b.name === probeData.headBranch ? tr(' (по умолчанию)') : ''}
                     </option>
                   ))}
-                </select>
+                </select>])}
               </div>
               {probeData.lastCommit && (
                 <div className="text-gk-muted">
-                  Последний коммит: <span className="text-gk-text">«{probeData.lastCommit.message}»</span> ·{' '}
-                  {probeData.lastCommit.author} · {probeData.remoteFiles}{' '}
-                  {plural(probeData.remoteFiles, 'файл', 'файла', 'файлов')}
+                  {tj('Последний коммит: <0>«{1}»</0> · {2} · {3} {4}', [<span className="text-gk-text" />, probeData.lastCommit.message, probeData.lastCommit.author, probeData.remoteFiles, plural(probeData.remoteFiles, tr('файл'), tr('файла'), tr('файлов'))])}
                 </div>
               )}
               <div className="space-y-1 border-t border-gk-border pt-2">
-                <div className="text-gk-muted">Что будет с файлами:</div>
+                <div className="text-gk-muted">{tr('Что будет с файлами:')}</div>
                 {probeData.same.length > 0 && (
                   <Row tone="text-gk-dim" mark="=">
-                    Совпадают ({probeData.same.length}) — ничего не меняется
-                  </Row>
+                    {tj('Совпадают ({0}) — ничего не меняется', [probeData.same.length])}</Row>
                 )}
                 {probeData.differ.length > 0 && (
                   <Row tone="text-gk-yellow" mark="≠">
-                    Различаются ({probeData.differ.length}): <FileList files={probeData.differ} /> — останется{' '}
-                    <b>ваша</b> версия, разница попадёт в коммит
-                  </Row>
+                    {tj('Различаются ({0}): {1} — останется <2>ваша</2> версия, разница попадёт в коммит', [probeData.differ.length, <FileList files={probeData.differ} />, <b />])}</Row>
                 )}
                 {probeData.remoteOnly.length > 0 && (
                   <Row tone="text-gk-blue" mark="+">
-                    Есть только на сервере ({probeData.remoteOnly.length}): <FileList files={probeData.remoteOnly} /> —
-                    появятся в папке
-                  </Row>
+                    {tj('Есть только на сервере ({0}): {1} — появятся в папке', [probeData.remoteOnly.length, <FileList files={probeData.remoteOnly} />])}</Row>
                 )}
                 <Row tone="text-gk-green" mark="↑">
-                  Остальные ваши файлы добавятся новым коммитом поверх истории сервера
-                </Row>
+                  {tr('Остальные ваши файлы добавятся новым коммитом поверх истории сервера')}</Row>
               </div>
             </>
           )}

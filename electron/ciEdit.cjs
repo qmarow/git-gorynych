@@ -8,6 +8,7 @@ const YAML = require('./vendor/yaml.cjs');
 const { safeRelative } = require('./git.cjs');
 const { GitError } = require('./errors.cjs');
 const { diffLines, toHunks } = require('./lineDiff.cjs');
+const { t: tr } = require('./i18n.cjs');
 
 const MAX_SIZE = 512 * 1024;
 const hash = (text) => crypto.createHash('sha1').update(text).digest('hex');
@@ -18,9 +19,9 @@ const hash = (text) => crypto.createHash('sha1').update(text).digest('hex');
 function checkWritablePath(root, rel) {
   const full = safeRelative(root, rel);
   const relNorm = path.relative(root, full).replace(/\\/g, '/');
-  if (relNorm.split('/').includes('.git')) throw new GitError('Сюда писать нельзя', { code: 'BAD_ARGS' });
+  if (relNorm.split('/').includes('.git')) throw new GitError(tr('Сюда писать нельзя'), { code: 'BAD_ARGS' });
   if (!/\.ya?ml$/i.test(relNorm) && path.basename(relNorm) !== 'Jenkinsfile') {
-    throw new GitError('Сохранять можно только файлы CI/CD (.yml, .yaml, Jenkinsfile)', { code: 'BAD_ARGS' });
+    throw new GitError(tr('Сохранять можно только файлы CI/CD (.yml, .yaml, Jenkinsfile)'), { code: 'BAD_ARGS' });
   }
   return full;
 }
@@ -42,16 +43,16 @@ function fileState(raw) {
 }
 
 function saveFile(root, { path: rel, content, baseHash }) {
-  if (typeof content !== 'string') throw new GitError('Нет содержимого', { code: 'BAD_ARGS' });
-  if (Buffer.byteLength(content) > MAX_SIZE) throw new GitError('Файл слишком большой', { code: 'TOO_LARGE' });
+  if (typeof content !== 'string') throw new GitError(tr('Нет содержимого'), { code: 'BAD_ARGS' });
+  if (Buffer.byteLength(content) > MAX_SIZE) throw new GitError(tr('Файл слишком большой'), { code: 'TOO_LARGE' });
   const full = checkWritablePath(root, rel);
   const current = readRaw(full);
   const state = fileState(current);
   // Файл поменяли в другом редакторе, пока здесь шла правка — не затираем молча
   if (baseHash !== undefined && state.hash !== baseHash) {
-    throw new GitError('Файл изменился на диске, пока вы его редактировали', {
+    throw new GitError(tr('Файл изменился на диске, пока вы его редактировали'), {
       code: 'CHANGED_ON_DISK',
-      hint: 'Нажмите «Перечитать», чтобы загрузить свежую версию, или сохраните поверх (ваши правки заменят изменения на диске).',
+      hint: tr('Нажмите «Перечитать», чтобы загрузить свежую версию, или сохраните поверх (ваши правки заменят изменения на диске).'),
     });
   }
   // Сохраняем в исходном стиле файла: те же переводы строк и BOM
@@ -101,13 +102,13 @@ const keyOf = (pair) => (YAML.isScalar(pair.key) ? String(pair.key.value) : Stri
 
 function rootMap(doc) {
   if (doc.errors.length) {
-    throw new GitError('В файле есть ошибки YAML — сначала исправьте их во вкладке «Файл»', {
+    throw new GitError(tr('В файле есть ошибки YAML — сначала исправьте их во вкладке «Файл»'), {
       code: 'YAML_ERROR',
       details: doc.errors.map((e) => e.message.split('\n')[0]).join('\n'),
     });
   }
   if (doc.contents == null) doc.contents = doc.createNode({});
-  if (!YAML.isMap(doc.contents)) throw new GitError('Файл должен быть словарём (key: value) на верхнем уровне', { code: 'YAML_ERROR' });
+  if (!YAML.isMap(doc.contents)) throw new GitError(tr('Файл должен быть словарём (key: value) на верхнем уровне'), { code: 'YAML_ERROR' });
   return doc.contents;
 }
 
@@ -115,18 +116,18 @@ const jobPairs = (map) => map.items.filter((p) => !GITLAB_GLOBAL.has(keyOf(p)) &
 
 function findJob(map, name) {
   const pair = map.items.find((p) => keyOf(p) === name);
-  if (!pair || !YAML.isMap(pair.value)) throw new GitError(`Задание «${name}» не найдено в этом файле`, { code: 'NOT_FOUND' });
+  if (!pair || !YAML.isMap(pair.value)) throw new GitError(tr('Задание «{0}» не найдено в этом файле', name), { code: 'NOT_FOUND' });
   return pair;
 }
 
-function validateName(map, name, { kind = 'задание' } = {}) {
+function validateName(map, name, { kind = tr('задание') } = {}) {
   const n = String(name ?? '').trim();
-  if (!n) throw new GitError(`Введите имя (${kind})`, { code: 'INVALID_NAME' });
-  if (n.length > 255) throw new GitError('Слишком длинное имя', { code: 'INVALID_NAME' });
-  if (/[\n\r]/.test(n)) throw new GitError('Имя не может содержать перевод строки', { code: 'INVALID_NAME' });
-  if (kind === 'задание') {
-    if (GITLAB_GLOBAL.has(n)) throw new GitError(`«${n}» — зарезервированное слово GitLab CI`, { code: 'INVALID_NAME' });
-    if (map.items.some((p) => keyOf(p) === n)) throw new GitError(`Задание «${n}» уже есть`, { code: 'JOB_EXISTS' });
+  if (!n) throw new GitError(tr('Введите имя ({0})', kind), { code: 'INVALID_NAME' });
+  if (n.length > 255) throw new GitError(tr('Слишком длинное имя'), { code: 'INVALID_NAME' });
+  if (/[\n\r]/.test(n)) throw new GitError(tr('Имя не может содержать перевод строки'), { code: 'INVALID_NAME' });
+  if (kind === tr('задание')) {
+    if (GITLAB_GLOBAL.has(n)) throw new GitError(tr('«{0}» — зарезервированное слово GitLab CI', n), { code: 'INVALID_NAME' });
+    if (map.items.some((p) => keyOf(p) === n)) throw new GitError(tr('Задание «{0}» уже есть', n), { code: 'JOB_EXISTS' });
   }
   return n;
 }
@@ -145,7 +146,7 @@ function stagesNode(doc, map, { create = false } = {}) {
     const at = map.items.findIndex((p) => keyOf(p) !== 'include');
     map.items.splice(at === -1 ? map.items.length : at, 0, pair);
   }
-  if (pair && !YAML.isSeq(pair.value)) throw new GitError('stages должен быть списком', { code: 'YAML_ERROR' });
+  if (pair && !YAML.isSeq(pair.value)) throw new GitError(tr('stages должен быть списком'), { code: 'YAML_ERROR' });
   return pair?.value ?? null;
 }
 
@@ -215,7 +216,7 @@ const OPS = {
       if (ref.index !== undefined) ref.node.items.splice(ref.index, 1);
       else ref.parent.delete(ref.key);
       if (ref.index !== undefined && ref.node.items.length === 0) ref.parent.delete(ref.key);
-      notes.push(`«${ref.job}»: убрано из ${ref.key}`);
+      notes.push(tr('«{0}»: убрано из {1}', ref.job, ref.key));
     });
     return { notes: [...new Set(notes)] };
   },
@@ -229,7 +230,7 @@ const OPS = {
     forEachRef(map, (ref) => {
       if (String(ref.scalar.value) !== from) return;
       ref.scalar.value = n;
-      notes.push(`«${ref.job}»: обновлена ссылка в ${ref.key}`);
+      notes.push(tr('«{0}»: обновлена ссылка в {1}', ref.job, ref.key));
     });
     return { notes: [...new Set(notes)] };
   },
@@ -239,13 +240,13 @@ const OPS = {
     const job = pair.value;
     const notes = [];
     for (const [key, raw] of Object.entries(fields ?? {})) {
-      if (!EDITABLE_FIELDS.has(key)) throw new GitError(`Поле ${key} нельзя менять здесь`, { code: 'BAD_ARGS' });
+      if (!EDITABLE_FIELDS.has(key)) throw new GitError(tr('Поле {0} нельзя менять здесь', key), { code: 'BAD_ARGS' });
       let value = raw;
       if (['script', 'before_script', 'after_script', 'tags', 'needs'].includes(key) && value !== null && value !== undefined) {
         value = (Array.isArray(value) ? value : String(value).split('\n')).map((l) => String(l).trimEnd()).filter((l) => l.trim());
-        if (key === 'script' && value.length === 0) throw new GitError('У задания должен быть хотя бы один шаг script', { code: 'BAD_ARGS' });
+        if (key === 'script' && value.length === 0) throw new GitError(tr('У задания должен быть хотя бы один шаг script'), { code: 'BAD_ARGS' });
       }
-      if (key === 'when' && value && !WHEN_VALUES.has(value)) throw new GitError(`Недопустимое значение when: ${value}`, { code: 'BAD_ARGS' });
+      if (key === 'when' && value && !WHEN_VALUES.has(value)) throw new GitError(tr('Недопустимое значение when: {0}', value), { code: 'BAD_ARGS' });
       if (key === 'allow_failure' && value !== null && value !== undefined) value = Boolean(value);
       if (key === 'when' && value === 'on_success') value = null; // значение по умолчанию — не пишем
       if (key === 'allow_failure' && value === false) value = null;
@@ -265,7 +266,7 @@ const OPS = {
         const seq = stagesNode(doc, map);
         if (seq && !stageNames(seq).includes(value) && value !== '.pre' && value !== '.post') {
           seq.items.push(doc.createNode(value));
-          notes.push(`Этап «${value}» добавлен в stages`);
+          notes.push(tr('Этап «{0}» добавлен в stages', value));
         }
       }
       setOrDelete(doc, job, key, value);
@@ -274,21 +275,21 @@ const OPS = {
   },
 
   addStage(doc, map, { name, index }) {
-    const n = validateName(map, name, { kind: 'этап' });
+    const n = validateName(map, name, { kind: tr('этап') });
     const seq = stagesNode(doc, map, { create: true });
-    if (stageNames(seq).includes(n)) throw new GitError(`Этап «${n}» уже есть`, { code: 'STAGE_EXISTS' });
+    if (stageNames(seq).includes(n)) throw new GitError(tr('Этап «{0}» уже есть', n), { code: 'STAGE_EXISTS' });
     const at = Number.isInteger(index) ? Math.max(0, Math.min(seq.items.length, index)) : seq.items.length;
     seq.items.splice(at, 0, doc.createNode(n));
     return { notes: [] };
   },
 
   renameStage(doc, map, { from, to }) {
-    const n = validateName(map, to, { kind: 'этап' });
+    const n = validateName(map, to, { kind: tr('этап') });
     const seq = stagesNode(doc, map, { create: true });
     const names = stageNames(seq);
     const i = names.indexOf(from);
-    if (i === -1) throw new GitError(`Этап «${from}» не найден в stages`, { code: 'NOT_FOUND' });
-    if (names.includes(n)) throw new GitError(`Этап «${n}» уже есть`, { code: 'STAGE_EXISTS' });
+    if (i === -1) throw new GitError(tr('Этап «{0}» не найден в stages', from), { code: 'NOT_FOUND' });
+    if (names.includes(n)) throw new GitError(tr('Этап «{0}» уже есть', n), { code: 'STAGE_EXISTS' });
     if (YAML.isScalar(seq.items[i])) seq.items[i].value = n;
     else seq.items[i] = doc.createNode(n);
     let moved = 0;
@@ -299,18 +300,18 @@ const OPS = {
         moved++;
       }
     }
-    return { notes: moved ? [`Перенесено заданий: ${moved}`] : [] };
+    return { notes: moved ? [tr('Перенесено заданий: {0}', moved)] : [] };
   },
 
   deleteStage(doc, map, { name }) {
     const seq = stagesNode(doc, map, { create: true });
     const i = stageNames(seq).indexOf(name);
-    if (i === -1) throw new GitError(`Этап «${name}» не найден в stages`, { code: 'NOT_FOUND' });
+    if (i === -1) throw new GitError(tr('Этап «{0}» не найден в stages', name), { code: 'NOT_FOUND' });
     const users = jobPairs(map).filter((p) => String(p.value.get('stage') ?? 'test') === name).map(keyOf);
     if (users.length) {
-      throw new GitError(`В этапе «${name}» есть задания: ${users.join(', ')}`, {
+      throw new GitError(tr('В этапе «{0}» есть задания: {1}', name, users.join(', ')), {
         code: 'STAGE_NOT_EMPTY',
-        hint: 'Сначала перенесите или удалите эти задания',
+        hint: tr('Сначала перенесите или удалите эти задания'),
       });
     }
     seq.items.splice(i, 1);
@@ -391,7 +392,7 @@ const sameData = (a, b) => {
 /** Применить визуальную правку к тексту файла. Возвращает { content, notes } */
 function applyEdit(content, op) {
   const fn = OPS[op?.type];
-  if (!fn) throw new GitError('Неизвестная правка', { code: 'BAD_ARGS' });
+  if (!fn) throw new GitError(tr('Неизвестная правка'), { code: 'BAD_ARGS' });
   const text = String(content ?? '').replace(/\r\n/g, '\n');
   const opts = stringifyOptions(text);
   const doc = parse(text);
@@ -410,34 +411,9 @@ function applyEdit(content, op) {
 const TEMPLATES = {
   gitlab: {
     path: '.gitlab-ci.yml',
-    text: `# Пайплайн GitLab CI: этапы выполняются по порядку, задания одного этапа — параллельно
-stages: [build, test, deploy]
-
-default:
-  image: node:20
-
-build:
-  stage: build
-  script:
-    - npm ci
-    - npm run build
-  artifacts:
-    paths: [dist/]
-
-test:
-  stage: test
-  script:
-    - npm ci
-    - npm test
-
-deploy:
-  stage: deploy
-  script:
-    - echo "Деплой"
-  rules:
-    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
-      when: manual
-`,
+    get text() {
+    return tr('# Пайплайн GitLab CI: этапы выполняются по порядку, задания одного этапа — параллельно\nstages: [build, test, deploy]\n\ndefault:\n  image: node:20\n\nbuild:\n  stage: build\n  script:\n    - npm ci\n    - npm run build\n  artifacts:\n    paths: [dist/]\n\ntest:\n  stage: test\n  script:\n    - npm ci\n    - npm test\n\ndeploy:\n  stage: deploy\n  script:\n    - echo "Деплой"\n  rules:\n    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH\n      when: manual\n');
+  },
   },
   github: {
     path: '.github/workflows/ci.yml',
@@ -472,9 +448,9 @@ jobs:
 
 function createFromTemplate(root, { system }) {
   const t = TEMPLATES[system];
-  if (!t) throw new GitError('Нет шаблона для этой системы', { code: 'BAD_ARGS' });
+  if (!t) throw new GitError(tr('Нет шаблона для этой системы'), { code: 'BAD_ARGS' });
   const full = checkWritablePath(root, t.path);
-  if (readRaw(full) !== null) throw new GitError(`Файл ${t.path} уже существует`, { code: 'EXISTS' });
+  if (readRaw(full) !== null) throw new GitError(tr('Файл {0} уже существует', t.path), { code: 'EXISTS' });
   return saveFile(root, { path: t.path, content: t.text, baseHash: null });
 }
 

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { CalendarClock, ExternalLink, Loader2, Pencil, Play, Plus, Save, Trash2, UserRoundCheck, X } from 'lucide-react';
 import { CRON_PRESETS, TIMEZONES, describeCron, localTimezone } from '../../lib/cron.js';
 import { StatusIcon, statusInfo } from '../PipelineStatus.jsx';
+import { t, tj, locale } from '../../i18n/index.js';
 
 const api = window.api;
 
@@ -45,8 +46,7 @@ export default function GitLabSchedules({ repoPath, opts, branches, currentBranc
   if (state.loading) {
     return (
       <div className="flex flex-1 items-center justify-center gap-2 text-[13px] text-gk-muted">
-        <Loader2 size={14} className="animate-spin" /> Загружаем расписания…
-      </div>
+        {tj('{0} Загружаем расписания…', [<Loader2 size={14} className="animate-spin" />])}</div>
     );
   }
   if (state.error) {
@@ -63,22 +63,20 @@ export default function GitLabSchedules({ repoPath, opts, branches, currentBranc
     <div className="min-h-0 flex-1 overflow-y-auto p-4">
       <div className="mb-3 flex items-start gap-3">
         <p className="flex-1 text-[12px] leading-relaxed text-gk-dim">
-          Пайплайны, которые GitLab запускает сам по расписанию — например, ночная сборка или еженедельная проверка зависимостей.
-        </p>
+          {t('Пайплайны, которые GitLab запускает сам по расписанию — например, ночная сборка или еженедельная проверка зависимостей.')}</p>
         <button
           disabled={!canWrite}
-          title={canWrite ? 'Новое расписание' : 'Нужен токен со scope «api»'}
+          title={canWrite ? t('Новое расписание') : t('Нужен токен со scope «api»')}
           onClick={() => setForm({ schedule: null })}
           className="flex shrink-0 items-center gap-1.5 rounded-md bg-gk-green/15 px-2.5 py-1.5 text-[12px] font-medium text-gk-green transition-colors enabled:hover:bg-gk-green/25 disabled:opacity-35"
         >
-          <Plus size={13} /> Расписание
-        </button>
+          {tj('{0} Расписание', [<Plus size={13} />])}</button>
       </div>
 
       {schedules.length === 0 ? (
         <div className="rounded-lg border border-dashed border-gk-border p-8 text-center">
           <CalendarClock size={26} className="mx-auto mb-2 text-gk-dim" />
-          <div className="text-[13px] text-gk-muted">Расписаний пока нет</div>
+          <div className="text-[13px] text-gk-muted">{t('Расписаний пока нет')}</div>
         </div>
       ) : (
         <div className="space-y-2">
@@ -103,40 +101,40 @@ export default function GitLabSchedules({ repoPath, opts, branches, currentBranc
                     </div>
                   </div>
                   <div className="shrink-0 text-right text-[11px] text-gk-dim">
-                    {s.active && s.nextRunAt && <div title={new Date(s.nextRunAt).toLocaleString('ru-RU')}>след. запуск {futureTime(s.nextRunAt)}</div>}
-                    {s.owner && <div>владелец @{s.owner.username}</div>}
+                    {s.active && s.nextRunAt && <div title={new Date(s.nextRunAt).toLocaleString(locale())}>{tj('след. запуск {0}', [futureTime(s.nextRunAt)])}</div>}
+                    {s.owner && <div>{tj('владелец @{0}', [s.owner.username])}</div>}
                   </div>
                   {s.lastPipeline && (
                     <button
                       onClick={() => onOpenPipeline?.(s.lastPipeline.id)}
-                      title={`Последний запуск: пайплайн #${s.lastPipeline.id} — ${statusInfo(s.lastPipeline.status).label}`}
+                      title={t('Последний запуск: пайплайн #{0} — {1}', s.lastPipeline.id, statusInfo(s.lastPipeline.status).label)}
                       className="flex shrink-0 items-center gap-1 rounded px-1.5 py-1 text-[11px] text-gk-muted hover:bg-gk-hover"
                     >
                       <StatusIcon status={s.lastPipeline.status} size={14} />#{s.lastPipeline.id}
                     </button>
                   )}
                   <div className="flex shrink-0 items-center gap-0.5">
-                    <IconBtn title="Запустить сейчас" disabled={!canWrite || busy === `play:${s.id}`} onClick={() => action(s, 'play', `Пайплайн по расписанию «${s.description}» запущен`)}>
+                    <IconBtn title={t('Запустить сейчас')} disabled={!canWrite || busy === `play:${s.id}`} onClick={() => action(s, 'play', t('Пайплайн по расписанию «{0}» запущен', s.description))}>
                       {busy === `play:${s.id}` ? <Loader2 size={13} className="animate-spin" /> : <Play size={13} />}
                     </IconBtn>
                     {notMine && canWrite && (
-                      <IconBtn title={`Стать владельцем (сейчас — @${s.owner.username}). Нужно, чтобы менять расписание`} onClick={() => action(s, 'own', 'Теперь вы владелец расписания')}>
+                      <IconBtn title={t('Стать владельцем (сейчас — @{0}). Нужно, чтобы менять расписание', s.owner.username)} onClick={() => action(s, 'own', t('Теперь вы владелец расписания'))}>
                         <UserRoundCheck size={13} />
                       </IconBtn>
                     )}
-                    <IconBtn title="Изменить" disabled={!canWrite} onClick={() => setForm({ schedule: s })}>
+                    <IconBtn title={t('Изменить')} disabled={!canWrite} onClick={() => setForm({ schedule: s })}>
                       <Pencil size={13} />
                     </IconBtn>
                     <IconBtn
-                      title={armDelete === s.id ? 'Нажмите ещё раз, чтобы удалить' : 'Удалить'}
+                      title={armDelete === s.id ? t('Нажмите ещё раз, чтобы удалить') : t('Удалить')}
                       disabled={!canWrite}
                       danger={armDelete === s.id}
-                      onClick={() => action(s, 'delete', `Расписание «${s.description}» удалено`)}
+                      onClick={() => action(s, 'delete', t('Расписание «{0}» удалено', s.description))}
                     >
                       <Trash2 size={13} />
                     </IconBtn>
                     {s.webUrl && (
-                      <IconBtn title="Открыть в GitLab" onClick={() => api.openExternal(s.webUrl)}>
+                      <IconBtn title={t('Открыть в GitLab')} onClick={() => api.openExternal(s.webUrl)}>
                         <ExternalLink size={13} />
                       </IconBtn>
                     )}
@@ -169,12 +167,12 @@ export default function GitLabSchedules({ repoPath, opts, branches, currentBranc
 
 function futureTime(iso) {
   const diff = new Date(iso).getTime() - Date.now();
-  if (diff <= 0) return 'скоро';
+  if (diff <= 0) return t('скоро');
   const min = Math.round(diff / 60000);
-  if (min < 60) return `через ${min} мин`;
+  if (min < 60) return t('через {0} мин', min);
   const h = Math.round(min / 60);
-  if (h < 48) return `через ${h} ч`;
-  return new Date(iso).toLocaleDateString('ru-RU', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
+  if (h < 48) return t('через {0} ч', h);
+  return new Date(iso).toLocaleDateString(locale(), { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
 }
 
 function ScheduleForm({ repoPath, opts, schedule, branches, currentBranch, onClose, onSaved }) {
@@ -209,7 +207,7 @@ function ScheduleForm({ repoPath, opts, schedule, branches, currentBranch, onClo
       setError(res.error);
       return;
     }
-    onSaved(editing ? 'Расписание сохранено' : 'Расписание создано');
+    onSaved(editing ? t('Расписание сохранено') : t('Расписание создано'));
   };
 
   const timezones = [...new Set([s.timezone, tz, ...TIMEZONES])];
@@ -219,16 +217,16 @@ function ScheduleForm({ repoPath, opts, schedule, branches, currentBranch, onClo
       <form onSubmit={submit} className="glass-strong w-[520px] max-w-[calc(100vw-2rem)] animate-pop-in rounded-xl border border-gk-border bg-gk-panel-2">
         <div className="flex items-center gap-2 border-b border-gk-border px-4 py-3">
           <CalendarClock size={16} className="text-gk-blue" />
-          <h2 className="flex-1 text-[14px] font-semibold text-gk-strong">{editing ? 'Изменить расписание' : 'Новое расписание'}</h2>
+          <h2 className="flex-1 text-[14px] font-semibold text-gk-strong">{editing ? t('Изменить расписание') : t('Новое расписание')}</h2>
           <button type="button" onClick={onClose} className="rounded p-1 text-gk-dim hover:bg-gk-hover hover:text-gk-text">
             <X size={16} />
           </button>
         </div>
         <div className="space-y-3 px-4 py-4 text-[12.5px]">
-          <Field label="Описание">
-            <input autoFocus value={s.description} onChange={(e) => set({ description: e.target.value })} placeholder="Ночная сборка" className={inputCls} />
+          <Field label={t('Описание')}>
+            <input autoFocus value={s.description} onChange={(e) => set({ description: e.target.value })} placeholder={t('Ночная сборка')} className={inputCls} />
           </Field>
-          <Field label="Когда запускать">
+          <Field label={t('Когда запускать')}>
             <div className="mb-2 flex flex-wrap gap-1.5">
               {CRON_PRESETS.map((p) => (
                 <button
@@ -245,11 +243,11 @@ function ScheduleForm({ repoPath, opts, schedule, branches, currentBranch, onClo
             </div>
             <input value={s.cron} onChange={(e) => set({ cron: e.target.value })} spellCheck={false} className={`${inputCls} font-mono`} />
             <div className={`mt-1 text-[11.5px] ${cronValid ? 'text-gk-green' : 'text-gk-yellow'}`}>
-              {!cronValid ? 'Нужно 5 полей: минуты часы день месяц день_недели' : human ? `→ ${human}` : 'Формат принят — GitLab проверит при сохранении'}
+              {!cronValid ? t('Нужно 5 полей: минуты часы день месяц день_недели') : human ? `→ ${human}` : t('Формат принят — GitLab проверит при сохранении')}
             </div>
           </Field>
           <div className="grid grid-cols-2 gap-3">
-            <Field label="Ветка">
+            <Field label={t('Ветка')}>
               <input list="schedule-branches" value={s.ref} onChange={(e) => set({ ref: e.target.value })} className={`${inputCls} font-mono`} />
               <datalist id="schedule-branches">
                 {branches.map((b) => (
@@ -257,21 +255,19 @@ function ScheduleForm({ repoPath, opts, schedule, branches, currentBranch, onClo
                 ))}
               </datalist>
             </Field>
-            <Field label="Часовой пояс">
+            <Field label={t('Часовой пояс')}>
               <select value={s.timezone} onChange={(e) => set({ timezone: e.target.value })} className={inputCls}>
                 {timezones.map((z) => (
                   <option key={z} value={z}>
                     {z}
-                    {z === tz ? ' (ваш)' : ''}
+                    {z === tz ? t(' (ваш)') : ''}
                   </option>
                 ))}
               </select>
             </Field>
           </div>
           <label className="flex cursor-pointer items-center gap-2 text-gk-text">
-            <input type="checkbox" checked={s.active} onChange={(e) => set({ active: e.target.checked })} className="accent-[var(--color-gk-green)]" />
-            Включено
-          </label>
+            {tj('{0}Включено', [<input type="checkbox" checked={s.active} onChange={(e) => set({ active: e.target.checked })} className="accent-[var(--color-gk-green)]" />])}</label>
           {error && (
             <div className="rounded-md border border-gk-red/30 bg-gk-red/10 px-3 py-2 text-[12px]">
               <div className="font-medium text-gk-text">{error.message}</div>
@@ -281,14 +277,13 @@ function ScheduleForm({ repoPath, opts, schedule, branches, currentBranch, onClo
         </div>
         <div className="flex justify-end gap-2 border-t border-gk-border px-4 py-2.5">
           <button type="button" onClick={onClose} className="rounded px-3 py-1.5 text-[12.5px] text-gk-muted hover:bg-gk-hover hover:text-gk-text">
-            Отмена
-          </button>
+            {t('Отмена')}</button>
           <button
             type="submit"
             disabled={busy || !s.description.trim() || !s.ref.trim() || !cronValid}
             className="flex items-center gap-1.5 rounded-md bg-gk-green px-3 py-1.5 text-[12.5px] font-semibold text-gk-ink hover:brightness-110 disabled:opacity-40"
           >
-            {busy ? <Loader2 size={13} className="animate-spin" /> : <Save size={13} />} {editing ? 'Сохранить' : 'Создать'}
+            {busy ? <Loader2 size={13} className="animate-spin" /> : <Save size={13} />} {editing ? t('Сохранить') : t('Создать')}
           </button>
         </div>
       </form>
@@ -329,7 +324,7 @@ function Toggle({ checked, onChange, disabled }) {
       role="switch"
       aria-checked={checked}
       disabled={disabled}
-      title={checked ? 'Включено — выключить' : 'Выключено — включить'}
+      title={checked ? t('Включено — выключить') : t('Выключено — включить')}
       onClick={onChange}
       className={`relative block h-[18px] w-8 shrink-0 rounded-full p-0 transition-colors duration-200 disabled:opacity-50 ${checked ? 'bg-gk-green' : 'bg-gk-fg/15'}`}
     >

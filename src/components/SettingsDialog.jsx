@@ -5,16 +5,17 @@ import { GuardSettings, Switch } from './Guard.jsx';
 import { CommitSettings } from './CommitForm.jsx';
 import { BACKGROUND_SEC, BACKOFF_SEC, SYNC_MODES, useSyncStatus } from '../lib/syncStatus.js';
 import { kindInfo, kindLabel } from '../lib/servers.js';
+import { t as tr, tj, locale, LANGUAGES, getLanguage, setLanguage } from '../i18n/index.js';
 
 const api = typeof window !== 'undefined' ? window.api : null;
 
 const TABS = [
-  { id: 'appearance', label: 'Оформление', icon: Palette },
-  { id: 'branches', label: 'Ветки', icon: GitBranch },
-  { id: 'sync', label: 'Синхронизация', icon: RefreshCw },
-  { id: 'commit', label: 'Сообщение коммита', icon: GitCommitHorizontal },
-  { id: 'guard', label: 'Проверка перед коммитом', icon: ShieldCheck },
-  { id: 'integrations', label: 'Подключения', icon: Plug },
+  { id: 'appearance', label: tr('Оформление'), icon: Palette },
+  { id: 'branches', label: tr('Ветки'), icon: GitBranch },
+  { id: 'sync', label: tr('Синхронизация'), icon: RefreshCw },
+  { id: 'commit', label: tr('Сообщение коммита'), icon: GitCommitHorizontal },
+  { id: 'guard', label: tr('Проверка перед коммитом'), icon: ShieldCheck },
+  { id: 'integrations', label: tr('Подключения'), icon: Plug },
 ];
 
 /**
@@ -58,7 +59,7 @@ export default function SettingsDialog({
       <div className="glass-strong flex max-h-[84vh] w-[760px] max-w-[calc(100vw-2rem)] animate-pop-in overflow-hidden rounded-xl border border-gk-border bg-gk-panel-2">
         {/* Разделы */}
         <nav className="flex w-48 shrink-0 flex-col gap-0.5 border-r border-gk-border bg-gk-sink/10 p-2">
-          <div className="px-2 pb-2 pt-1 text-[11px] font-semibold uppercase tracking-wider text-gk-dim">Настройки</div>
+          <div className="px-2 pb-2 pt-1 text-[11px] font-semibold uppercase tracking-wider text-gk-dim">{tr('Настройки')}</div>
           {TABS.map((t) => (
             <button
               key={t.id}
@@ -80,12 +81,11 @@ export default function SettingsDialog({
               <button
                 onClick={onReset}
                 className="mr-2 flex items-center gap-1 rounded px-2 py-1 text-[12px] text-gk-muted hover:bg-gk-hover hover:text-gk-text"
-                title="Вернуть оформление по умолчанию"
+                title={tr('Вернуть оформление по умолчанию')}
               >
-                <RotateCcw size={12} /> По умолчанию
-              </button>
+                {tj('{0} По умолчанию', [<RotateCcw size={12} />])}</button>
             )}
-            <button onClick={onClose} className="rounded p-1 text-gk-dim hover:bg-gk-hover hover:text-gk-text" title="Закрыть (Esc)">
+            <button onClick={onClose} className="rounded p-1 text-gk-dim hover:bg-gk-hover hover:text-gk-text" title={tr('Закрыть (Esc)')}>
               <X size={16} />
             </button>
           </div>
@@ -123,22 +123,49 @@ function AppearanceTab({ appearance: a, meta, imageUrl, onChange, onPickImage })
     setPickError(null);
     const res = await onPickImage();
     setPicking(false);
-    if (res && !res.ok && !res.canceled) setPickError(res.error?.message ?? 'Не удалось загрузить картинку');
+    if (res && !res.ok && !res.canceled) setPickError(res.error?.message ?? tr('Не удалось загрузить картинку'));
     return res;
   };
 
   return (
     <div className="space-y-6">
+      {/* Язык интерфейса: смена перерисовывает окно на новом языке */}
+      <section data-testid="language-setting">
+        <SectionTitle>{tr('Язык')}{getLanguage() === 'ru' ? ' · Language' : ''}</SectionTitle>
+        <div className="flex gap-2" role="radiogroup">
+          {LANGUAGES.map((l) => {
+            const on = getLanguage() === l.id;
+            return (
+              <button
+                key={l.id}
+                role="radio"
+                aria-checked={on}
+                data-lang={l.id}
+                onClick={() => !on && setLanguage(l.id)}
+                className={`flex min-w-[130px] items-center gap-2 rounded-lg border px-3 py-2 text-left text-[13px] transition-colors ${
+                  on ? 'border-gk-blue/60 bg-gk-blue/10 text-gk-strong' : 'border-gk-border text-gk-text hover:bg-gk-hover'
+                }`}
+              >
+                <span className="font-mono text-[11px] uppercase text-gk-muted">{l.id}</span>
+                <span className="flex-1">{l.label}</span>
+                {on && <Check size={13} className="text-gk-blue" />}
+              </button>
+            );
+          })}
+        </div>
+        <p className="mt-1.5 text-[11.5px] text-gk-dim">{tr('Окно перерисуется на выбранном языке; вкладки и настройки сохранятся.')}</p>
+      </section>
+
       {/* Тема */}
       <section>
-        <SectionTitle>Тема</SectionTitle>
+        <SectionTitle>{tr('Тема')}</SectionTitle>
         <div className="grid grid-cols-[repeat(auto-fill,minmax(150px,1fr))] gap-2.5">
           {[AUTO_THEME, ...THEMES].map((t) => (
             <button
               key={t.id}
               data-theme-id={t.id}
               onClick={() => onChange({ theme: t.id })}
-              title={t.id === AUTO_THEME.id ? 'Светлая или тёмная — как в настройках Windows/macOS, переключается сама' : t.hint}
+              title={t.id === AUTO_THEME.id ? tr('Светлая или тёмная — как в настройках Windows/macOS, переключается сама') : t.hint}
               className={`group rounded-lg p-1.5 text-left transition-all duration-200 ${
                 a.theme === t.id ? 'bg-gk-fg/[0.06] ring-2 ring-gk-green' : 'ring-1 ring-gk-border hover:-translate-y-0.5 hover:ring-gk-fg/20'
               }`}
@@ -164,7 +191,7 @@ function AppearanceTab({ appearance: a, meta, imageUrl, onChange, onPickImage })
 
       {/* Фон */}
       <section>
-        <SectionTitle>Фон</SectionTitle>
+        <SectionTitle>{tr('Фон')}</SectionTitle>
         <div className="grid grid-cols-[repeat(auto-fill,minmax(118px,1fr))] gap-2">
           {BACKGROUNDS.map((b) => {
             const disabled = b.id === 'system' && !meta.supportsMaterial;
@@ -172,7 +199,7 @@ function AppearanceTab({ appearance: a, meta, imageUrl, onChange, onPickImage })
               <button
                 key={b.id}
                 disabled={disabled}
-                title={disabled ? 'Нужна Windows 11 (версия 22H2 или новее)' : b.hint}
+                title={disabled ? tr('Нужна Windows 11 (версия 22H2 или новее)') : b.hint}
                 onClick={() => {
                   if (b.id === 'image' && !meta.hasImage) pick().then((res) => res?.ok && onChange({ background: 'image' }));
                   else onChange({ background: b.id });
@@ -198,22 +225,22 @@ function AppearanceTab({ appearance: a, meta, imageUrl, onChange, onPickImage })
                 className="flex items-center gap-1.5 rounded-md bg-gk-hover px-3 py-1.5 text-[12.5px] text-gk-text hover:bg-gk-fg/10 disabled:opacity-50"
               >
                 {picking ? <Loader2 size={13} className="animate-spin" /> : <ImageIcon size={13} />}
-                {meta.hasImage ? 'Выбрать другую картинку…' : 'Выбрать картинку…'}
+                {meta.hasImage ? tr('Выбрать другую картинку…') : tr('Выбрать картинку…')}
               </button>
               {pickError && <span className="text-[12px] text-gk-red">{pickError}</span>}
             </div>
-            <Slider label="Размытие картинки" value={a.imageBlur} min={0} max={40} unit="px" onChange={(v) => onChange({ imageBlur: v })} />
-            <Slider label="Затемнение" value={a.imageDim} min={0} max={90} unit="%" onChange={(v) => onChange({ imageDim: v })} />
+            <Slider label={tr('Размытие картинки')} value={a.imageBlur} min={0} max={40} unit="px" onChange={(v) => onChange({ imageBlur: v })} />
+            <Slider label={tr('Затемнение')} value={a.imageDim} min={0} max={90} unit="%" onChange={(v) => onChange({ imageDim: v })} />
           </div>
         )}
 
         {a.background === 'system' && (
           <div className="mt-3 animate-fade-in rounded-lg border border-gk-border bg-gk-fg/[0.02] p-3">
-            <div className="mb-2 text-[12px] text-gk-muted">Материал окна</div>
+            <div className="mb-2 text-[12px] text-gk-muted">{tr('Материал окна')}</div>
             <div className="flex gap-2">
               {[
-                { id: 'acrylic', name: 'Acrylic', hint: 'Сильное размытие — рабочий стол едва угадывается' },
-                { id: 'mica', name: 'Mica', hint: 'Лёгкий тон обоев, спокойнее и экономнее' },
+                { id: 'acrylic', name: 'Acrylic', hint: tr('Сильное размытие — рабочий стол едва угадывается') },
+                { id: 'mica', name: 'Mica', hint: tr('Лёгкий тон обоев, спокойнее и экономнее') },
               ].map((m) => (
                 <button
                   key={m.id}
@@ -234,23 +261,20 @@ function AppearanceTab({ appearance: a, meta, imageUrl, onChange, onPickImage })
 
       {/* Прозрачность */}
       <section>
-        <SectionTitle>Прозрачность и стекло</SectionTitle>
+        <SectionTitle>{tr('Прозрачность и стекло')}</SectionTitle>
         <div className="space-y-3 rounded-lg border border-gk-border bg-gk-fg/[0.02] p-3">
           <Slider
-            label="Прозрачность панелей"
+            label={tr('Прозрачность панелей')}
             value={a.transparency}
             min={0}
             max={100}
             unit="%"
-            hint={a.transparency === 0 ? 'панели непрозрачные' : a.transparency >= 80 ? 'почти одно стекло' : null}
+            hint={a.transparency === 0 ? tr('панели непрозрачные') : a.transparency >= 80 ? tr('почти одно стекло') : null}
             onChange={(v) => onChange({ transparency: v })}
           />
-          <Slider label="Размытие под стеклом" value={a.blur} min={0} max={40} unit="px" onChange={(v) => onChange({ blur: v })} />
+          <Slider label={tr('Размытие под стеклом')} value={a.blur} min={0} max={40} unit="px" onChange={(v) => onChange({ blur: v })} />
           <label className="flex cursor-pointer items-center gap-2.5 pt-1 text-[12.5px] text-gk-text">
-            <Toggle checked={a.motion} onChange={(v) => onChange({ motion: v })} />
-            <Sparkles size={13} className="text-gk-muted" />
-            Анимация фона
-            <span className="text-[11px] text-gk-dim">— плавное движение пятен и сияния</span>
+            {tj('{0}{1}Анимация фона<2>— плавное движение пятен и сияния</2>', [<Toggle checked={a.motion} onChange={(v) => onChange({ motion: v })} />, <Sparkles size={13} className="text-gk-muted" />, <span className="text-[11px] text-gk-dim" />])}
           </label>
         </div>
       </section>
@@ -262,13 +286,13 @@ function BranchesTab({ workflow, onChange }) {
   return (
     <div className="space-y-4 text-[12.5px]">
       <div>
-        <div className="font-medium text-gk-text">Незакоммиченные изменения при переключении ветки</div>
-        <div className="mt-0.5 text-gk-muted">Что делать с правками в рабочей папке, когда вы переходите на другую ветку.</div>
+        <div className="font-medium text-gk-text">{tr('Незакоммиченные изменения при переключении ветки')}</div>
+        <div className="mt-0.5 text-gk-muted">{tr('Что делать с правками в рабочей папке, когда вы переходите на другую ветку.')}</div>
         <div className="mt-2 space-y-1.5" role="radiogroup" data-testid="checkout-wip-setting">
           {[
-            ['ask', 'Спрашивать каждый раз', 'Окно с выбором: спрятать, перенести или выбросить — с подсказкой, какие файлы пересекаются с целевой веткой.'],
-            ['stash', 'Прятать автоматически (умное переключение)', 'Правки прячутся в stash с именем текущей ветки и сами возвращаются, когда вы вернётесь на неё.'],
-            ['merge', 'Переносить в новую ветку', 'Как обычный git switch: правки едут с вами. Если пересекутся с правками ветки — будет конфликт, копия останется в Stash.'],
+            ['ask', tr('Спрашивать каждый раз'), tr('Окно с выбором: спрятать, перенести или выбросить — с подсказкой, какие файлы пересекаются с целевой веткой.')],
+            ['stash', tr('Прятать автоматически (умное переключение)'), tr('Правки прячутся в stash с именем текущей ветки и сами возвращаются, когда вы вернётесь на неё.')],
+            ['merge', tr('Переносить в новую ветку'), tr('Как обычный git switch: правки едут с вами. Если пересекутся с правками ветки — будет конфликт, копия останется в Stash.')],
           ].map(([id, title, hint]) => (
             <label key={id} className="flex cursor-pointer items-start gap-2.5 rounded-md px-2 py-1.5 hover:bg-gk-hover">
               <input
@@ -289,17 +313,14 @@ function BranchesTab({ workflow, onChange }) {
       </div>
       <div className="ml-6 rounded-lg border border-gk-border bg-gk-fg/[0.02] p-3 text-gk-muted">
         <div className="mb-1.5 flex items-center gap-1.5 font-medium text-gk-text">
-          <Archive size={13} className="text-gk-yellow" /> Как работает «спрятать»
-        </div>
+          {tj('{0} Как работает «спрятать»', [<Archive size={13} className="text-gk-yellow" />])}</div>
         <ol className="list-decimal space-y-0.5 pl-4 leading-relaxed">
-          <li>Работаете в feature-A, есть правки. Двойной клик по hotfix.</li>
-          <li>Правки feature-A спрятаны (stash «feature-A (авто)»), вы на чистой hotfix.</li>
-          <li>Вернулись на feature-A — правки на месте, в том числе staged.</li>
+          <li>{tr('Работаете в feature-A, есть правки. Двойной клик по hotfix.')}</li>
+          <li>{tr('Правки feature-A спрятаны (stash «feature-A (авто)»), вы на чистой hotfix.')}</li>
+          <li>{tr('Вернулись на feature-A — правки на месте, в том числе staged.')}</li>
         </ol>
         <div className="mt-2 text-[11.5px] text-gk-dim">
-          Работает для всех переключений из программы. Если при возврате будет конфликт, stash не удаляется. Ctrl+Z переключает обратно вместе с
-          правками.
-        </div>
+          {tr('Работает для всех переключений из программы. Если при возврате будет конфликт, stash не удаляется. Ctrl+Z переключает обратно вместе с правками.')}</div>
       </div>
 
     </div>
@@ -309,36 +330,21 @@ function BranchesTab({ workflow, onChange }) {
 function SyncTab({ sync, hasRemotes, workflow, onWorkflowChange }) {
   const st = useSyncStatus();
   if (!sync) return null;
-  const via = { api: 'GitLab API с ETag — ответ «не изменилось» почти ничего не стоит серверу', 'ls-remote': 'git ls-remote — без токена, работает с любым сервером' };
+  const via = { api: tr('GitLab API с ETag — ответ «не изменилось» почти ничего не стоит серверу'), 'ls-remote': tr('git ls-remote — без токена, работает с любым сервером') };
   return (
     <div className="space-y-5 text-[12.5px]">
       <label className="flex cursor-pointer items-start gap-3">
-        <Switch checked={sync.enabled} onChange={sync.onToggle} />
-        <span>
-          <span className="block font-medium text-gk-text">Автообновление</span>
-          <span className="mt-0.5 block leading-relaxed text-gk-muted">
-            Граф и ветки обновляются сами: при изменениях в папке (в том числе fetch/pull из терминала) и при новых коммитах на сервере. То же
-            переключает «авто» в строке состояния.
-          </span>
-        </span>
+        {tj('{0}<1><2>Автообновление</2><3>Граф и ветки обновляются сами: при изменениях в папке (в том числе fetch/pull из терминала) и при новых коммитах на сервере. То же переключает «авто» в строке состояния.</3></1>', [<Switch checked={sync.enabled} onChange={sync.onToggle} />, <span />, <span className="block font-medium text-gk-text" />, <span className="mt-0.5 block leading-relaxed text-gk-muted" />])}
       </label>
 
       {workflow && (
         <label className={`flex cursor-pointer items-start gap-3 ${sync.enabled ? '' : 'pointer-events-none opacity-40'}`}>
-          <Switch checked={workflow.syncIndex} onChange={(v) => onWorkflowChange({ ...workflow, syncIndex: v })} />
-          <span>
-            <span className="block font-medium text-gk-text">Синхронизировать индекс с правками из других программ</span>
-            <span className="mt-0.5 block leading-relaxed text-gk-muted">
-              Откатили застейдженный файл в WebStorm или VS Code к последнему коммиту — изменение исчезнет целиком, без «призрака» в
-              Staged и устаревших предупреждений проверки перед коммитом. Поправили снаружи файл, застейдженный целиком, — в индекс попадёт
-              новая версия. Частично застейдженные файлы (по кускам) не трогаются.
-            </span>
-          </span>
+          {tj('{0}<1><2>Синхронизировать индекс с правками из других программ</2><3>Откатили застейдженный файл в WebStorm или VS Code к последнему коммиту — изменение исчезнет целиком, без «призрака» в Staged и устаревших предупреждений проверки перед коммитом. Поправили снаружи файл, застейдженный целиком, — в индекс попадёт новая версия. Частично застейдженные файлы (по кускам) не трогаются.</3></1>', [<Switch checked={workflow.syncIndex} onChange={(v) => onWorkflowChange({ ...workflow, syncIndex: v })} />, <span />, <span className="block font-medium text-gk-text" />, <span className="mt-0.5 block leading-relaxed text-gk-muted" />])}
         </label>
       )}
 
       <section className={sync.enabled ? '' : 'pointer-events-none opacity-40'}>
-        <SectionTitle>Как часто проверять сервер</SectionTitle>
+        <SectionTitle>{tr('Как часто проверять сервер')}</SectionTitle>
         <div className="grid grid-cols-2 gap-2">
           {SYNC_MODES.map((m) => (
             <button
@@ -357,33 +363,27 @@ function SyncTab({ sync, hasRemotes, workflow, onWorkflowChange }) {
           ))}
         </div>
         <ul className="mt-3 list-disc space-y-1 pl-4 leading-relaxed text-gk-muted">
-          <li>Проверяется только открытая вкладка и только пока окно программы активно. Окно свёрнуто или в фоне — раз в {BACKGROUND_SEC} секунд.</li>
+          <li>{tj('Проверяется только открытая вкладка и только пока окно программы активно. Окно свёрнуто или в фоне — раз в {0} секунд.', [BACKGROUND_SEC])}</li>
           <li>
-            Сначала спрашиваем у сервера только хэши веток — это быстро и почти бесплатно. Настоящий <code className="font-mono text-gk-text">git fetch --prune</code>{' '}
-            запускается, только если что-то изменилось.
-          </li>
-          <li>Пока вы делаете коммит, checkout, rebase или другое действие, проверка ждёт — она никогда не мешает вашим командам.</li>
+            {tj('Сначала спрашиваем у сервера только хэши веток — это быстро и почти бесплатно. Настоящий <0>git fetch --prune</0> запускается, только если что-то изменилось.', [<code className="font-mono text-gk-text" />])}</li>
+          <li>{tr('Пока вы делаете коммит, checkout, rebase или другое действие, проверка ждёт — она никогда не мешает вашим командам.')}</li>
           <li>
-            Нет связи или сервер просит подождать (429) — без всплывающих ошибок, паузы растут: {BACKOFF_SEC.map((x) => (x < 60 ? `${x} с` : `${x / 60} мин`)).join(' → ')}.
-          </li>
-          <li>Для GitLab с сохранённым токеном используется API с ETag, иначе — git ls-remote.</li>
+            {tj('Нет связи или сервер просит подождать (429) — без всплывающих ошибок, паузы растут: {0}.', [BACKOFF_SEC.map((x) => (x < 60 ? tr('{0} с', x) : tr('{0} мин', x / 60))).join(' → ')])}</li>
+          <li>{tr('Для GitLab с сохранённым токеном используется API с ETag, иначе — git ls-remote.')}</li>
         </ul>
       </section>
 
       {sync.enabled && hasRemotes && (
         <section className="rounded-lg border border-gk-border bg-gk-fg/[0.02] p-3 text-[12px]">
-          <div className="mb-1 font-medium text-gk-text">Сейчас</div>
+          <div className="mb-1 font-medium text-gk-text">{tr('Сейчас')}</div>
           {st.error ? (
             <div className="text-gk-yellow">
-              Сервер недоступен: {st.error}. Ошибок подряд: {st.failures}.
-            </div>
+              {tj('Сервер недоступен: {0}. Ошибок подряд: {1}.', [st.error, st.failures])}</div>
           ) : st.at ? (
             <div className="text-gk-muted">
-              Последняя проверка в {new Date(st.at).toLocaleTimeString('ru-RU')}
-              {st.ms != null ? ` (${st.ms} мс)` : ''}. Способ: {via[st.via] ?? st.via ?? '—'}.
-            </div>
+              {tj('Последняя проверка в {0}{1}. Способ: {2}.', [new Date(st.at).toLocaleTimeString(locale()), st.ms != null ? tr(' ({0} мс)', st.ms) : '', via[st.via] ?? st.via ?? '—'])}</div>
           ) : (
-            <div className="text-gk-dim">Ещё не проверяли — первая проверка через пару секунд после открытия репозитория.</div>
+            <div className="text-gk-dim">{tr('Ещё не проверяли — первая проверка через пару секунд после открытия репозитория.')}</div>
           )}
         </section>
       )}
@@ -532,10 +532,10 @@ function BackgroundPreview({ id, theme: t, imageUrl }) {
 
 function IntegrationsTab({ servers }) {
   // Одна авторизация на репозиторий — для Pull, Push и пайплайнов CI/CD; отдельного входа для CI/CD нет
-  return <div className="space-y-6">{servers ? <ServersSection {...servers} /> : <p className="text-[12px] text-gk-dim">Авторизация недоступна.</p>}</div>;
+  return <div className="space-y-6">{servers ? <ServersSection {...servers} /> : <p className="text-[12px] text-gk-dim">{tr('Авторизация недоступна.')}</p>}</div>;
 }
 
-const SCOPE_SHORT = { api: 'просмотр и действия', read_api: 'только просмотр' };
+const SCOPE_SHORT = { api: tr('просмотр и действия'), read_api: tr('только просмотр') };
 
 /** Работают ли пайплайны CI/CD от авторизации репозитория (GitLab) */
 function CiText({ ci, method }) {
@@ -546,21 +546,21 @@ function CiText({ ci, method }) {
   let tone = 'text-gk-muted';
   let state = 'ok';
   if (ci.source === 'legacy') {
-    text = `Пайплайны: токен из прежней версии${who} — авторизуйте репозиторий, чтобы была одна авторизация`;
+    text = tr('Пайплайны: токен из прежней версии{0} — авторизуйте репозиторий, чтобы была одна авторизация', who);
     tone = 'text-gk-yellow';
     state = 'legacy';
   } else if (ci.state === 'bad') {
-    text = 'Пайплайны: эта авторизация не подходит для API — откройте «Изменить»';
+    text = tr('Пайплайны: эта авторизация не подходит для API — откройте «Изменить»');
     tone = 'text-gk-yellow';
     state = 'bad';
   } else if (ci.state === 'none' || !ci.source) {
     text = ci.legacy
-      ? 'Пайплайны: пока по токену из прежней версии'
-      : `Пайплайны: ${method === 'ssh' ? 'SSH-ключ' : 'пароль'} не подходит для API — добавьте токен в «Изменить»`;
+      ? tr('Пайплайны: пока по токену из прежней версии')
+      : tr('Пайплайны: {0} не подходит для API — добавьте токен в «Изменить»', method === 'ssh' ? tr('SSH-ключ') : tr('пароль'));
     tone = 'text-gk-yellow';
     state = 'none';
   } else {
-    text = `Пайплайны: та же авторизация${ci.viaApiToken ? ' (с токеном для API)' : ''}${who}${scope ? ` · ${scope}` : ''}${ci.state ? '' : ' — проверится при первом обращении'}`;
+    text = tr('Пайплайны: та же авторизация{0}{1}{2}{3}', ci.viaApiToken ? tr(' (с токеном для API)') : '', who, scope ? ` · ${scope}` : '', ci.state ? '' : tr(' — проверится при первом обращении'));
   }
   return (
     <span data-testid="ci-line" data-state={state} className={`flex min-w-0 items-center gap-1 text-[11px] ${tone}`} data-tip={ci.reason ?? undefined}>
@@ -571,7 +571,7 @@ function CiText({ ci, method }) {
 }
 
 const LOGIN_ICONS = { password: UserRound, token: KeyRound, ssh: FileKey };
-const LOGIN_NAMES = { password: 'логин и пароль', token: 'токен', ssh: 'SSH-ключ' };
+const LOGIN_NAMES = { password: tr('логин и пароль'), token: tr('токен'), ssh: tr('SSH-ключ') };
 
 function LoginText({ login }) {
   const Icon = LOGIN_ICONS[login.method] ?? KeyRound;
@@ -583,7 +583,7 @@ function LoginText({ login }) {
         {login.username && login.method !== 'ssh' ? ` · ${login.username}` : ''}
         {login.keyPath ? ` · ${login.keyPath.split(/[\\/]/).pop()}` : ''}
       </span>
-      {login.readable === false && <span className="shrink-0 text-gk-yellow">— введите заново</span>}
+      {login.readable === false && <span className="shrink-0 text-gk-yellow">{tr('— введите заново')}</span>}
     </span>
   );
 }
@@ -606,8 +606,7 @@ function ServersSection({ tick, repoOpen, onAuthCurrent, onEdit, onForgetLogin, 
 
   const confirmBox = (id, onYes) => (
     <span className="flex shrink-0 items-center gap-1.5 text-[11.5px]">
-      <span className="text-gk-muted">Забыть?</span>
-      <button
+      {tj('<0>Забыть?</0>{1}{2}', [<span className="text-gk-muted" />, <button
         onClick={() => {
           setConfirm(null);
           onYes();
@@ -615,11 +614,8 @@ function ServersSection({ tick, repoOpen, onAuthCurrent, onEdit, onForgetLogin, 
         data-testid="login-forget-confirm"
         className="rounded bg-gk-red px-2 py-0.5 font-semibold text-white"
       >
-        Да
-      </button>
-      <button onClick={() => setConfirm(null)} className="rounded px-1.5 py-0.5 text-gk-muted hover:bg-gk-hover">
-        Нет
-      </button>
+        {tr('Да')}</button>, <button onClick={() => setConfirm(null)} className="rounded px-1.5 py-0.5 text-gk-muted hover:bg-gk-hover">
+        {tr('Нет')}</button>])}
     </span>
   );
   const iconBtn = (props, Icon, hover = 'hover:text-gk-text') => (
@@ -631,31 +627,23 @@ function ServersSection({ tick, repoOpen, onAuthCurrent, onEdit, onForgetLogin, 
   return (
     <section className="space-y-2" data-testid="servers-section">
       <div className="flex items-center gap-2">
-        <Server size={14} className="text-gk-muted" />
-        <span className="flex-1 text-[13px] font-semibold text-gk-strong">Авторизация репозиториев</span>
-        {repoOpen && (
+        {tj('{0}<1>Авторизация репозиториев</1>{2}', [<Server size={14} className="text-gk-muted" />, <span className="flex-1 text-[13px] font-semibold text-gk-strong" />, repoOpen && (
           <button
             onClick={onAuthCurrent}
             data-testid="repo-auth"
             className="flex items-center gap-1.5 rounded-md bg-gk-blue px-2.5 py-1 text-[12px] font-semibold text-white hover:brightness-110"
           >
-            <LogIn size={12} /> Авторизовать открытый репозиторий…
-          </button>
-        )}
+            {tj('{0} Авторизовать открытый репозиторий…', [<LogIn size={12} />])}</button>
+        )])}
       </div>
       <p className="text-[12px] leading-relaxed text-gk-muted">
-        Авторизация сохраняется для конкретного репозитория и одна на всё: Pull, Push, клонирование и пайплайны CI/CD. На одном сервере у
-        разных репозиториев могут быть разные учётные записи. В окне авторизации выбирается, где хранится репозиторий: GitHub, GitLab или
-        свой сервер (Self-Managed).
-      </p>
+        {tr('Авторизация сохраняется для конкретного репозитория и одна на всё: Pull, Push, клонирование и пайплайны CI/CD. На одном сервере у разных репозиториев могут быть разные учётные записи. В окне авторизации выбирается, где хранится репозиторий: GitHub, GitLab или свой сервер (Self-Managed).')}</p>
       {list === null ? (
         <div className="flex items-center gap-2 text-[12px] text-gk-dim">
-          <Loader2 size={12} className="animate-spin" /> Загружаем…
-        </div>
+          {tj('{0} Загружаем…', [<Loader2 size={12} className="animate-spin" />])}</div>
       ) : list.length === 0 ? (
         <p className="rounded-lg border border-dashed border-gk-border px-3 py-2.5 text-[12px] text-gk-dim">
-          Пока ни одного. Вход сохраняется сам, когда сервер впервые попросит авторизацию при Pull, Push или клонировании.
-        </p>
+          {tr('Пока ни одного. Вход сохраняется сам, когда сервер впервые попросит авторизацию при Pull, Push или клонировании.')}</p>
       ) : (
         <div className="space-y-2">
           {list.map((srv) => (
@@ -663,14 +651,14 @@ function ServersSection({ tick, repoOpen, onAuthCurrent, onEdit, onForgetLogin, 
               <div className="group flex items-center gap-2.5 bg-gk-fg/[0.03] px-3 py-1.5">
                 {srv.cloud ? <Cloud size={14} className="shrink-0" style={{ color: kindInfo(srv.kind)?.color }} /> : <Server size={14} className="shrink-0" style={{ color: kindInfo(srv.kind)?.color ?? undefined }} />}
                 <span className="truncate font-mono text-[12.5px] text-gk-strong">{srv.hostname}</span>
-                <span className="min-w-0 flex-1 truncate text-[11px] text-gk-dim">{srv.kind ? kindLabel(srv.kind, srv.cloud) : 'тип не выбран'}</span>
+                <span className="min-w-0 flex-1 truncate text-[11px] text-gk-dim">{srv.kind ? kindLabel(srv.kind, srv.cloud) : tr('тип не выбран')}</span>
                 {confirm === `server:${srv.hostname}`
                   ? confirmBox(srv.hostname, () => onForgetServer(srv.hostname))
                   : iconBtn(
                       {
                         onClick: () => setConfirm(`server:${srv.hostname}`),
-                        'data-tip': 'Забыть сервер: входы всех его репозиториев, общий вход и выбранный тип',
-                        'aria-label': `Забыть ${srv.hostname}`,
+                        'data-tip': tr('Забыть сервер: входы всех его репозиториев, общий вход и выбранный тип'),
+                        'aria-label': tr('Забыть {0}', srv.hostname),
                         'data-testid': 'server-forget',
                       },
                       Trash2,
@@ -699,10 +687,10 @@ function ServersSection({ tick, repoOpen, onAuthCurrent, onEdit, onForgetLogin, 
                       <span className="flex shrink-0 items-center gap-0.5 opacity-70 group-hover:opacity-100">
                         {r.url &&
                           iconBtn(
-                            { onClick: () => onEdit(r.url), 'data-tip': r.ciOnly ? 'Авторизовать репозиторий' : 'Изменить авторизацию (Pull/Push и пайплайны)', 'aria-label': `Изменить ${r.path}`, 'data-testid': 'repo-edit' },
+                            { onClick: () => onEdit(r.url), 'data-tip': r.ciOnly ? tr('Авторизовать репозиторий') : tr('Изменить авторизацию (Pull/Push и пайплайны)'), 'aria-label': tr('Изменить {0}', r.path), 'data-testid': 'repo-edit' },
                             Pencil,
                           )}
-                        {iconBtn({ onClick: () => setConfirm(r.key), 'data-tip': 'Забыть авторизацию этого репозитория', 'aria-label': `Забыть ${r.path}`, 'data-testid': 'repo-forget' }, Trash2, 'hover:text-gk-red')}
+                        {iconBtn({ onClick: () => setConfirm(r.key), 'data-tip': tr('Забыть авторизацию этого репозитория'), 'aria-label': tr('Забыть {0}', r.path), 'data-testid': 'repo-forget' }, Trash2, 'hover:text-gk-red')}
                       </span>
                     )}
                   </li>
@@ -711,27 +699,23 @@ function ServersSection({ tick, repoOpen, onAuthCurrent, onEdit, onForgetLogin, 
                   <li key={l.key} className="group flex items-center gap-2.5 py-1.5 pl-8 pr-3" data-testid="shared-ci-row">
                     <Workflow size={13} className="shrink-0 text-gk-dim" />
                     <div className="min-w-0 flex-1">
-                      <div className="text-[12.5px] text-gk-muted">Токен пайплайнов для всего сервера (из прежней версии)</div>
-                      <span className="text-[11px] text-gk-dim">
-                        {l.user?.username ? `@${l.user.username}` : 'токен'}
-                        {' · действует для репозиториев, чья авторизация не открывает пайплайны'}
-                      </span>
+                      {tj('{0}<1>{2} · действует для репозиториев, чья авторизация не открывает пайплайны</1>', [<div className="text-[12.5px] text-gk-muted">{tr('Токен пайплайнов для всего сервера (из прежней версии)')}</div>, <span className="text-[11px] text-gk-dim" />, l.user?.username ? `@${l.user.username}` : tr('токен')])}
                     </div>
                     {confirm === l.key
-                      ? confirmBox(l.key, () => onForgetLogin(l.key, `CI/CD всех репозиториев ${srv.hostname}`))
-                      : iconBtn({ onClick: () => setConfirm(l.key), 'data-tip': 'Забыть общий токен CI/CD (сохранён раньше, до привязки к репозиториям)', 'aria-label': 'Забыть общий токен CI/CD' }, Trash2, 'hover:text-gk-red')}
+                      ? confirmBox(l.key, () => onForgetLogin(l.key, tr('CI/CD всех репозиториев {0}', srv.hostname)))
+                      : iconBtn({ onClick: () => setConfirm(l.key), 'data-tip': tr('Забыть общий токен CI/CD (сохранён раньше, до привязки к репозиториям)'), 'aria-label': tr('Забыть общий токен CI/CD') }, Trash2, 'hover:text-gk-red')}
                   </li>
                 ))}
                 {srv.shared.map((l) => (
                   <li key={l.key} className="group flex items-center gap-2.5 py-1.5 pl-8 pr-3" data-testid="shared-row">
                     <Server size={13} className="shrink-0 text-gk-dim" />
                     <div className="min-w-0 flex-1">
-                      <div className="text-[12.5px] text-gk-muted">Общий вход для всех репозиториев сервера</div>
+                      <div className="text-[12.5px] text-gk-muted">{tr('Общий вход для всех репозиториев сервера')}</div>
                       <LoginText login={l} />
                     </div>
                     {confirm === l.key
-                      ? confirmBox(l.key, () => onForgetLogin(l.key, `всех репозиториев ${srv.hostname}`))
-                      : iconBtn({ onClick: () => setConfirm(l.key), 'data-tip': 'Забыть общий вход (сохранён раньше, до привязки к репозиториям)', 'aria-label': 'Забыть общий вход' }, Trash2, 'hover:text-gk-red')}
+                      ? confirmBox(l.key, () => onForgetLogin(l.key, tr('всех репозиториев {0}', srv.hostname)))
+                      : iconBtn({ onClick: () => setConfirm(l.key), 'data-tip': tr('Забыть общий вход (сохранён раньше, до привязки к репозиториям)'), 'aria-label': tr('Забыть общий вход') }, Trash2, 'hover:text-gk-red')}
                   </li>
                 ))}
               </ul>

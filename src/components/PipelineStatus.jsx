@@ -1,20 +1,21 @@
 // Статусы пайплайнов и заданий (GitLab, GitHub, Gitea, Bitbucket — после нормализации): иконки в духе GitLab, подписи, форматирование времени
 import { readable } from '../lib/scheme.js';
+import { t } from '../i18n/index.js';
 
 export const STATUS = {
-  success: { label: 'успешно', color: '#3cf0a0' },
-  failed: { label: 'ошибка', color: '#f25d5d' },
-  running: { label: 'выполняется', color: '#5aa2ff' },
-  pending: { label: 'в очереди', color: '#f5c451' },
-  preparing: { label: 'подготовка', color: '#f5c451' },
-  waiting_for_resource: { label: 'ждёт ресурс', color: '#f5c451' },
-  created: { label: 'создан', color: '#8b93a7' },
-  manual: { label: 'ждёт ручного запуска', color: '#c0c6d4' },
-  scheduled: { label: 'запланирован', color: '#c0c6d4' },
-  canceled: { label: 'отменён', color: '#8b93a7' },
-  canceling: { label: 'отменяется', color: '#8b93a7' },
-  skipped: { label: 'пропущен', color: '#6b7385' },
-  warning: { label: 'успешно, с предупреждениями', color: '#f5c451' },
+  success: { label: t('успешно'), color: '#3cf0a0' },
+  failed: { label: t('ошибка'), color: '#f25d5d' },
+  running: { label: t('выполняется'), color: '#5aa2ff' },
+  pending: { label: t('в очереди'), color: '#f5c451' },
+  preparing: { label: t('подготовка'), color: '#f5c451' },
+  waiting_for_resource: { label: t('ждёт ресурс'), color: '#f5c451' },
+  created: { label: t('создан'), color: '#8b93a7' },
+  manual: { label: t('ждёт ручного запуска'), color: '#c0c6d4' },
+  scheduled: { label: t('запланирован'), color: '#c0c6d4' },
+  canceled: { label: t('отменён'), color: '#8b93a7' },
+  canceling: { label: t('отменяется'), color: '#8b93a7' },
+  skipped: { label: t('пропущен'), color: '#6b7385' },
+  warning: { label: t('успешно, с предупреждениями'), color: '#f5c451' },
 };
 
 export const ACTIVE_STATUSES = new Set(['running', 'pending', 'preparing', 'waiting_for_resource', 'created', 'canceling']);
@@ -22,40 +23,40 @@ export const ACTIVE_STATUSES = new Set(['running', 'pending', 'preparing', 'wait
 export const SOURCE_LABELS = {
   push: 'push',
   merge_request_event: 'merge request',
-  schedule: 'по расписанию',
-  web: 'запущен вручную',
-  api: 'через API',
-  trigger: 'триггер',
-  parent_pipeline: 'дочерний',
-  pipeline: 'из другого проекта',
-  chat: 'из чата',
-  external: 'внешний',
+  schedule: t('по расписанию'),
+  web: t('запущен вручную'),
+  api: t('через API'),
+  trigger: t('триггер'),
+  parent_pipeline: t('дочерний'),
+  pipeline: t('из другого проекта'),
+  chat: t('из чата'),
+  external: t('внешний'),
   // GitHub, Gitea, Bitbucket
   pull_request: 'pull request',
   pull_request_target: 'pull request',
-  workflow_dispatch: 'запущен вручную',
-  repository_dispatch: 'через API',
-  release: 'релиз',
-  workflow_run: 'после другого workflow',
-  workflow_call: 'вызван workflow',
-  manual: 'запущен вручную',
+  workflow_dispatch: t('запущен вручную'),
+  repository_dispatch: t('через API'),
+  release: t('релиз'),
+  workflow_run: t('после другого workflow'),
+  workflow_call: t('вызван workflow'),
+  manual: t('запущен вручную'),
   pullrequest: 'pull request',
   commit: 'push',
 };
 
 export const FAILURE_REASONS = {
-  script_failure: 'ошибка в скрипте (команда завершилась с ненулевым кодом)',
-  runner_system_failure: 'сбой раннера',
-  stuck_or_timeout_failure: 'превышено время ожидания',
-  job_execution_timeout: 'задание выполнялось дольше таймаута',
-  missing_dependency_failure: 'не найдены артефакты из зависимостей',
-  runner_unsupported: 'раннер не поддерживает задание',
-  archived_failure: 'проект в архиве',
-  unmet_prerequisites: 'не выполнены предварительные условия',
-  scheduler_failure: 'ошибка планировщика',
-  data_integrity_failure: 'нарушена целостность данных',
-  api_failure: 'ошибка API',
-  unknown_failure: 'неизвестная причина',
+  script_failure: t('ошибка в скрипте (команда завершилась с ненулевым кодом)'),
+  runner_system_failure: t('сбой раннера'),
+  stuck_or_timeout_failure: t('превышено время ожидания'),
+  job_execution_timeout: t('задание выполнялось дольше таймаута'),
+  missing_dependency_failure: t('не найдены артефакты из зависимостей'),
+  runner_unsupported: t('раннер не поддерживает задание'),
+  archived_failure: t('проект в архиве'),
+  unmet_prerequisites: t('не выполнены предварительные условия'),
+  scheduler_failure: t('ошибка планировщика'),
+  data_integrity_failure: t('нарушена целостность данных'),
+  api_failure: t('ошибка API'),
+  unknown_failure: t('неизвестная причина'),
 };
 
 export function statusInfo(status) {
@@ -66,10 +67,10 @@ export function statusInfo(status) {
 export function formatDuration(sec) {
   if (sec == null || Number.isNaN(sec)) return null;
   const s = Math.round(sec);
-  if (s < 60) return `${s} с`;
+  if (s < 60) return t('{0} с', s);
   const m = Math.floor(s / 60);
-  if (m < 60) return `${m} мин${s % 60 ? ` ${s % 60} с` : ''}`;
-  return `${Math.floor(m / 60)} ч${m % 60 ? ` ${m % 60} мин` : ''}`;
+  if (m < 60) return t('{0} мин{1}', m, s % 60 ? t(' {0} с', s % 60) : '');
+  return t('{0} ч{1}', Math.floor(m / 60), m % 60 ? t(' {0} мин', m % 60) : '');
 }
 
 /** Иконка статуса: круг с символом, «выполняется» — вращающееся кольцо */

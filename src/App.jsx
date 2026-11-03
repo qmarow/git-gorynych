@@ -110,6 +110,7 @@ import {
   SwitchToDialog,
   TagDialog,
 } from './components/Dialogs.jsx';
+import { t as tr, tj, locale } from './i18n/index.js';
 
 const api = window.api;
 
@@ -121,28 +122,28 @@ const isNewTab = (p) => typeof p === 'string' && p.startsWith(NEW_TAB);
 const ACCESS_CODES = new Set(['AUTH', 'FORBIDDEN', 'NOT_FOUND', 'PROTECTED', 'HOOK_DECLINED', 'HOST_KEY']);
 // Оверлей поверх графа для долгих операций: что показывать, пока операция идёт
 const PROGRESS_TEXT = {
-  checkout: 'Переключаем ветку…',
-  checkoutCommit: 'Переключаемся на коммит…',
-  pull: 'Получаем изменения с сервера…',
-  push: 'Отправляем на сервер…',
-  fetch: 'Загружаем данные с сервера…',
-  merge: 'Слияние веток…',
-  rebase: 'Перебазирование…',
-  rebaseApply: 'Применяем rebase…',
-  rebaseStart: 'Перебазирование…',
+  checkout: tr('Переключаем ветку…'),
+  checkoutCommit: tr('Переключаемся на коммит…'),
+  pull: tr('Получаем изменения с сервера…'),
+  push: tr('Отправляем на сервер…'),
+  fetch: tr('Загружаем данные с сервера…'),
+  merge: tr('Слияние веток…'),
+  rebase: tr('Перебазирование…'),
+  rebaseApply: tr('Применяем rebase…'),
+  rebaseStart: tr('Перебазирование…'),
   cherryPick: 'Cherry-pick…',
-  revert: 'Создаём revert-коммит…',
-  revertTo: 'Возвращаем файлы проекта…',
-  reset: 'Перемещаем ветку…',
-  stash: 'Прячем изменения…',
-  stashPop: 'Применяем stash…',
-  stashApplyAt: 'Применяем stash…',
-  stashPopAt: 'Применяем stash…',
-  undo: 'Отменяем…',
-  redo: 'Повторяем…',
-  createBranch: 'Создаём ветку…',
-  continueOperation: 'Продолжаем…',
-  abortOperation: 'Прерываем…',
+  revert: tr('Создаём revert-коммит…'),
+  revertTo: tr('Возвращаем файлы проекта…'),
+  reset: tr('Перемещаем ветку…'),
+  stash: tr('Прячем изменения…'),
+  stashPop: tr('Применяем stash…'),
+  stashApplyAt: tr('Применяем stash…'),
+  stashPopAt: tr('Применяем stash…'),
+  undo: tr('Отменяем…'),
+  redo: tr('Повторяем…'),
+  createBranch: tr('Создаём ветку…'),
+  continueOperation: tr('Продолжаем…'),
+  abortOperation: tr('Прерываем…'),
 };
 
 
@@ -308,7 +309,7 @@ export default function App() {
   // Загрузка: побеждает последний запрос, устаревшие ответы только кладутся в кэш вкладки
   const loadRepo = useCallback(async (dir, { silent = false } = {}) => {
     if (!api) {
-      setLoadError({ message: 'window.api недоступен — запустите приложение через Electron (npm run electron:dev).' });
+      setLoadError({ message: tr('window.api недоступен — запустите приложение через Electron (npm run electron:dev).') });
       return null;
     }
     const seq = ++loadSeq.current;
@@ -387,7 +388,7 @@ export default function App() {
   const newTab = () => {
     rememberActiveTab();
     const id = `${NEW_TAB}${Date.now()}`;
-    setTabs((t) => [...t, { path: id, name: 'Новая вкладка', isNew: true }]);
+    setTabs((t) => [...t, { path: id, name: tr('Новая вкладка'), isNew: true }]);
     showBlank(id);
   };
 
@@ -517,13 +518,13 @@ export default function App() {
     const dir =
       presetDir ??
       (await api?.repo.openDialog(
-        mode === 'connect' ? 'Выберите папку проекта для подключения к репозиторию' : 'Выберите папку проекта для нового репозитория',
+        mode === 'connect' ? tr('Выберите папку проекта для подключения к репозиторию') : tr('Выберите папку проекта для нового репозитория'),
       ));
     if (!dir) return;
     const res = await api.repo.inspect(dir);
     if (!res.ok) return notify({ type: 'error', title: res.error.message, hint: res.error.hint });
     if (res.data.isRepoRoot) {
-      notify({ type: 'info', title: `${res.data.name} уже Git-репозиторий — открываем` });
+      notify({ type: 'info', title: tr('{0} уже Git-репозиторий — открываем', res.data.name) });
       return openTab(res.data.path);
     }
     setDialog({ type: 'init', info: res.data, reason: 'create', mode, error: null });
@@ -545,18 +546,18 @@ export default function App() {
     const r = res.data;
     setDialog(null);
     const parts = [
-      `ветка ${r.branch}`,
-      !r.remoteWasEmpty && 'история загружена с сервера',
-      r.restored > 0 && `добавлено с сервера: ${r.restored} ${plural(r.restored, 'файл', 'файла', 'файлов')}`,
-      r.commit?.hash && `коммит ${r.commit.hash.slice(0, 7)} (${r.commit.files} ${plural(r.commit.files, 'файл', 'файла', 'файлов')})`,
-      r.pushed && 'отправлено на сервер',
+      tr('ветка {0}', r.branch),
+      !r.remoteWasEmpty && tr('история загружена с сервера'),
+      r.restored > 0 && tr('добавлено с сервера: {0} {1}', r.restored, plural(r.restored, tr('файл'), tr('файла'), tr('файлов'))),
+      r.commit?.hash && tr('коммит {0} ({1} {2})', r.commit.hash.slice(0, 7), r.commit.files, plural(r.commit.files, tr('файл'), tr('файла'), tr('файлов'))),
+      r.pushed && tr('отправлено на сервер'),
     ].filter(Boolean);
-    notify({ type: 'success', title: `${r.name} подключён к ${r.url}`, hint: parts.join(' · ') });
+    notify({ type: 'success', title: tr('{0} подключён к {1}', r.name, r.url), hint: parts.join(' · ') });
     if (r.pushError) {
       notify({
         type: 'error',
-        title: `Репозиторий подключён, но push не прошёл: ${r.pushError.message}`,
-        hint: `${r.pushError.hint ?? ''} Коммит сохранён локально — его можно отправить позже кнопкой Push.`.trim(),
+        title: tr('Репозиторий подключён, но push не прошёл: {0}', r.pushError.message),
+        hint: tr('{0} Коммит сохранён локально — его можно отправить позже кнопкой Push.', r.pushError.hint ?? '').trim(),
         details: r.pushError.details,
       });
     }
@@ -579,12 +580,12 @@ export default function App() {
     setDialog(null);
     notify({
       type: 'success',
-      title: `Репозиторий ${r.name} создан`,
+      title: tr('Репозиторий {0} создан', r.name),
       hint: [
-        `ветка ${r.branch}`,
+        tr('ветка {0}', r.branch),
         r.commit?.hash &&
-          `коммит ${r.commit.hash.slice(0, 7)} (${r.commit.files} ${plural(r.commit.files, 'файл', 'файла', 'файлов')})`,
-        r.commit && !r.commit.hash && 'коммит пропущен — нет файлов',
+          tr('коммит {0} ({1} {2})', r.commit.hash.slice(0, 7), r.commit.files, plural(r.commit.files, tr('файл'), tr('файла'), tr('файлов'))),
+        r.commit && !r.commit.hash && tr('коммит пропущен — нет файлов'),
         r.remote && `origin → ${r.remote}`,
       ]
         .filter(Boolean)
@@ -611,13 +612,13 @@ export default function App() {
   ];
 
   const fileMenuItems = () => [
-    { id: 'new-tab', label: 'Новая вкладка', icon: Plus, hint: 'Ctrl+T', onClick: newTab },
-    { id: 'open', label: 'Открыть репозиторий…', icon: FolderOpen, hint: 'Ctrl+O', onClick: openRepository },
-    { id: 'init', label: 'Создать репозиторий…', icon: GitBranch, hint: 'Ctrl+N', onClick: () => createRepository() },
-    { id: 'clone', label: 'Клонировать репозиторий…', icon: CloudDownload, hint: 'Ctrl+Shift+O', onClick: () => setDialog({ type: 'clone' }) },
+    { id: 'new-tab', label: tr('Новая вкладка'), icon: Plus, hint: 'Ctrl+T', onClick: newTab },
+    { id: 'open', label: tr('Открыть репозиторий…'), icon: FolderOpen, hint: 'Ctrl+O', onClick: openRepository },
+    { id: 'init', label: tr('Создать репозиторий…'), icon: GitBranch, hint: 'Ctrl+N', onClick: () => createRepository() },
+    { id: 'clone', label: tr('Клонировать репозиторий…'), icon: CloudDownload, hint: 'Ctrl+Shift+O', onClick: () => setDialog({ type: 'clone' }) },
     {
       id: 'connect',
-      label: 'Подключить папку к GitLab / GitHub…',
+      label: tr('Подключить папку к GitLab / GitHub…'),
       icon: Link2,
       onClick: () => createRepository(undefined, 'connect'),
     },
@@ -626,14 +627,14 @@ export default function App() {
     { separator: true },
     {
       id: 'close-tab',
-      label: 'Закрыть вкладку',
+      label: tr('Закрыть вкладку'),
       icon: X,
       hint: 'Ctrl+W',
       disabled: !activePath,
       onClick: () => activePath && closeTab(activePath),
     },
     // На macOS «Завершить» — в меню приложения (⌘Q)
-    ...(IS_MAC ? [] : [{ id: 'quit', label: 'Выход', icon: LogOut, onClick: () => api?.window.close() }]),
+    ...(IS_MAC ? [] : [{ id: 'quit', label: tr('Выход'), icon: LogOut, onClick: () => api?.window.close() }]),
   ];
 
   // Ctrl+O — открыть, Ctrl+W — закрыть вкладку, Ctrl+Tab / Ctrl+Shift+Tab — переключить
@@ -734,7 +735,7 @@ export default function App() {
     if (!url && !dir) return;
     const res = await api.creds.describe(dir, url);
     if (!res.ok) {
-      if (error) setDialog({ type: 'error', action: 'Авторизация', error });
+      if (error) setDialog({ type: 'error', action: tr('Авторизация'), error });
       else notify({ type: 'error', title: res.error.message, hint: res.error.hint });
       return;
     }
@@ -756,7 +757,7 @@ export default function App() {
     if (moved) {
       notify({
         type: 'info',
-        title: moved.from ? `Remote ${moved.remote} теперь указывает на ${saved.data.hostname}` : `Добавлен remote ${moved.remote}`,
+        title: moved.from ? tr('Remote {0} теперь указывает на {1}', moved.remote, saved.data.hostname) : tr('Добавлен remote {0}', moved.remote),
         hint: moved.from ? `${moved.from} → ${moved.to}` : moved.to,
       });
       if (a.dir) await loadRepo(a.dir, { silent: true });
@@ -778,13 +779,13 @@ export default function App() {
     // Авторизация одна: та же должна открывать пайплайны. Не открывает — окно остаётся и объясняет почему
     const apiRes = saved.data.api;
     if (result?.ok !== false && apiRes && (apiRes.state === 'bad' || (a.forCi && apiRes.state === 'none'))) {
-      setAuth((cur) => cur && { ...cur, busy: false, target: saved.data, error: null, notice: { message: 'Pull и Push работают, а пайплайны CI/CD — нет', hint: apiRes.reason } });
+      setAuth((cur) => cur && { ...cur, busy: false, target: saved.data, error: null, notice: { message: tr('Pull и Push работают, а пайплайны CI/CD — нет'), hint: apiRes.reason } });
       return;
     }
     setAuth(null);
     const where = saved.data.repoPath ? `${saved.data.repoPath} (${saved.data.hostname})` : saved.data.hostname ?? saved.data.host;
     if (result?.ok !== false) {
-      notify({ type: 'success', title: `Вход для ${where} выполнен — данные сохранены`, hint: apiRes?.state === 'ok' ? 'Эта же авторизация работает и для пайплайнов CI/CD' : undefined });
+      notify({ type: 'success', title: tr('Вход для {0} выполнен — данные сохранены', where), hint: apiRes?.state === 'ok' ? tr('Эта же авторизация работает и для пайплайнов CI/CD') : undefined });
       if (repoRef.current?.remotes?.length && a.retry) checkAccess();
     } else if (result?.error && result.error.code !== 'BUSY') {
       notify({ type: 'error', title: result.error.message, hint: result.error.hint, details: result.error.details });
@@ -802,7 +803,7 @@ export default function App() {
       refreshForge();
       notify({
         type: 'info',
-        title: res.data.shared ? `Общий вход для ${a.target?.hostname ?? 'сервера'} удалён` : `Вход для ${a.target?.repoPath ?? 'репозитория'} удалён`,
+        title: res.data.shared ? tr('Общий вход для {0} удалён', a.target?.hostname ?? tr('сервера')) : tr('Вход для {0} удалён', a.target?.repoPath ?? tr('репозитория')),
       });
     }
   };
@@ -859,18 +860,18 @@ export default function App() {
     }
     return run('pull', { mode }, {
       label: 'Pull',
-      success: (d) => (d.updated ? `Pull: ${d.branch} обновлена из ${d.upstream}` : `${d.branch} уже актуальна`),
+      success: (d) => (d.updated ? tr('Pull: {0} обновлена из {1}', d.branch, d.upstream) : tr('{0} уже актуальна', d.branch)),
     });
   };
 
   const fetchAll = () =>
-    run('fetch', {}, { label: 'Fetch', success: (d) => `Fetch: обновлены ${d.remotes.join(', ')}` });
+    run('fetch', {}, { label: 'Fetch', success: (d) => tr('Fetch: обновлены {0}', d.remotes.join(', ')) });
 
   const push = (force = false) =>
     run('push', { force }, {
       label: force ? 'Force Push' : 'Push',
       success: (d) =>
-        `${d.forced ? 'Force push' : 'Push'}: ${d.branch} → ${d.remote}${d.setUpstream ? ' (upstream установлен)' : ''}`,
+        `${d.forced ? 'Force push' : 'Push'}: ${d.branch} → ${d.remote}${d.setUpstream ? tr(' (upstream установлен)') : ''}`,
       onError: (error) => {
         if (error.code !== 'REJECTED_NON_FF') return false;
         const branch = repoRef.current?.currentBranch;
@@ -888,10 +889,10 @@ export default function App() {
     if (res.ok) await push(false);
   };
 
-  const undo = () => run('undo', {}, { label: 'Undo', success: (d) => `Отменено: ${d.label}` });
+  const undo = () => run('undo', {}, { label: 'Undo', success: (d) => tr('Отменено: {0}', d.label) });
   // Актуальные обработчики для глобальных горячих клавиш (эффект регистрируется один раз)
   const hotkeys = useRef({});
-  const redo = () => run('redo', {}, { label: 'Redo', success: (d) => `Повторено: ${d.label}` });
+  const redo = () => run('redo', {}, { label: 'Redo', success: (d) => tr('Повторено: {0}', d.label) });
 
   hotkeys.current = { undo, redo, repo, busyAction };
 
@@ -936,25 +937,25 @@ export default function App() {
       let deferred = false;
       run('checkout', { ...target, strategy: strategy ?? auto }, {
         label: 'Checkout',
-        progress: `Переключаемся на ${target.branch ?? target.remoteBranch?.fullName ?? ''}`,
+        progress: tr('Переключаемся на {0}', target.branch ?? target.remoteBranch?.fullName ?? ''),
         success: (d) => {
-          const parts = [d.created ? `Создана ветка ${d.created.name}, отслеживает ${d.created.track}` : `Checkout: ${d.to.branch}`];
-          if (d.autoStash) parts.push(`правки ${d.autoStash.branch} спрятаны (${d.autoStash.files}) — вернутся при возврате`);
-          if (d.restored && !d.restored.conflict) parts.push(`правки ${d.restored.branch} восстановлены`);
-          if (d.moved && !d.moved.conflict) parts.push(`изменения перенесены (${d.moved.files})`);
-          if (d.discarded) parts.push(`изменения выброшены (${d.discarded.files}) — Ctrl+Z вернёт`);
+          const parts = [d.created ? tr('Создана ветка {0}, отслеживает {1}', d.created.name, d.created.track) : `Checkout: ${d.to.branch}`];
+          if (d.autoStash) parts.push(tr('правки {0} спрятаны ({1}) — вернутся при возврате', d.autoStash.branch, d.autoStash.files));
+          if (d.restored && !d.restored.conflict) parts.push(tr('правки {0} восстановлены', d.restored.branch));
+          if (d.moved && !d.moved.conflict) parts.push(tr('изменения перенесены ({0})', d.moved.files));
+          if (d.discarded) parts.push(tr('изменения выброшены ({0}) — Ctrl+Z вернёт', d.discarded.files));
           if (d.restored?.conflict) {
             notify({
               type: 'error',
-              title: `Правки ветки ${d.restored.branch} вернулись с конфликтом`,
-              hint: 'Stash сохранён в списке Stashes. Решите конфликты в файлах с пометкой U или откатите их и примените stash позже.',
+              title: tr('Правки ветки {0} вернулись с конфликтом', d.restored.branch),
+              hint: tr('Stash сохранён в списке Stashes. Решите конфликты в файлах с пометкой U или откатите их и примените stash позже.'),
             });
           }
           if (d.moved?.conflict) {
             notify({
               type: 'error',
-              title: `Изменения перенесены в ${d.to.branch} с конфликтом`,
-              hint: 'Копия изменений осталась в списке Stash. Решите конфликты в файлах с пометкой U.',
+              title: tr('Изменения перенесены в {0} с конфликтом', d.to.branch),
+              hint: tr('Копия изменений осталась в списке Stash. Решите конфликты в файлах с пометкой U.'),
             });
           }
           return parts.join(' · ');
@@ -983,15 +984,15 @@ export default function App() {
   const stash = () =>
     run('stash', {}, {
       label: 'Stash',
-      success: (d) => `Спрятано изменений: ${d.files}${d.duplicates ? ' — прежняя копия с теми же правками убрана' : ''}`,
+      success: (d) => tr('Спрятано изменений: {0}{1}', d.files, d.duplicates ? tr(' — прежняя копия с теми же правками убрана') : ''),
     });
-  const stashPop = () => run('stashPop', {}, { label: 'Pop', success: 'Stash применён' });
+  const stashPop = () => run('stashPop', {}, { label: 'Pop', success: tr('Stash применён') });
 
   const createBranch = async (params) => {
     setDialog((d) => ({ ...d, error: null }));
     const res = await run('createBranch', params, {
       label: 'Branch',
-      success: (d) => `Ветка ${d.name} создана${d.checkedOut ? ' и активна' : ''}`,
+      success: (d) => tr('Ветка {0} создана{1}', d.name, d.checkedOut ? tr(' и активна') : ''),
       onError: (error) => {
         if (!['INVALID_NAME', 'BRANCH_EXISTS'].includes(error.code)) return false;
         setDialog((d) => (d?.type === 'branch' ? { ...d, error } : d));
@@ -1005,8 +1006,8 @@ export default function App() {
   const quickCreateBranch = (name) =>
     run('createBranch', { name, checkout: true }, {
       label: 'Branch',
-      progress: `Создаём ветку ${name}`,
-      success: (d) => `Ветка ${d.name} создана и активна`,
+      progress: tr('Создаём ветку {0}', name),
+      success: (d) => tr('Ветка {0} создана и активна', d.name),
     });
 
   // Показать коммит в графе: выделить и прокрутить к нему
@@ -1063,7 +1064,7 @@ export default function App() {
     if (!(await guardCheck(repoRef.current.path))) return false;
     const res = await run('commit', { summary, description }, {
       label: 'Commit',
-      success: (d) => `Коммит ${d.hash.slice(0, 7)} создан`,
+      success: (d) => tr('Коммит {0} создан', d.hash.slice(0, 7)),
     });
     return res.ok;
   };
@@ -1077,9 +1078,9 @@ export default function App() {
   const copy = async (text, what) => {
     try {
       await navigator.clipboard.writeText(text);
-      notify({ type: 'success', title: `${what} скопирован` });
+      notify({ type: 'success', title: tr('{0} скопирован', what) });
     } catch {
-      notify({ type: 'error', title: 'Не удалось скопировать в буфер обмена' });
+      notify({ type: 'error', title: tr('Не удалось скопировать в буфер обмена') });
     }
   };
 
@@ -1087,7 +1088,7 @@ export default function App() {
     setDialog((d) => ({ ...d, error: null }));
     const res = await run('createTag', params, {
       label: 'Tag',
-      success: (d) => `Тег ${d.name} создан на ${short(d.hash)}`,
+      success: (d) => tr('Тег {0} создан на {1}', d.name, short(d.hash)),
       onError: (error) => {
         if (!['INVALID_NAME', 'TAG_EXISTS'].includes(error.code)) return false;
         setDialog((d) => (d?.type === 'tag' ? { ...d, error } : d));
@@ -1099,14 +1100,14 @@ export default function App() {
 
   const deleteBranch = (name, force = false) =>
     run('deleteBranch', { name, force }, {
-      label: 'Удаление ветки',
-      success: (d) => `Ветка ${d.name} удалена (Undo вернёт её)`,
+      label: tr('Удаление ветки'),
+      success: (d) => tr('Ветка {0} удалена (Undo вернёт её)', d.name),
       onError: (error) => {
         if (error.code !== 'NOT_MERGED') return false;
         confirm({
-          title: 'Ветка не слита',
+          title: tr('Ветка не слита'),
           body: `${error.message}. ${error.hint}`,
-          confirmLabel: `Удалить ${name} принудительно`,
+          confirmLabel: tr('Удалить {0} принудительно', name),
           danger: true,
           onConfirm: () => deleteBranch(name, true),
         });
@@ -1118,15 +1119,13 @@ export default function App() {
     const doReset = () =>
       run('reset', { hash: node.hash, mode }, {
         label: 'Reset',
-        success: (d) => `${d.branch ?? 'HEAD'} сброшена на ${short(d.hash)} (--${d.mode})`,
+        success: (d) => tr('{0} сброшена на {1} (--{2})', d.branch ?? 'HEAD', short(d.hash), d.mode),
       });
     if (mode !== 'hard') return doReset();
     const lost = repo.wipFiles.length;
     confirm({
       title: 'Reset --hard',
-      body: `Ветка ${repo.currentBranch ?? 'HEAD'} будет перемещена на ${short(node.hash)} «${node.message}».${
-        lost ? ` Незакоммиченные изменения (${lost}) будут удалены безвозвратно.` : ''
-      } Коммиты после этой точки можно вернуть через Undo.`,
+      body: tr('Ветка {0} будет перемещена на {1} «{2}».{3} Коммиты после этой точки можно вернуть через Undo.', repo.currentBranch ?? 'HEAD', short(node.hash), node.message, lost ? tr(' Незакоммиченные изменения ({0}) будут удалены безвозвратно.', lost) : ''),
       confirmLabel: 'Reset --hard',
       danger: true,
       onConfirm: doReset,
@@ -1180,24 +1179,24 @@ export default function App() {
     const cur = repo.currentBranch;
     const curLabel = cur ?? 'HEAD';
     const op = Boolean(repo.operation);
-    const copyName = (name) => ({ label: 'Скопировать название', icon: Copy, onClick: () => copy(name, 'Название') });
+    const copyName = (name) => ({ label: tr('Скопировать название'), icon: Copy, onClick: () => copy(name, tr('Название')) });
 
     if (g.tag) {
       return [
-        ...(inCommit ? [] : [{ header: `Тег ${g.tag}` }]),
+        ...(inCommit ? [] : [{ header: tr('Тег {0}', g.tag) }]),
         copyName(g.tag),
         { separator: true },
         {
-          label: `Удалить тег ${g.tag}…`,
+          label: tr('Удалить тег {0}…', g.tag),
           icon: Trash2,
           danger: true,
           onClick: () =>
             confirm({
-              title: 'Удалить тег',
-              body: `Удалить локальный тег «${g.tag}»?`,
-              confirmLabel: 'Удалить',
+              title: tr('Удалить тег'),
+              body: tr('Удалить локальный тег «{0}»?', g.tag),
+              confirmLabel: tr('Удалить'),
               danger: true,
-              onConfirm: () => run('deleteTag', { name: g.tag }, { label: 'Удаление тега', success: `Тег ${g.tag} удалён` }),
+              onConfirm: () => run('deleteTag', { name: g.tag }, { label: tr('Удаление тега'), success: tr('Тег {0} удалён', g.tag) }),
             }),
         },
       ];
@@ -1208,47 +1207,47 @@ export default function App() {
       const isCur = name === cur;
       const info = g.info;
       const items = [];
-      if (!inCommit) items.push({ header: g.synced ? `Ветка ${name} = ${g.remote}` : `Ветка ${name}` });
+      if (!inCommit) items.push({ header: g.synced ? tr('Ветка {0} = {1}', name, g.remote) : tr('Ветка {0}', name) });
       // Для текущей ветки «переключиться», «влить в себя» и «перебазировать на себя» не имеют смысла — не показываем
-      if (!isCur) items.push({ label: `Переключиться на ${name}`, icon: LogIn, hint: 'Checkout', disabled: op, onClick: () => checkout({ branch: name }) });
+      if (!isCur) items.push({ label: tr('Переключиться на {0}', name), icon: LogIn, hint: 'Checkout', disabled: op, onClick: () => checkout({ branch: name }) });
       if (g.upstream) {
         items.push({
-          label: info?.behind ? `Обновить ветку — ↓${info.behind}` : 'Обновить ветку',
+          label: info?.behind ? tr('Обновить ветку — ↓{0}', info.behind) : tr('Обновить ветку'),
           icon: ArrowDownToLine,
           hint: 'Pull',
           disabled: (isCur && op) || !info?.behind || (!isCur && info.ahead > 0),
           title: !info?.behind
-            ? `Новых коммитов в ${g.upstream} нет`
+            ? tr('Новых коммитов в {0} нет', g.upstream)
             : !isCur && info.ahead > 0
-              ? `В ${name} есть свои коммиты (↑${info.ahead}) — переключитесь на неё и сделайте Pull`
+              ? tr('В {0} есть свои коммиты (↑{1}) — переключитесь на неё и сделайте Pull', name, info.ahead)
               : isCur
-                ? `Забрать ${info.behind} ${plural(info.behind, 'коммит', 'коммита', 'коммитов')} из ${g.upstream}`
-                : `Перемотать ${name} до ${g.upstream} без переключения ветки`,
+                ? tr('Забрать {0} {1} из {2}', info.behind, plural(info.behind, tr('коммит'), tr('коммита'), tr('коммитов')), g.upstream)
+                : tr('Перемотать {0} до {1} без переключения ветки', name, g.upstream),
           onClick: () => updateBranch(name),
         });
       }
       if (!isCur) {
         items.push({
-          label: `Влить ${name} в ${curLabel}`,
+          label: tr('Влить {0} в {1}', name, curLabel),
           icon: GitMerge,
           hint: 'Merge',
           disabled: op || !cur,
-          onClick: () => run('merge', { ref: name }, { label: 'Merge', success: `${name} слита в ${cur}` }),
+          onClick: () => run('merge', { ref: name }, { label: 'Merge', success: tr('{0} слита в {1}', name, cur) }),
         });
       }
       if (!inCommit && !isCur) {
         items.push({
-          label: `Перебазировать ${curLabel} на ${name}…`,
+          label: tr('Перебазировать {0} на {1}…', curLabel, name),
           icon: Layers,
           hint: 'Rebase',
           disabled: op || !cur,
-          title: 'С предпросмотром: итоговый граф, конфликты и изменения видны до применения',
+          title: tr('С предпросмотром: итоговый граф, конфликты и изменения видны до применения'),
           onClick: () => openRebase(name),
         });
         if (info?.hash) {
           const target = { hash: info.hash, message: name };
           items.push({
-            label: `Сбросить ${curLabel} к ${name}`,
+            label: tr('Сбросить {0} к {1}', curLabel, name),
             icon: History,
             hint: 'Reset',
             disabled: op || !cur || !repo.headHash || info.hash === repo.headHash,
@@ -1259,7 +1258,7 @@ export default function App() {
       items.push(
         { separator: true },
         {
-          label: 'Переименовать…',
+          label: tr('Переименовать…'),
           icon: Pencil,
           hint: 'Rename',
           disabled: op,
@@ -1268,16 +1267,16 @@ export default function App() {
         copyName(name),
         { separator: true },
         {
-          label: `Удалить ветку ${name}…`,
+          label: tr('Удалить ветку {0}…', name),
           icon: Trash2,
           danger: true,
           disabled: isCur,
-          title: isCur ? 'Нельзя удалить текущую ветку' : 'Удалить локальную ветку. Ветка на сервере не затрагивается.',
+          title: isCur ? tr('Нельзя удалить текущую ветку') : tr('Удалить локальную ветку. Ветка на сервере не затрагивается.'),
           onClick: () =>
             confirm({
-              title: 'Удалить ветку',
-              body: `Удалить локальную ветку «${name}»? ${g.upstream ? `Ветка ${g.upstream} на сервере не затрагивается.` : ''} Вернуть можно кнопкой Undo.`,
-              confirmLabel: 'Удалить',
+              title: tr('Удалить ветку'),
+              body: tr('Удалить локальную ветку «{0}»? {1} Вернуть можно кнопкой Undo.', name, g.upstream ? tr('Ветка {0} на сервере не затрагивается.', g.upstream) : ''),
+              confirmLabel: tr('Удалить'),
               danger: true,
               onConfirm: () => deleteBranch(name),
             }),
@@ -1286,10 +1285,10 @@ export default function App() {
       // Серверная копия — один пункт, без отдельной секции «На сервере»
       if (g.upstream) {
         items.push({
-          label: `Удалить ${g.upstream} с сервера…`,
+          label: tr('Удалить {0} с сервера…', g.upstream),
           icon: CloudOff,
           danger: true,
-          title: 'Удалить ветку на сервере (git push --delete). Локальная ветка останется.',
+          title: tr('Удалить ветку на сервере (git push --delete). Локальная ветка останется.'),
           onClick: () => askDeleteRemote(g.upstream),
         });
       }
@@ -1301,18 +1300,18 @@ export default function App() {
     const short = full.slice(full.indexOf('/') + 1);
     const existing = g.tracker ?? repo.localBranches.find((b) => b.name === short) ?? null;
     return [
-      ...(inCommit ? [] : [{ header: `На сервере: ${full}` }]),
+      ...(inCommit ? [] : [{ header: tr('На сервере: {0}', full) }]),
       existing
         ? {
-            label: `Переключиться на ${existing.name}`,
+            label: tr('Переключиться на {0}', existing.name),
             icon: LogIn,
             hint: 'Checkout',
             disabled: op || existing.name === cur,
-            title: `Локальная ветка ${existing.name} уже есть, но стоит на другом коммите — после переключения заберите изменения через Pull`,
+            title: tr('Локальная ветка {0} уже есть, но стоит на другом коммите — после переключения заберите изменения через Pull', existing.name),
             onClick: () => checkout({ branch: existing.name }),
           }
         : {
-            label: `Создать локальную ${short} и переключиться`,
+            label: tr('Создать локальную {0} и переключиться', short),
             icon: LogIn,
             hint: 'Checkout',
             disabled: op,
@@ -1320,31 +1319,31 @@ export default function App() {
             onClick: () => checkout({ remoteBranch: { name: short, fullName: full } }),
           },
       {
-        label: `Влить ${full} в ${curLabel}`,
+        label: tr('Влить {0} в {1}', full, curLabel),
         icon: GitMerge,
         hint: 'Merge',
         disabled: op || !cur,
-        onClick: () => run('merge', { ref: full }, { label: 'Merge', success: `${full} слита в ${cur}` }),
+        onClick: () => run('merge', { ref: full }, { label: 'Merge', success: tr('{0} слита в {1}', full, cur) }),
       },
       ...(inCommit
         ? []
         : [
             {
-              label: `Перебазировать ${curLabel} на ${full}…`,
+              label: tr('Перебазировать {0} на {1}…', curLabel, full),
               icon: Layers,
               hint: 'Rebase',
               disabled: op || !cur,
-              title: 'С предпросмотром: итоговый граф, конфликты и изменения видны до применения',
+              title: tr('С предпросмотром: итоговый граф, конфликты и изменения видны до применения'),
               onClick: () => openRebase(full),
             },
           ]),
       copyName(full),
       { separator: true },
       {
-        label: `Удалить ${full} с сервера…`,
+        label: tr('Удалить {0} с сервера…', full),
         icon: CloudOff,
         danger: true,
-        title: 'Удалить ветку на сервере (git push --delete) — для всех, кто работает с репозиторием',
+        title: tr('Удалить ветку на сервере (git push --delete) — для всех, кто работает с репозиторием'),
         onClick: () => askDeleteRemote(full),
       },
     ];
@@ -1352,9 +1351,9 @@ export default function App() {
 
   // Сброс текущей ветки к коммиту: три режима; Hard — с подтверждением (поэтому «…»)
   const resetSubmenu = (node) => [
-    { label: 'Мягко — оставить все изменения в индексе', icon: Archive, hint: 'soft', onClick: () => resetTo(node, 'soft') },
-    { label: 'Смешанно — оставить изменения в рабочей папке', icon: FileDiff, hint: 'mixed', onClick: () => resetTo(node, 'mixed') },
-    { label: 'Жёстко — удалить все изменения…', icon: Trash2, hint: 'hard', danger: true, onClick: () => resetTo(node, 'hard') },
+    { label: tr('Мягко — оставить все изменения в индексе'), icon: Archive, hint: 'soft', onClick: () => resetTo(node, 'soft') },
+    { label: tr('Смешанно — оставить изменения в рабочей папке'), icon: FileDiff, hint: 'mixed', onClick: () => resetTo(node, 'mixed') },
+    { label: tr('Жёстко — удалить все изменения…'), icon: Trash2, hint: 'hard', danger: true, onClick: () => resetTo(node, 'hard') },
   ];
 
   const renameBranch = async (to) => {
@@ -1362,8 +1361,8 @@ export default function App() {
     if (d?.type !== 'renameBranch') return;
     setDialog({ ...d, busy: true, error: null });
     const res = await run('renameBranch', { from: d.from, to }, {
-      label: 'Переименование',
-      success: (r) => `Ветка ${r.from} переименована в ${r.to} — Undo вернёт`,
+      label: tr('Переименование'),
+      success: (r) => tr('Ветка {0} переименована в {1} — Undo вернёт', r.from, r.to),
       onError: (error) => {
         if (!['INVALID_NAME', 'BRANCH_EXISTS', 'BAD_ARGS'].includes(error.code)) return false;
         setDialog((cur) => (cur?.type === 'renameBranch' ? { ...cur, busy: false, error } : cur));
@@ -1387,9 +1386,9 @@ export default function App() {
     if (!d || d.type !== 'deleteRemote' || d.busy) return;
     setDialog({ ...d, busy: true, error: null });
     const res = await run('deleteRemoteBranch', { remote: d.remote, branch: d.branch }, {
-      label: 'Удаление с сервера',
-      progress: `Удаляем ${d.fullName} с сервера…`,
-      success: `Ветка ${d.branch} удалена с ${d.remote} — Undo вернёт её на сервер`,
+      label: tr('Удаление с сервера'),
+      progress: tr('Удаляем {0} с сервера…', d.fullName),
+      success: tr('Ветка {0} удалена с {1} — Undo вернёт её на сервер', d.branch, d.remote),
       onError: () => true,
     });
     if (res.ok) setDialog(null);
@@ -1407,10 +1406,10 @@ export default function App() {
     if (!info) return null;
     if (name === repoRef.current.currentBranch && info.ahead > 0) return pull();
     return run('updateBranch', { branch: name }, {
-      label: `Обновление ${name}`,
-      progress: `Обновляем ${name}…`,
+      label: tr('Обновление {0}', name),
+      progress: tr('Обновляем {0}…', name),
       success: (d) =>
-        d.count ? `${d.branch}: +${d.count} ${plural(d.count, 'коммит', 'коммита', 'коммитов')} из ${d.upstream}${d.current ? '' : ' (без переключения)'}` : `${d.branch} уже актуальна`,
+        d.count ? tr('{0}: +{1} {2} из {3}{4}', d.branch, d.count, plural(d.count, tr('коммит'), tr('коммита'), tr('коммитов')), d.upstream, d.current ? '' : tr(' (без переключения)')) : tr('{0} уже актуальна', d.branch),
     });
   };
 
@@ -1436,7 +1435,7 @@ export default function App() {
     const isHead = node.hash === repo.headHash;
     const op = Boolean(repo.operation);
     // Шапка «abc1234 · сообщение» — клик копирует хэш
-    const items = [{ header: node.message, code: short(node.hash), onCopy: () => copy(node.hash, 'Хэш коммита'), copyTip: 'Скопировать хэш коммита (SHA)' }];
+    const items = [{ header: node.message, code: short(node.hash), onCopy: () => copy(node.hash, tr('Хэш коммита')), copyTip: tr('Скопировать хэш коммита (SHA)') }];
 
     // Ветки на коммите: каждая — подменю «Ветка X ›», local + origin на одном коммите — одна группа
     const groups = refGroupsOf(node);
@@ -1447,10 +1446,10 @@ export default function App() {
       const g = branchOnly[0];
       const target = g.local ?? g.remote.slice(g.remote.indexOf('/') + 1);
       items.push({
-        label: `Переключиться на ${target}`,
+        label: tr('Переключиться на {0}', target),
         icon: g.local ? LogIn : Cloud,
         // Только на сервере — создастся локальная ветка, а не detached HEAD
-        hint: g.local ? 'Checkout' : 'новая локальная',
+        hint: g.local ? 'Checkout' : tr('новая локальная'),
         disabled: op,
         onClick: () => (g.local ? checkout({ branch: g.local }) : refActions.checkout({ type: 'remote', name: g.remote })),
       });
@@ -1458,49 +1457,49 @@ export default function App() {
 
     items.push(
       {
-        label: 'Переключиться на этот коммит',
+        label: tr('Переключиться на этот коммит'),
         icon: GitCommitHorizontal,
         hint: 'detached',
         disabled: op || (isHead && repo.detached),
         onClick: () =>
           run('checkoutCommit', { hash: node.hash }, {
             label: 'Checkout',
-            success: `HEAD на ${short(node.hash)} (detached) — Undo вернёт на ветку`,
+            success: tr('HEAD на {0} (detached) — Undo вернёт на ветку', short(node.hash)),
           }),
       },
-      { label: 'Создать ветку здесь…', icon: GitBranch, onClick: () => openBranchDialog(node) },
+      { label: tr('Создать ветку здесь…'), icon: GitBranch, onClick: () => openBranchDialog(node) },
       {
-        label: 'Создать тег здесь…',
+        label: tr('Создать тег здесь…'),
         icon: Tag,
         onClick: () => setDialog({ type: 'tag', hash: node.hash, label: `${short(node.hash)} — ${node.message}` }),
       },
       { separator: true },
       {
-        label: `Перенести коммит в ${curLabel}`,
+        label: tr('Перенести коммит в {0}', curLabel),
         icon: Cherry,
         hint: 'Cherry-pick',
         disabled: op || isHead || !repo.headHash,
         onClick: () =>
-          run('cherryPick', { hash: node.hash }, { label: 'Cherry-pick', success: `Коммит ${short(node.hash)} применён к ${curLabel}` }),
+          run('cherryPick', { hash: node.hash }, { label: 'Cherry-pick', success: tr('Коммит {0} применён к {1}', short(node.hash), curLabel) }),
       },
       {
-        label: 'Обратить изменения коммита',
+        label: tr('Обратить изменения коммита'),
         icon: RotateCcw,
         hint: 'Revert',
         disabled: op || !repo.headHash,
         onClick: () =>
-          run('revert', { hash: node.hash }, { label: 'Revert', success: `Создан revert-коммит для ${short(node.hash)}` }),
+          run('revert', { hash: node.hash }, { label: 'Revert', success: tr('Создан revert-коммит для {0}', short(node.hash)) }),
       },
       {
-        label: 'Восстановить файлы из коммита…',
+        label: tr('Восстановить файлы из коммита…'),
         icon: FolderSync,
         hint: 'checkout files',
         disabled: op || isHead || !repo.headHash,
-        title: 'Новый коммит, в котором все файлы проекта — как в этом коммите. История не переписывается, ветка не переключается.',
+        title: tr('Новый коммит, в котором все файлы проекта — как в этом коммите. История не переписывается, ветка не переключается.'),
         onClick: () => openRevertTo(node),
       },
       {
-        label: `Сбросить ${curLabel} к этому коммиту`,
+        label: tr('Сбросить {0} к этому коммиту', curLabel),
         icon: History,
         hint: 'Reset',
         disabled: op || isHead || !repo.headHash,
@@ -1518,9 +1517,9 @@ export default function App() {
         const sub = buildRefItems({ group: g }, { inCommit: true });
         if (!sub.length) continue;
         items.push({
-          label: g.tag ? `Тег ${g.tag}` : g.local ? `Ветка ${g.local}` : `Ветка ${g.remote}`,
+          label: g.tag ? tr('Тег {0}', g.tag) : g.local ? tr('Ветка {0}', g.local) : tr('Ветка {0}', g.remote),
           icon: g.tag ? Tag : g.local ? GitBranch : Cloud,
-          hint: g.tag ? null : g.synced ? `= ${g.remote.slice(0, g.remote.indexOf('/'))}` : g.local ? 'локальная' : 'на сервере',
+          hint: g.tag ? null : g.synced ? `= ${g.remote.slice(0, g.remote.indexOf('/'))}` : g.local ? tr('локальная') : tr('на сервере'),
           submenu: sub,
         });
       }
@@ -1528,11 +1527,11 @@ export default function App() {
 
     items.push(
       { separator: true },
-      { label: 'Скопировать хэш коммита', icon: Copy, hint: 'SHA', onClick: () => copy(node.hash, 'Хэш коммита') },
+      { label: tr('Скопировать хэш коммита'), icon: Copy, hint: 'SHA', onClick: () => copy(node.hash, tr('Хэш коммита')) },
       {
-        label: 'Скопировать сообщение коммита',
+        label: tr('Скопировать сообщение коммита'),
         icon: FileText,
-        onClick: () => copy(node.description ? `${node.message}\n\n${node.description}` : node.message, 'Текст коммита'),
+        onClick: () => copy(node.description ? `${node.message}\n\n${node.description}` : node.message, tr('Текст коммита')),
       },
     );
     return items;
@@ -1557,7 +1556,7 @@ export default function App() {
 
   const openRebase = (upstream, onto) => {
     if (!repo?.currentBranch) {
-      notify({ type: 'error', title: 'Rebase делается для ветки', hint: 'Сейчас detached HEAD — переключитесь на ветку.' });
+      notify({ type: 'error', title: tr('Rebase делается для ветки'), hint: tr('Сейчас detached HEAD — переключитесь на ветку.') });
       return;
     }
     setRebaseView({ upstream, onto, nonce: Date.now() });
@@ -1569,22 +1568,22 @@ export default function App() {
     if (!cur || !repo.headHash) return [];
     const isHead = node.hash === repo.headHash;
     if (headAncestors.has(node.hash)) {
-      if (isHead) return node.parents[0] ? [{ label: 'Изменить последний коммит…', icon: Layers, hint: 'Rebase', disabled: op, onClick: () => openRebase(node.parents[0]) }] : [];
+      if (isHead) return node.parents[0] ? [{ label: tr('Изменить последний коммит…'), icon: Layers, hint: 'Rebase', disabled: op, onClick: () => openRebase(node.parents[0]) }] : [];
       return [
         {
-          label: `Изменить коммиты ветки ${cur}`,
+          label: tr('Изменить коммиты ветки {0}', cur),
           icon: Layers,
           hint: 'Rebase -i',
           disabled: op,
-          title: 'Изменить порядок, сообщения, объединить или удалить коммиты — с предпросмотром до применения',
+          title: tr('Изменить порядок, сообщения, объединить или удалить коммиты — с предпросмотром до применения'),
           submenu: [
-            { label: `Коммиты после ${short(node.hash)}…`, icon: ArrowUpToLine, onClick: () => openRebase(node.hash) },
-            ...(node.parents[0] ? [{ label: `Начиная с ${short(node.hash)} (включительно)…`, icon: ArrowUpFromLine, onClick: () => openRebase(node.parents[0]) }] : []),
+            { label: tr('Коммиты после {0}…', short(node.hash)), icon: ArrowUpToLine, onClick: () => openRebase(node.hash) },
+            ...(node.parents[0] ? [{ label: tr('Начиная с {0} (включительно)…', short(node.hash)), icon: ArrowUpFromLine, onClick: () => openRebase(node.parents[0]) }] : []),
           ],
         },
       ];
     }
-    return [{ label: `Перебазировать ${cur} на этот коммит…`, icon: Layers, hint: 'Rebase', disabled: op, title: 'С предпросмотром результата до применения', onClick: () => openRebase(node.hash) }];
+    return [{ label: tr('Перебазировать {0} на этот коммит…', cur), icon: Layers, hint: 'Rebase', disabled: op, title: tr('С предпросмотром результата до применения'), onClick: () => openRebase(node.hash) }];
   };
 
   const commitTime = (h) => Date.parse(allCommits.find((c) => c.hash === h)?.date ?? '') || 0;
@@ -1598,20 +1597,20 @@ export default function App() {
   const compareItems = (node) => {
     const items = [];
     if (compareMark && compareMark !== node.hash) {
-      items.push({ label: `Сравнить с отмеченным ${short(compareMark)}`, icon: GitCompareArrows, onClick: () => openCompare(compareMark, node.hash) });
+      items.push({ label: tr('Сравнить с отмеченным {0}', short(compareMark)), icon: GitCompareArrows, onClick: () => openCompare(compareMark, node.hash) });
     }
     if (repo.headHash && node.hash !== repo.headHash) {
-      items.push({ label: 'Сравнить с HEAD', icon: GitCompareArrows, onClick: () => openCompare(node.hash, repo.headHash) });
+      items.push({ label: tr('Сравнить с HEAD'), icon: GitCompareArrows, onClick: () => openCompare(node.hash, repo.headHash) });
     }
     items.push({
-      label: compareMark === node.hash ? 'Снять отметку для сравнения' : 'Отметить для сравнения',
+      label: compareMark === node.hash ? tr('Снять отметку для сравнения') : tr('Отметить для сравнения'),
       icon: Flag,
-      hint: kb('Ctrl+клик'),
+      hint: kb(tr('Ctrl+клик')),
       onClick: () => {
         if (compareMark === node.hash) setCompareMark(null);
         else {
           setCompareMark(node.hash);
-          notify({ type: 'info', title: `${short(node.hash)} отмечен для сравнения`, hint: kb('Ctrl+клик или правый клик по другому коммиту → «Сравнить с отмеченным»') });
+          notify({ type: 'info', title: tr('{0} отмечен для сравнения', short(node.hash)), hint: kb(tr('Ctrl+клик или правый клик по другому коммиту → «Сравнить с отмеченным»')) });
         }
       },
     });
@@ -1677,68 +1676,68 @@ export default function App() {
       case 'createBranch':
         return act('createBranch', { name: p.name, start: p.from || undefined, checkout: p.checkout !== false });
       case 'checkout': {
-        if (p.branch === cur.currentBranch) return skip('уже на этой ветке');
+        if (p.branch === cur.currentBranch) return skip(tr('уже на этой ветке'));
         if (cur.localBranches.some((b) => b.name === p.branch)) return act('checkout', { branch: p.branch, strategy: workflow.checkoutWip === 'merge' ? 'merge' : 'stash' });
         for (const r of cur.remotes) {
           const rb = r.branches.find((b) => b.fullName === p.branch || b.name === p.branch);
           if (rb) return act('checkout', { remoteBranch: { name: rb.name, fullName: rb.fullName }, strategy: workflow.checkoutWip === 'merge' ? 'merge' : 'stash' });
         }
-        return fail(`Ветка ${p.branch} не найдена`, 'Проверьте имя или сделайте Fetch.');
+        return fail(tr('Ветка {0} не найдена', p.branch), tr('Проверьте имя или сделайте Fetch.'));
       }
       case 'rebase': {
         const r = await act('rebase', { ref: p.onto });
-        return !r.ok && r.error.code === 'UP_TO_DATE' ? skip('уже содержит все коммиты') : r;
+        return !r.ok && r.error.code === 'UP_TO_DATE' ? skip(tr('уже содержит все коммиты')) : r;
       }
       case 'merge': {
         const r = await act('merge', { ref: p.ref });
-        return !r.ok && r.error.code === 'UP_TO_DATE' ? skip('уже слита') : r;
+        return !r.ok && r.error.code === 'UP_TO_DATE' ? skip(tr('уже слита')) : r;
       }
       case 'deleteBranch':
         return act('deleteBranch', { name: p.name, force: Boolean(p.force) });
       case 'stash': {
         const r = await act('stash', { message: p.message });
-        return !r.ok && r.error.code === 'NOTHING_TO_STASH' ? skip('нечего прятать') : r;
+        return !r.ok && r.error.code === 'NOTHING_TO_STASH' ? skip(tr('нечего прятать')) : r;
       }
       case 'stashPop': {
         const r = await act('stashPop', {});
-        return !r.ok && r.error.code === 'NO_STASH' ? skip('stash пуст') : r;
+        return !r.ok && r.error.code === 'NO_STASH' ? skip(tr('stash пуст')) : r;
       }
       case 'commit': {
-        if (!p.message?.trim()) return fail('Пустое сообщение коммита');
+        if (!p.message?.trim()) return fail(tr('Пустое сообщение коммита'));
         if (p.stageAll) {
-          if (!cur.wipFiles.length) return fail('Нет изменений для коммита');
+          if (!cur.wipFiles.length) return fail(tr('Нет изменений для коммита'));
           const st = await act('stage', { paths: 'all' });
           if (!st.ok) return st;
         }
-        if (!(await guardCheck(path))) return { ok: false, error: { message: 'Коммит отменён после проверки', code: 'STOPPED' } };
+        if (!(await guardCheck(path))) return { ok: false, error: { message: tr('Коммит отменён после проверки'), code: 'STOPPED' } };
         const r = await act('commit', { summary: p.message.trim(), description: '' });
         return r.ok ? { ...r, note: r.data?.hash?.slice(0, 7) } : r;
       }
       case 'mergeRequest': {
         const source = cur.currentBranch;
-        if (!source) return fail('Нужна активная ветка');
+        if (!source) return fail(tr('Нужна активная ветка'));
         const f = cur.forge;
         if (f?.kind === 'gitlab') {
-          if (!f.token?.configured) return fail('GitLab не подключён', 'Настройки → Подключения: добавьте токен со scope «api».');
+          if (!f.token?.configured) return fail(tr('GitLab не подключён'), tr('Настройки → Подключения: добавьте токен со scope «api».'));
           const r = await api.gitlab.createMergeRequest(path, { source, target: p.target, title: p.title || source, draft: Boolean(p.draft) }, { remote: f.remote });
           if (!r.ok) return r;
           if (p.open !== false && r.data.webUrl) api.openExternal(r.data.webUrl);
-          return { ok: true, note: `${r.data.created ? 'создан' : 'уже был'} !${r.data.iid}` };
+          return { ok: true, note: `${r.data.created ? tr('создан') : tr('уже был')} !${r.data.iid}` };
         }
         if (f?.webUrl && /github/i.test(f.host ?? f.webUrl)) {
           api.openExternal(`${f.webUrl}/compare/${encodeURIComponent(p.target)}...${encodeURIComponent(source)}?expand=1`);
-          return { ok: true, note: 'открыта страница pull request' };
+          return { ok: true, note: tr('открыта страница pull request') };
         }
-        return fail('Не удалось определить сервер для merge request', 'Поддерживаются GitLab (через токен) и GitHub (откроется страница PR).');
+        return fail(tr('Не удалось определить сервер для merge request'), tr('Поддерживаются GitLab (через токен) и GitHub (откроется страница PR).'));
       }
       case 'confirm':
-        return (await confirmAsync('Продолжить?', p.text || 'Продолжить?')) ? { ok: true } : { ok: false, error: { message: 'Остановлено вами', code: 'STOPPED' } };
+        return (await confirmAsync(tr('Продолжить?'), p.text || tr('Продолжить?'))) ? { ok: true } : { ok: false, error: { message: tr('Остановлено вами'), code: 'STOPPED' } };
       case 'git': {
         const r = await act('gitRaw', { command: p.command });
         return r.ok ? { ...r, note: r.data.output.split('\n')[0] || null } : r;
       }
       default:
-        return fail(`Неизвестный шаг: ${type}`);
+        return fail(tr('Неизвестный шаг: {0}', type));
     }
   };
 
@@ -1784,7 +1783,7 @@ export default function App() {
         }
         setStep(i, { status: res.skipped ? 'skipped' : 'done', note: res.note ?? null });
       }
-      publish({ finished: true, summary: 'каждый шаг можно отменить через Undo' });
+      publish({ finished: true, summary: tr('каждый шаг можно отменить через Undo') });
     } finally {
       busyRef.current = false;
       setBusyAction(null);
@@ -1795,11 +1794,11 @@ export default function App() {
     if (!repoRef.current) return;
     const problems = validateAction(action);
     if (problems.length) {
-      notify({ type: 'error', title: `«${action.name}»: ${problems[0]}`, hint: 'Откройте конструктор действий и поправьте шаги.' });
+      notify({ type: 'error', title: `«${action.name}»: ${problems[0]}`, hint: tr('Откройте конструктор действий и поправьте шаги.') });
       return;
     }
     if (busyRef.current) {
-      notify({ type: 'info', title: 'Дождитесь окончания текущей операции' });
+      notify({ type: 'info', title: tr('Дождитесь окончания текущей операции') });
       return;
     }
     const inputs = inputsOf(action);
@@ -1857,43 +1856,43 @@ export default function App() {
       items.push({ header: `${srcLabel} → ${t.name}` });
       const contained = isAncestorLoaded(src.hash, t.hash);
       if (contained) {
-        items.push({ label: `Уже есть в ${t.name} — сливать нечего`, icon: Check, disabled: true });
+        items.push({ label: tr('Уже есть в {0} — сливать нечего', t.name), icon: Check, disabled: true });
         continue;
       }
       if (isAncestorLoaded(t.hash, src.hash)) {
         items.push({
-          label: `Перемотать ${t.name} вперёд (Fast-forward)`,
+          label: tr('Перемотать {0} вперёд (Fast-forward)', t.name),
           icon: FastForward,
           disabled: op,
-          title: 'Ветка просто передвинется вперёд — без merge-коммита и без переключения',
-          onClick: () => run('fastForward', { branch: t.name, to: ref }, { label: 'Fast-forward', success: (d) => `${d.branch} перемотана до ${short(d.to)} — Undo вернёт` }),
+          title: tr('Ветка просто передвинется вперёд — без merge-коммита и без переключения'),
+          onClick: () => run('fastForward', { branch: t.name, to: ref }, { label: 'Fast-forward', success: (d) => tr('{0} перемотана до {1} — Undo вернёт', d.branch, short(d.to)) }),
         });
       }
       items.push({
-        label: `Влить в ${t.name} (Merge)`,
+        label: tr('Влить в {0} (Merge)', t.name),
         icon: GitMerge,
-        hint: isCur ? undefined : 'с переключением',
+        hint: isCur ? undefined : tr('с переключением'),
         disabled: op,
         onClick: () =>
-          run('mergeInto', { ref, target: t.name, smart: true }, { label: 'Merge', success: `${srcLabel} слита в ${t.name} — Undo вернёт` }),
+          run('mergeInto', { ref, target: t.name, smart: true }, { label: 'Merge', success: tr('{0} слита в {1} — Undo вернёт', srcLabel, t.name) }),
       });
       if (src.kind === 'commit') {
         items.push({
-          label: `Перенести коммит в ${t.name} (Cherry-pick)`,
+          label: tr('Перенести коммит в {0} (Cherry-pick)', t.name),
           icon: Cherry,
-          hint: isCur ? 'один коммит' : 'с переключением',
+          hint: isCur ? tr('один коммит') : tr('с переключением'),
           disabled: op,
           onClick: () =>
             run('cherryPickInto', { hash: src.hash, target: t.name, smart: true }, {
               label: 'Cherry-pick',
-              success: `Коммит ${srcLabel} применён к ${t.name}`,
+              success: tr('Коммит {0} применён к {1}', srcLabel, t.name),
             }),
         });
       }
       items.push({
-        label: `Перебазировать ${t.name} на ${srcLabel} (Rebase)…`,
+        label: tr('Перебазировать {0} на {1} (Rebase)…', t.name, srcLabel),
         icon: Layers,
-        hint: isCur ? 'с предпросмотром' : 'с переключением',
+        hint: isCur ? tr('с предпросмотром') : tr('с переключением'),
         disabled: op,
         onClick: async () => {
           if (!isCur) {
@@ -1905,44 +1904,44 @@ export default function App() {
       });
     }
     if (!items.length) {
-      notify({ type: 'info', title: 'Нельзя слить ветку саму в себя' });
+      notify({ type: 'info', title: tr('Нельзя слить ветку саму в себя') });
       return;
     }
     setMenu({ x, y, items });
   };
 
   const buildActionsMenu = () => [
-    ...(userActions.length ? [{ header: 'Мои действия' }] : []),
+    ...(userActions.length ? [{ header: tr('Мои действия') }] : []),
     ...userActions.map((a) => ({
-      label: a.name || 'Без названия',
+      label: a.name || tr('Без названия'),
       icon: ACTION_ICONS[a.icon] ?? WandSparkles,
       hint: a.hotkey ?? undefined,
       disabled: !repo || Boolean(busyAction),
       onClick: () => startAction(a),
     })),
     ...(userActions.length ? [{ separator: true }] : []),
-    { label: 'Конструктор действий…', icon: WandSparkles, onClick: () => setDialog({ type: 'actions' }) },
+    { label: tr('Конструктор действий…'), icon: WandSparkles, onClick: () => setDialog({ type: 'actions' }) },
   ];
 
   const buildWipMenu = () => {
     const op = Boolean(repo.operation);
     return [
-      { header: `Изменения: ${repo.wipFiles.length}` },
-      { label: 'Спрятать все изменения (Stash)', icon: Archive, disabled: op || !repo.headHash, onClick: stash },
-      { label: 'Добавить все изменения в индекс (Stage)', icon: GitCommitHorizontal, onClick: () => stageFiles('all') },
+      { header: tr('Изменения: {0}', repo.wipFiles.length) },
+      { label: tr('Спрятать все изменения (Stash)'), icon: Archive, disabled: op || !repo.headHash, onClick: stash },
+      { label: tr('Добавить все изменения в индекс (Stage)'), icon: GitCommitHorizontal, onClick: () => stageFiles('all') },
       { separator: true },
       {
-        label: 'Отменить все изменения (Discard)',
+        label: tr('Отменить все изменения (Discard)'),
         icon: Eraser,
         danger: true,
         disabled: op,
         onClick: () =>
           confirm({
-            title: 'Отменить все изменения',
-            body: 'Все незакоммиченные изменения, включая новые неотслеживаемые файлы, будут удалены без возможности восстановления.',
-            confirmLabel: 'Удалить изменения',
+            title: tr('Отменить все изменения'),
+            body: tr('Все незакоммиченные изменения, включая новые неотслеживаемые файлы, будут удалены без возможности восстановления.'),
+            confirmLabel: tr('Удалить изменения'),
             danger: true,
-            onConfirm: () => run('discardAll', {}, { label: 'Discard', success: (d) => `Отменены изменения в ${d.files} файлах` }),
+            onConfirm: () => run('discardAll', {}, { label: 'Discard', success: (d) => tr('Отменены изменения в {0} файлах', d.files) }),
           }),
       },
     ];
@@ -1954,7 +1953,7 @@ export default function App() {
     Edit: [
       {
         id: 'undo',
-        label: repo?.history?.undo ? `Отменить: ${repo.history.undo}` : 'Отменить',
+        label: repo?.history?.undo ? tr('Отменить: {0}', repo.history.undo) : tr('Отменить'),
         icon: Undo2,
         hint: 'Ctrl+Z',
         disabled: !repo?.history?.undo || Boolean(busyAction),
@@ -1962,38 +1961,38 @@ export default function App() {
       },
       {
         id: 'redo',
-        label: repo?.history?.redo ? `Повторить: ${repo.history.redo}` : 'Повторить',
+        label: repo?.history?.redo ? tr('Повторить: {0}', repo.history.redo) : tr('Повторить'),
         icon: Redo2,
         hint: IS_MAC ? 'Ctrl+Shift+Z' : 'Ctrl+Y',
         disabled: !repo?.history?.redo || Boolean(busyAction),
         onClick: redo,
       },
       { separator: true },
-      { id: 'find', label: 'Найти коммит…', icon: Search, hint: 'Ctrl+F', disabled: !repo, onClick: () => setSearchOpen(true) },
+      { id: 'find', label: tr('Найти коммит…'), icon: Search, hint: 'Ctrl+F', disabled: !repo, onClick: () => setSearchOpen(true) },
       {
         id: 'switch-branch',
-        label: 'Переключить ветку…',
+        label: tr('Переключить ветку…'),
         icon: GitBranch,
         hint: 'Ctrl+B',
         disabled: !repo,
         onClick: () => window.dispatchEvent(new Event('gitidea:branch-picker')),
       },
-      { id: 'new-branch', label: 'Новая ветка…', icon: GitBranch, disabled: !repo?.headHash, onClick: () => openBranchDialog() },
+      { id: 'new-branch', label: tr('Новая ветка…'), icon: GitBranch, disabled: !repo?.headHash, onClick: () => openBranchDialog() },
       { separator: true },
-      { id: 'stash', label: 'Спрятать изменения (Stash)', icon: Archive, disabled: !repo?.wipFiles.length || Boolean(busyAction), onClick: stash },
-      { id: 'pop', label: 'Вернуть последний stash (Pop)', icon: ArchiveRestore, disabled: !repo?.stashes.length || Boolean(busyAction), onClick: stashPop },
+      { id: 'stash', label: tr('Спрятать изменения (Stash)'), icon: Archive, disabled: !repo?.wipFiles.length || Boolean(busyAction), onClick: stash },
+      { id: 'pop', label: tr('Вернуть последний stash (Pop)'), icon: ArchiveRestore, disabled: !repo?.stashes.length || Boolean(busyAction), onClick: stashPop },
     ],
     View: [
-      { id: 'settings', label: 'Оформление…', icon: Palette, hint: 'Ctrl+,', onClick: () => openSettings('appearance') },
-      { id: 'sync-settings', label: 'Синхронизация…', icon: RefreshCw, onClick: () => openSettings('sync') },
-      { id: 'integrations', label: 'Подключения: Git-серверы и GitLab…', icon: Plug, onClick: () => openSettings('integrations') },
-      ...(api?.creds ? [{ id: 'repo-login', label: 'Авторизация репозитория…', icon: LogIn, disabled: !repo, onClick: () => openAuth({ actionLabel: 'Сохранить и проверить' }) }] : []),
+      { id: 'settings', label: tr('Оформление…'), icon: Palette, hint: 'Ctrl+,', onClick: () => openSettings('appearance') },
+      { id: 'sync-settings', label: tr('Синхронизация…'), icon: RefreshCw, onClick: () => openSettings('sync') },
+      { id: 'integrations', label: tr('Подключения: Git-серверы и GitLab…'), icon: Plug, onClick: () => openSettings('integrations') },
+      ...(api?.creds ? [{ id: 'repo-login', label: tr('Авторизация репозитория…'), icon: LogIn, disabled: !repo, onClick: () => openAuth({ actionLabel: tr('Сохранить и проверить') }) }] : []),
     ],
     Actions: buildActionsMenu(),
     Help: [
-      { id: 'guide', label: 'Руководство', icon: BookOpen, hint: 'F1', onClick: () => setDialog({ type: 'guide' }) },
-      { id: 'keys', label: 'Горячие клавиши', icon: Keyboard, onClick: () => setDialog({ type: 'guide', section: 'keys' }) },
-      { id: 'about', label: 'О программе', icon: Info, onClick: () => setDialog({ type: 'about' }) },
+      { id: 'guide', label: tr('Руководство'), icon: BookOpen, hint: 'F1', onClick: () => setDialog({ type: 'guide' }) },
+      { id: 'keys', label: tr('Горячие клавиши'), icon: Keyboard, onClick: () => setDialog({ type: 'guide', section: 'keys' }) },
+      { id: 'about', label: tr('О программе'), icon: Info, onClick: () => setDialog({ type: 'about' }) },
     ],
   });
   const appMenusRef = useRef(appMenus);
@@ -2052,8 +2051,8 @@ export default function App() {
       setConflictPath(conflictPaths[0]);
       notify({
         type: 'info',
-        title: `Конфликтов: ${conflictPaths.length} ${plural(conflictPaths.length, 'файл', 'файла', 'файлов')}`,
-        hint: 'Выберите для каждого блока нужную версию и сохраните — затем нажмите «Продолжить».',
+        title: tr('Конфликтов: {0} {1}', conflictPaths.length, plural(conflictPaths.length, tr('файл'), tr('файла'), tr('файлов'))),
+        hint: tr('Выберите для каждого блока нужную версию и сохраните — затем нажмите «Продолжить».'),
       });
     }
     // Файл больше не в конфликте (решили снаружи) — закрываем редактор
@@ -2076,7 +2075,7 @@ export default function App() {
       // Следующий файл по порядку после текущего
       const idx = conflictPaths.indexOf(path);
       const next = conflictPaths.slice(idx + 1).find((p) => rest.includes(p)) ?? rest[0];
-      notify({ type: 'success', title: `${path.split('/').pop()} — решено`, hint: `Осталось файлов: ${rest.length}` });
+      notify({ type: 'success', title: tr('{0} — решено', path.split('/').pop()), hint: tr('Осталось файлов: {0}', rest.length) });
       setConflictPath(next);
       return;
     }
@@ -2084,10 +2083,10 @@ export default function App() {
     const op = repoRef.current?.operation;
     notify({
       type: 'success',
-      title: 'Все конфликты решены',
+      title: tr('Все конфликты решены'),
       hint: op
-        ? `Нажмите «Продолжить» на жёлтой панели, чтобы завершить ${OPERATION_LABELS[op] ?? op}.`
-        : 'Изменения готовы — можно делать коммит.',
+        ? tr('Нажмите «Продолжить» на жёлтой панели, чтобы завершить {0}.', OPERATION_LABELS[op] ?? op)
+        : tr('Изменения готовы — можно делать коммит.'),
     });
   };
 
@@ -2240,9 +2239,9 @@ export default function App() {
       if (first || !prev || !ACTIVE_STATUSES.has(prev) || ACTIVE_STATUSES.has(p.status)) continue;
       if (!['success', 'failed', 'canceled'].includes(p.status)) continue;
       const ok = p.status === 'success';
-      const title = `${ok ? '✓' : p.status === 'failed' ? '✕' : '⊘'} Пайплайн #${p.number ?? p.id} ${ok ? 'прошёл' : p.status === 'failed' ? 'упал' : 'отменён'}`;
+      const title = tr('{0} Пайплайн #{1} {2}', ok ? '✓' : p.status === 'failed' ? '✕' : '⊘', p.number ?? p.id, ok ? tr('прошёл') : p.status === 'failed' ? tr('упал') : tr('отменён'));
       const body = [p.branch, p.name].filter(Boolean).join(' · ');
-      notify({ type: ok ? 'success' : p.status === 'failed' ? 'error' : 'info', title, hint: `${body}${label ? ` · ${label}` : ''}`, action: { label: 'Открыть', onClick: () => openPipelines(p.id, p.status === 'failed') } });
+      notify({ type: ok ? 'success' : p.status === 'failed' ? 'error' : 'info', title, hint: `${body}${label ? ` · ${label}` : ''}`, action: { label: tr('Открыть'), onClick: () => openPipelines(p.id, p.status === 'failed') } });
       try {
         const show = () => {
           const n = new window.Notification(title, { body: body || label || '', silent: ok, tag: `pipeline-${p.id}` });
@@ -2367,25 +2366,25 @@ export default function App() {
   const restoreFile = (file, hash, side, sourcePath = null) => {
     const go = () =>
       run('restoreFile', { hash, path: file.path, side, ...(sourcePath && sourcePath !== file.path ? { sourcePath } : {}) }, {
-        label: 'Вернуть файл',
+        label: tr('Вернуть файл'),
         success: (d) =>
-          `${d.path}: ${d.deleted ? 'удалён (его не было в той версии)' : `версия ${side === 'before' ? 'до' : 'из'} ${hash.slice(0, 7)}`} — без коммита${d.undoable ? ', Undo вернёт' : ''}`,
+          tr('{0}: {1} — без коммита{2}', d.path, d.deleted ? tr('удалён (его не было в той версии)') : tr('версия {0} {1}', side === 'before' ? tr('до') : tr('из'), hash.slice(0, 7)), d.undoable ? tr(', Undo вернёт') : ''),
       });
     if (!isDirty(file.path)) return go();
     confirm({
-      title: 'В файле есть незакоммиченные изменения',
-      body: `Файл ${file.path} уже изменён в рабочей папке. Он будет заменён версией ${side === 'before' ? 'до' : 'из'} коммита ${hash.slice(0, 7)}. Undo (Ctrl+Z) вернёт текущее содержимое.`,
-      confirmLabel: 'Заменить',
+      title: tr('В файле есть незакоммиченные изменения'),
+      body: tr('Файл {0} уже изменён в рабочей папке. Он будет заменён версией {1} коммита {2}. Undo (Ctrl+Z) вернёт текущее содержимое.', file.path, side === 'before' ? tr('до') : tr('из'), hash.slice(0, 7)),
+      confirmLabel: tr('Заменить'),
       onConfirm: go,
     });
   };
 
   const HUNK_TEXT = {
-    revert: { label: 'Отмена фрагмента', ok: (d) => `${d.hunks === d.total ? 'Изменения коммита отменены' : 'Фрагмент отменён'} в ${d.path} — без коммита, Undo вернёт` },
-    discard: { label: 'Отмена фрагмента', ok: (d) => `${d.hunks === d.total ? 'Изменения' : 'Фрагмент'} в ${d.path} отменён — Undo вернёт` },
-    stage: { label: 'Добавление фрагмента в индекс', ok: null },
-    unstage: { label: 'Удаление фрагмента из индекса', ok: null },
-    apply: { label: 'Фрагмент из stash', ok: (d) => `${d.hunks === d.total ? 'Изменения' : 'Фрагмент'} из stash применён к ${d.path} — Undo вернёт` },
+    revert: { label: tr('Отмена фрагмента'), ok: (d) => tr('{0} в {1} — без коммита, Undo вернёт', d.hunks === d.total ? tr('Изменения коммита отменены') : tr('Фрагмент отменён'), d.path) },
+    discard: { label: tr('Отмена фрагмента'), ok: (d) => tr('{0} в {1} отменён — Undo вернёт', d.hunks === d.total ? tr('Изменения') : tr('Фрагмент'), d.path) },
+    stage: { label: tr('Добавление фрагмента в индекс'), ok: null },
+    unstage: { label: tr('Удаление фрагмента из индекса'), ok: null },
+    apply: { label: tr('Фрагмент из stash'), ok: (d) => tr('{0} из stash применён к {1} — Undo вернёт', d.hunks === d.total ? tr('Изменения') : tr('Фрагмент'), d.path) },
   };
   const applyHunks = (op, mode, file, hash, hunks) =>
     run('applyHunks', { op, mode, hash, path: file.path, oldPath: file.oldPath, hunks }, { label: HUNK_TEXT[op].label, success: HUNK_TEXT[op].ok });
@@ -2393,15 +2392,15 @@ export default function App() {
   const hunkActionsFor = (t) => {
     if (!t || t.file.status === 'U' || t.file.untracked) return null;
     if (t.kind === 'commit')
-      return [{ id: 'revert', label: 'Отменить в рабочей папке', icon: Undo2, title: 'Убрать изменения этого фрагмента из файла в рабочей папке — без коммита. Undo вернёт.' }];
+      return [{ id: 'revert', label: tr('Отменить в рабочей папке'), icon: Undo2, title: tr('Убрать изменения этого фрагмента из файла в рабочей папке — без коммита. Undo вернёт.') }];
     if (t.kind === 'unstaged')
       return [
-        { id: 'stage', label: 'В индекс', icon: Plus, title: 'Добавить только этот фрагмент в коммит (Stage)' },
-        { id: 'discard', label: 'Отменить', icon: Undo2, danger: true, title: 'Выбросить этот фрагмент изменений. Undo вернёт.' },
+        { id: 'stage', label: tr('В индекс'), icon: Plus, title: tr('Добавить только этот фрагмент в коммит (Stage)') },
+        { id: 'discard', label: tr('Отменить'), icon: Undo2, danger: true, title: tr('Выбросить этот фрагмент изменений. Undo вернёт.') },
       ];
-    if (t.kind === 'staged') return [{ id: 'unstage', label: 'Из индекса', icon: Minus, title: 'Убрать этот фрагмент из коммита (Unstage) (останется в рабочей папке)' }];
+    if (t.kind === 'staged') return [{ id: 'unstage', label: tr('Из индекса'), icon: Minus, title: tr('Убрать этот фрагмент из коммита (Unstage) (останется в рабочей папке)') }];
     if (t.kind === 'stash' && t.file.status !== 'D')
-      return [{ id: 'apply', label: 'Применить', icon: ArchiveRestore, title: 'Перенести только этот фрагмент из stash в файл в рабочей папке. Stash не меняется, Undo вернёт.' }];
+      return [{ id: 'apply', label: tr('Применить'), icon: ArchiveRestore, title: tr('Перенести только этот фрагмент из stash в файл в рабочей папке. Stash не меняется, Undo вернёт.') }];
     return null;
   };
   const onHunkAction = (id, hunk) => {
@@ -2415,9 +2414,9 @@ export default function App() {
   // Откуда строить историю и blame для файла из коммита, stash, WIP или сравнения.
   // → { history: view | null, blame: view | null, reason } (reason — почему недоступно)
   const fileViewsFor = (file, kind, ctx = {}) => {
-    if (!file || file.status === 'U') return { history: null, blame: null, reason: 'Сначала разрешите конфликт' };
+    if (!file || file.status === 'U') return { history: null, blame: null, reason: tr('Сначала разрешите конфликт') };
     if (kind === 'unstaged' || kind === 'staged') {
-      if (file.untracked || file.status === 'A') return { history: null, blame: null, reason: 'Файл ещё не закоммичен — у него нет истории' };
+      if (file.untracked || file.status === 'A') return { history: null, blame: null, reason: tr('Файл ещё не закоммичен — у него нет истории') };
       // Переименованный или удалённый в рабочей папке — история и blame под прежним именем из HEAD
       const old = file.status === 'R' || file.status === 'D' ? file.oldPath ?? file.path : null;
       const path = old ?? file.path;
@@ -2425,10 +2424,10 @@ export default function App() {
     }
     const hash = kind === 'stash' ? file.diffHash : ctx.hash;
     const parent = kind === 'stash' ? file.diffParent : ctx.parent;
-    if (!hash) return { history: null, blame: null, reason: 'Нет коммита' };
+    if (!hash) return { history: null, blame: null, reason: tr('Нет коммита') };
     if (file.status === 'D') {
       const old = file.oldPath ?? file.path;
-      return { history: { path: old, rev: hash, focus: hash }, blame: parent ? { path: old, rev: hash, blameRev: parent } : null, reason: 'Файл удалён в этом коммите' };
+      return { history: { path: old, rev: hash, focus: hash }, blame: parent ? { path: old, rev: hash, blameRev: parent } : null, reason: tr('Файл удалён в этом коммите') };
     }
     return { history: { path: file.path, rev: hash, focus: hash }, blame: { path: file.path, rev: hash, blameRev: hash } };
   };
@@ -2441,17 +2440,17 @@ export default function App() {
     const v = fileViewsFor(file, kind, ctx);
     return [
       {
-        label: 'История файла (Log)',
+        label: tr('История файла (Log)'),
         icon: FileClock,
         disabled: !v.history,
-        title: v.history ? 'Все коммиты, которые меняли этот файл, — и под прежними именами' : v.reason,
+        title: v.history ? tr('Все коммиты, которые меняли этот файл, — и под прежними именами') : v.reason,
         onClick: () => openFileView(v.history, 'history'),
       },
       {
         label: 'Blame',
         icon: FileUser,
         disabled: !v.blame,
-        title: v.blame ? 'Кто и когда последним менял каждую строку' : v.reason,
+        title: v.blame ? tr('Кто и когда последним менял каждую строку') : v.reason,
         onClick: () => openFileView(v.blame, 'blame'),
       },
     ];
@@ -2462,13 +2461,13 @@ export default function App() {
     if (kind === 'stash') {
       const st = extra?.stash ?? selected;
       items.push(
-        { label: 'Показать изменения', icon: FileDiff, onClick: () => openFile(file, 'stash', list) },
+        { label: tr('Показать изменения'), icon: FileDiff, onClick: () => openFile(file, 'stash', list) },
         ...fileViewItems(file, 'stash'),
         { separator: true },
         {
-          label: 'Восстановить файл из stash',
+          label: tr('Восстановить файл из stash'),
           icon: ArchiveRestore,
-          title: 'Файл в рабочей папке станет таким, как в stash. Stash остаётся в списке. Undo вернёт.',
+          title: tr('Файл в рабочей папке станет таким, как в stash. Stash остаётся в списке. Undo вернёт.'),
           onClick: () => (extra?.restore ? extra.restore() : restoreFromStash([file], st)),
         },
       );
@@ -2476,49 +2475,49 @@ export default function App() {
       const c = selected;
       if (!c || c.wip) return null;
       items.push(
-        { label: 'Показать изменения', icon: FileDiff, onClick: () => openFile(file, 'commit', list) },
+        { label: tr('Показать изменения'), icon: FileDiff, onClick: () => openFile(file, 'commit', list) },
         ...fileViewItems(file, 'commit', { hash: c.hash, parent: c.parents[0] ?? null }),
         { separator: true },
         {
-          label: 'Вернуть файл к версии из этого коммита',
+          label: tr('Вернуть файл к версии из этого коммита'),
           icon: RotateCcw,
-          title: 'Файл в рабочей папке станет таким, как в этом коммите. Коммит не создаётся.',
+          title: tr('Файл в рабочей папке станет таким, как в этом коммите. Коммит не создаётся.'),
           onClick: () => restoreFile(file, c.hash, 'after'),
         },
         {
-          label: 'Вернуть файл к версии до этого коммита',
+          label: tr('Вернуть файл к версии до этого коммита'),
           icon: History,
           disabled: !c.parents.length,
-          title: 'Файл станет таким, каким был до этого коммита. Коммит не создаётся.',
+          title: tr('Файл станет таким, каким был до этого коммита. Коммит не создаётся.'),
           onClick: () => restoreFile(file, c.hash, 'before'),
         },
         {
-          label: 'Отменить изменения этого коммита в файле',
+          label: tr('Отменить изменения этого коммита в файле'),
           icon: Undo2,
           disabled: file.additions === null || !c.parents.length || file.status === 'A' || file.status === 'D',
-          title: 'Убрать из рабочего файла только то, что изменил этот коммит, — более поздние правки останутся',
+          title: tr('Убрать из рабочего файла только то, что изменил этот коммит, — более поздние правки останутся'),
           onClick: () => applyHunks('revert', 'commit', file, c.hash, null),
         },
       );
     } else if (kind === 'unstaged' || kind === 'staged') {
       items.push(
-        { label: 'Показать изменения', icon: FileDiff, onClick: () => openFile(file, kind, list) },
+        { label: tr('Показать изменения'), icon: FileDiff, onClick: () => openFile(file, kind, list) },
         ...fileViewItems(file, kind),
         kind === 'unstaged'
-          ? { label: 'Добавить в индекс (Stage)', icon: Plus, onClick: () => stageFiles([file.path]) }
-          : { label: 'Убрать из индекса (Unstage)', icon: Minus, onClick: () => unstageFiles(file.oldPath ? [file.path, file.oldPath] : [file.path]) },
+          ? { label: tr('Добавить в индекс (Stage)'), icon: Plus, onClick: () => stageFiles([file.path]) }
+          : { label: tr('Убрать из индекса (Unstage)'), icon: Minus, onClick: () => unstageFiles(file.oldPath ? [file.path, file.oldPath] : [file.path]) },
       );
       if (kind === 'unstaged' && !file.untracked && file.status !== 'U') {
         items.push({
-          label: 'Отменить изменения в файле',
+          label: tr('Отменить изменения в файле'),
           icon: Undo2,
           danger: true,
-          title: 'Выбросить незастейдженные правки этого файла. Undo вернёт.',
+          title: tr('Выбросить незастейдженные правки этого файла. Undo вернёт.'),
           onClick: () => applyHunks('discard', 'unstaged', file, null, null),
         });
       }
     } else return null;
-    items.push({ separator: true }, { label: 'Копировать путь', icon: Copy, onClick: () => copy(file.path, 'Путь') });
+    items.push({ separator: true }, { label: tr('Копировать путь'), icon: Copy, onClick: () => copy(file.path, tr('Путь')) });
     return items;
   };
   const openFileContextMenu = (file, kind, list, x, y, extra) => {
@@ -2601,7 +2600,7 @@ export default function App() {
   const checkoutDetached = (node) =>
     run('checkoutCommit', { hash: node.hash }, {
       label: 'Checkout',
-      success: `HEAD на ${node.hash.slice(0, 7)} (detached) — Undo вернёт на ветку`,
+      success: tr('HEAD на {0} (detached) — Undo вернёт на ветку', node.hash.slice(0, 7)),
     });
 
 
@@ -2612,17 +2611,17 @@ export default function App() {
   const stashAction = (action, st) => {
     if (action === 'drop') {
       return confirm({
-        title: 'Удалить stash',
-        body: `Удалить «${stashTitle(st)}»? Вернуть его можно кнопкой Undo.`,
-        confirmLabel: 'Удалить',
+        title: tr('Удалить stash'),
+        body: tr('Удалить «{0}»? Вернуть его можно кнопкой Undo.', stashTitle(st)),
+        confirmLabel: tr('Удалить'),
         danger: true,
-        onConfirm: () => run('stashDrop', { id: st.id, hash: st.hash }, { label: 'Drop', success: 'Stash удалён — Undo вернёт его' }),
+        onConfirm: () => run('stashDrop', { id: st.id, hash: st.hash }, { label: 'Drop', success: tr('Stash удалён — Undo вернёт его') }),
       });
     }
     const pop = action === 'pop';
     return run(pop ? 'stashPopAt' : 'stashApplyAt', { id: st.id, hash: st.hash }, {
       label: pop ? 'Pop' : 'Apply',
-      success: pop ? `Stash «${stashTitle(st)}» применён и удалён` : `Stash «${stashTitle(st)}» применён`,
+      success: pop ? tr('Stash «{0}» применён и удалён', stashTitle(st)) : tr('Stash «{0}» применён', stashTitle(st)),
     }).then((res) => {
       if (res.ok) setSelectedHash('WIP');
       return res;
@@ -2634,18 +2633,18 @@ export default function App() {
     if (!list?.length || !st) return Promise.resolve({ ok: false });
     const touched = new Set(list.flatMap((f) => [f.path, f.oldPath].filter(Boolean)));
     const dirty = (repo?.wipFiles ?? []).filter((f) => touched.has(f.path));
-    const names = list.length === 1 ? list[0].path : `${list.length} ${plural(list.length, 'файл', 'файла', 'файлов')}`;
+    const names = list.length === 1 ? list[0].path : `${list.length} ${plural(list.length, tr('файл'), tr('файла'), tr('файлов'))}`;
     const go = () =>
       run('restoreFromStash', { hash: st.hash, id: st.id, files: list.map(({ path, oldPath, status, untracked }) => ({ path, oldPath, status, untracked })) }, {
-        label: 'Восстановление из stash',
-        success: (d) => `${names} из ${st.id} — в рабочей папке${d.undoable ? '. Undo вернёт' : ''}`,
+        label: tr('Восстановление из stash'),
+        success: (d) => tr('{0} из {1} — в рабочей папке{2}', names, st.id, d.undoable ? tr('. Undo вернёт') : ''),
       });
     if (!dirty.length) return go();
     return new Promise((resolve) =>
       confirm({
-        title: 'Заменить изменённые файлы?',
-        body: `У вас есть несохранённые правки в ${dirty.length === 1 ? `файле ${dirty[0].path}` : `${dirty.length} файлах`}. Они будут заменены версией из ${st.id}. Undo (Ctrl+Z) вернёт текущее содержимое.`,
-        confirmLabel: 'Заменить',
+        title: tr('Заменить изменённые файлы?'),
+        body: tr('У вас есть несохранённые правки в {0}. Они будут заменены версией из {1}. Undo (Ctrl+Z) вернёт текущее содержимое.', dirty.length === 1 ? tr('файле {0}', dirty[0].path) : tr('{0} файлах', dirty.length), st.id),
+        confirmLabel: tr('Заменить'),
         onConfirm: () => go().then(resolve),
       }),
     );
@@ -2653,10 +2652,10 @@ export default function App() {
 
   const buildStashMenu = (st) => [
     { header: `${st.id} · ${stashTitle(st)}` },
-    { label: 'Применить (Apply)', icon: Archive, onClick: () => stashAction('apply', st) },
-    { label: 'Применить и удалить (Pop)', icon: Archive, onClick: () => stashAction('pop', st) },
+    { label: tr('Применить (Apply)'), icon: Archive, onClick: () => stashAction('apply', st) },
+    { label: tr('Применить и удалить (Pop)'), icon: Archive, onClick: () => stashAction('pop', st) },
     { separator: true },
-    { label: 'Удалить (Drop)', icon: Trash2, danger: true, onClick: () => stashAction('drop', st) },
+    { label: tr('Удалить (Drop)'), icon: Trash2, danger: true, onClick: () => stashAction('drop', st) },
   ];
 
   /* ---------- Вернуть проект к коммиту ---------- */
@@ -2667,9 +2666,9 @@ export default function App() {
     const target = dialog?.commit;
     if (!target) return;
     const res = await run('revertTo', { hash: target.hash }, {
-      label: 'Вернуть к коммиту',
-      progress: `Возвращаем файлы к ${target.hash.slice(0, 7)}…`,
-      success: (d) => `Файлы возвращены к ${target.hash.slice(0, 7)} — создан коммит «${d.subject}». Undo отменит.`,
+      label: tr('Вернуть к коммиту'),
+      progress: tr('Возвращаем файлы к {0}…', target.hash.slice(0, 7)),
+      success: (d) => tr('Файлы возвращены к {0} — создан коммит «{1}». Undo отменит.', target.hash.slice(0, 7), d.subject),
     });
     if (!res.ok) return;
     setDialog(null);
@@ -2814,13 +2813,13 @@ export default function App() {
       if (ev.path !== repoRef.current?.path || !ev.synced?.length) return;
       const reset = ev.synced.filter((f) => f.action === 'reset').map((f) => f.file);
       const added = ev.synced.filter((f) => f.action === 'add').map((f) => f.file);
-      const names = (list) => list.slice(0, 3).map((f) => f.split('/').pop()).join(', ') + (list.length > 3 ? ` и ещё ${list.length - 3}` : '');
+      const names = (list) => list.slice(0, 3).map((f) => f.split('/').pop()).join(', ') + (list.length > 3 ? tr(' и ещё {0}', list.length - 3) : '');
       notify({
         type: 'info',
         title: reset.length
-          ? `${names(reset)} — откат к последнему коммиту из другой программы, изменение убрано из индекса`
-          : `${names(added)} — правки из другой программы добавлены в индекс`,
-        hint: reset.length && added.length ? `Обновлены в индексе: ${names(added)}` : 'Отключить: Настройки → Синхронизация',
+          ? tr('{0} — откат к последнему коммиту из другой программы, изменение убрано из индекса', names(reset))
+          : tr('{0} — правки из другой программы добавлены в индекс', names(added)),
+        hint: reset.length && added.length ? tr('Обновлены в индексе: {0}', names(added)) : tr('Отключить: Настройки → Синхронизация'),
       });
     });
   }, [notify]);
@@ -2876,7 +2875,7 @@ export default function App() {
       bgFetchingRef.current = false;
       setBgFetching(false);
       if (res.ok) {
-        setLastFetch(new Date().toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' }));
+        setLastFetch(new Date().toLocaleTimeString(locale(), { hour: '2-digit', minute: '2-digit' }));
         setFetchError(null);
         if (syncFailures.current) {
           syncFailures.current = 0;
@@ -2936,13 +2935,13 @@ export default function App() {
         // Без всплывающих ошибок: увеличиваем паузу 15 → 30 → 60 с → 5 мин до первого успеха
         syncFailures.current += 1;
         const ms = delay(data.retryAfter);
-        setSyncStatus({ error: data.error?.message ?? 'Нет связи с сервером', code: data.error?.code ?? null, failures: syncFailures.current, retryAt: Date.now() + ms, focused: focused() });
+        setSyncStatus({ error: data.error?.message ?? tr('Нет связи с сервером'), code: data.error?.code ?? null, failures: syncFailures.current, retryAt: Date.now() + ms, focused: focused() });
         return schedule(ms);
       }
       syncFailures.current = 0;
       setSyncStatus({ at: Date.now(), via: data.via, ms: data.ms, error: null, code: null, failures: 0, retryAt: null, focused: focused() });
       if (data.fetched) {
-        setLastFetch(new Date().toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' }));
+        setLastFetch(new Date().toLocaleTimeString(locale(), { hour: '2-digit', minute: '2-digit' }));
         setFetchError(null);
         if (repoRef.current?.path === path && !busyRef.current) loadRepo(path, { silent: true });
       }
@@ -2984,7 +2983,7 @@ export default function App() {
   return (
     <div className="flex h-full flex-col text-gk-text">
       <div className="app-backdrop" />
-      {booting && <Splash subtitle={loading ? 'Загружаем репозиторий…' : 'Запуск…'} />}
+      {booting && <Splash subtitle={loading ? tr('Загружаем репозиторий…') : tr('Запуск…')} />}
       <TitleBar
         tabs={tabs}
         activePath={activePath}
@@ -3014,9 +3013,9 @@ export default function App() {
                 items: [
                   { header: repo.path },
                   ...repoFolderItems(repo.path),
-                  { label: 'Скопировать путь', icon: Copy, onClick: () => copy(repo.path, 'Путь') },
+                  { label: tr('Скопировать путь'), icon: Copy, onClick: () => copy(repo.path, tr('Путь')) },
                   { separator: true },
-                  { label: 'Открыть другой репозиторий…', icon: FolderOpen, hint: 'Ctrl+O', onClick: openRepository },
+                  { label: tr('Открыть другой репозиторий…'), icon: FolderOpen, hint: 'Ctrl+O', onClick: openRepository },
                 ],
               })
             }
@@ -3040,7 +3039,7 @@ export default function App() {
               .filter((a) => a.toolbar)
               .map((a) => ({
                 id: a.id,
-                name: a.name || 'Действие',
+                name: a.name || tr('Действие'),
                 icon: ACTION_ICONS[a.icon] ?? WandSparkles,
                 title: `${a.name}${a.hotkey ? ` (${a.hotkey})` : ''}\n${a.steps.map((st, i) => `${i + 1}. ${STEP_TYPES[st.type]?.describe(st.params) ?? st.type}`).join('\n')}`,
                 running: Boolean(actionRun && !actionRun.finished && actionRun.action.id === a.id),
@@ -3060,14 +3059,14 @@ export default function App() {
               busy={Boolean(busyAction)}
               onContinue={() =>
                 run('continueOperation', {}, {
-                  label: 'Продолжить',
-                  success: (d) => (d.finished ? `${OPERATION_LABELS[d.operation]} завершён` : 'Следующий шаг'),
+                  label: tr('Продолжить'),
+                  success: (d) => (d.finished ? tr('{0} завершён', OPERATION_LABELS[d.operation]) : tr('Следующий шаг')),
                 })
               }
               onAbort={() =>
                 run('abortOperation', {}, {
-                  label: 'Прервать',
-                  success: (d) => `${OPERATION_LABELS[d.operation]} прерван, состояние восстановлено`,
+                  label: tr('Прервать'),
+                  success: (d) => tr('{0} прерван, состояние восстановлено', OPERATION_LABELS[d.operation]),
                 })
               }
             />
@@ -3181,18 +3180,18 @@ export default function App() {
                   fileActions={[
                     ...fileViewItems(diffTarget.file, diffTarget.kind === 'compare' ? 'commit' : diffTarget.kind, { hash: diffTarget.hash, parent: diffTarget.parent }).map((it) => ({
                       ...it,
-                      label: it.label === 'Blame' ? 'Blame' : 'История файла',
+                      label: it.label === 'Blame' ? 'Blame' : tr('История файла'),
                     })),
                     ...(diffTarget.kind === 'commit' && selected && !selected.wip
                       ? [
                           {
-                            label: 'Вернуть файл…',
+                            label: tr('Вернуть файл…'),
                             icon: RotateCcw,
-                            title: 'Вернуть этот файл в рабочей папке к версии из коммита или до него — без коммита',
+                            title: tr('Вернуть этот файл в рабочей папке к версии из коммита или до него — без коммита'),
                             onClick: (e) => {
                               const r = e.currentTarget.getBoundingClientRect();
                               const items = buildFileMenu(diffTarget.file, 'commit', diffTarget.list);
-                              if (items) setMenu({ x: r.left, y: r.bottom + 4, items: items.filter((i) => i.label !== 'Показать изменения' && i.icon !== FileClock && i.icon !== FileUser) });
+                              if (items) setMenu({ x: r.left, y: r.bottom + 4, items: items.filter((i) => i.label !== tr('Показать изменения') && i.icon !== FileClock && i.icon !== FileUser) });
                             },
                           },
                         ]
@@ -3217,10 +3216,10 @@ export default function App() {
                       y,
                       items: [
                         { header: f.path },
-                        { label: 'Показать изменения', icon: FileDiff, onClick: () => openCompareFile(f, list, compareView.a, compareView.b) },
+                        { label: tr('Показать изменения'), icon: FileDiff, onClick: () => openCompareFile(f, list, compareView.a, compareView.b) },
                         ...fileViewItems(f, 'commit', { hash: compareView.b, parent: compareView.a }),
                         { separator: true },
-                        { label: 'Копировать путь', icon: Copy, onClick: () => copy(f.path, 'Путь') },
+                        { label: tr('Копировать путь'), icon: Copy, onClick: () => copy(f.path, tr('Путь')) },
                       ],
                     })
                   }
@@ -3256,7 +3255,7 @@ export default function App() {
                   onApply={async (d) => {
                     const res = await run('rebaseApply', { oldHead: d.oldHead, newHead: d.newHead, branch: d.branch, onto: d.onto.hash }, {
                       label: 'Rebase',
-                      success: `Rebase ${d.branch} выполнен — Undo (Ctrl+Z) вернёт как было`,
+                      success: tr('Rebase {0} выполнен — Undo (Ctrl+Z) вернёт как было', d.branch),
                     });
                     if (res.ok) {
                       setRebaseView(null);
@@ -3270,7 +3269,7 @@ export default function App() {
                     setRebaseView(null);
                     await run('rebaseStart', { upstream: session.upstream, onto: session.onto, plan }, {
                       label: 'Rebase',
-                      success: 'Rebase выполнен — Undo (Ctrl+Z) вернёт как было',
+                      success: tr('Rebase выполнен — Undo (Ctrl+Z) вернёт как было'),
                     });
                   }}
                 />
@@ -3278,7 +3277,7 @@ export default function App() {
               {conflictPath || diffTarget || compareView || rebaseView || fileView ? null : ciView ? (
                 <CiView
                   repoPath={repo.path}
-                  onEditLogin={() => openAuth({ actionLabel: 'Сохранить и проверить', forCi: true })}
+                  onEditLogin={() => openAuth({ actionLabel: tr('Сохранить и проверить'), forCi: true })}
                   initialFile={ciView.file}
                   initialMode={ciView.mode}
                   initialPipelineId={ciView.pipelineId}
@@ -3292,7 +3291,7 @@ export default function App() {
                   onClose={() => setCiView(null)}
                   onLocate={(sha) => {
                     if (!allCommits.some((c) => c.hash === sha)) {
-                      notify({ type: 'info', title: 'Коммита нет в загруженной истории', hint: 'Сделайте fetch или pull' });
+                      notify({ type: 'info', title: tr('Коммита нет в загруженной истории'), hint: tr('Сделайте fetch или pull') });
                       return;
                     }
                     locateCommit(sha);
@@ -3330,7 +3329,7 @@ export default function App() {
                   pipelineTips={pipelineTips}
                   onPipelineHover={loadPipelineTip}
                   onPipelineClick={(p) => openPipelines(p.id, p.status === 'failed')}
-                  onCopySha={(hash) => copy(hash, 'Хэш коммита')}
+                  onCopySha={(hash) => copy(hash, tr('Хэш коммита'))}
                 />
               )}
             </main>
@@ -3373,7 +3372,7 @@ export default function App() {
                 onGuardToggleRepo={() => {
                   const off = guardCfg.repoOff.includes(repo.path);
                   updateGuard({ ...guardCfg, repoOff: off ? guardCfg.repoOff.filter((p) => p !== repo.path) : [...guardCfg.repoOff, repo.path] });
-                  notify({ type: 'info', title: off ? 'Проверка перед коммитом включена для этого репозитория' : 'Проверка перед коммитом выключена для этого репозитория', hint: off ? null : 'Включить обратно — в строке над кнопкой Commit или в настройках.' });
+                  notify({ type: 'info', title: off ? tr('Проверка перед коммитом включена для этого репозитория') : tr('Проверка перед коммитом выключена для этого репозитория'), hint: off ? null : tr('Включить обратно — в строке над кнопкой Commit или в настройках.') });
                 }}
                 onGuardSettings={() => setDialog({ type: 'settings', tab: 'guard' })}
                 onCommitSettings={() => setDialog({ type: 'settings', tab: 'commit' })}
@@ -3438,7 +3437,7 @@ export default function App() {
           pipelineLabel={forge?.label ?? null}
           onOpenPipeline={(p) => openPipelines(p.id, p.status === 'failed')}
           onPathMenu={(x, y) =>
-            setMenu({ x, y, items: [...repoFolderItems(repo.path), { separator: true }, { label: 'Скопировать путь', icon: Copy, onClick: () => copy(repo.path, 'Путь') }] })
+            setMenu({ x, y, items: [...repoFolderItems(repo.path), { separator: true }, { label: tr('Скопировать путь'), icon: Copy, onClick: () => copy(repo.path, tr('Путь')) }] })
           }
         />
       )}
@@ -3453,13 +3452,12 @@ export default function App() {
       )}
       {dialog?.type === 'guide' && <GuideDialog initialSection={dialog.section} onClose={() => setDialog(null)} />}
       {dialog?.type === 'about' && (
-        <Modal title="О программе" icon={Info} onClose={() => setDialog(null)} width={400}>
+        <Modal title={tr('О программе')} icon={Info} onClose={() => setDialog(null)} width={400}>
           <div className="space-y-2 text-[13px]">
-            <div className="text-[15px] font-semibold text-gk-strong">git-Горыныч</div>
-            <div className="text-gk-muted">Версия 0.1.0 · Electron + React + Tailwind CSS</div>
+            <div className="text-[15px] font-semibold text-gk-strong">{tr('git-Горыныч')}</div>
+            <div className="text-gk-muted">{tr('Версия 0.1.0 · Electron + React + Tailwind CSS')}</div>
             <div className="text-[12px] leading-relaxed text-gk-dim">
-              Граф коммитов, ветки, stash, конфликты, CI/CD и пайплайны GitLab — в одном окне.
-            </div>
+              {tr('Граф коммитов, ветки, stash, конфликты, CI/CD и пайплайны GitLab — в одном окне.')}</div>
           </div>
         </Modal>
       )}
@@ -3493,14 +3491,14 @@ export default function App() {
               ? {
                   tick: serversTick,
                   repoOpen: Boolean(repo),
-                  onAuthCurrent: () => openAuth({ actionLabel: 'Сохранить и проверить' }),
-                  onEdit: (url) => openAuth({ url, verify: true, actionLabel: 'Сохранить и проверить' }),
+                  onAuthCurrent: () => openAuth({ actionLabel: tr('Сохранить и проверить') }),
+                  onEdit: (url) => openAuth({ url, verify: true, actionLabel: tr('Сохранить и проверить') }),
                   onForgetLogin: async (login, label) => {
                     const res = await api.creds.forgetLogin(login);
                     if (res.ok) {
                       setServersTick((n) => n + 1);
                       refreshForge();
-                      notify({ type: 'info', title: String(login).startsWith('ci:') ? `Токен CI/CD для ${label.replace(/^CI\/CD /, '')} удалён` : `Вход для ${label} удалён` });
+                      notify({ type: 'info', title: String(login).startsWith('ci:') ? tr('Токен CI/CD для {0} удалён', label.replace(/^CI\/CD /, '')) : tr('Вход для {0} удалён', label) });
                     }
                   },
                   onForgetServer: async (hostname) => {
@@ -3508,7 +3506,7 @@ export default function App() {
                     if (res.ok) {
                       setServersTick((n) => n + 1);
                       refreshForge();
-                      notify({ type: 'info', title: `Все входы для ${hostname} удалены` });
+                      notify({ type: 'info', title: tr('Все входы для {0} удалены', hostname) });
                     }
                   },
                 }
@@ -3542,7 +3540,7 @@ export default function App() {
         />
       )}
       {dialog?.type === 'actionConfirm' && (
-        <ConfirmDialog title={dialog.title} confirmLabel="Продолжить" onConfirm={dialog.onYes} onClose={() => {
+        <ConfirmDialog title={dialog.title} confirmLabel={tr('Продолжить')} onConfirm={dialog.onYes} onClose={() => {
           setDialog(null);
           dialog.onNo();
         }}>
@@ -3587,7 +3585,7 @@ export default function App() {
           access={access}
           onClose={() => setDialog(null)}
           onRecheck={checkAccess}
-          onCredentials={api?.creds ? () => openAuth({ actionLabel: 'Сохранить и проверить' }) : null}
+          onCredentials={api?.creds ? () => openAuth({ actionLabel: tr('Сохранить и проверить') }) : null}
         />
       )}
       {dialog?.type === 'renameBranch' && (
@@ -3683,7 +3681,7 @@ export default function App() {
           onClose={() => setDialog(null)}
           onCloned={(r) => {
             setDialog(null);
-            notify({ type: 'success', title: `Репозиторий ${r.name} склонирован`, hint: r.path });
+            notify({ type: 'success', title: tr('Репозиторий {0} склонирован', r.name), hint: r.path });
             openTab(r.path);
           }}
         />
@@ -3695,7 +3693,7 @@ export default function App() {
           busy={busyAction === 'revertTo' || busyAction === 'stash'}
           onClose={() => setDialog(null)}
           onConfirm={confirmRevertTo}
-          onStashFirst={async () => (await run('stash', {}, { label: 'Stash', success: 'Изменения спрятаны в Stash' })).ok}
+          onStashFirst={async () => (await run('stash', {}, { label: 'Stash', success: tr('Изменения спрятаны в Stash') })).ok}
         />
       )}
       {dialog?.type === 'tag' && (
@@ -3762,28 +3760,24 @@ function OperationBanner({ operation, conflicts, busy, onContinue, onAbort, onRe
       <span className="flex-1">
         {operation ? (
           <>
-            Идёт <b>{OPERATION_LABELS[operation]}</b>
-            {conflicts > 0
-              ? ` — осталось решить конфликтов: ${conflicts}. Потом нажмите «Продолжить».`
-              : ' — конфликты решены, можно продолжить.'}
+            {tj('Идёт <0>{1}</0>{2}', [<b />, OPERATION_LABELS[operation], conflicts > 0
+              ? tr(' — осталось решить конфликтов: {0}. Потом нажмите «Продолжить».', conflicts)
+              : tr(' — конфликты решены, можно продолжить.')])}
           </>
         ) : (
-          <>Есть конфликты после применения stash: {conflicts}. Решите их — после этого можно коммитить.</>
+          <>{tj('Есть конфликты после применения stash: {0}. Решите их — после этого можно коммитить.', [conflicts])}</>
         )}
       </span>
       {conflicts > 0 && (
         <Button variant="danger" onClick={onResolve} disabled={busy} className="py-1 text-xs">
-          Решить конфликты
-        </Button>
+          {tr('Решить конфликты')}</Button>
       )}
       {operation && (
         <>
-          <Button onClick={onAbort} disabled={busy} className="py-1 text-xs" title="Вернуть всё как было до операции">
-            Прервать
-          </Button>
+          <Button onClick={onAbort} disabled={busy} className="py-1 text-xs" title={tr('Вернуть всё как было до операции')}>
+            {tr('Прервать')}</Button>
           <Button variant="primary" onClick={onContinue} disabled={busy || conflicts > 0} className="py-1 text-xs">
-            Продолжить
-          </Button>
+            {tr('Продолжить')}</Button>
         </>
       )}
     </div>
@@ -3801,9 +3795,9 @@ function Welcome({ loading, onOpen, onCreate, onConnect, onClone, onGuide }) {
         <AppLogo size={96} className="animate-pop-in drop-shadow-[0_10px_30px_rgba(60,240,160,0.18)]" />
       )}
       <div className="animate-slide-up text-center">
-        <div className="mb-1 text-[11px] font-semibold uppercase tracking-[0.25em] text-gk-dim">git-Горыныч</div>
-        <h1 className="text-lg font-semibold text-gk-strong">Откройте репозиторий</h1>
-        <p className="mt-1 text-gk-muted">Выберите папку с локальным Git-репозиторием</p>
+        <div className="mb-1 text-[11px] font-semibold uppercase tracking-[0.25em] text-gk-dim">{tr('git-Горыныч')}</div>
+        <h1 className="text-lg font-semibold text-gk-strong">{tr('Откройте репозиторий')}</h1>
+        <p className="mt-1 text-gk-muted">{tr('Выберите папку с локальным Git-репозиторием')}</p>
       </div>
       <button
         onClick={onOpen}
@@ -3811,38 +3805,30 @@ function Welcome({ loading, onOpen, onCreate, onConnect, onClone, onGuide }) {
         className="flex animate-slide-up items-center gap-2 rounded-lg bg-gk-green px-5 py-2.5 font-semibold text-gk-ink shadow-lg shadow-gk-green/20 transition hover:shadow-gk-green/40 hover:brightness-110 disabled:opacity-60"
       >
         {loading ? <Loader2 size={16} className="animate-spin" /> : <FolderOpen size={16} />}
-        {loading ? 'Загрузка…' : 'Открыть репозиторий'}
+        {loading ? tr('Загрузка…') : tr('Открыть репозиторий')}
       </button>
       <button
         onClick={onCreate}
         disabled={loading}
         className="flex animate-slide-up items-center gap-2 rounded-lg px-4 py-2 text-[13px] text-gk-muted ring-1 ring-gk-border transition hover:bg-gk-hover hover:text-gk-text disabled:opacity-60"
       >
-        <FolderPlus size={15} />
-        Создать репозиторий в папке проекта
-      </button>
+        {tj('{0}Создать репозиторий в папке проекта', [<FolderPlus size={15} />])}</button>
       <button
         onClick={onConnect}
         disabled={loading}
         className="-mt-3 flex animate-slide-up items-center gap-2 rounded-lg px-4 py-2 text-[13px] text-gk-muted ring-1 ring-gk-border transition hover:bg-gk-hover hover:text-gk-text disabled:opacity-60"
       >
-        <Link2 size={15} />
-        Подключить папку проекта к GitLab / GitHub
-      </button>
+        {tj('{0}Подключить папку проекта к GitLab / GitHub', [<Link2 size={15} />])}</button>
       <button
         onClick={onClone}
         disabled={loading}
         className="-mt-3 flex animate-slide-up items-center gap-2 rounded-lg px-4 py-2 text-[13px] text-gk-muted ring-1 ring-gk-border transition hover:bg-gk-hover hover:text-gk-text disabled:opacity-60"
       >
-        <CloudDownload size={15} />
-        Клонировать репозиторий по ссылке
-      </button>
+        {tj('{0}Клонировать репозиторий по ссылке', [<CloudDownload size={15} />])}</button>
       <p className="max-w-sm animate-fade-in text-center text-xs text-gk-dim">
-        {kb('Ctrl+O — открыть · Ctrl+N — создать.')} Если в выбранной папке нет Git, приложение предложит его инициализировать.
-      </p>
+        {tj('{0} Если в выбранной папке нет Git, приложение предложит его инициализировать.', [kb(tr('Ctrl+O — открыть · Ctrl+N — создать.'))])}</p>
       <button onClick={onGuide} className="-mt-2 flex animate-fade-in items-center gap-1.5 text-[12.5px] text-gk-blue hover:underline">
-        <BookOpen size={13} /> Как пользоваться программой (F1)
-      </button>
+        {tj('{0} Как пользоваться программой (F1)', [<BookOpen size={13} />])}</button>
     </div>
   );
 }

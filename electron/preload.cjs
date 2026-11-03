@@ -32,6 +32,11 @@ contextBridge.exposeInMainWorld('api', {
     remove: (dir) => ipcRenderer.invoke('recent:remove', dir),
   },
   openExternal: (url) => ipcRenderer.invoke('shell:open-external', url),
+  // Язык интерфейса: main-процесс переводит свои сообщения (ошибки git, проверки CI, меню) на тот же язык
+  app: {
+    setLanguage: (lang) => ipcRenderer.invoke('app:set-language', lang),
+    getLanguage: () => ipcRenderer.invoke('app:get-language'),
+  },
   // Учётные данные для remote: секреты не возвращаются в интерфейс — только что сохранено
   creds: {
     describe: (dir, url) => ipcRenderer.invoke('creds:describe', dir, url),

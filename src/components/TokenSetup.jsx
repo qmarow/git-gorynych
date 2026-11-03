@@ -1,9 +1,10 @@
 import { AlertTriangle, Link2, Loader2, LogIn, ShieldCheck } from 'lucide-react';
 import { Button } from './Dialogs.jsx';
+import { t as tr, tj, locale } from '../i18n/index.js';
 
 const SCOPE_LABELS = {
-  api: 'просмотр и действия',
-  read_api: 'только просмотр',
+  api: tr('просмотр и действия'),
+  read_api: tr('только просмотр'),
 };
 
 /**
@@ -12,7 +13,7 @@ const SCOPE_LABELS = {
  */
 export function CiAuth({ forge, onEditLogin }) {
   if (!forge) {
-    return <p className="text-[13px] text-gk-muted">У репозитория нет remote — авторизовать нечего.</p>;
+    return <p className="text-[13px] text-gk-muted">{tr('У репозитория нет remote — авторизовать нечего.')}</p>;
   }
   const t = forge.token ?? {};
   const host = forge.host;
@@ -28,32 +29,29 @@ export function CiAuth({ forge, onEditLogin }) {
           <div className="min-w-0 flex-1">
             <div className="flex items-center gap-1.5 text-[13px] text-gk-strong">
               {t.pending ? <Loader2 size={14} className="shrink-0 animate-spin text-gk-muted" /> : <ShieldCheck size={14} className="shrink-0 text-gk-green" />}
-              <span className="truncate">{t.user?.name ?? (t.pending ? 'Проверяем авторизацию…' : 'Авторизован')}</span>
+              <span className="truncate">{t.user?.name ?? (t.pending ? tr('Проверяем авторизацию…') : tr('Авторизован'))}</span>
               {t.user?.username && <span className="truncate text-gk-muted">@{t.user.username}</span>}
             </div>
             <div className="mt-0.5 flex items-center gap-1 truncate text-[11.5px] text-gk-muted" data-testid="ci-auth-source">
               <Link2 size={11} className="shrink-0" />
               <span className="truncate">
-                {legacy ? 'Токен CI/CD из прежней версии — авторизуйте репозиторий, чтобы всё работало от одной авторизации' : 'Авторизация репозитория — одна для Pull, Push и пайплайнов'}
+                {legacy ? tr('Токен CI/CD из прежней версии — авторизуйте репозиторий, чтобы всё работало от одной авторизации') : tr('Авторизация репозитория — одна для Pull, Push и пайплайнов')}
               </span>
             </div>
             <div className="mt-0.5 truncate text-[11px] text-gk-dim">
               {host}
               {t.scopes ? ` · ${t.scopes.map((s) => SCOPE_LABELS[s] ?? s).join(', ')}` : ''}
-              {t.expiresAt ? ` · действует до ${new Date(t.expiresAt).toLocaleDateString('ru-RU')}` : ''}
+              {t.expiresAt ? tr(' · действует до {0}', new Date(t.expiresAt).toLocaleDateString(locale())) : ''}
             </div>
           </div>
         </div>
         {t.scopes && !t.scopes.includes('api') && (
           <p className="text-[12px] leading-relaxed text-gk-muted">
-            Токен только для чтения: пайплайны и логи видны, но запускать, перезапускать и отменять нельзя. Для действий нужен токен с
-            правом «api».
-          </p>
+            {tr('Токен только для чтения: пайплайны и логи видны, но запускать, перезапускать и отменять нельзя. Для действий нужен токен с правом «api».')}</p>
         )}
         {onEditLogin && (
           <Button onClick={onEditLogin} data-testid="ci-edit-login">
-            <LogIn size={13} /> Изменить авторизацию репозитория
-          </Button>
+            {tj('{0} Изменить авторизацию репозитория', [<LogIn size={13} />])}</Button>
         )}
       </div>
     );
@@ -69,13 +67,11 @@ export function CiAuth({ forge, onEditLogin }) {
         </div>
       ) : (
         <p data-testid="ci-login-hint" className="text-[12.5px] leading-relaxed text-gk-muted">
-          Репозиторий на {host} ещё не авторизован. Авторизуйтесь один раз — эта авторизация будет работать и для Pull/Push, и для
-          пайплайнов.
-        </p>
+          {tj('Репозиторий на {0} ещё не авторизован. Авторизуйтесь один раз — эта авторизация будет работать и для Pull/Push, и для пайплайнов.', [host])}</p>
       )}
       {onEditLogin && (
         <Button variant="blue" onClick={onEditLogin} data-testid="ci-auth-open">
-          <LogIn size={13} /> {problem ? 'Изменить авторизацию репозитория' : 'Авторизовать репозиторий'}
+          <LogIn size={13} /> {problem ? tr('Изменить авторизацию репозитория') : tr('Авторизовать репозиторий')}
         </Button>
       )}
     </div>

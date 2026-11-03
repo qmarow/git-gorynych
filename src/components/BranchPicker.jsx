@@ -12,6 +12,7 @@ import {
   Search,
 } from 'lucide-react';
 import { relativeTime } from '../lib/format.js';
+import { t, tj } from '../i18n/index.js';
 
 // Имя ветки, которое git точно не примет — чтобы не предлагать «Создать» заведомо зря
 const INVALID_NAME = /(^[-./])|(\.\.)|([\s~^:?*[\\])|(@\{)|(\/$)|(\.lock$)|(\.$)/;
@@ -152,7 +153,7 @@ export default function BranchPicker({ repo, onClose, onCheckout, onCreate, onNe
           ref={inputRef}
           value={query}
           onChange={(e) => setQuery(e.target.value)}
-          placeholder="Найти ветку или ввести имя новой…"
+          placeholder={t('Найти ветку или ввести имя новой…')}
           spellCheck={false}
           className="min-w-0 flex-1 bg-transparent text-[13px] text-gk-text outline-none placeholder:text-gk-dim"
         />
@@ -161,21 +162,18 @@ export default function BranchPicker({ repo, onClose, onCheckout, onCreate, onNe
 
       {switchBlocked && (
         <div className="flex items-start gap-2 border-b border-gk-border bg-gk-yellow/10 px-3 py-2 text-[12px] text-gk-yellow">
-          <AlertTriangle size={13} className="mt-0.5 shrink-0" />
-          Идёт {operation} — переключение веток недоступно, пока операция не завершена или не прервана.
-        </div>
+          {tj('{0}Идёт {1} — переключение веток недоступно, пока операция не завершена или не прервана.', [<AlertTriangle size={13} className="mt-0.5 shrink-0" />, operation])}</div>
       )}
       {!switchBlocked && repo.wipFiles.length > 0 && (
         <div
           className="border-b border-gk-border px-3 py-1.5 text-[11px] text-gk-dim"
-          title="Если изменения конфликтуют с выбранной веткой, git остановится и попросит сначала сделать commit или stash"
+          title={t('Если изменения конфликтуют с выбранной веткой, git остановится и попросит сначала сделать commit или stash')}
         >
-          Незакоммиченные изменения ({repo.wipFiles.length}) перейдут вместе с вами в выбранную ветку
-        </div>
+          {tj('Незакоммиченные изменения ({0}) перейдут вместе с вами в выбранную ветку', [repo.wipFiles.length])}</div>
       )}
 
       <div ref={listRef} className="min-h-0 flex-1 overflow-y-auto py-1">
-        {locals.length > 0 && <SectionTitle count={locals.length}>Локальные</SectionTitle>}
+        {locals.length > 0 && <SectionTitle count={locals.length}>{t('Локальные')}</SectionTitle>}
         {locals.map((b) => {
           const isCurrent = b.name === repo.currentBranch;
           const row = rows.find((r) => r.key === `l:${b.name}`);
@@ -184,26 +182,26 @@ export default function BranchPicker({ repo, onClose, onCheckout, onCreate, onNe
               key={b.name}
               {...rowProps(row)}
               disabled={switchBlocked && !isCurrent}
-              title={isCurrent ? 'Текущая ветка — показать в графе' : `Переключиться на ${b.name}`}
+              title={isCurrent ? t('Текущая ветка — показать в графе') : t('Переключиться на {0}', b.name)}
               icon={isCurrent ? <Check size={13} className="text-gk-green" /> : <GitBranch size={13} className="text-gk-muted" />}
               name={<Highlight text={b.name} query={q} />}
               current={isCurrent}
               meta={
                 <>
                   {b.ahead > 0 && (
-                    <span className="flex items-center text-gk-blue" title={`Впереди ${b.upstream} на ${b.ahead}`}>
+                    <span className="flex items-center text-gk-blue" title={t('Впереди {0} на {1}', b.upstream, b.ahead)}>
                       <ArrowUp size={11} />
                       {b.ahead}
                     </span>
                   )}
                   {b.behind > 0 && (
-                    <span className="flex items-center text-gk-yellow" title={`Позади ${b.upstream} на ${b.behind}`}>
+                    <span className="flex items-center text-gk-yellow" title={t('Позади {0} на {1}', b.upstream, b.behind)}>
                       <ArrowDown size={11} />
                       {b.behind}
                     </span>
                   )}
-                  {b.gone && <span className="text-gk-red" title="Ветка на remote удалена">gone</span>}
-                  {!b.upstream && <span title="Нет upstream — ветка только локальная">local</span>}
+                  {b.gone && <span className="text-gk-red" title={t('Ветка на remote удалена')}>gone</span>}
+                  {!b.upstream && <span title={t('Нет upstream — ветка только локальная')}>local</span>}
                 </>
               }
               date={b.date}
@@ -215,7 +213,7 @@ export default function BranchPicker({ repo, onClose, onCheckout, onCreate, onNe
           );
         })}
 
-        {remotes.length > 0 && <SectionTitle count={remotes.length}>Удалённые</SectionTitle>}
+        {remotes.length > 0 && <SectionTitle count={remotes.length}>{t('Удалённые')}</SectionTitle>}
         {remotes.map((b) => {
           const row = rows.find((r) => r.key === `r:${b.fullName}`);
           return (
@@ -223,10 +221,10 @@ export default function BranchPicker({ repo, onClose, onCheckout, onCreate, onNe
               key={b.fullName}
               {...rowProps(row)}
               disabled={switchBlocked}
-              title={`Создать локальную ветку ${b.name}, отслеживающую ${b.fullName}, и переключиться`}
+              title={t('Создать локальную ветку {0}, отслеживающую {1}, и переключиться', b.name, b.fullName)}
               icon={<Cloud size={13} className="text-gk-blue" />}
               name={<Highlight text={b.fullName} query={q} />}
-              meta={<span className="hidden group-data-[active=true]:inline">создать локальную</span>}
+              meta={<span className="hidden group-data-[active=true]:inline">{t('создать локальную')}</span>}
               date={b.date}
               onLocate={() => {
                 onLocate(b.hash);
@@ -240,36 +238,27 @@ export default function BranchPicker({ repo, onClose, onCheckout, onCreate, onNe
           <Row
             {...rowProps(rows[rows.length - 1])}
             disabled={switchBlocked}
-            title={`Создать ветку ${q} от текущего HEAD и переключиться на неё`}
+            title={t('Создать ветку {0} от текущего HEAD и переключиться на неё', q)}
             icon={<Plus size={13} className="text-gk-green" />}
             name={
               <span>
-                Создать ветку <span className="font-semibold text-gk-green">{q}</span>
+                {tj('Создать ветку <0>{1}</0>', [<span className="font-semibold text-gk-green" />, q])}
               </span>
             }
-            meta={<span>от HEAD</span>}
+            meta={<span>{t('от HEAD')}</span>}
           />
         )}
 
         {rows.length === 0 && (
           <div className="px-3 py-6 text-center text-[12px] text-gk-dim">
-            {q && INVALID_NAME.test(q) ? `«${q}» — недопустимое имя ветки` : 'Ничего не найдено'}
+            {q && INVALID_NAME.test(q) ? t('«{0}» — недопустимое имя ветки', q) : t('Ничего не найдено')}
           </div>
         )}
       </div>
 
       {/* Низ: подсказки и создание от выбранного коммита */}
       <div className="flex items-center gap-3 border-t border-gk-border px-3 py-1.5 text-[11px] text-gk-dim">
-        <span className="flex items-center gap-1">
-          <kbd className="rounded border border-gk-border px-1">↑↓</kbd> выбор
-        </span>
-        <span className="flex items-center gap-1">
-          <kbd className="flex items-center rounded border border-gk-border px-1">
-            <CornerDownLeft size={10} />
-          </kbd>
-          переключиться
-        </span>
-        <button
+        {tj('<0><1>↑↓</1> выбор</0><2><3>{4}</3>переключиться</2>{5}', [<span className="flex items-center gap-1" />, <kbd className="rounded border border-gk-border px-1" />, <span className="flex items-center gap-1" />, <kbd className="flex items-center rounded border border-gk-border px-1" />, <CornerDownLeft size={10} />, <button
           disabled={!repo.headHash}
           onClick={() => {
             onClose();
@@ -277,8 +266,7 @@ export default function BranchPicker({ repo, onClose, onCheckout, onCreate, onNe
           }}
           className="ml-auto flex items-center gap-1 rounded px-1.5 py-0.5 text-gk-muted enabled:hover:bg-gk-hover enabled:hover:text-gk-text disabled:opacity-40"
         >
-          <Plus size={12} /> Новая ветка…
-        </button>
+          {tj('{0} Новая ветка…', [<Plus size={12} />])}</button>])}
       </div>
     </div>
   );
@@ -310,13 +298,13 @@ function Row({ icon, name, meta, date, current, active, disabled, onLocate, titl
       <span className="flex w-4 shrink-0 justify-center">{icon}</span>
       <span className={`min-w-0 flex-1 truncate ${current ? 'font-semibold' : ''}`}>{name}</span>
       {current && (
-        <span className="shrink-0 rounded bg-gk-green/15 px-1.5 text-[10px] font-medium text-gk-green">текущая</span>
+        <span className="shrink-0 rounded bg-gk-green/15 px-1.5 text-[10px] font-medium text-gk-green">{t('текущая')}</span>
       )}
       <span className="flex shrink-0 items-center gap-1.5 text-[10px] text-gk-dim">{meta}</span>
       {date && <span className="w-[74px] shrink-0 text-right text-[10px] text-gk-dim">{relativeTime(date)}</span>}
       {onLocate && (
         <button
-          title="Показать в графе"
+          title={t('Показать в графе')}
           onClick={(e) => {
             e.stopPropagation();
             onLocate();

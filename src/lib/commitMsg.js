@@ -1,3 +1,4 @@
+import { t as tr } from '../i18n/index.js';
 /**
  * Логика сообщения коммита: Conventional Commits, номер задачи из ветки, шаблоны.
  * Чистые функции — без React и без window, чтобы их было просто проверять.
@@ -8,14 +9,14 @@
  */
 
 export const CC_TYPES = [
-  { id: 'feat', hint: 'Новая возможность', color: '#3cf0a0' },
-  { id: 'fix', hint: 'Исправление ошибки', color: '#f25d5d' },
-  { id: 'refactor', hint: 'Переделка кода без изменения поведения', color: '#b98cff' },
-  { id: 'chore', hint: 'Рутина: зависимости, конфиги, сборка', color: '#9aa3b2' },
-  { id: 'docs', hint: 'Документация', color: '#2f9bff' },
-  { id: 'style', hint: 'Форматирование, пробелы, без изменения логики', color: '#ff7ab6' },
-  { id: 'test', hint: 'Тесты', color: '#f2ca33' },
-  { id: 'perf', hint: 'Производительность', color: '#ff9f43' },
+  { id: 'feat', hint: tr('Новая возможность'), color: '#3cf0a0' },
+  { id: 'fix', hint: tr('Исправление ошибки'), color: '#f25d5d' },
+  { id: 'refactor', hint: tr('Переделка кода без изменения поведения'), color: '#b98cff' },
+  { id: 'chore', hint: tr('Рутина: зависимости, конфиги, сборка'), color: '#9aa3b2' },
+  { id: 'docs', hint: tr('Документация'), color: '#2f9bff' },
+  { id: 'style', hint: tr('Форматирование, пробелы, без изменения логики'), color: '#ff7ab6' },
+  { id: 'test', hint: tr('Тесты'), color: '#f2ca33' },
+  { id: 'perf', hint: tr('Производительность'), color: '#ff9f43' },
 ];
 
 // Распознаём и «служебные» типы из спецификации, чтобы не принимать их за текст
@@ -141,10 +142,10 @@ export function extractTicket(branch, pattern = '') {
 }
 
 export const TICKET_FORMATS = [
-  { id: 'prefix', label: '[PROJ-123] feat: …', hint: 'В квадратных скобках в начале' },
-  { id: 'scope', label: 'feat(PROJ-123): …', hint: 'Вместо scope; без типа — в скобках в начале' },
-  { id: 'suffix', label: 'feat: … (PROJ-123)', hint: 'В конце, как в GitHub' },
-  { id: 'footer', label: 'Refs: PROJ-123', hint: 'Отдельной строкой в конце Description' },
+  { id: 'prefix', label: '[PROJ-123] feat: …', hint: tr('В квадратных скобках в начале') },
+  { id: 'scope', label: 'feat(PROJ-123): …', hint: tr('Вместо scope; без типа — в скобках в начале') },
+  { id: 'suffix', label: 'feat: … (PROJ-123)', hint: tr('В конце, как в GitHub') },
+  { id: 'footer', label: 'Refs: PROJ-123', hint: tr('Отдельной строкой в конце Description') },
 ];
 
 const same = (a, b) => Boolean(a && b) && a.toLowerCase() === b.toLowerCase();
@@ -290,18 +291,18 @@ export function suggestScopes(paths, max = 6) {
 export const DEFAULT_TEMPLATES = [
   {
     id: 'tpl-what-how',
-    name: 'Что сделано / Как проверить',
-    body: 'Что сделано:\n- \n\nКак проверить:\n1. \n\nЗадача: {ticket}',
+    name: tr('Что сделано / Как проверить'),
+    body: tr('Что сделано:\n- \n\nКак проверить:\n1. \n\nЗадача: {ticket}'),
   },
   {
     id: 'tpl-bugfix',
-    name: 'Исправление ошибки',
-    body: 'Проблема:\n\nПричина:\n\nРешение:\n\nКак проверить:\n',
+    name: tr('Исправление ошибки'),
+    body: tr('Проблема:\n\nПричина:\n\nРешение:\n\nКак проверить:\n'),
   },
   {
     id: 'tpl-breaking',
-    name: 'Несовместимое изменение',
-    body: 'BREAKING CHANGE: \n\nЧто сделать при обновлении:\n- ',
+    name: tr('Несовместимое изменение'),
+    body: tr('BREAKING CHANGE: \n\nЧто сделать при обновлении:\n- '),
   },
 ];
 

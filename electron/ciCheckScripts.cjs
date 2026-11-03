@@ -2,6 +2,7 @@
 // нет файла / нет права на запуск / нет npm-скрипта / нет lock-файла / нет цели make / docker без демона /
 // apt-get в alpine / npm в образе без Node / секреты в открытом виде.
 const { q, SECRET_VALUE } = require('./ciCheckBase.cjs');
+const { t: tr } = require('./i18n.cjs');
 
 /* ---------- Образы: что в них есть ---------- */
 
@@ -139,7 +140,7 @@ function checkScripts(jobs, repo, add, { system = 'gitlab' } = {}) {
   const first = (key) => (once.has(key) ? false : (once.add(key), true));
 
   for (const job of jobs) {
-    const where = job.where ?? `задание ${q(job.name)}`;
+    const where = job.where ?? tr('задание {0}', q(job.name));
     let cwd = job.cwd ?? '';
     const created = new Set(); // пути, созданные раньше в этом же задании
     const exists = (p, kind = 'file') => {
@@ -153,7 +154,7 @@ function checkScripts(jobs, repo, add, { system = 'gitlab' } = {}) {
     let installed = false;
     let dockerWarned = false;
     const missingTool = new Set();
-    const lineAdd = (ln, o) => add({ file: ln.file ?? job.file, line: ln.line ?? job.line, job: job.name, when: `При выполнении ${job.kind ?? 'задания'} ${q(job.name)}`, ...o });
+    const lineAdd = (ln, o) => add({ file: ln.file ?? job.file, line: ln.line ?? job.line, job: job.name, when: tr('При выполнении {0} {1}', job.kind ?? tr('задания'), q(job.name)), ...o });
 
     for (const ln of job.lines) {
       if (ln.reset) cwd = ln.cwd ?? job.cwd ?? ''; // новый шаг — новый shell
@@ -164,10 +165,10 @@ function checkScripts(jobs, repo, add, { system = 'gitlab' } = {}) {
           lineAdd(ln, {
             id: 'secret-in-script',
             severity: 'error',
-            title: `В скрипте ${where} открытым текстом ${what}`,
-            how: 'Значение попадёт в историю Git и в логи заданий — его увидит любой, у кого есть доступ к репозиторию или к логам.',
-            why: 'Секреты в файле CI не скрываются: маскируются только переменные из настроек проекта.',
-            fix: 'Отзовите этот ключ/токен и создайте новый; храните его в защищённой переменной (Settings → CI/CD → Variables, masked) и используйте как $ИМЯ.',
+            title: tr('В скрипте {0} открытым текстом {1}', where, tr(what)),
+            how: tr('Значение попадёт в историю Git и в логи заданий — его увидит любой, у кого есть доступ к репозиторию или к логам.'),
+            why: tr('Секреты в файле CI не скрываются: маскируются только переменные из настроек проекта.'),
+            fix: tr('Отзовите этот ключ/токен и создайте новый; храните его в защищённой переменной (Settings → CI/CD → Variables, masked) и используйте как $ИМЯ.'),
           });
           break;
         }
@@ -187,10 +188,10 @@ function checkScripts(jobs, repo, add, { system = 'gitlab' } = {}) {
               lineAdd(ln, {
                 id: 'cd-missing',
                 severity: 'error',
-                title: `cd ${dir}: такой папки в репозитории нет`,
-                how: `Задание упадёт на этой строке: «${shellName}: cd: ${dir}: No such file or directory».`,
-                why: `Папки ${q(join(cwd, dir))} нет среди файлов репозитория, и раньше в задании её никто не создаёт.`,
-                fix: 'Проверьте путь (регистр букв важен на Linux) или создайте папку раньше (mkdir -p) / получите её артефактом из предыдущего задания.',
+                title: tr('cd {0}: такой папки в репозитории нет', dir),
+                how: tr('Задание упадёт на этой строке: «{0}: cd: {1}: No such file or directory».', shellName, dir),
+                why: tr('Папки {0} нет среди файлов репозитория, и раньше в задании её никто не создаёт.', q(join(cwd, dir))),
+                fix: tr('Проверьте путь (регистр букв важен на Linux) или создайте папку раньше (mkdir -p) / получите её артефактом из предыдущего задания.'),
               });
             }
             cwd = join(cwd, dir);
@@ -217,30 +218,30 @@ function checkScripts(jobs, repo, add, { system = 'gitlab' } = {}) {
           lineAdd(ln, {
             id: 'pkg-alpine',
             severity: 'error',
-            title: `${cmd} в образе ${img.name}`,
-            how: `Задание упадёт: «${shellName}: ${cmd}: not found».`,
-            why: `${q(img.name)} — образ на Alpine Linux, там пакетный менеджер apk, а ${cmd} нет.`,
-            fix: `Используйте apk add --no-cache … или образ на Debian/Ubuntu (без «-alpine» в теге).`,
+            title: tr('{0} в образе {1}', cmd, img.name),
+            how: tr('Задание упадёт: «{0}: {1}: not found».', shellName, cmd),
+            why: tr('{0} — образ на Alpine Linux, там пакетный менеджер apk, а {1} нет.', q(img.name), cmd),
+            fix: tr('Используйте apk add --no-cache … или образ на Debian/Ubuntu (без «-alpine» в теге).'),
           });
         }
         if (img?.known && img.debianLike && cmd === 'apk') {
           lineAdd(ln, {
             id: 'pkg-debian',
             severity: 'error',
-            title: `apk в образе ${img.name}`,
-            how: `Задание упадёт: «${shellName}: apk: not found».`,
-            why: `${q(img.name)} основан на Debian/Ubuntu — там apt-get, а apk есть только в Alpine.`,
-            fix: 'Замените на apt-get update && apt-get install -y … или возьмите вариант образа с «-alpine».',
+            title: tr('apk в образе {0}', img.name),
+            how: tr('Задание упадёт: «{0}: apk: not found».', shellName),
+            why: tr('{0} основан на Debian/Ubuntu — там apt-get, а apk есть только в Alpine.', q(img.name)),
+            fix: tr('Замените на apt-get update && apt-get install -y … или возьмите вариант образа с «-alpine».'),
           });
         }
         if (img?.known && img.alpine && cmd === 'bash' && !installed) {
           lineAdd(ln, {
             id: 'bash-alpine',
             severity: 'warning',
-            title: `bash в образе ${img.name}`,
-            how: '«sh: bash: not found» — в Alpine по умолчанию только sh (ash).',
-            why: 'Образы Alpine минимальные: bash в них не установлен.',
-            fix: 'Запускайте через sh или добавьте apk add --no-cache bash перед этим.',
+            title: tr('bash в образе {0}', img.name),
+            how: tr('«sh: bash: not found» — в Alpine по умолчанию только sh (ash).'),
+            why: tr('Образы Alpine минимальные: bash в них не установлен.'),
+            fix: tr('Запускайте через sh или добавьте apk add --no-cache bash перед этим.'),
           });
         }
 
@@ -252,12 +253,12 @@ function checkScripts(jobs, repo, add, { system = 'gitlab' } = {}) {
           lineAdd(ln, {
             id: 'tool-missing',
             severity: 'warning',
-            title: `${cmd}: в образе ${img.name} нет ${TOOL_FAMILY[tool]}`,
-            how: `Скорее всего задание упадёт: «${shellName}: ${cmd}: not found» (код 127).`,
+            title: tr('{0}: в образе {1} нет {2}', cmd, img.name, TOOL_FAMILY[tool]),
+            how: tr('Скорее всего задание упадёт: «{0}: {1}: not found» (код 127).', shellName, cmd),
             why: pnpmInNode
-              ? 'В образах node есть npm и yarn, а pnpm нужно включить отдельно.'
-              : `Официальный образ ${q(img.name)} не содержит ${TOOL_FAMILY[tool]}, и раньше в задании он не устанавливается.`,
-            fix: pnpmInNode ? 'Добавьте перед этим corepack enable (или npm i -g pnpm).' : `Возьмите образ с ${TOOL_FAMILY[tool]} или установите его раньше в скрипте.`,
+              ? tr('В образах node есть npm и yarn, а pnpm нужно включить отдельно.')
+              : tr('Официальный образ {0} не содержит {1}, и раньше в задании он не устанавливается.', q(img.name), TOOL_FAMILY[tool]),
+            fix: pnpmInNode ? tr('Добавьте перед этим corepack enable (или npm i -g pnpm).') : tr('Возьмите образ с {0} или установите его раньше в скрипте.', TOOL_FAMILY[tool]),
           });
         }
 
@@ -270,10 +271,10 @@ function checkScripts(jobs, repo, add, { system = 'gitlab' } = {}) {
             lineAdd(ln, {
               id: 'docker-no-daemon',
               severity: 'warning',
-              title: `docker ${args[0]} без Docker-демона`,
-              how: 'На раннере с Docker executor задание упадёт: «Cannot connect to the Docker daemon at unix:///var/run/docker.sock. Is the docker daemon running?»',
-              why: 'В контейнере задания есть только клиент docker (если он вообще есть), а сам демон не запущен: нет services: docker:dind и не задан DOCKER_HOST.',
-              fix: 'Добавьте services: [docker:dind] и variables: DOCKER_TLS_CERTDIR: "/certs" (образ docker:…), либо используйте раннер с shell executor / сокетом docker, либо kaniko/buildah.',
+              title: tr('docker {0} без Docker-демона', args[0]),
+              how: tr('На раннере с Docker executor задание упадёт: «Cannot connect to the Docker daemon at unix:///var/run/docker.sock. Is the docker daemon running?»'),
+              why: tr('В контейнере задания есть только клиент docker (если он вообще есть), а сам демон не запущен: нет services: docker:dind и не задан DOCKER_HOST.'),
+              fix: tr('Добавьте services: [docker:dind] и variables: DOCKER_TLS_CERTDIR: "/certs" (образ docker:…), либо используйте раннер с shell executor / сокетом docker, либо kaniko/buildah.'),
             });
           }
         }
@@ -286,19 +287,19 @@ function checkScripts(jobs, repo, add, { system = 'gitlab' } = {}) {
             lineAdd(ln, {
               id: 'exec-missing',
               severity: 'error',
-              title: `${cmd}: файла нет в репозитории`,
-              how: `Задание упадёт: «${shellName}: ${cmd}: not found» (или No such file or directory).`,
-              why: `Файла ${q(p)} нет среди файлов репозитория и его не создаёт ни это задание, ни артефакты предыдущих.`,
-              fix: 'Проверьте путь и регистр букв; если файл генерируется — передайте его артефактом (artifacts + needs/dependencies).',
+              title: tr('{0}: файла нет в репозитории', cmd),
+              how: tr('Задание упадёт: «{0}: {1}: not found» (или No such file or directory).', shellName, cmd),
+              why: tr('Файла {0} нет среди файлов репозитория и его не создаёт ни это задание, ни артефакты предыдущих.', q(p)),
+              fix: tr('Проверьте путь и регистр букв; если файл генерируется — передайте его артефактом (artifacts + needs/dependencies).'),
             });
           } else if (repo.mode(p) === '100644') {
             lineAdd(ln, {
               id: 'exec-not-executable',
               severity: 'error',
-              title: `${cmd}: у файла нет права на запуск`,
-              how: `Задание упадёт: «${shellName}: ${cmd}: Permission denied» (код 126).`,
-              why: `В Git файл ${q(p)} сохранён без флага исполняемости (режим 100644) — так бывает, если его добавили в Windows.`,
-              fix: `Выполните git update-index --chmod=+x ${p} и закоммитьте; или запускайте через интерпретатор: sh ${cmd}.`,
+              title: tr('{0}: у файла нет права на запуск', cmd),
+              how: tr('Задание упадёт: «{0}: {1}: Permission denied» (код 126).', shellName, cmd),
+              why: tr('В Git файл {0} сохранён без флага исполняемости (режим 100644) — так бывает, если его добавили в Windows.', q(p)),
+              fix: tr('Выполните git update-index --chmod=+x {0} и закоммитьте; или запускайте через интерпретатор: sh {1}.', p, cmd),
             });
           }
         }
@@ -308,10 +309,10 @@ function checkScripts(jobs, repo, add, { system = 'gitlab' } = {}) {
             lineAdd(ln, {
               id: 'script-missing',
               severity: 'error',
-              title: `${cmd} ${file}: файла нет в репозитории`,
-              how: cmd === 'node' ? `Задание упадёт: «Error: Cannot find module '…/${file}'».` : cmd.startsWith('python') ? `Задание упадёт: «can't open file '${file}': [Errno 2] No such file or directory».` : `Задание упадёт: «${file}: No such file or directory».`,
-              why: `Файла ${q(join(cwd, file))} нет в репозитории (с учётом предыдущих cd).`,
-              fix: 'Проверьте путь и регистр букв или передайте файл артефактом из задания, которое его создаёт.',
+              title: tr('{0} {1}: файла нет в репозитории', cmd, file),
+              how: cmd === 'node' ? tr('Задание упадёт: «Error: Cannot find module \'…/{0}\'».', file) : cmd.startsWith('python') ? tr('Задание упадёт: «can\'t open file \'{0}\': [Errno 2] No such file or directory».', file) : tr('Задание упадёт: «{0}: No such file or directory».', file),
+              why: tr('Файла {0} нет в репозитории (с учётом предыдущих cd).', q(join(cwd, file))),
+              fix: tr('Проверьте путь и регистр букв или передайте файл артефактом из задания, которое его создаёт.'),
             });
           }
         }
@@ -322,10 +323,10 @@ function checkScripts(jobs, repo, add, { system = 'gitlab' } = {}) {
           if (first(`pkg|${cwd}`)) lineAdd(ln, {
             id: 'pkg-json-missing',
             severity: 'error',
-            title: `${cmd}: нет package.json в ${cwd || 'корне'}`,
-            how: isNpm ? '«npm ERR! enoent Could not read package.json: ENOENT: no such file or directory».' : `${cmd} завершится ошибкой: не найден package.json.`,
-            why: `Команда выполняется в папке ${q(cwd || '.')}, а package.json там нет.`,
-            fix: 'Перейдите в папку проекта (cd …) или поправьте путь.',
+            title: tr('{0}: нет package.json в {1}', cmd, cwd || tr('корне')),
+            how: isNpm ? '«npm ERR! enoent Could not read package.json: ENOENT: no such file or directory».' : tr('{0} завершится ошибкой: не найден package.json.', cmd),
+            why: tr('Команда выполняется в папке {0}, а package.json там нет.', q(cwd || '.')),
+            fix: tr('Перейдите в папку проекта (cd …) или поправьте путь.'),
           });
           continue;
         }
@@ -333,10 +334,10 @@ function checkScripts(jobs, repo, add, { system = 'gitlab' } = {}) {
           lineAdd(ln, {
             id: 'npm-ci-no-lock',
             severity: 'error',
-            title: 'npm ci без package-lock.json',
+            title: tr('npm ci без package-lock.json'),
             how: '«npm ERR! The `npm ci` command can only install with an existing package-lock.json or npm-shrinkwrap.json».',
-            why: `В ${q(cwd || 'корне')} нет package-lock.json — его не закоммитили (или он в .gitignore).`,
-            fix: 'Закоммитьте package-lock.json (npm install локально создаст его) или замените npm ci на npm install.',
+            why: tr('В {0} нет package-lock.json — его не закоммитили (или он в .gitignore).', q(cwd || tr('корне'))),
+            fix: tr('Закоммитьте package-lock.json (npm install локально создаст его) или замените npm ci на npm install.'),
           });
         }
         const runName = isNpm
@@ -364,10 +365,10 @@ function checkScripts(jobs, repo, add, { system = 'gitlab' } = {}) {
             lineAdd(ln, {
               id: 'npm-script-missing',
               severity: 'error',
-              title: `${cmd} ${args[0] === 'run' ? 'run ' : ''}${runName}: такого скрипта нет в package.json`,
+              title: tr('{0} {1}{2}: такого скрипта нет в package.json', cmd, args[0] === 'run' ? 'run ' : '', runName),
               how: isNpm ? `«npm ERR! Missing script: "${runName}"».` : `«error Command "${runName}" not found.»`,
-              why: `В ${join(cwd, 'package.json')} в разделе scripts есть: ${Object.keys(scripts).join(', ') || 'ничего'}.`,
-              fix: `Добавьте "${runName}" в scripts или поправьте имя.${Object.keys(scripts).length ? ` Похожие: ${Object.keys(scripts).slice(0, 5).join(', ')}.` : ''}`,
+              why: tr('В {0} в разделе scripts есть: {1}.', join(cwd, 'package.json'), Object.keys(scripts).join(', ') || tr('ничего')),
+              fix: tr('Добавьте "{0}" в scripts или поправьте имя.{1}', runName, Object.keys(scripts).length ? tr(' Похожие: {0}.', Object.keys(scripts).slice(0, 5).join(', ')) : ''),
             });
           }
         }
@@ -375,20 +376,20 @@ function checkScripts(jobs, repo, add, { system = 'gitlab' } = {}) {
           lineAdd(ln, {
             id: 'yarn-no-lock',
             severity: 'error',
-            title: 'yarn с --frozen-lockfile без yarn.lock',
+            title: tr('yarn с --frozen-lockfile без yarn.lock'),
             how: '«error Your lockfile needs to be updated, but yarn was run with `--frozen-lockfile`».',
-            why: `В ${q(cwd || 'корне')} нет yarn.lock.`,
-            fix: 'Закоммитьте yarn.lock или уберите флаг.',
+            why: tr('В {0} нет yarn.lock.', q(cwd || tr('корне'))),
+            fix: tr('Закоммитьте yarn.lock или уберите флаг.'),
           });
         }
         if (cmd === 'pnpm' && (args[0] === 'install' || args[0] === 'i') && !args.includes('--no-frozen-lockfile') && !exists('pnpm-lock.yaml')) {
           lineAdd(ln, {
             id: 'pnpm-no-lock',
             severity: 'error',
-            title: 'pnpm install без pnpm-lock.yaml',
-            how: 'В CI pnpm по умолчанию работает с --frozen-lockfile: «ERR_PNPM_NO_LOCKFILE Cannot install with "frozen-lockfile" because pnpm-lock.yaml is absent».',
-            why: `В ${q(cwd || 'корне')} нет pnpm-lock.yaml.`,
-            fix: 'Закоммитьте pnpm-lock.yaml или добавьте --no-frozen-lockfile.',
+            title: tr('pnpm install без pnpm-lock.yaml'),
+            how: tr('В CI pnpm по умолчанию работает с --frozen-lockfile: «ERR_PNPM_NO_LOCKFILE Cannot install with "frozen-lockfile" because pnpm-lock.yaml is absent».'),
+            why: tr('В {0} нет pnpm-lock.yaml.', q(cwd || tr('корне'))),
+            fix: tr('Закоммитьте pnpm-lock.yaml или добавьте --no-frozen-lockfile.'),
           });
         }
 
@@ -399,32 +400,32 @@ function checkScripts(jobs, repo, add, { system = 'gitlab' } = {}) {
             lineAdd(ln, {
               id: 'pip-req-missing',
               severity: 'error',
-              title: `pip install -r ${f}: файла нет`,
+              title: tr('pip install -r {0}: файла нет', f),
               how: `«ERROR: Could not open requirements file: [Errno 2] No such file or directory: '${f}'».`,
-              why: `Файла ${q(join(cwd, f))} нет в репозитории.`,
-              fix: 'Проверьте имя (requirements.txt / requirements-dev.txt) и папку.',
+              why: tr('Файла {0} нет в репозитории.', q(join(cwd, f))),
+              fix: tr('Проверьте имя (requirements.txt / requirements-dev.txt) и папку.'),
             });
           }
         }
         if (cmd === 'poetry' && args[0] === 'install' && !exists('pyproject.toml')) {
-          lineAdd(ln, { id: 'poetry-no-project', severity: 'error', title: 'poetry install без pyproject.toml', how: '«Poetry could not find a pyproject.toml file in … or its parents».', why: `В ${q(cwd || 'корне')} нет pyproject.toml.`, fix: 'Перейдите в папку проекта или добавьте pyproject.toml.' });
+          lineAdd(ln, { id: 'poetry-no-project', severity: 'error', title: tr('poetry install без pyproject.toml'), how: '«Poetry could not find a pyproject.toml file in … or its parents».', why: tr('В {0} нет pyproject.toml.', q(cwd || tr('корне'))), fix: tr('Перейдите в папку проекта или добавьте pyproject.toml.') });
         }
 
         // make
         if (cmd === 'make' && !args.includes('-f') && !args.includes('-C')) {
           const mk = makeTargets(cwd);
           if (!mk) {
-            if (first(`make|${cwd}`)) lineAdd(ln, { id: 'make-no-makefile', severity: 'error', title: `make: нет Makefile в ${cwd || 'корне'}`, how: '«make: *** No targets specified and no makefile found.  Stop.»', why: `В ${q(cwd || '.')} нет Makefile.`, fix: 'Добавьте Makefile или перейдите в нужную папку (make -C папка …).' });
+            if (first(`make|${cwd}`)) lineAdd(ln, { id: 'make-no-makefile', severity: 'error', title: tr('make: нет Makefile в {0}', cwd || tr('корне')), how: '«make: *** No targets specified and no makefile found.  Stop.»', why: tr('В {0} нет Makefile.', q(cwd || '.')), fix: tr('Добавьте Makefile или перейдите в нужную папку (make -C папка …).') });
           } else if (!mk.dynamic) {
             for (const t of pos.filter((a) => literal(a) && !a.includes('='))) {
               if (!mk.targets.has(t)) {
                 lineAdd(ln, {
                   id: 'make-no-target',
                   severity: 'error',
-                  title: `make ${t}: такой цели нет в ${mk.file}`,
+                  title: tr('make {0}: такой цели нет в {1}', t, mk.file),
                   how: `«make: *** No rule to make target '${t}'.  Stop.»`,
-                  why: `В ${mk.file} есть цели: ${[...mk.targets].slice(0, 12).join(', ') || 'нет'}.`,
-                  fix: 'Поправьте имя цели или добавьте её в Makefile.',
+                  why: tr('В {0} есть цели: {1}.', mk.file, [...mk.targets].slice(0, 12).join(', ') || tr('нет')),
+                  fix: tr('Поправьте имя цели или добавьте её в Makefile.'),
                 });
               }
             }
@@ -434,16 +435,16 @@ function checkScripts(jobs, repo, add, { system = 'gitlab' } = {}) {
         // Сборщики и их файлы проекта
         const need = (files, title, how) => {
           if (!files.some((f) => (f.includes('*') ? repo.glob(join(cwd, f)) : exists(f))) && first(`build|${files[0]}|${cwd}`)) {
-            lineAdd(ln, { id: 'build-file-missing', severity: 'error', title, how, why: `В ${q(cwd || 'корне')} нет ${files.join(' / ')}.`, fix: 'Перейдите в папку проекта (cd …) или проверьте путь.' });
+            lineAdd(ln, { id: 'build-file-missing', severity: 'error', title, how, why: tr('В {0} нет {1}.', q(cwd || tr('корне')), files.join(' / ')), fix: tr('Перейдите в папку проекта (cd …) или проверьте путь.') });
           }
         };
-        if (cmd === 'mvn') need(['pom.xml'], 'mvn: нет pom.xml', '«[ERROR] The goal you specified requires a project to execute but there is no POM in this directory».');
-        if (cmd === 'gradle') need(['build.gradle', 'build.gradle.kts', 'settings.gradle', 'settings.gradle.kts'], 'gradle: нет build.gradle', 'Gradle не найдёт сборку: «Directory … does not contain a Gradle build».');
-        if (cmd === 'go' && ['build', 'test', 'vet', 'run', 'mod'].includes(args[0])) need(['go.mod'], 'go: нет go.mod', '«go: go.mod file not found in current directory or any parent directory».');
-        if (cmd === 'cargo' && ['build', 'test', 'run', 'check', 'clippy'].includes(args[0])) need(['Cargo.toml'], 'cargo: нет Cargo.toml', '«error: could not find `Cargo.toml` in … or any parent directory».');
-        if (cmd === 'composer' && ['install', 'update'].includes(args[0])) need(['composer.json'], 'composer: нет composer.json', '«Composer could not find a composer.json file».');
-        if (cmd === 'bundle' && ['install', 'exec'].includes(args[0])) need(['Gemfile'], 'bundle: нет Gemfile', '«Could not locate Gemfile».');
-        if (cmd === 'dotnet' && ['build', 'test', 'restore', 'publish'].includes(args[0]) && !pos[1]) need(['*.sln', '*.csproj', '*.fsproj'], 'dotnet: нет проекта (.sln / .csproj)', '«MSBUILD : error MSB1003: Specify a project or solution file».');
+        if (cmd === 'mvn') need(['pom.xml'], tr('mvn: нет pom.xml'), '«[ERROR] The goal you specified requires a project to execute but there is no POM in this directory».');
+        if (cmd === 'gradle') need(['build.gradle', 'build.gradle.kts', 'settings.gradle', 'settings.gradle.kts'], tr('gradle: нет build.gradle'), tr('Gradle не найдёт сборку: «Directory … does not contain a Gradle build».'));
+        if (cmd === 'go' && ['build', 'test', 'vet', 'run', 'mod'].includes(args[0])) need(['go.mod'], tr('go: нет go.mod'), '«go: go.mod file not found in current directory or any parent directory».');
+        if (cmd === 'cargo' && ['build', 'test', 'run', 'check', 'clippy'].includes(args[0])) need(['Cargo.toml'], tr('cargo: нет Cargo.toml'), '«error: could not find `Cargo.toml` in … or any parent directory».');
+        if (cmd === 'composer' && ['install', 'update'].includes(args[0])) need(['composer.json'], tr('composer: нет composer.json'), '«Composer could not find a composer.json file».');
+        if (cmd === 'bundle' && ['install', 'exec'].includes(args[0])) need(['Gemfile'], tr('bundle: нет Gemfile'), '«Could not locate Gemfile».');
+        if (cmd === 'dotnet' && ['build', 'test', 'restore', 'publish'].includes(args[0]) && !pos[1]) need(['*.sln', '*.csproj', '*.fsproj'], tr('dotnet: нет проекта (.sln / .csproj)'), '«MSBUILD : error MSB1003: Specify a project or solution file».');
 
         // docker build / compose / kubectl -f
         if (cmd === 'docker' && (args[0] === 'build' || (args[0] === 'buildx' && args[1] === 'build'))) {
@@ -454,20 +455,20 @@ function checkScripts(jobs, repo, add, { system = 'gitlab' } = {}) {
             lineAdd(ln, {
               id: 'dockerfile-missing',
               severity: 'error',
-              title: `docker build: нет ${dockerfile}`,
+              title: tr('docker build: нет {0}', dockerfile),
               how: '«failed to solve: failed to read dockerfile: open Dockerfile: no such file or directory».',
-              why: `Файла ${q(join(cwd, dockerfile))} нет в репозитории.`,
-              fix: 'Укажите правильный путь через -f или поправьте контекст сборки.',
+              why: tr('Файла {0} нет в репозитории.', q(join(cwd, dockerfile))),
+              fix: tr('Укажите правильный путь через -f или поправьте контекст сборки.'),
             });
           }
         }
         if ((cmd === 'docker-compose' || (cmd === 'docker' && args[0] === 'compose')) && (args.includes('-f') || args.includes('--file'))) {
           const f = args[args.findIndex((a) => a === '-f' || a === '--file') + 1];
-          if (f && literal(f) && !exists(f)) lineAdd(ln, { id: 'compose-missing', severity: 'error', title: `docker compose -f ${f}: файла нет`, how: '«open …: no such file or directory».', why: `Файла ${q(join(cwd, f))} нет в репозитории.`, fix: 'Проверьте путь.' });
+          if (f && literal(f) && !exists(f)) lineAdd(ln, { id: 'compose-missing', severity: 'error', title: tr('docker compose -f {0}: файла нет', f), how: '«open …: no such file or directory».', why: tr('Файла {0} нет в репозитории.', q(join(cwd, f))), fix: tr('Проверьте путь.') });
         }
         if (cmd === 'kubectl' && ['apply', 'create', 'delete', 'replace'].includes(args[0]) && args.includes('-f')) {
           const f = args[args.indexOf('-f') + 1];
-          if (f && literal(f) && /\.(ya?ml|json)$/.test(f) && !exists(f)) lineAdd(ln, { id: 'kubectl-missing', severity: 'error', title: `kubectl ${args[0]} -f ${f}: файла нет`, how: `«error: the path "${f}" does not exist».`, why: `Файла ${q(join(cwd, f))} нет в репозитории.`, fix: 'Проверьте путь.' });
+          if (f && literal(f) && /\.(ya?ml|json)$/.test(f) && !exists(f)) lineAdd(ln, { id: 'kubectl-missing', severity: 'error', title: tr('kubectl {0} -f {1}: файла нет', args[0], f), how: `«error: the path "${f}" does not exist».`, why: tr('Файла {0} нет в репозитории.', q(join(cwd, f))), fix: tr('Проверьте путь.') });
         }
       }
     }

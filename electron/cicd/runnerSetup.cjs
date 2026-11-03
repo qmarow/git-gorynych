@@ -1,6 +1,7 @@
 // Подключение раннера: готовые команды (Docker, Linux/macOS, Windows) и локальный Docker-раннер в один клик.
 const { execFile } = require('node:child_process');
 const { GitError } = require('../errors.cjs');
+const { t } = require('../i18n.cjs');
 
 const shq = (s) => `'${String(s).replace(/'/g, `'\\''`)}'`;
 const psq = (s) => `'${String(s).replace(/'/g, "''")}'`;
@@ -149,7 +150,7 @@ function commands(provider, { url, token, labels = [], name = 'git-gorynych-runn
         label: 'Linux',
         shell: 'bash',
         text: [
-          '# Свежая версия act_runner: https://gitea.com/gitea/act_runner/releases',
+          t('# Свежая версия act_runner: https://gitea.com/gitea/act_runner/releases'),
           'curl -L -o act_runner https://dl.gitea.com/act_runner/nightly/act_runner-nightly-linux-amd64 && chmod +x act_runner',
           reg('./act_runner'),
           'nohup ./act_runner daemon > act_runner.log 2>&1 &',
@@ -189,11 +190,11 @@ function docker(args, { timeout = 60000 } = {}) {
     execFile(dockerBin, args, { timeout, windowsHide: true, maxBuffer: 4 * 1024 * 1024 }, (error, stdout, stderr) => {
       if (error) {
         const text = String(stderr || error.message).trim();
-        if (error.code === 'ENOENT') return reject(new GitError('Docker не установлен', { code: 'NO_DOCKER', hint: 'Установите Docker Desktop и запустите его' }));
+        if (error.code === 'ENOENT') return reject(new GitError(t('Docker не установлен'), { code: 'NO_DOCKER', hint: t('Установите Docker Desktop и запустите его') }));
         if (/Cannot connect to the Docker daemon|error during connect|daemon is not running|pipe\/docker_engine/i.test(text)) {
-          return reject(new GitError('Docker не запущен', { code: 'NO_DOCKER', hint: 'Запустите Docker Desktop и попробуйте снова' }));
+          return reject(new GitError(t('Docker не запущен'), { code: 'NO_DOCKER', hint: t('Запустите Docker Desktop и попробуйте снова') }));
         }
-        return reject(new GitError('Docker вернул ошибку', { code: 'DOCKER', details: text, hint: text.split('\n').pop()?.slice(0, 300) }));
+        return reject(new GitError(t('Docker вернул ошибку'), { code: 'DOCKER', details: text, hint: text.split('\n').pop()?.slice(0, 300) }));
       }
       resolve(String(stdout));
     });
@@ -257,13 +258,13 @@ async function startLocal(provider, { reg, labels = [], repoKey, repoName }) {
     const env = ['-e', `GITEA_INSTANCE_URL=${url}`, '-e', `GITEA_RUNNER_REGISTRATION_TOKEN=${reg.token}`, '-e', `GITEA_RUNNER_NAME=${name}`, ...(labels.length ? ['-e', `GITEA_RUNNER_LABELS=${labels.join(',')}`] : [])];
     await docker(['run', '-d', '--name', name, '--restart', 'unless-stopped', ...meta, ...env, ...sock, '-v', `${name}-data:/data`, 'gitea/act_runner:latest'], { timeout: 10 * 60 * 1000 });
   } else {
-    throw new GitError('Локальный раннер для этого провайдера не поддерживается', { code: 'UNSUPPORTED' });
+    throw new GitError(t('Локальный раннер для этого провайдера не поддерживается'), { code: 'UNSUPPORTED' });
   }
   return { name };
 }
 
 async function stopLocal(name, { remove = true } = {}) {
-  if (!/^gorynych-[a-z0-9-]+$/.test(String(name))) throw new GitError('Это не раннер приложения', { code: 'BAD_ARGS' });
+  if (!/^gorynych-[a-z0-9-]+$/.test(String(name))) throw new GitError(t('Это не раннер приложения'), { code: 'BAD_ARGS' });
   if (remove) {
     await docker(['rm', '-f', name]);
     await docker(['volume', 'rm', '-f', `${name}-config`, `${name}-data`]).catch(() => {});
@@ -272,7 +273,7 @@ async function stopLocal(name, { remove = true } = {}) {
 }
 
 async function resumeLocal(name) {
-  if (!/^gorynych-[a-z0-9-]+$/.test(String(name))) throw new GitError('Это не раннер приложения', { code: 'BAD_ARGS' });
+  if (!/^gorynych-[a-z0-9-]+$/.test(String(name))) throw new GitError(t('Это не раннер приложения'), { code: 'BAD_ARGS' });
   await docker(['start', name]);
   return { name };
 }

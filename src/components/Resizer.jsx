@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { t } from '../i18n/index.js';
 
 /**
  * Ширина, которая запоминается между запусками (localStorage).
@@ -82,7 +83,7 @@ export function ResizeHandle({ width, onResize, onCommit, onReset, direction = 1
     <div
       role="separator"
       aria-orientation="vertical"
-      title={title ?? 'Потяните, чтобы изменить ширину. Двойной клик — по умолчанию'}
+      title={title ?? t('Потяните, чтобы изменить ширину. Двойной клик — по умолчанию')}
       onMouseDown={(e) => {
         if (e.button !== 0) return;
         e.preventDefault();

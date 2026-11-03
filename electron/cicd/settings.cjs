@@ -3,6 +3,7 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const { GitError } = require('../errors.cjs');
+const { t } = require('../i18n.cjs');
 
 let electron = null;
 try {
@@ -40,21 +41,21 @@ function get(host, repoPath) {
 function normalizeBase(input) {
   const raw = String(input ?? '').trim().replace(/\/+$/, '');
   if (!raw) return null;
-  if (/^[a-z][a-z0-9+.-]*:\/\//i.test(raw) && !/^https?:\/\//i.test(raw)) throw new GitError('Адрес API должен начинаться с https://', { code: 'BAD_ARGS' });
+  if (/^[a-z][a-z0-9+.-]*:\/\//i.test(raw) && !/^https?:\/\//i.test(raw)) throw new GitError(t('Адрес API должен начинаться с https://'), { code: 'BAD_ARGS' });
   let u;
   try {
     u = new URL(/^https?:\/\//i.test(raw) ? raw : `https://${raw}`);
   } catch {
-    throw new GitError('Некорректный адрес API', { code: 'BAD_ARGS', hint: 'Например: https://gitlab.company.ru или https://github.company.ru/api/v3' });
+    throw new GitError(t('Некорректный адрес API'), { code: 'BAD_ARGS', hint: t('Например: https://gitlab.company.ru или https://github.company.ru/api/v3') });
   }
-  if (u.protocol !== 'https:' && u.protocol !== 'http:') throw new GitError('Адрес API должен начинаться с https://', { code: 'BAD_ARGS' });
+  if (u.protocol !== 'https:' && u.protocol !== 'http:') throw new GitError(t('Адрес API должен начинаться с https://'), { code: 'BAD_ARGS' });
   return `${u.protocol}//${u.host}${u.pathname.replace(/\/+$/, '')}`;
 }
 
 function set(host, repoPath, { provider = null, apiBase = null } = {}) {
-  if (provider && !PROVIDERS.has(provider)) throw new GitError('Неизвестный провайдер CI/CD', { code: 'BAD_ARGS' });
+  if (provider && !PROVIDERS.has(provider)) throw new GitError(t('Неизвестный провайдер CI/CD'), { code: 'BAD_ARGS' });
   const f = file();
-  if (!f) throw new GitError('Хранилище настроек недоступно', { code: 'NO_STORAGE' });
+  if (!f) throw new GitError(t('Хранилище настроек недоступно'), { code: 'NO_STORAGE' });
   const data = read();
   const key = keyOf(host, repoPath);
   const base = normalizeBase(apiBase);

@@ -13,6 +13,7 @@ import { CC_TYPES, parseSummary } from '../lib/commitMsg.js';
 import { DEFAULT_VIEW, columnById, moveColumn, useGraphView } from '../lib/graphView.js';
 import GraphViewMenu from './GraphViewMenu.jsx';
 import { isLight, readable } from '../lib/scheme.js';
+import { t as tr, tj, locale } from '../i18n/index.js';
 
 const HEADER_HEIGHT = 30;
 const OVERSCAN = 15; // запас строк выше и ниже видимой области
@@ -272,8 +273,7 @@ export default function CommitGraph({
   if (nodes.length === 0) {
     return (
       <div className="flex flex-1 animate-fade-in items-center justify-center text-gk-muted">
-        В репозитории ещё нет коммитов
-      </div>
+        {tr('В репозитории ещё нет коммитов')}</div>
     );
   }
 
@@ -362,8 +362,8 @@ export default function CommitGraph({
                   onReset={fit}
                   title={
                     id === 'graph'
-                      ? 'Потяните, чтобы изменить ширину графа. Двойной клик — авто'
-                      : 'Потяните, чтобы изменить ширину. Двойной клик — по содержимому'
+                      ? tr('Потяните, чтобы изменить ширину графа. Двойной клик — авто')
+                      : tr('Потяните, чтобы изменить ширину. Двойной клик — по содержимому')
                   }
                   className={before ? '-right-1' : '-left-1'}
                 />
@@ -377,8 +377,8 @@ export default function CommitGraph({
             menu ? closeMenu() : openMenuAt(r.right - 320, r.bottom + 4);
           }}
           onMouseDown={(e) => menu && e.stopPropagation()}
-          aria-label="Вид таблицы"
-          data-tip="Вид таблицы: колонки, плотность строк, формат даты, узлы графа"
+          aria-label={tr('Вид таблицы')}
+          data-tip={tr('Вид таблицы: колонки, плотность строк, формат даты, узлы графа')}
           className={`absolute right-1 top-1/2 z-30 flex h-6 w-6 -translate-y-1/2 items-center justify-center rounded transition-colors ${
             menu ? 'bg-gk-hover text-gk-text' : 'text-gk-dim hover:bg-gk-hover hover:text-gk-text'
           }`}
@@ -538,8 +538,7 @@ export default function CommitGraph({
 
       {truncated && (
         <div className="py-3 text-center text-xs text-gk-dim">
-          Показаны последние {commits.length.toLocaleString('ru-RU')} коммитов
-        </div>
+          {tj('Показаны последние {0} коммитов', [commits.length.toLocaleString(locale())])}</div>
       )}
 
       {menu && (
@@ -680,7 +679,7 @@ function Row({
           >
             {refsSide === 'right' && node.refs.length > 0 && <span style={{ backgroundColor: color }} className="h-[2px] w-1 shrink-0 opacity-85" />}
             {marked && (
-              <span data-tip={kb('Отмечен для сравнения — Ctrl+клик по другому коммиту')} className="shrink-0 rounded bg-gk-blue/20 px-1.5 text-[10px] font-medium text-gk-blue">
+              <span data-tip={kb(tr('Отмечен для сравнения — Ctrl+клик по другому коммиту'))} className="shrink-0 rounded bg-gk-blue/20 px-1.5 text-[10px] font-medium text-gk-blue">
                 A
               </span>
             )}
@@ -725,10 +724,10 @@ function Row({
                 {fileHit && (
                   <span
                     data-testid="row-file-hits"
-                    data-tip={`Найдено в изменениях:\n${fileHit.files
+                    data-tip={tr('Найдено в изменениях:\n{0}{1}', fileHit.files
                       .slice(0, 8)
                       .map((f) => `${f.path} — ${f.count}`)
-                      .join('\n')}${fileHit.files.length > 8 || fileHit.moreFiles ? '\n…' : ''}`}
+                      .join('\n'), fileHit.files.length > 8 || fileHit.moreFiles ? '\n…' : '')}
                     className="ml-2 flex shrink-0 items-center gap-1 rounded-full bg-gk-yellow/20 px-1.5 py-px text-[10.5px] font-medium text-gk-yellow"
                   >
                     <FileSearch size={10} />
@@ -743,7 +742,7 @@ function Row({
                     onMouseEnter={() => onPipelineHover?.(pipeline)}
                     data-testid="pipeline-badge"
                     data-status={pipeline.status}
-                    data-tip={`Пайплайн #${pipeline.id}: ${statusInfo(pipeline.status).label}${pipelineTip && pipelineTip.status === pipeline.status && pipelineTip.text ? `\n${pipelineTip.text}` : ''}\nКлик — ${pipeline.status === 'failed' ? 'лог упавшего задания' : 'подробности'}`}
+                    data-tip={tr('Пайплайн #{0}: {1}{2}\nКлик — {3}', pipeline.id, statusInfo(pipeline.status).label, pipelineTip && pipelineTip.status === pipeline.status && pipelineTip.text ? `\n${pipelineTip.text}` : '', pipeline.status === 'failed' ? tr('лог упавшего задания') : tr('подробности'))}
                     data-tip-wide
                     className="ml-2 flex h-5 w-5 shrink-0 items-center justify-center rounded-full transition-transform hover:scale-125"
                   >
@@ -762,7 +761,7 @@ function Row({
                 onMouseDown={(e) => e.stopPropagation()}
                 onDoubleClick={(e) => e.stopPropagation()}
                 onClick={() => onCopySha(node.hash)}
-                data-tip={`${node.hash}\nКлик — скопировать`}
+                data-tip={tr('{0}\nКлик — скопировать', node.hash)}
                 className="group/sha flex min-w-0 items-center gap-1 rounded px-1 font-mono text-[12px] tabular-nums text-gk-muted hover:bg-gk-fg/5 hover:text-gk-text"
               >
                 <span className="truncate">{node.hash.slice(0, 7)}</span>
@@ -897,7 +896,7 @@ function RefLabels({ refs, color, onDragStart, currentBranch, actions, compact =
           e.stopPropagation();
           actions.checkout(first.local ? { type: 'local', name: first.name } : { type: 'remote', name: first.remoteName });
         }}
-        data-tip={`${first.remoteName && !first.local ? first.remoteName : first.name} — ${refKindLabel(first)}${rest.length ? `\nЕщё ${rest.length}: наведите на «+${rest.length}»` : ''}${draggable ? `\nДвойной клик — ${first.local ? 'переключиться на ветку' : 'создать локальную ветку и переключиться'}\nПеретащите на другую ветку: слить, перемотать, rebase` : ''}`}
+        data-tip={`${first.remoteName && !first.local ? first.remoteName : first.name} — ${refKindLabel(first)}${rest.length ? tr('\nЕщё {0}: наведите на «+{1}»', rest.length, rest.length) : ''}${draggable ? tr('\nДвойной клик — {0}\nПеретащите на другую ветку: слить, перемотать, rebase', first.local ? tr('переключиться на ветку') : tr('создать локальную ветку и переключиться')) : ''}`}
         style={style}
         className={`relative flex min-w-0 items-center gap-1.5 rounded-l px-2 font-medium ${compact ? 'h-[18px] text-[11.5px]' : 'h-[22px] text-[12px]'} ${remoteOnly ? 'border border-dashed text-gk-strong/90' : 'text-gk-strong'}`}
       >
@@ -1005,7 +1004,7 @@ function HeadRing({ x, y, r }) {
 function HeadPill({ detached = false, compact = false }) {
   return (
     <span
-      data-tip={detached ? 'HEAD (detached) — текущий коммит без ветки' : 'HEAD — текущий коммит'}
+      data-tip={detached ? tr('HEAD (detached) — текущий коммит без ветки') : tr('HEAD — текущий коммит')}
       className={`mr-2 flex shrink-0 items-center rounded bg-gk-green/20 px-1.5 text-[10px] font-bold tracking-wider text-gk-green ring-1 ring-gk-green/50 ${
         compact ? 'h-[16px]' : 'h-[18px]'
       }`}

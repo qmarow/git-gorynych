@@ -5,6 +5,7 @@ const { GitError } = require('../errors.cjs');
 const { request, download } = require('./http.cjs');
 const M = require('./models.cjs');
 const github = require('./github.cjs');
+const { t: tr } = require('../i18n.cjs');
 
 const repoApi = (ctx) => `/repos/${ctx.owner}/${ctx.repo}`;
 
@@ -31,15 +32,15 @@ const gitea = {
       localRunner: admin,
       why: {
         ...M.reasons('Gitea', ['canCancel', 'canRetry', 'canRetryFailed', 'canRerunSingleJob', 'canCancelJob', 'canPlayManualJob', 'canRunWithVariables']),
-        canEditRunnerLabels: 'В Gitea метки раннера задаются при регистрации (act_runner register --labels) или в его config.yaml',
-        canPauseRunner: 'В Gitea нет паузы раннера — остановите act_runner на сервере',
-        canEditRunnerSettings: 'Gitea не даёт менять настройки раннера через API',
+        canEditRunnerLabels: tr('В Gitea метки раннера задаются при регистрации (act_runner register --labels) или в его config.yaml'),
+        canPauseRunner: tr('В Gitea нет паузы раннера — остановите act_runner на сервере'),
+        canEditRunnerSettings: tr('Gitea не даёт менять настройки раннера через API'),
       },
     };
   },
 
   async init(ctx) {
-    const r = await request(ctx, 'GET', repoApi(ctx), { notFound: `Репозиторий ${ctx.owner}/${ctx.repo} не найден или у токена нет к нему доступа` });
+    const r = await request(ctx, 'GET', repoApi(ctx), { notFound: tr('Репозиторий {0}/{1} не найден или у токена нет к нему доступа', ctx.owner, ctx.repo) });
     ctx.canWrite = r.permissions ? Boolean(r.permissions.push || r.permissions.admin) : true;
     ctx.isAdmin = r.permissions ? Boolean(r.permissions.admin) : true;
     ctx.defaultBranch = r.default_branch ?? null;
@@ -95,7 +96,7 @@ const gitea = {
   async pipelineDetail(ctx, id) {
     try {
       const [r, jobs, arts] = await Promise.all([
-        request(ctx, 'GET', `${repoApi(ctx)}/actions/runs/${Number(id)}`, { notFound: `Запуск #${id} не найден` }),
+        request(ctx, 'GET', `${repoApi(ctx)}/actions/runs/${Number(id)}`, { notFound: tr('Запуск #{0} не найден', id) }),
         request(ctx, 'GET', `${repoApi(ctx)}/actions/runs/${Number(id)}/jobs`, { query: { limit: 100 } }).catch(() => ({ jobs: [] })),
         this.listArtifacts(ctx, id).catch(() => []),
       ]);
@@ -132,15 +133,15 @@ const gitea = {
   },
 
   async action() {
-    throw new GitError('Gitea не даёт отменять и перезапускать запуски через API', { code: 'UNSUPPORTED', hint: 'Откройте запуск в браузере' });
+    throw new GitError(tr('Gitea не даёт отменять и перезапускать запуски через API'), { code: 'UNSUPPORTED', hint: tr('Откройте запуск в браузере') });
   },
 
   async runPipeline(ctx, { ref, workflow, inputs = {} }) {
-    if (!workflow) throw new GitError('Выберите workflow для запуска', { code: 'BAD_ARGS' });
+    if (!workflow) throw new GitError(tr('Выберите workflow для запуска'), { code: 'BAD_ARGS' });
     const file = String(workflow).split('/').pop();
     await request(ctx, 'POST', `${repoApi(ctx)}/actions/workflows/${encodeURIComponent(file)}/dispatches`, {
       body: { ref, inputs: Object.fromEntries(Object.entries(inputs).map(([k, v]) => [k, String(v ?? '')])) },
-      notFound: 'Запуск workflow по API поддерживается в Gitea 1.23 и новее (и workflow должен быть отправлен на сервер)',
+      notFound: tr('Запуск workflow по API поддерживается в Gitea 1.23 и новее (и workflow должен быть отправлен на сервер)'),
     });
     return { id: null };
   },
@@ -150,7 +151,7 @@ const gitea = {
   async listRunners(ctx) {
     const data = await request(ctx, 'GET', `${repoApi(ctx)}/actions/runners`, {
       query: { limit: 100 },
-      notFound: 'Список раннеров по API есть в Gitea 1.24 и новее',
+      notFound: tr('Список раннеров по API есть в Gitea 1.24 и новее'),
     });
     const list = data?.runners ?? (Array.isArray(data) ? data : []);
     return list.map((r) => {
@@ -174,11 +175,11 @@ const gitea = {
   },
 
   async updateRunner() {
-    throw new GitError('Gitea не даёт менять раннер через API', { code: 'UNSUPPORTED', hint: 'Метки задаются в config.yaml раннера или при регистрации' });
+    throw new GitError(tr('Gitea не даёт менять раннер через API'), { code: 'UNSUPPORTED', hint: tr('Метки задаются в config.yaml раннера или при регистрации') });
   },
 
   async deleteRunner(ctx, id) {
-    await request(ctx, 'DELETE', `${repoApi(ctx)}/actions/runners/${id}`, { notFound: 'Раннер уже удалён или Gitea не поддерживает удаление по API' });
+    await request(ctx, 'DELETE', `${repoApi(ctx)}/actions/runners/${id}`, { notFound: tr('Раннер уже удалён или Gitea не поддерживает удаление по API') });
     return { id };
   },
 

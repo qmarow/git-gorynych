@@ -11,6 +11,7 @@ const os = require('node:os');
 const path = require('node:path');
 const { execFile } = require('node:child_process');
 const { GitError } = require('./errors.cjs');
+const { t: tr } = require('./i18n.cjs');
 
 let electron = null;
 try {
@@ -26,7 +27,7 @@ const METHODS = new Set(['password', 'token', 'ssh']);
 
 function userDataDir() {
   const dir = process.env.GK_TEST_USERDATA || electron?.app?.getPath('userData');
-  if (!dir) throw new GitError('Хранилище настроек недоступно', { code: 'NO_STORAGE' });
+  if (!dir) throw new GitError(tr('Хранилище настроек недоступно'), { code: 'NO_STORAGE' });
   return dir;
 }
 const storeFile = () => path.join(userDataDir(), 'remote-credentials.json');
@@ -50,7 +51,7 @@ function encrypt(text) {
   const ss = electron?.safeStorage;
   if (ss?.isEncryptionAvailable()) return { enc: ss.encryptString(text).toString('base64') };
   if (process.env.GK_TEST_USERDATA) return { plain: Buffer.from(text).toString('base64') }; // только для тестов
-  throw new GitError('Шифрование недоступно в системе — данные нельзя сохранить безопасно', { code: 'NO_ENCRYPTION' });
+  throw new GitError(tr('Шифрование недоступно в системе — данные нельзя сохранить безопасно'), { code: 'NO_ENCRYPTION' });
 }
 
 function decrypt(entry) {
@@ -216,7 +217,7 @@ function serverInfo(hostname, store) {
  */
 function parseServer(input) {
   let raw = String(input ?? '').trim();
-  if (!raw) throw new GitError('Укажите адрес сервера', { code: 'BAD_ARGS', hint: 'Например: gitlab.company.ru' });
+  if (!raw) throw new GitError(tr('Укажите адрес сервера'), { code: 'BAD_ARGS', hint: tr('Например: gitlab.company.ru') });
   const scp = /^(?:[^@/\\\s]+@)?([^:/\\\s]+):(?!\/\/|\d+(?:\/|$))/.exec(raw); // git@host:group/app.git
   if (scp) raw = scp[1];
   const ssh = /^ssh:\/\/(?:[^@/]+@)?([^:/]+)/i.exec(raw);
@@ -226,11 +227,11 @@ function parseServer(input) {
   try {
     u = new URL(raw);
   } catch {
-    throw new GitError('Не похоже на адрес сервера', { code: 'BAD_ARGS', hint: 'Например: gitlab.company.ru или https://git.company.ru:8443' });
+    throw new GitError(tr('Не похоже на адрес сервера'), { code: 'BAD_ARGS', hint: tr('Например: gitlab.company.ru или https://git.company.ru:8443') });
   }
   const hostname = u.hostname.toLowerCase();
   if (!hostname || !/^[a-z0-9.-]+$|^\[[0-9a-f:.]+\]$/i.test(hostname) || /^[.-]|[.-]$/.test(hostname)) {
-    throw new GitError('Не похоже на адрес сервера', { code: 'BAD_ARGS', hint: 'Например: gitlab.company.ru' });
+    throw new GitError(tr('Не похоже на адрес сервера'), { code: 'BAD_ARGS', hint: tr('Например: gitlab.company.ru') });
   }
   const scheme = u.protocol.slice(0, -1).toLowerCase();
   const host = u.host.toLowerCase();
@@ -241,7 +242,7 @@ function parseServer(input) {
 function setServer(hostname, { kind, base } = {}) {
   const h = String(hostname ?? '').toLowerCase();
   if (!h) return;
-  if (!SERVER_KINDS.has(kind)) throw new GitError('Неизвестный тип сервера', { code: 'BAD_ARGS' });
+  if (!SERVER_KINDS.has(kind)) throw new GitError(tr('Неизвестный тип сервера'), { code: 'BAD_ARGS' });
   const store = readStore();
   store.servers = store.servers && typeof store.servers === 'object' ? store.servers : {};
   // Облако не запоминаем: github.com и так GitHub
@@ -381,7 +382,7 @@ async function detectServer(input) {
     ...s,
     kind: reachable ? 'other' : null,
     reachable,
-    error: reachable ? null : lastError?.name === 'AbortError' ? `${s.host} не ответил за ${PROBE_TIMEOUT / 1000} с` : `Нет связи с ${s.host}`,
+    error: reachable ? null : lastError?.name === 'AbortError' ? tr('{0} не ответил за {1} с', s.host, PROBE_TIMEOUT / 1000) : tr('Нет связи с {0}', s.host),
   };
 }
 
@@ -393,25 +394,25 @@ async function detectServer(input) {
  */
 function save(url, data = {}) {
   const t = parseTarget(url);
-  if (!t.host) throw new GitError('Для локального адреса учётные данные не нужны', { code: 'BAD_ARGS' });
+  if (!t.host) throw new GitError(tr('Для локального адреса учётные данные не нужны'), { code: 'BAD_ARGS' });
   const method = data.method;
-  if (!METHODS.has(method)) throw new GitError('Не выбран способ входа', { code: 'BAD_ARGS' });
+  if (!METHODS.has(method)) throw new GitError(tr('Не выбран способ входа'), { code: 'BAD_ARGS' });
   if (method !== 'ssh' && t.protocol !== 'https') {
-    throw new GitError('Логин/пароль и токен работают только для адресов https://', {
+    throw new GitError(tr('Логин/пароль и токен работают только для адресов https://'), {
       code: 'BAD_ARGS',
-      hint: 'Адрес remote — SSH. Выберите вкладку «SSH-ключ» или смените адрес remote на https://.',
+      hint: tr('Адрес remote — SSH. Выберите вкладку «SSH-ключ» или смените адрес remote на https://.'),
     });
   }
   if (method === 'ssh' && t.protocol !== 'ssh') {
-    throw new GitError('SSH-ключ работает только для адресов SSH (git@host:… или ssh://…)', {
+    throw new GitError(tr('SSH-ключ работает только для адресов SSH (git@host:… или ssh://…)'), {
       code: 'BAD_ARGS',
-      hint: 'Адрес remote — https://. Войдите логином и паролем или токеном, либо смените адрес remote на SSH.',
+      hint: tr('Адрес remote — https://. Войдите логином и паролем или токеном, либо смените адрес remote на SSH.'),
     });
   }
   // Тип сервера, выбранный в окне входа, — до логина по умолчанию: он от типа зависит
   if (data.kind && SERVER_KINDS.has(data.kind)) setServer(t.hostname, { kind: data.kind, base: t.protocol === 'https' ? `${t.scheme}://${t.host}` : undefined });
   const key = repoKeyOf(url);
-  if (!key) throw new GitError('Укажите адрес репозитория', { code: 'BAD_ARGS', hint: 'Например: https://gitlab.com/group/project.git' });
+  if (!key) throw new GitError(tr('Укажите адрес репозитория'), { code: 'BAD_ARGS', hint: tr('Например: https://gitlab.com/group/project.git') });
   const store = readStore();
   store.repos = store.repos && typeof store.repos === 'object' ? store.repos : {};
   // Пустой пароль/токен — оставить прежний: свой у репозитория или общий вход сервера
@@ -421,17 +422,17 @@ function save(url, data = {}) {
 
   if (method === 'password' || method === 'token') {
     const username = String(data.username ?? '').trim() || (method === 'token' ? defaultTokenUser(t.host) : '');
-    if (!username) throw new GitError('Введите имя пользователя', { code: 'BAD_ARGS' });
+    if (!username) throw new GitError(tr('Введите имя пользователя'), { code: 'BAD_ARGS' });
     const secret = String(data.secret ?? '');
-    if (!secret && !prev?.secret) throw new GitError(method === 'token' ? 'Введите токен' : 'Введите пароль', { code: 'BAD_ARGS' });
-    if (/[\r\n]/.test(username) || /[\r\n]/.test(secret)) throw new GitError('Перевод строки в логине или пароле недопустим', { code: 'BAD_ARGS' });
+    if (!secret && !prev?.secret) throw new GitError(method === 'token' ? tr('Введите токен') : tr('Введите пароль'), { code: 'BAD_ARGS' });
+    if (/[\r\n]/.test(username) || /[\r\n]/.test(secret)) throw new GitError(tr('Перевод строки в логине или пароле недопустим'), { code: 'BAD_ARGS' });
     entry.username = username;
     entry.secret = secret ? encrypt(secret) : prev.secret;
   } else {
     const keyPath = String(data.keyPath ?? '').trim();
-    if (!keyPath) throw new GitError('Выберите файл приватного ключа', { code: 'BAD_ARGS' });
-    if (!fs.existsSync(keyPath)) throw new GitError('Файл ключа не найден', { code: 'BAD_ARGS', hint: keyPath });
-    if (keyPath.endsWith('.pub')) throw new GitError('Это публичный ключ (.pub) — выберите приватный, без расширения', { code: 'BAD_ARGS' });
+    if (!keyPath) throw new GitError(tr('Выберите файл приватного ключа'), { code: 'BAD_ARGS' });
+    if (!fs.existsSync(keyPath)) throw new GitError(tr('Файл ключа не найден'), { code: 'BAD_ARGS', hint: keyPath });
+    if (keyPath.endsWith('.pub')) throw new GitError(tr('Это публичный ключ (.pub) — выберите приватный, без расширения'), { code: 'BAD_ARGS' });
     entry.keyPath = keyPath;
     const passphrase = String(data.passphrase ?? '');
     if (passphrase) entry.passphrase = encrypt(passphrase);
@@ -440,7 +441,7 @@ function save(url, data = {}) {
   if (method !== 'token') {
     const apiToken = String(data.apiToken ?? '').trim();
     if (apiToken) {
-      if (/\s/.test(apiToken)) throw new GitError('В токене для пайплайнов не должно быть пробелов', { code: 'BAD_ARGS' });
+      if (/\s/.test(apiToken)) throw new GitError(tr('В токене для пайплайнов не должно быть пробелов'), { code: 'BAD_ARGS' });
       entry.apiToken = encrypt(apiToken);
     } else if (!data.clearApiToken && current?.apiToken) entry.apiToken = current.apiToken;
   }
@@ -725,12 +726,12 @@ function suggestKeyName(type = 'ed25519', host = null, dir = sshDir(), exists = 
  * Существующие ключи не перезаписываются: к имени добавляется _2, _3, …
  */
 async function generateSshKey({ type = 'ed25519', comment, passphrase = '', name, host = null, gitBinary } = {}) {
-  if (!KEY_TYPES[type]) throw new GitError('Неизвестный тип ключа', { code: 'BAD_ARGS' });
+  if (!KEY_TYPES[type]) throw new GitError(tr('Неизвестный тип ключа'), { code: 'BAD_ARGS' });
   const dir = sshDir();
   fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
   const wanted = String(name ?? '').trim();
   if (wanted && (/[\\/]/.test(wanted) || wanted.startsWith('.') || wanted.endsWith('.pub'))) {
-    throw new GitError('Имя файла ключа — без папок, точки в начале и .pub на конце', { code: 'BAD_ARGS' });
+    throw new GitError(tr('Имя файла ключа — без папок, точки в начале и .pub на конце'), { code: 'BAD_ARGS' });
   }
   const base = wanted.replace(/[^\w.-]/g, '_') || suggestKeyName(type, host, dir);
   let file = path.join(dir, base);
@@ -753,9 +754,9 @@ async function generateSshKey({ type = 'ed25519', comment, passphrase = '', name
       if (error.code !== 'ENOENT') break;
     }
   }
-  throw new GitError('Не удалось создать SSH-ключ', {
+  throw new GitError(tr('Не удалось создать SSH-ключ'), {
     code: lastError?.code === 'ENOENT' ? 'NO_SSH_KEYGEN' : 'KEYGEN_FAILED',
-    hint: lastError?.code === 'ENOENT' ? 'Не найдена программа ssh-keygen. Установите OpenSSH или Git for Windows.' : null,
+    hint: lastError?.code === 'ENOENT' ? tr('Не найдена программа ssh-keygen. Установите OpenSSH или Git for Windows.') : null,
     details: (lastError?.stderr || lastError?.message || '').trim(),
   });
 }

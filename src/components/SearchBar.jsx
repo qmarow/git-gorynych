@@ -1,15 +1,16 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { CalendarDays, ChevronDown, ChevronUp, FileSearch, Loader2, Search, User, X } from 'lucide-react';
 import { avatarColor, initials } from '../lib/format.js';
+import { t as tr, tj } from '../i18n/index.js';
 
 export const EMPTY_FILTER = { query: '', authors: [], period: 'all', from: '', to: '' };
 
 const PERIODS = [
-  { id: 'all', label: 'Всё время' },
-  { id: 'today', label: 'Сегодня' },
-  { id: '7d', label: '7 дней' },
-  { id: '30d', label: '30 дней' },
-  { id: 'range', label: 'Период…' },
+  { id: 'all', label: tr('Всё время') },
+  { id: 'today', label: tr('Сегодня') },
+  { id: '7d', label: tr('7 дней') },
+  { id: '30d', label: tr('30 дней') },
+  { id: 'range', label: tr('Период…') },
 ];
 
 export function isFilterActive(f) {
@@ -88,7 +89,7 @@ export default function SearchBar({ commits, filter, onChange, matches, current,
             }
             if (e.key === 'Escape') onClose();
           }}
-          placeholder={inFiles ? 'Сообщение, SHA, автор, ветка или текст в файлах…' : 'Сообщение, SHA, автор, ветка…'}
+          placeholder={inFiles ? tr('Сообщение, SHA, автор, ветка или текст в файлах…') : tr('Сообщение, SHA, автор, ветка…')}
           className="min-w-0 flex-1 bg-transparent text-[13px] outline-none placeholder:text-gk-dim"
         />
         {filter.query && (
@@ -104,14 +105,12 @@ export default function SearchBar({ commits, filter, onChange, matches, current,
           onClick={onToggleInFiles}
           data-testid="search-in-files"
           aria-pressed={inFiles}
-          data-tip={inFiles ? 'Ищется и текст в изменениях файлов: найденный коммит, файл и строка подсвечиваются. Клик — искать только в описании коммитов' : 'Искать и в изменениях файлов'}
+          data-tip={inFiles ? tr('Ищется и текст в изменениях файлов: найденный коммит, файл и строка подсвечиваются. Клик — искать только в описании коммитов') : tr('Искать и в изменениях файлов')}
           className={`flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs ring-1 transition-colors ${
             inFiles ? 'bg-gk-blue/15 text-gk-blue ring-gk-blue/40' : 'text-gk-muted ring-gk-border hover:text-gk-text'
           }`}
         >
-          {content?.loading ? <Loader2 size={13} className="animate-spin" /> : <FileSearch size={13} />}
-          В файлах
-        </button>
+          {tj('{0}В файлах', [content?.loading ? <Loader2 size={13} className="animate-spin" /> : <FileSearch size={13} />])}</button>
       )}
 
       {/* Авторы */}
@@ -124,10 +123,10 @@ export default function SearchBar({ commits, filter, onChange, matches, current,
         >
           <User size={13} />
           {filter.authors.length === 0
-            ? 'Все авторы'
+            ? tr('Все авторы')
             : filter.authors.length === 1
               ? filter.authors[0]
-              : `Авторы: ${filter.authors.length}`}
+              : tr('Авторы: {0}', filter.authors.length)}
           <ChevronDown size={12} />
         </button>
         {authorsOpen && (
@@ -136,7 +135,7 @@ export default function SearchBar({ commits, filter, onChange, matches, current,
               autoFocus
               value={authorQuery}
               onChange={(e) => setAuthorQuery(e.target.value)}
-              placeholder="Найти автора"
+              placeholder={tr('Найти автора')}
               className="mb-1 w-full rounded bg-gk-bg px-2 py-1.5 text-xs outline-none ring-1 ring-gk-border focus:ring-gk-blue"
             />
             <div className="max-h-64 overflow-y-auto">
@@ -160,12 +159,11 @@ export default function SearchBar({ commits, filter, onChange, matches, current,
                   </button>
                 );
               })}
-              {shownAuthors.length === 0 && <div className="px-2 py-1.5 text-xs text-gk-dim">Никого не нашли</div>}
+              {shownAuthors.length === 0 && <div className="px-2 py-1.5 text-xs text-gk-dim">{tr('Никого не нашли')}</div>}
             </div>
             {filter.authors.length > 0 && (
               <button onClick={() => set({ authors: [] })} className="mt-1 w-full rounded px-2 py-1 text-left text-xs text-gk-blue hover:bg-gk-hover">
-                Сбросить авторов
-              </button>
+                {tr('Сбросить авторов')}</button>
             )}
           </div>
         )}
@@ -188,20 +186,17 @@ export default function SearchBar({ commits, filter, onChange, matches, current,
       </div>
       {filter.period === 'range' && (
         <div className="flex animate-fade-in items-center gap-1.5 text-xs text-gk-muted">
-          с
-          <input
+          {tj('с{0}по{1}', [<input
             type="date"
             value={filter.from}
             onChange={(e) => set({ from: e.target.value })}
             className="rounded bg-gk-bg px-2 py-1 text-xs text-gk-text outline-none ring-1 ring-gk-border [color-scheme:dark] focus:ring-gk-blue"
-          />
-          по
-          <input
+          />, <input
             type="date"
             value={filter.to}
             onChange={(e) => set({ to: e.target.value })}
             className="rounded bg-gk-bg px-2 py-1 text-xs text-gk-text outline-none ring-1 ring-gk-border [color-scheme:dark] focus:ring-gk-blue"
-          />
+          />])}
         </div>
       )}
 
@@ -210,16 +205,15 @@ export default function SearchBar({ commits, filter, onChange, matches, current,
         {active && (
           <span
             className={`mr-1 text-xs ${matches.length ? 'text-gk-text' : 'text-gk-red'}`}
-            title={truncated ? `Поиск по последним ${totalLoaded} коммитам` : undefined}
+            title={truncated ? tr('Поиск по последним {0} коммитам', totalLoaded) : undefined}
           >
-            {matches.length ? `${current + 1} из ${matches.length}` : content?.loading ? 'Ищем…' : 'Ничего не найдено'}
-            {truncated && <span className="text-gk-dim"> · в {totalLoaded} посл.</span>}
+            {matches.length ? tr('{0} из {1}', current + 1, matches.length) : content?.loading ? tr('Ищем…') : tr('Ничего не найдено')}
+            {truncated && <span className="text-gk-dim"> {tj(' · в {0} посл.', [totalLoaded])}</span>}
           </span>
         )}
         {active && content && !content.loading && content.commits > 0 && (
-          <span data-testid="search-file-count" className="mr-1 flex items-center gap-1 text-[11px] text-gk-dim" data-tip="Коммиты, в изменениях которых найден текст">
-            <FileSearch size={11} /> в файлах: {content.commits}
-            {content.truncated ? '+' : ''}
+          <span data-testid="search-file-count" className="mr-1 flex items-center gap-1 text-[11px] text-gk-dim" data-tip={tr('Коммиты, в изменениях которых найден текст')}>
+            {tj('{0} в файлах: {1}{2}', [<FileSearch size={11} />, content.commits, content.truncated ? '+' : ''])}
           </span>
         )}
         {active && content?.error && (
@@ -227,18 +221,17 @@ export default function SearchBar({ commits, filter, onChange, matches, current,
             {content.error.message}
           </span>
         )}
-        <IconBtn title="Предыдущий (Shift+Enter)" disabled={!matches.length} onClick={onPrev}>
+        <IconBtn title={tr('Предыдущий (Shift+Enter)')} disabled={!matches.length} onClick={onPrev}>
           <ChevronUp size={15} />
         </IconBtn>
-        <IconBtn title="Следующий (Enter)" disabled={!matches.length} onClick={onNext}>
+        <IconBtn title={tr('Следующий (Enter)')} disabled={!matches.length} onClick={onNext}>
           <ChevronDown size={15} />
         </IconBtn>
         {active && (
           <button onClick={() => onChange(EMPTY_FILTER)} className="rounded px-2 py-1 text-xs text-gk-muted hover:bg-gk-hover hover:text-gk-text">
-            Сбросить
-          </button>
+            {tr('Сбросить')}</button>
         )}
-        <IconBtn title="Закрыть поиск (Esc)" onClick={onClose}>
+        <IconBtn title={tr('Закрыть поиск (Esc)')} onClick={onClose}>
           <X size={15} />
         </IconBtn>
       </div>

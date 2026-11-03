@@ -1,6 +1,7 @@
 // Подсветка синтаксиса кода в диффах и конфликтах (highlight.js — src/vendor/hljs.js)
 // и наложение слоёв на строку: цвет токенов + изменённые куски + совпадения поиска.
 import hljs from '../vendor/hljs.js';
+import { t as tr } from '../i18n/index.js';
 
 /* =================== Язык по имени файла =================== */
 
@@ -275,11 +276,11 @@ export function searchRegex(query, { regex = false, caseSensitive = false } = {}
   try {
     const source = regex ? query : query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
     const re = new RegExp(source, caseSensitive ? 'g' : 'gi');
-    if (re.test('')) return { error: 'Выражение совпадает с пустой строкой' };
+    if (re.test('')) return { error: tr('Выражение совпадает с пустой строкой') };
     re.lastIndex = 0;
     return { re };
   } catch (error) {
-    return { error: `Неверное выражение: ${error.message.replace(/^Invalid regular expression: /, '')}` };
+    return { error: tr('Неверное выражение: {0}', error.message.replace(/^Invalid regular expression: /, '')) };
   }
 }
 

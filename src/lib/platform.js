@@ -1,3 +1,4 @@
+import { t } from '../i18n/index.js';
 /**
  * Платформа, на которой запущено приложение, и всё, что от неё зависит в интерфейсе:
  * шорткаты (⌘ вместо Ctrl на macOS), модификатор в обработчиках клавиш, тексты про хранилище ключей.
@@ -42,38 +43,38 @@ export function kb(text, mac = IS_MAC) {
     }
     const mods = parts.map((p) => MAC_KEYS[p] ?? p).join('');
     // Слово после модификатора («клик», «колесо») пишем через «+»: ⌘+клик
-    if (/^[а-яё]/i.test(key)) return `${mods}+${key}`;
+    if (/^[а-яё]/i.test(key) || /^(click|wheel|drag|scroll)$/i.test(key)) return `${mods}+${key}`;
     return `${mods}${MAC_KEYS[key] ?? (key.length === 1 ? key.toUpperCase() : key)}`;
   });
 }
 
 /** Где хранится зашифрованный токен — по-честному для каждой ОС. subject — что шифруется (по умолчанию «Токен») */
-export function secretStorageText(platform = PLATFORM, subject = 'Токен') {
+export function secretStorageText(platform = PLATFORM, subject = t('Токен')) {
   const plural = /ые$|и$/.test(subject); // «Данные шифруются», «Токен шифруется»
-  const verb = plural ? 'шифруются' : 'шифруется';
-  const kept = plural ? 'хранятся' : 'хранится';
-  if (platform === 'darwin') return `${subject} ${verb} в Связке ключей macOS (Keychain) и ${kept} только на этом компьютере.`;
-  if (platform === 'win32') return `${subject} ${verb} средствами Windows (DPAPI) и ${kept} только на этом компьютере.`;
-  return `${subject} ${verb} системным хранилищем ключей (GNOME Keyring / KWallet) и ${kept} только на этом компьютере.`;
+  const verb = plural ? t('шифруются') : t('шифруется');
+  const kept = plural ? t('хранятся') : t('хранится');
+  if (platform === 'darwin') return t('{0} {1} в Связке ключей macOS (Keychain) и {2} только на этом компьютере.', subject, verb, kept);
+  if (platform === 'win32') return t('{0} {1} средствами Windows (DPAPI) и {2} только на этом компьютере.', subject, verb, kept);
+  return t('{0} {1} системным хранилищем ключей (GNOME Keyring / KWallet) и {2} только на этом компьютере.', subject, verb, kept);
 }
 
 /** Как установить Git — для подсказок «Git не найден» */
 export function installGitHint(platform = PLATFORM) {
-  if (platform === 'darwin') return 'установите Git: в Терминале выполните xcode-select --install (или brew install git)';
-  if (platform === 'win32') return 'установите Git for Windows (git-scm.com)';
-  return 'установите Git из менеджера пакетов (например, sudo apt install git)';
+  if (platform === 'darwin') return t('установите Git: в Терминале выполните xcode-select --install (или brew install git)');
+  if (platform === 'win32') return t('установите Git for Windows (git-scm.com)');
+  return t('установите Git из менеджера пакетов (например, sudo apt install git)');
 }
 
 /** Подпись пункта «открыть папку» в системном файловом менеджере */
 export function openFolderLabel(platform = PLATFORM) {
-  if (platform === 'darwin') return 'Показать в Finder';
-  if (platform === 'win32') return 'Открыть в Проводнике';
-  return 'Открыть в файловом менеджере';
+  if (platform === 'darwin') return t('Показать в Finder');
+  if (platform === 'win32') return t('Открыть в Проводнике');
+  return t('Открыть в файловом менеджере');
 }
 
 /** Подпись пункта «открыть терминал» */
 export function openTerminalLabel(platform = PLATFORM) {
-  if (platform === 'darwin') return 'Открыть в Терминале';
-  if (platform === 'win32') return 'Открыть в терминале (командной строке)';
-  return 'Открыть в терминале';
+  if (platform === 'darwin') return t('Открыть в Терминале');
+  if (platform === 'win32') return t('Открыть в терминале (командной строке)');
+  return t('Открыть в терминале');
 }

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { AlertTriangle, Copy, Eye, EyeOff, FileText, Loader2, Lock, Pencil, Plus, Save, Trash2, Variable, X } from 'lucide-react';
+import { t, tj } from '../../i18n/index.js';
 
 const api = window.api;
 
@@ -45,18 +46,18 @@ export default function GitLabVariables({ repoPath, opts, canWrite, notify }) {
     setArmDelete(null);
     const res = await api.gitlab.deleteVariable(repoPath, { key: v.key, scope: v.scope }, opts);
     if (!res.ok) notify?.({ type: 'error', title: res.error.message, hint: res.error.hint });
-    else notify?.({ type: 'success', title: `Переменная ${v.key} удалена` });
+    else notify?.({ type: 'success', title: t('Переменная {0} удалена', v.key) });
     load();
   };
 
-  if (state.loading) return <Center><Loader2 size={14} className="animate-spin" /> Загружаем переменные…</Center>;
+  if (state.loading) return <Center>{tj('{0} Загружаем переменные…', [<Loader2 size={14} className="animate-spin" />])}</Center>;
   if (state.error) {
     const forbidden = state.error.code === 'FORBIDDEN';
     return (
       <div className="m-4 rounded-lg border border-gk-red/30 bg-gk-red/10 px-3 py-2.5 text-[12px]">
         <div className="flex items-center gap-1.5 font-medium text-gk-text">
           <AlertTriangle size={13} className="text-gk-red" />
-          {forbidden ? 'Переменные CI/CD видят только Maintainer и Owner проекта' : state.error.message}
+          {forbidden ? t('Переменные CI/CD видят только Maintainer и Owner проекта') : state.error.message}
         </div>
         {state.error.hint && <div className="mt-1 pl-5 text-gk-muted">{state.error.hint}</div>}
       </div>
@@ -68,29 +69,22 @@ export default function GitLabVariables({ repoPath, opts, canWrite, notify }) {
     <div className="min-h-0 flex-1 overflow-y-auto p-4">
       <div className="mb-3 flex items-start gap-3">
         <p className="flex-1 text-[12px] leading-relaxed text-gk-dim">
-          Переменные из настроек проекта (Settings → CI/CD → Variables). Значение запрашивается у GitLab, только когда вы нажимаете на
-          глаз, и нигде не сохраняется.
-        </p>
+          {t('Переменные из настроек проекта (Settings → CI/CD → Variables). Значение запрашивается у GitLab, только когда вы нажимаете на глаз, и нигде не сохраняется.')}</p>
         <button
           disabled={!canWrite}
-          title={canWrite ? 'Добавить переменную' : 'Нужен токен со scope «api»'}
+          title={canWrite ? t('Добавить переменную') : t('Нужен токен со scope «api»')}
           onClick={() => setForm({ original: null, initial: null })}
           className="flex shrink-0 items-center gap-1.5 rounded-md bg-gk-green/15 px-2.5 py-1.5 text-[12px] font-medium text-gk-green transition-colors enabled:hover:bg-gk-green/25 disabled:opacity-35"
         >
-          <Plus size={13} /> Переменная
-        </button>
+          {tj('{0} Переменная', [<Plus size={13} />])}</button>
       </div>
 
       {vars.length === 0 ? (
-        <div className="rounded-lg border border-dashed border-gk-border p-6 text-center text-[13px] text-gk-dim">В проекте нет переменных</div>
+        <div className="rounded-lg border border-dashed border-gk-border p-6 text-center text-[13px] text-gk-dim">{t('В проекте нет переменных')}</div>
       ) : (
         <div className="overflow-hidden rounded-lg border border-gk-border">
           <div className={`${GRID} border-b border-gk-border bg-gk-fg/[0.03] px-3 py-1.5 text-[10.5px] font-semibold uppercase tracking-wider text-gk-dim`}>
-            <span>Имя</span>
-            <span>Значение</span>
-            <span>Окружение</span>
-            <span>Флаги</span>
-            <span />
+            {tj('<0>Имя</0><1>Значение</1><2>Окружение</2><3>Флаги</3>{4}', [<span />, <span />, <span />, <span />, <span />])}
           </div>
           {vars.map((v, i) => {
             const id = `${v.key}|${v.scope}`;
@@ -108,14 +102,14 @@ export default function GitLabVariables({ repoPath, opts, canWrite, notify }) {
                 </span>
                 <span className="flex min-w-0 items-center gap-1.5">
                   {v.hidden ? (
-                    <span className="italic text-gk-dim">скрыто в GitLab — значение не выдаётся</span>
+                    <span className="italic text-gk-dim">{t('скрыто в GitLab — значение не выдаётся')}</span>
                   ) : r && r !== 'loading' ? (
                     r.error ? (
                       <span className="text-gk-red">{r.error}</span>
                     ) : r.hidden ? (
-                      <span className="italic text-gk-dim">скрыто в GitLab</span>
+                      <span className="italic text-gk-dim">{t('скрыто в GitLab')}</span>
                     ) : (
-                      <span className="min-w-0 flex-1 break-all font-mono text-gk-text">{r.value === '' ? <i className="text-gk-dim">пусто</i> : r.value}</span>
+                      <span className="min-w-0 flex-1 break-all font-mono text-gk-text">{r.value === '' ? <i className="text-gk-dim">{t('пусто')}</i> : r.value}</span>
                     )
                   ) : (
                     <span className="flex-1 font-mono tracking-widest text-gk-dim">{v.empty ? '—' : '••••••••'}</span>
@@ -123,38 +117,38 @@ export default function GitLabVariables({ repoPath, opts, canWrite, notify }) {
                   {!v.hidden && !v.empty && (
                     <button
                       onClick={() => reveal(v)}
-                      title={r && r !== 'loading' ? 'Скрыть' : 'Показать значение'}
+                      title={r && r !== 'loading' ? t('Скрыть') : t('Показать значение')}
                       className="shrink-0 rounded p-1 text-gk-dim hover:bg-gk-hover hover:text-gk-text"
                     >
                       {r === 'loading' ? <Loader2 size={12} className="animate-spin" /> : r ? <EyeOff size={12} /> : <Eye size={12} />}
                     </button>
                   )}
                   {r && r !== 'loading' && !r.error && !r.hidden && (
-                    <button onClick={() => navigator.clipboard?.writeText(r.value)} title="Скопировать" className="shrink-0 rounded p-1 text-gk-dim hover:bg-gk-hover hover:text-gk-text">
+                    <button onClick={() => navigator.clipboard?.writeText(r.value)} title={t('Скопировать')} className="shrink-0 rounded p-1 text-gk-dim hover:bg-gk-hover hover:text-gk-text">
                       <Copy size={12} />
                     </button>
                   )}
                 </span>
                 <span className="truncate font-mono text-[11px] text-gk-muted">{v.scope}</span>
                 <span className="flex flex-wrap gap-1">
-                  {v.protected && <Flag icon={Lock} title="Только для защищённых веток и тегов">protected</Flag>}
-                  {v.masked && <Flag title="Скрывается в логах заданий">masked</Flag>}
-                  {v.hidden && <Flag title="Значение нельзя посмотреть после сохранения">hidden</Flag>}
-                  {v.raw && <Flag title="Без подстановки $ПЕРЕМЕННЫХ">raw</Flag>}
-                  {v.type === 'file' && <Flag title="Передаётся в задание как путь к файлу">file</Flag>}
+                  {v.protected && <Flag icon={Lock} title={t('Только для защищённых веток и тегов')}>protected</Flag>}
+                  {v.masked && <Flag title={t('Скрывается в логах заданий')}>masked</Flag>}
+                  {v.hidden && <Flag title={t('Значение нельзя посмотреть после сохранения')}>hidden</Flag>}
+                  {v.raw && <Flag title={t('Без подстановки $ПЕРЕМЕННЫХ')}>raw</Flag>}
+                  {v.type === 'file' && <Flag title={t('Передаётся в задание как путь к файлу')}>file</Flag>}
                 </span>
                 <span className="flex justify-end gap-0.5 opacity-0 transition-opacity group-hover:opacity-100">
                   {canWrite && (
                     <>
                       <button
-                        title="Изменить"
+                        title={t('Изменить')}
                         onClick={() => setForm({ original: { key: v.key, scope: v.scope }, initial: { ...v, value: r && r !== 'loading' && !r.error && !r.hidden ? r.value : undefined } })}
                         className="rounded p-1 text-gk-dim hover:bg-gk-hover hover:text-gk-text"
                       >
                         <Pencil size={12} />
                       </button>
                       <button
-                        title={armDelete === id ? 'Нажмите ещё раз, чтобы удалить' : 'Удалить'}
+                        title={armDelete === id ? t('Нажмите ещё раз, чтобы удалить') : t('Удалить')}
                         onClick={() => remove(v)}
                         className={`rounded p-1 ${armDelete === id ? 'bg-gk-red text-white opacity-100' : 'text-gk-dim hover:bg-gk-red/15 hover:text-gk-red'}`}
                       >
@@ -230,7 +224,7 @@ function VariableForm({ repoPath, opts, original, initial, onClose, onSaved }) {
       setError(res.error);
       return;
     }
-    onSaved(editing ? `Переменная ${variable.key} сохранена` : `Переменная ${variable.key} добавлена`);
+    onSaved(editing ? t('Переменная {0} сохранена', variable.key) : t('Переменная {0} добавлена', variable.key));
   };
 
   return (
@@ -238,14 +232,14 @@ function VariableForm({ repoPath, opts, original, initial, onClose, onSaved }) {
       <form onSubmit={submit} className="glass-strong w-[520px] max-w-[calc(100vw-2rem)] animate-pop-in rounded-xl border border-gk-border bg-gk-panel-2">
         <div className="flex items-center gap-2 border-b border-gk-border px-4 py-3">
           <Variable size={16} className="text-gk-blue" />
-          <h2 className="flex-1 text-[14px] font-semibold text-gk-strong">{editing ? `Переменная ${original.key}` : 'Новая переменная'}</h2>
+          <h2 className="flex-1 text-[14px] font-semibold text-gk-strong">{editing ? t('Переменная {0}', original.key) : t('Новая переменная')}</h2>
           <button type="button" onClick={onClose} className="rounded p-1 text-gk-dim hover:bg-gk-hover hover:text-gk-text">
             <X size={16} />
           </button>
         </div>
         <div className="space-y-3 px-4 py-4 text-[12.5px]">
           <div className="grid grid-cols-[1fr_140px] gap-3">
-            <Field label="Имя">
+            <Field label={t('Имя')}>
               <input
                 autoFocus={!editing}
                 value={v.key}
@@ -254,14 +248,14 @@ function VariableForm({ repoPath, opts, original, initial, onClose, onSaved }) {
                 className={`${inputCls} font-mono`}
               />
             </Field>
-            <Field label="Тип">
+            <Field label={t('Тип')}>
               <select value={v.type} onChange={(e) => set({ type: e.target.value })} className={inputCls}>
-                <option value="env_var">Переменная</option>
-                <option value="file">Файл</option>
+                <option value="env_var">{t('Переменная')}</option>
+                <option value="file">{t('Файл')}</option>
               </select>
             </Field>
           </div>
-          <Field label={editing && !valueTouched ? 'Значение (не меняется, пока не начнёте вводить)' : 'Значение'}>
+          <Field label={editing && !valueTouched ? t('Значение (не меняется, пока не начнёте вводить)') : t('Значение')}>
             <div className="relative">
               <textarea
                 value={valueTouched ? v.value : ''}
@@ -270,14 +264,14 @@ function VariableForm({ repoPath, opts, original, initial, onClose, onSaved }) {
                   set({ value: e.target.value });
                 }}
                 rows={v.type === 'file' ? 5 : 2}
-                placeholder={editing && !valueTouched ? (initial?.hidden ? 'скрытое значение — введите новое' : '•••••••• (прежнее значение)') : ''}
+                placeholder={editing && !valueTouched ? (initial?.hidden ? t('скрытое значение — введите новое') : t('•••••••• (прежнее значение)')) : ''}
                 spellCheck={false}
                 className={`${inputCls} resize-y pr-8 font-mono text-[12px] ${showValue ? '' : '[-webkit-text-security:disc]'}`}
               />
               <button
                 type="button"
                 onClick={() => setShowValue((s) => !s)}
-                title={showValue ? 'Скрыть' : 'Показать'}
+                title={showValue ? t('Скрыть') : t('Показать')}
                 className="absolute right-1.5 top-1.5 rounded p-1 text-gk-dim hover:text-gk-text"
               >
                 {showValue ? <EyeOff size={12} /> : <Eye size={12} />}
@@ -285,28 +279,27 @@ function VariableForm({ repoPath, opts, original, initial, onClose, onSaved }) {
             </div>
             {maskProblem && (
               <div className="mt-1 text-[11px] text-gk-yellow">
-                Для masked: одна строка, не короче 8 символов, только буквы, цифры и @ : . ~ - _ + / =
-              </div>
+                {t('Для masked: одна строка, не короче 8 символов, только буквы, цифры и @ : . ~ - _ + / =')}</div>
             )}
           </Field>
           <div className="grid grid-cols-2 gap-3">
-            <Field label="Окружение">
-              <input value={v.scope} onChange={(e) => set({ scope: e.target.value })} placeholder="* (все)" className={`${inputCls} font-mono`} />
+            <Field label={t('Окружение')}>
+              <input value={v.scope} onChange={(e) => set({ scope: e.target.value })} placeholder={t('* (все)')} className={`${inputCls} font-mono`} />
             </Field>
-            <Field label="Описание">
+            <Field label={t('Описание')}>
               <input value={v.description} onChange={(e) => set({ description: e.target.value })} className={inputCls} />
             </Field>
           </div>
           <div className="grid grid-cols-2 gap-x-4 gap-y-2 pt-1">
-            <Check checked={v.protected} onChange={(x) => set({ protected: x })} label="Protected" hint="Только для защищённых веток и тегов" />
-            <Check checked={v.masked} onChange={(x) => set({ masked: x, hidden: x ? v.hidden : false })} label="Masked" hint="Скрывать значение в логах" />
-            <Check checked={v.raw} onChange={(x) => set({ raw: x })} label="Raw" hint="Не подставлять $ПЕРЕМЕННЫЕ внутри" />
+            <Check checked={v.protected} onChange={(x) => set({ protected: x })} label="Protected" hint={t('Только для защищённых веток и тегов')} />
+            <Check checked={v.masked} onChange={(x) => set({ masked: x, hidden: x ? v.hidden : false })} label="Masked" hint={t('Скрывать значение в логах')} />
+            <Check checked={v.raw} onChange={(x) => set({ raw: x })} label="Raw" hint={t('Не подставлять $ПЕРЕМЕННЫЕ внутри')} />
             <Check
               checked={v.hidden}
               disabled={editing}
               onChange={(x) => set({ hidden: x, masked: x || v.masked })}
               label="Hidden"
-              hint={editing ? 'Задаётся только при создании' : 'Значение потом нельзя будет посмотреть'}
+              hint={editing ? t('Задаётся только при создании') : t('Значение потом нельзя будет посмотреть')}
             />
           </div>
           {error && (
@@ -316,19 +309,18 @@ function VariableForm({ repoPath, opts, original, initial, onClose, onSaved }) {
             </div>
           )}
           {editing && (original.key !== v.key || (original.scope ?? '*') !== (v.scope.trim() || '*')) && (
-            <div className="text-[11px] text-gk-dim">Имя или окружение изменились — GitLab создаст новую переменную и удалит старую.</div>
+            <div className="text-[11px] text-gk-dim">{t('Имя или окружение изменились — GitLab создаст новую переменную и удалит старую.')}</div>
           )}
         </div>
         <div className="flex justify-end gap-2 border-t border-gk-border px-4 py-2.5">
           <button type="button" onClick={onClose} className="rounded px-3 py-1.5 text-[12.5px] text-gk-muted hover:bg-gk-hover hover:text-gk-text">
-            Отмена
-          </button>
+            {t('Отмена')}</button>
           <button
             type="submit"
             disabled={busy || !v.key.trim() || (!editing && !v.value)}
             className="flex items-center gap-1.5 rounded-md bg-gk-green px-3 py-1.5 text-[12.5px] font-semibold text-gk-ink hover:brightness-110 disabled:opacity-40"
           >
-            {busy ? <Loader2 size={13} className="animate-spin" /> : <Save size={13} />} {editing ? 'Сохранить' : 'Добавить'}
+            {busy ? <Loader2 size={13} className="animate-spin" /> : <Save size={13} />} {editing ? t('Сохранить') : t('Добавить')}
           </button>
         </div>
       </form>

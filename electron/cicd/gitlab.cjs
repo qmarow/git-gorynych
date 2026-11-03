@@ -3,6 +3,7 @@ const { GitError } = require('../errors.cjs');
 const gl = require('../gitlab.cjs');
 const M = require('./models.cjs');
 const { download } = require('./http.cjs');
+const { t: tr } = require('../i18n.cjs');
 
 const authHeaders = (token) =>
   typeof token === 'object' && token?.bearer ? { Authorization: `Bearer ${token.value}` } : { 'PRIVATE-TOKEN': typeof token === 'object' ? token.value : token };
@@ -103,12 +104,12 @@ const gitlab = {
         ? maintainer
           ? {}
           : Object.fromEntries(
-              ['canEditRunnerLabels', 'canPauseRunner', 'canEditRunnerSettings', 'canDeleteRunner', 'canCreateRunnerToken'].map((k) => [k, 'Раннеры проекта меняет роль Maintainer и выше']),
+              ['canEditRunnerLabels', 'canPauseRunner', 'canEditRunnerSettings', 'canDeleteRunner', 'canCreateRunnerToken'].map((k) => [k, tr('Раннеры проекта меняет роль Maintainer и выше')]),
             )
         : Object.fromEntries(
             ['canRunPipeline', 'canCancel', 'canRetry', 'canRetryFailed', 'canEditRunnerLabels', 'canPauseRunner', 'canDeleteRunner', 'canCreateRunnerToken'].map((k) => [
               k,
-              'Токен только для чтения (read_api) — для действий нужен scope «api»',
+              tr('Токен только для чтения (read_api) — для действий нужен scope «api»'),
             ]),
           ),
     };
@@ -158,10 +159,10 @@ const gitlab = {
 
   /** Новый пайплайн: ветка, переменные (KEY=VALUE) и inputs (spec:inputs, GitLab 17+) */
   async runPipeline(ctx, { ref, variables = [], inputs = {} }) {
-    if (!gl.canWrite(ctx)) throw new GitError('Токен только для чтения', { code: 'FORBIDDEN', hint: 'Для запуска нужен токен со scope «api»' });
+    if (!gl.canWrite(ctx)) throw new GitError(tr('Токен только для чтения'), { code: 'FORBIDDEN', hint: tr('Для запуска нужен токен со scope «api»') });
     const vars = variables.filter((v) => v.key).map((v) => ({ key: v.key, value: String(v.value ?? ''), variable_type: v.file ? 'file' : 'env_var' }));
     const bad = vars.find((v) => !/^[A-Za-z0-9_]+$/.test(v.key));
-    if (bad) throw new GitError(`Некорректное имя переменной: ${bad.key}`, { code: 'BAD_ARGS', hint: 'Только латинские буквы, цифры и _' });
+    if (bad) throw new GitError(tr('Некорректное имя переменной: {0}', bad.key), { code: 'BAD_ARGS', hint: tr('Только латинские буквы, цифры и _') });
     const body = { ref, ...(vars.length ? { variables: vars } : {}), ...(Object.keys(inputs).length ? { inputs } : {}) };
     const res = await req(ctx, 'POST', `${proj(ctx)}/pipeline`, { body });
     return { id: res?.id ?? null, url: res?.web_url ?? null };
@@ -221,18 +222,18 @@ const gitlab = {
     if (patch.description !== undefined) body.description = String(patch.description);
     if (patch.maximumTimeout !== undefined) {
       const t = patch.maximumTimeout === null || patch.maximumTimeout === '' ? null : Number(patch.maximumTimeout);
-      if (t !== null && (!Number.isInteger(t) || t < 600)) throw new GitError('Максимальный тайм-аут — не меньше 600 секунд (10 минут)', { code: 'BAD_ARGS' });
+      if (t !== null && (!Number.isInteger(t) || t < 600)) throw new GitError(tr('Максимальный тайм-аут — не меньше 600 секунд (10 минут)'), { code: 'BAD_ARGS' });
       body.maximum_timeout = t;
     }
     if (body.run_untagged === false && body.tag_list === '') {
-      throw new GitError('Раннер без тегов должен брать задания без тегов', { code: 'BAD_ARGS', hint: 'Добавьте тег или включите «Брать задания без тегов»' });
+      throw new GitError(tr('Раннер без тегов должен брать задания без тегов'), { code: 'BAD_ARGS', hint: tr('Добавьте тег или включите «Брать задания без тегов»') });
     }
-    await req(ctx, 'PUT', `/runners/${Number(id)}`, { body, notFound: 'Раннер не найден или у вас нет прав его менять' });
+    await req(ctx, 'PUT', `/runners/${Number(id)}`, { body, notFound: tr('Раннер не найден или у вас нет прав его менять') });
     return { id };
   },
 
   async deleteRunner(ctx, id) {
-    await req(ctx, 'DELETE', `/runners/${Number(id)}`, { notFound: 'Раннер не найден — возможно, его уже удалили' });
+    await req(ctx, 'DELETE', `/runners/${Number(id)}`, { notFound: tr('Раннер не найден — возможно, его уже удалили') });
     return { id };
   },
 
@@ -243,7 +244,7 @@ const gitlab = {
         body: {
           runner_type: 'project_type',
           project_id: ctx.project.id,
-          description: description || 'git-Горыныч',
+          description: description || tr('git-Горыныч'),
           tag_list: labels.join(','),
           run_untagged: Boolean(runUntagged || !labels.length),
           locked: Boolean(locked),
@@ -254,7 +255,7 @@ const gitlab = {
     } catch (error) {
       if (error.code !== 'NOT_FOUND') throw error;
       const p = await req(ctx, 'GET', proj(ctx));
-      if (!p.runners_token) throw new GitError('Не удалось получить токен раннера', { code: 'FORBIDDEN', hint: 'Нужна роль Maintainer в проекте' });
+      if (!p.runners_token) throw new GitError(tr('Не удалось получить токен раннера'), { code: 'FORBIDDEN', hint: tr('Нужна роль Maintainer в проекте') });
       return { token: p.runners_token, expiresAt: null, kind: 'registration', url: ctx.remote.base };
     }
   },
@@ -263,7 +264,7 @@ const gitlab = {
 
   async downloadArtifact(ctx, artifact, dest) {
     const http = { apiBase: `${ctx.remote.base}/api/v4`, headers: authHeaders(ctx.token), label: 'GitLab' };
-    return download(http, `${proj(ctx)}/jobs/${Number(artifact.jobId ?? artifact.id)}/artifacts`, dest, { notFound: 'Артефакты задания удалены или истекли' });
+    return download(http, `${proj(ctx)}/jobs/${Number(artifact.jobId ?? artifact.id)}/artifacts`, dest, { notFound: tr('Артефакты задания удалены или истекли') });
   },
 
   /* ---------- Переменные (для единой вкладки; полный редактор — GitLabVariables) ---------- */

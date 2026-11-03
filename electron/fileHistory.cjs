@@ -1,6 +1,7 @@
 // История одного файла (через переименования) и построчное авторство (git blame).
 const { git, resolveRepoRoot, safeRelative, parseUnifiedDiff, HASH_RE } = require('./git.cjs');
 const { GitError } = require('./errors.cjs');
+const { t } = require('./i18n.cjs');
 
 const FS = '\x1f';
 const RS = '\x1e';
@@ -12,7 +13,7 @@ const MAX_BLAME_LINES = 30000;
 /** ref для git: хэш или HEAD (ничего другого из интерфейса не приходит) */
 function checkRev(rev) {
   if (rev == null || rev === 'HEAD') return rev ?? null;
-  if (typeof rev !== 'string' || !HASH_RE.test(rev)) throw new GitError('Некорректный коммит', { code: 'BAD_ARGS' });
+  if (typeof rev !== 'string' || !HASH_RE.test(rev)) throw new GitError(t('Некорректный коммит'), { code: 'BAD_ARGS' });
   return rev;
 }
 
@@ -44,7 +45,7 @@ function unquote(raw) {
  */
 async function fileHistory(dir, { path: file, rev = null, limit = MAX_COMMITS } = {}) {
   const root = await resolveRepoRoot(dir);
-  if (!file || typeof file !== 'string') throw new GitError('Не указан файл', { code: 'BAD_ARGS' });
+  if (!file || typeof file !== 'string') throw new GitError(t('Не указан файл'), { code: 'BAD_ARGS' });
   safeRelative(root, file);
   const start = checkRev(rev) ?? 'HEAD';
   const n = Math.max(1, Math.min(Number(limit) || MAX_COMMITS, 2000));
@@ -143,7 +144,7 @@ async function fileHistory(dir, { path: file, rev = null, limit = MAX_COMMITS } 
  */
 async function blame(dir, { path: file, rev = 'HEAD', ignoreWhitespace = false } = {}) {
   const root = await resolveRepoRoot(dir);
-  if (!file || typeof file !== 'string') throw new GitError('Не указан файл', { code: 'BAD_ARGS' });
+  if (!file || typeof file !== 'string') throw new GitError(t('Не указан файл'), { code: 'BAD_ARGS' });
   safeRelative(root, file);
   const r = checkRev(rev);
   const args = ['blame', '--porcelain', ...(ignoreWhitespace ? ['-w'] : []), ...(r ? [r] : []), '--', file];
@@ -153,7 +154,7 @@ async function blame(dir, { path: file, rev = 'HEAD', ignoreWhitespace = false }
   } catch (error) {
     const text = error.details || error.message || '';
     if (/no such path|does not exist|no such file/i.test(text)) {
-      throw new GitError(r ? `Файла ${file} нет в версии ${String(r).slice(0, 7)}` : `Файла ${file} нет`, { code: 'NOT_FOUND', hint: 'Возможно, файл был создан позже или переименован' });
+      throw new GitError(r ? t('Файла {0} нет в версии {1}', file, String(r).slice(0, 7)) : t('Файла {0} нет', file), { code: 'NOT_FOUND', hint: t('Возможно, файл был создан позже или переименован') });
     }
     throw error;
   }
@@ -201,7 +202,7 @@ async function blame(dir, { path: file, rev = 'HEAD', ignoreWhitespace = false }
 /** Коммит для поповера blame: полное сообщение и статистика (весь коммит и этот файл) */
 async function commitInfo(dir, { hash, path: file = null } = {}) {
   const root = await resolveRepoRoot(dir);
-  if (!HASH_RE.test(hash ?? '')) throw new GitError('Некорректный коммит', { code: 'BAD_ARGS' });
+  if (!HASH_RE.test(hash ?? '')) throw new GitError(t('Некорректный коммит'), { code: 'BAD_ARGS' });
   const out = await git(root, ['show', '--numstat', '-M', '--no-color', `--format=%H${FS}%P${FS}%an${FS}%ae${FS}%aI${FS}%cn${FS}%s${FS}%b${RS}`, hash]);
   const [meta, stat = ''] = out.split(RS);
   const [h, parents, author, email, date, committer, subject, body] = meta.split(FS);

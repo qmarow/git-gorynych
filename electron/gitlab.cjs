@@ -7,6 +7,7 @@ const { git } = require('./git.cjs');
 const { GitError } = require('./errors.cjs');
 const credentials = require('./credentials.cjs');
 const cicdSettings = require('./cicd/settings.cjs');
+const { t: tr } = require('./i18n.cjs');
 
 const { serverKind } = credentials;
 
@@ -26,7 +27,7 @@ const PROJECT_CACHE_MS = 10 * 60 * 1000;
 
 function storeFile() {
   const dir = process.env.GK_TEST_USERDATA || electron?.app?.getPath('userData');
-  if (!dir) throw new GitError('Хранилище настроек недоступно', { code: 'NO_STORAGE' });
+  if (!dir) throw new GitError(tr('Хранилище настроек недоступно'), { code: 'NO_STORAGE' });
   return path.join(dir, 'gitlab-tokens.json');
 }
 
@@ -51,7 +52,7 @@ function encrypt(token) {
   const ss = electron?.safeStorage;
   if (ss?.isEncryptionAvailable()) return { enc: ss.encryptString(token).toString('base64') };
   if (process.env.GK_TEST_USERDATA) return { plain: Buffer.from(token).toString('base64') }; // только для тестов
-  throw new GitError('Шифрование недоступно в системе — токен нельзя сохранить безопасно', { code: 'NO_ENCRYPTION' });
+  throw new GitError(tr('Шифрование недоступно в системе — токен нельзя сохранить безопасно'), { code: 'NO_ENCRYPTION' });
 }
 
 function decrypt(entry) {
@@ -112,10 +113,10 @@ function verifyLogin(base, secret) {
         const reason =
           error.code === 'FORBIDDEN'
             ? scopes?.length
-              ? `у токена нет права на API: есть только ${scopes.map((x) => SCOPE_NAMES[x] ?? x).join(', ')}, а нужен «api» или «read_api»`
-              : 'у токена нет права на API (нужен scope «api» или «read_api»)'
+              ? tr('у токена нет права на API: есть только {0}, а нужен «api» или «read_api»', scopes.map((x) => SCOPE_NAMES[x] ?? x).join(', '))
+              : tr('у токена нет права на API (нужен scope «api» или «read_api»)')
             : error.code === 'AUTH'
-              ? 'GitLab не принимает этот токен для API — он отозван, истёк или это не личный токен'
+              ? tr('GitLab не принимает этот токен для API — он отозван, истёк или это не личный токен')
               : error.message;
         Object.assign(entry, { state: 'bad', reason, at: Date.now(), promise: null });
         return entry;
@@ -124,7 +125,7 @@ function verifyLogin(base, secret) {
     if (info.scopes && !info.scopes.some((x) => x === 'api' || x === 'read_api')) {
       Object.assign(entry, {
         state: 'bad',
-        reason: `у токена нет права на API: есть только ${info.scopes.map((x) => SCOPE_NAMES[x] ?? x).join(', ')}, а нужен «api» или «read_api»`,
+        reason: tr('у токена нет права на API: есть только {0}, а нужен «api» или «read_api»', info.scopes.map((x) => SCOPE_NAMES[x] ?? x).join(', ')),
         info,
         at: Date.now(),
         promise: null,
@@ -233,18 +234,18 @@ function loginProblem(rejected, other) {
   if (r) {
     return {
       method: r.method,
-      reason: `${r.viaApiToken ? 'Токен для пайплайнов в авторизации репозитория' : 'Токен авторизации репозитория'} не подходит для пайплайнов: ${r.reason}.`,
+      reason: tr('{0} не подходит для пайплайнов: {1}.', r.viaApiToken ? tr('Токен для пайплайнов в авторизации репозитория') : tr('Токен авторизации репозитория'), r.reason),
     };
   }
   if (other?.method === 'ssh') {
-    return { method: 'ssh', reason: 'Репозиторий авторизован SSH-ключом — его принимает git, но не API GitLab. Добавьте в авторизацию репозитория токен для пайплайнов.' };
+    return { method: 'ssh', reason: tr('Репозиторий авторизован SSH-ключом — его принимает git, но не API GitLab. Добавьте в авторизацию репозитория токен для пайплайнов.') };
   }
   if (other?.method === 'password') {
     return {
       method: 'password',
       reason: other.unreadable
-        ? 'Пароль авторизации репозитория не расшифровывается — авторизуйтесь заново.'
-        : 'Репозиторий авторизован логином и паролем — API GitLab принимает только токены. Добавьте в авторизацию репозитория токен для пайплайнов.',
+        ? tr('Пароль авторизации репозитория не расшифровывается — авторизуйтесь заново.')
+        : tr('Репозиторий авторизован логином и паролем — API GitLab принимает только токены. Добавьте в авторизацию репозитория токен для пайплайнов.'),
     };
   }
   return null;
@@ -260,7 +261,7 @@ async function checkLoginApi(hostname, repoPath, base, timeout = 8000) {
     const p = loginProblem([], login.other);
     return { state: 'none', reason: p?.reason ?? null, method: login.other?.method ?? null };
   }
-  const st = await Promise.race([verifyLogin(base, login.repo.secret), new Promise((r) => setTimeout(() => r({ state: 'unknown', reason: 'сервер не ответил' }), timeout))]);
+  const st = await Promise.race([verifyLogin(base, login.repo.secret), new Promise((r) => setTimeout(() => r({ state: 'unknown', reason: tr('сервер не ответил') }), timeout))]);
   const p = st.state === 'bad' ? loginProblem([{ method: login.repo.method, viaApiToken: login.repo.viaApiToken, reason: st.reason }]) : null;
   return { state: st.state, reason: p?.reason ?? st.reason ?? null, user: st.info?.user ?? null, scopes: st.info?.scopes ?? null, viaApiToken: login.repo.viaApiToken };
 }
@@ -376,8 +377,8 @@ async function request(base, token, method, apiPath, { query, body, text = false
     });
   } catch (error) {
     throw new GitError(
-      error.name === 'AbortError' ? `GitLab не ответил за ${REQUEST_TIMEOUT / 1000} с` : `Нет связи с ${new URL(base).host}`,
-      { code: 'NETWORK', hint: 'Проверьте интернет, VPN и адрес сервера GitLab', details: error.message },
+      error.name === 'AbortError' ? tr('GitLab не ответил за {0} с', REQUEST_TIMEOUT / 1000) : tr('Нет связи с {0}', new URL(base).host),
+      { code: 'NETWORK', hint: tr('Проверьте интернет, VPN и адрес сервера GitLab'), details: error.message },
     );
   } finally {
     clearTimeout(timer);
@@ -394,33 +395,33 @@ async function request(base, token, method, apiPath, { query, body, text = false
       /* тело не JSON */
     }
     if (res.status === 401) {
-      throw new GitError('GitLab отклонил токен', {
+      throw new GitError(tr('GitLab отклонил токен'), {
         code: 'AUTH',
-        hint: 'Токен неверный, отозван или истёк — создайте новый и сохраните его заново',
+        hint: tr('Токен неверный, отозван или истёк — создайте новый и сохраните его заново'),
         details: message,
       });
     }
     if (res.status === 403) {
-      throw new GitError('Недостаточно прав', {
+      throw new GitError(tr('Недостаточно прав'), {
         code: 'FORBIDDEN',
         hint: /scope/i.test(message)
-          ? 'У токена нет нужного права (scope). Для действий нужен scope «api», для просмотра — «read_api»'
-          : 'Ваша роль в проекте не позволяет это действие',
+          ? tr('У токена нет нужного права (scope). Для действий нужен scope «api», для просмотра — «read_api»')
+          : tr('Ваша роль в проекте не позволяет это действие'),
         details: message,
       });
     }
     if (res.status === 404) {
-      throw new GitError(notFound ?? 'Не найдено в GitLab', {
+      throw new GitError(notFound ?? tr('Не найдено в GitLab'), {
         code: 'NOT_FOUND',
-        hint: notFound ? null : 'Проект не существует или у токена нет к нему доступа',
+        hint: notFound ? null : tr('Проект не существует или у токена нет к нему доступа'),
         details: message,
       });
     }
     if (res.status === 400 || res.status === 422 || res.status === 409) {
       throw new GitError(validationMessage(fields, message), { code: 'VALIDATION', hint: validationHint(fields, message), details: message });
     }
-    if (res.status === 429) throw new GitError('GitLab ограничил частоту запросов — попробуйте через минуту', { code: 'RATE_LIMIT' });
-    throw new GitError(`GitLab вернул ошибку ${res.status}`, { code: 'GITLAB_ERROR', details: message });
+    if (res.status === 429) throw new GitError(tr('GitLab ограничил частоту запросов — попробуйте через минуту'), { code: 'RATE_LIMIT' });
+    throw new GitError(tr('GitLab вернул ошибку {0}', res.status), { code: 'GITLAB_ERROR', details: message });
   }
 
   if (text) {
@@ -432,6 +433,7 @@ async function request(base, token, method, apiPath, { query, body, text = false
 }
 
 // Ошибки проверки от GitLab («key: has already been taken») — по-русски
+// Тексты переводятся при использовании (tr(...)): массив создаётся один раз при загрузке модуля
 const PHRASES = [
   [/has already been taken/i, 'уже существует'],
   [/can't be blank|is missing/i, 'не может быть пустым'],
@@ -440,22 +442,36 @@ const PHRASES = [
   [/is too short/i, 'слишком короткое'],
   [/cannot be masked|must be masked|unable to be masked/i, 'нельзя замаскировать'],
 ];
-const FIELD_NAMES = { key: 'Имя', value: 'Значение', cron: 'Расписание (cron)', cron_timezone: 'Часовой пояс', ref: 'Ветка', description: 'Описание', environment_scope: 'Окружение' };
-const translate = (text) => PHRASES.reduce((t, [re, ru]) => t.replace(re, ru), String(text));
+const FIELD_NAMES = { get key() {
+    return tr('Имя');
+  }, get value() {
+    return tr('Значение');
+  }, get cron() {
+    return tr('Расписание (cron)');
+  }, get cron_timezone() {
+    return tr('Часовой пояс');
+  }, get ref() {
+    return tr('Ветка');
+  }, get description() {
+    return tr('Описание');
+  }, get environment_scope() {
+    return tr('Окружение');
+  } };
+const translate = (text) => PHRASES.reduce((t, [re, ru]) => t.replace(re, tr(ru)), String(text));
 
 function validationMessage(fields, message) {
   if (fields) {
     const parts = Object.entries(fields).map(([k, v]) => `${FIELD_NAMES[k] ?? k}: ${[].concat(v).map(translate).join(', ')}`);
     if (parts.length) return parts.join('; ');
   }
-  return message ? translate(message) : 'GitLab отклонил запрос';
+  return message ? translate(message) : tr('GitLab отклонил запрос');
 }
 
 function validationHint(fields, message) {
   const all = `${JSON.stringify(fields ?? {})} ${message}`;
-  if (/mask/i.test(all)) return 'Маскированное значение: одна строка, не короче 8 символов, только буквы, цифры и символы @ : . ~ - _ + / =';
-  if (/cron/i.test(all)) return 'Формат cron: «минуты часы день месяц день_недели», например «0 3 * * *» — каждый день в 3:00';
-  if (/key/i.test(all)) return 'Имя переменной: латинские буквы, цифры и _';
+  if (/mask/i.test(all)) return tr('Маскированное значение: одна строка, не короче 8 символов, только буквы, цифры и символы @ : . ~ - _ + / =');
+  if (/cron/i.test(all)) return tr('Формат cron: «минуты часы день месяц день_недели», например «0 3 * * *» — каждый день в 3:00');
+  if (/key/i.test(all)) return tr('Имя переменной: латинские буквы, цифры и _');
   return null;
 }
 
@@ -475,19 +491,19 @@ const projectCache = new Map();
 
 async function context(root, preferredRemote) {
   const remote = await detectRemote(root, preferredRemote);
-  if (!remote) throw new GitError('У репозитория нет remote', { code: 'NO_REMOTE' });
+  if (!remote) throw new GitError(tr('У репозитория нет remote'), { code: 'NO_REMOTE' });
   if (remote.kind !== 'gitlab') {
-    throw new GitError('Remote не похож на GitLab', {
+    throw new GitError(tr('Remote не похож на GitLab'), {
       code: 'NOT_GITLAB',
-      hint: 'Если это свой сервер GitLab — сохраните для него токен в настройках',
+      hint: tr('Если это свой сервер GitLab — сохраните для него токен в настройках'),
     });
   }
   const auth = await pickVerified(remote);
   if (!auth.token) {
     const problem = loginProblem(auth.rejected, auth.other);
-    throw new GitError(problem ? 'Авторизация репозитория не подходит для пайплайнов' : 'Репозиторий не авторизован', {
+    throw new GitError(problem ? tr('Авторизация репозитория не подходит для пайплайнов') : tr('Репозиторий не авторизован'), {
       code: 'NO_TOKEN',
-      hint: problem ? problem.reason : 'Авторизуйте репозиторий — эта же авторизация работает и для пайплайнов',
+      hint: problem ? problem.reason : tr('Авторизуйте репозиторий — эта же авторизация работает и для пайплайнов'),
     });
   }
   const token = auth.token;
@@ -532,16 +548,16 @@ async function tokenInfo(base, token) {
 
 async function setToken(root, token, preferredRemote, { alsoForGit = false } = {}) {
   const remote = await detectRemote(root, preferredRemote);
-  if (!remote) throw new GitError('У репозитория нет remote', { code: 'NO_REMOTE' });
+  if (!remote) throw new GitError(tr('У репозитория нет remote'), { code: 'NO_REMOTE' });
   const clean = String(token ?? '').trim();
-  if (!clean) throw new GitError('Вставьте токен', { code: 'BAD_ARGS' });
-  if (/\s/.test(clean)) throw new GitError('В токене не должно быть пробелов', { code: 'BAD_ARGS' });
+  if (!clean) throw new GitError(tr('Вставьте токен'), { code: 'BAD_ARGS' });
+  if (/\s/.test(clean)) throw new GitError(tr('В токене не должно быть пробелов'), { code: 'BAD_ARGS' });
 
   const info = await tokenInfo(remote.base, clean);
   if (info.scopes && !info.scopes.some((s) => s === 'api' || s === 'read_api')) {
-    throw new GitError('У токена нет доступа к API', {
+    throw new GitError(tr('У токена нет доступа к API'), {
       code: 'FORBIDDEN',
-      hint: `Права токена: ${info.scopes.join(', ')}. Нужен scope «api» (просмотр и действия) или «read_api» (только просмотр)`,
+      hint: tr('Права токена: {0}. Нужен scope «api» (просмотр и действия) или «read_api» (только просмотр)', info.scopes.join(', ')),
     });
   }
   let projectAccess = true;
@@ -771,11 +787,11 @@ function jobSummary(j, kind = 'job') {
 
 async function pipelineDetail(root, pipelineId, { preferredRemote } = {}) {
   const id = Number(pipelineId);
-  if (!Number.isInteger(id) || id <= 0) throw new GitError('Некорректный номер пайплайна', { code: 'BAD_ARGS' });
+  if (!Number.isInteger(id) || id <= 0) throw new GitError(tr('Некорректный номер пайплайна'), { code: 'BAD_ARGS' });
   const ctx = await context(root, preferredRemote);
   const pid = ctx.project.id;
   const [p, jobs, bridges] = await Promise.all([
-    request(ctx.remote.base, ctx.token, 'GET', `/projects/${pid}/pipelines/${id}`, { notFound: `Пайплайн #${id} не найден — возможно, его удалили` }),
+    request(ctx.remote.base, ctx.token, 'GET', `/projects/${pid}/pipelines/${id}`, { notFound: tr('Пайплайн #{0} не найден — возможно, его удалили', id) }),
     fetchAll(ctx, `/projects/${pid}/pipelines/${id}/jobs`),
     fetchAll(ctx, `/projects/${pid}/pipelines/${id}/bridges`, {}, 1).catch(() => []),
   ]);
@@ -810,10 +826,10 @@ async function pipelineDetail(root, pipelineId, { preferredRemote } = {}) {
 
 async function jobLog(root, jobId, { preferredRemote } = {}) {
   const id = Number(jobId);
-  if (!Number.isInteger(id) || id <= 0) throw new GitError('Некорректный номер задания', { code: 'BAD_ARGS' });
+  if (!Number.isInteger(id) || id <= 0) throw new GitError(tr('Некорректный номер задания'), { code: 'BAD_ARGS' });
   const ctx = await context(root, preferredRemote);
   const [job, trace] = await Promise.all([
-    request(ctx.remote.base, ctx.token, 'GET', `/projects/${ctx.project.id}/jobs/${id}`, { notFound: `Задание #${id} не найдено — возможно, его удалили` }),
+    request(ctx.remote.base, ctx.token, 'GET', `/projects/${ctx.project.id}/jobs/${id}`, { notFound: tr('Задание #{0} не найдено — возможно, его удалили', id) }),
     request(ctx.remote.base, ctx.token, 'GET', `/projects/${ctx.project.id}/jobs/${id}/trace`, { text: true }).catch((error) => {
       if (error.code === 'NOT_FOUND') return { text: '', size: 0 };
       throw error;
@@ -835,17 +851,17 @@ const ACTIONS = {
 
 async function runPipelineAction(root, action, { preferredRemote } = {}) {
   const make = ACTIONS[action?.type];
-  if (!make) throw new GitError('Неизвестное действие', { code: 'BAD_ARGS' });
+  if (!make) throw new GitError(tr('Неизвестное действие'), { code: 'BAD_ARGS' });
   if (action.type === 'pipeline.create') {
-    if (typeof action.ref !== 'string' || !action.ref.trim()) throw new GitError('Не указана ветка', { code: 'BAD_ARGS' });
+    if (typeof action.ref !== 'string' || !action.ref.trim()) throw new GitError(tr('Не указана ветка'), { code: 'BAD_ARGS' });
   } else if (!Number.isInteger(Number(action.id)) || Number(action.id) <= 0) {
-    throw new GitError('Некорректный номер', { code: 'BAD_ARGS' });
+    throw new GitError(tr('Некорректный номер'), { code: 'BAD_ARGS' });
   }
   const ctx = await context(root, preferredRemote);
   if (!canWrite(ctx)) {
-    throw new GitError('Токен только для чтения', {
+    throw new GitError(tr('Токен только для чтения'), {
       code: 'FORBIDDEN',
-      hint: 'Для запуска и отмены нужен токен со scope «api» — создайте новый и сохраните его',
+      hint: tr('Для запуска и отмены нужен токен со scope «api» — создайте новый и сохраните его'),
     });
   }
   const [method, apiPath, body] = make(ctx, action);
@@ -876,10 +892,10 @@ async function listVariables(root, { preferredRemote } = {}) {
 }
 
 async function variableValue(root, { key, scope }, { preferredRemote } = {}) {
-  if (typeof key !== 'string' || !/^[A-Za-z0-9_]+$/.test(key)) throw new GitError('Некорректное имя переменной', { code: 'BAD_ARGS' });
+  if (typeof key !== 'string' || !/^[A-Za-z0-9_]+$/.test(key)) throw new GitError(tr('Некорректное имя переменной'), { code: 'BAD_ARGS' });
   const ctx = await context(root, preferredRemote);
   const v = await request(ctx.remote.base, ctx.token, 'GET', `/projects/${ctx.project.id}/variables/${key}`, {
-    notFound: `Переменная ${key} не найдена — возможно, её удалили`,
+    notFound: tr('Переменная {0} не найдена — возможно, её удалили', key),
     query: scope && scope !== '*' ? { 'filter[environment_scope]': scope } : {},
   });
   if (v.hidden || v.value == null) return { key, hidden: true, value: null };
@@ -905,11 +921,11 @@ async function listRunners(root, { preferredRemote } = {}) {
 /* =================== Проверка CI (CI Lint) =================== */
 
 async function lintCi(root, { content, ref }, { preferredRemote } = {}) {
-  if (typeof content !== 'string') throw new GitError('Нет содержимого', { code: 'BAD_ARGS' });
+  if (typeof content !== 'string') throw new GitError(tr('Нет содержимого'), { code: 'BAD_ARGS' });
   const ctx = await context(root, preferredRemote);
   const res = await request(ctx.remote.base, ctx.token, 'POST', `/projects/${ctx.project.id}/ci/lint`, {
     body: { content, dry_run: true, include_jobs: true, ...(ref ? { ref } : {}) },
-    notFound: 'Этот сервер GitLab не поддерживает проверку CI по API (нужен GitLab 13.6 или новее)',
+    notFound: tr('Этот сервер GitLab не поддерживает проверку CI по API (нужен GitLab 13.6 или новее)'),
   });
   return {
     valid: Boolean(res.valid),
@@ -933,9 +949,9 @@ async function lintCi(root, { content, ref }, { preferredRemote } = {}) {
 const VAR_KEY = /^[A-Za-z0-9_]+$/;
 const requireWrite = (ctx) => {
   if (!canWrite(ctx)) {
-    throw new GitError('Токен только для чтения', {
+    throw new GitError(tr('Токен только для чтения'), {
       code: 'FORBIDDEN',
-      hint: 'Для изменений нужен токен со scope «api» — создайте новый и сохраните его в настройках',
+      hint: tr('Для изменений нужен токен со scope «api» — создайте новый и сохраните его в настройках'),
     });
   }
 };
@@ -961,7 +977,7 @@ async function saveVariable(root, args, opts) {
   } catch (error) {
     const v = args?.variable ?? {};
     if (error.code === 'VALIDATION' && (v.masked || v.hidden) && /value/i.test(error.details ?? '') && !error.hint) {
-      error.hint = 'Маскированное значение: одна строка, не короче 8 символов, только буквы, цифры и символы @ : . ~ - _ + / =';
+      error.hint = tr('Маскированное значение: одна строка, не короче 8 символов, только буквы, цифры и символы @ : . ~ - _ + / =');
     }
     throw error;
   }
@@ -969,14 +985,14 @@ async function saveVariable(root, args, opts) {
 
 async function saveVariableRaw(root, { original, variable }, { preferredRemote } = {}) {
   const v = variable ?? {};
-  if (!VAR_KEY.test(v.key ?? '')) throw new GitError('Имя переменной: только латинские буквы, цифры и _', { code: 'INVALID_NAME' });
-  if (typeof v.value === 'string' && v.value.length > 10000) throw new GitError('Значение слишком длинное', { code: 'BAD_ARGS' });
+  if (!VAR_KEY.test(v.key ?? '')) throw new GitError(tr('Имя переменной: только латинские буквы, цифры и _'), { code: 'INVALID_NAME' });
+  if (typeof v.value === 'string' && v.value.length > 10000) throw new GitError(tr('Значение слишком длинное'), { code: 'BAD_ARGS' });
   const ctx = await context(root, preferredRemote);
   requireWrite(ctx);
   const base = `/projects/${ctx.project.id}/variables`;
 
   if (!original) {
-    if (typeof v.value !== 'string') throw new GitError('Введите значение', { code: 'BAD_ARGS' });
+    if (typeof v.value !== 'string') throw new GitError(tr('Введите значение'), { code: 'BAD_ARGS' });
     const body = variableBody(v);
     if (v.hidden) body.masked_and_hidden = true;
     await request(ctx.remote.base, ctx.token, 'POST', base, { body });
@@ -989,7 +1005,7 @@ async function saveVariableRaw(root, { original, variable }, { preferredRemote }
   if (typeof value !== 'string') {
     const cur = await request(ctx.remote.base, ctx.token, 'GET', `${base}/${original.key}`, { query: scopeQuery(original.scope) });
     if (cur.hidden || cur.value == null) {
-      throw new GitError('Значение скрытой переменной нельзя прочитать — введите его заново', { code: 'BAD_ARGS' });
+      throw new GitError(tr('Значение скрытой переменной нельзя прочитать — введите его заново'), { code: 'BAD_ARGS' });
     }
     value = cur.value;
   }
@@ -1005,12 +1021,12 @@ async function saveVariableRaw(root, { original, variable }, { preferredRemote }
 }
 
 async function deleteVariable(root, { key, scope }, { preferredRemote } = {}) {
-  if (!VAR_KEY.test(key ?? '')) throw new GitError('Некорректное имя переменной', { code: 'BAD_ARGS' });
+  if (!VAR_KEY.test(key ?? '')) throw new GitError(tr('Некорректное имя переменной'), { code: 'BAD_ARGS' });
   const ctx = await context(root, preferredRemote);
   requireWrite(ctx);
   await request(ctx.remote.base, ctx.token, 'DELETE', `/projects/${ctx.project.id}/variables/${key}`, {
     query: scope && scope !== '*' ? { 'filter[environment_scope]': scope } : {},
-    notFound: `Переменная ${key} уже удалена`,
+    notFound: tr('Переменная {0} уже удалена', key),
   });
   return { key, scope: scope ?? '*', deleted: true };
 }
@@ -1051,10 +1067,10 @@ const CRON_RE = /^(\S+\s+){4}\S+$/;
 
 async function saveSchedule(root, schedule, { preferredRemote } = {}) {
   const s = schedule ?? {};
-  if (!String(s.description ?? '').trim()) throw new GitError('Введите описание расписания', { code: 'BAD_ARGS' });
-  if (!String(s.ref ?? '').trim()) throw new GitError('Выберите ветку', { code: 'BAD_ARGS' });
+  if (!String(s.description ?? '').trim()) throw new GitError(tr('Введите описание расписания'), { code: 'BAD_ARGS' });
+  if (!String(s.ref ?? '').trim()) throw new GitError(tr('Выберите ветку'), { code: 'BAD_ARGS' });
   if (!CRON_RE.test(String(s.cron ?? '').trim())) {
-    throw new GitError('Неверный формат cron', { code: 'BAD_ARGS', hint: 'Пять полей через пробел: минуты часы день месяц день_недели, например «0 3 * * *»' });
+    throw new GitError(tr('Неверный формат cron'), { code: 'BAD_ARGS', hint: tr('Пять полей через пробел: минуты часы день месяц день_недели, например «0 3 * * *»') });
   }
   const ctx = await context(root, preferredRemote);
   requireWrite(ctx);
@@ -1067,32 +1083,32 @@ async function saveSchedule(root, schedule, { preferredRemote } = {}) {
   };
   const base = `/projects/${ctx.project.id}/pipeline_schedules`;
   const res = s.id
-    ? await request(ctx.remote.base, ctx.token, 'PUT', `${base}/${Number(s.id)}`, { body, notFound: 'Расписание не найдено — возможно, его удалили' })
+    ? await request(ctx.remote.base, ctx.token, 'PUT', `${base}/${Number(s.id)}`, { body, notFound: tr('Расписание не найдено — возможно, его удалили') })
     : await request(ctx.remote.base, ctx.token, 'POST', base, { body });
   return scheduleSummary(res);
 }
 
 async function scheduleAction(root, { id, type }, { preferredRemote } = {}) {
   const n = Number(id);
-  if (!Number.isInteger(n) || n <= 0) throw new GitError('Некорректный номер расписания', { code: 'BAD_ARGS' });
+  if (!Number.isInteger(n) || n <= 0) throw new GitError(tr('Некорректный номер расписания'), { code: 'BAD_ARGS' });
   const ctx = await context(root, preferredRemote);
   requireWrite(ctx);
   const base = `/projects/${ctx.project.id}/pipeline_schedules/${n}`;
-  const notFound = 'Расписание не найдено — возможно, его удалили';
+  const notFound = tr('Расписание не найдено — возможно, его удалили');
   if (type === 'delete') await request(ctx.remote.base, ctx.token, 'DELETE', base, { notFound });
   else if (type === 'play') await request(ctx.remote.base, ctx.token, 'POST', `${base}/play`, { notFound });
   else if (type === 'own') await request(ctx.remote.base, ctx.token, 'POST', `${base}/take_ownership`, { notFound });
-  else throw new GitError('Неизвестное действие', { code: 'BAD_ARGS' });
+  else throw new GitError(tr('Неизвестное действие'), { code: 'BAD_ARGS' });
   return { id: n, type };
 }
 
 /* =================== Merge request =================== */
 
 async function createMergeRequest(root, { source, target, title, description, draft = false, removeSource = false }, { preferredRemote } = {}) {
-  for (const [v, what] of [[source, 'исходная ветка'], [target, 'целевая ветка']]) {
-    if (typeof v !== 'string' || !v.trim() || v.startsWith('-')) throw new GitError(`Не указана ${what}`, { code: 'BAD_ARGS' });
+  for (const [v, what] of [[source, tr('исходная ветка')], [target, tr('целевая ветка')]]) {
+    if (typeof v !== 'string' || !v.trim() || v.startsWith('-')) throw new GitError(tr('Не указана {0}', what), { code: 'BAD_ARGS' });
   }
-  if (source === target) throw new GitError('Исходная и целевая ветки совпадают', { code: 'BAD_ARGS' });
+  if (source === target) throw new GitError(tr('Исходная и целевая ветки совпадают'), { code: 'BAD_ARGS' });
   const ctx = await context(root, preferredRemote);
   requireWrite(ctx);
   const t = String(title ?? '').trim() || source;
@@ -1116,7 +1132,7 @@ async function createMergeRequest(root, { source, target, title, description, dr
       if (list[0]) return { iid: list[0].iid, webUrl: list[0].web_url, created: false, title: list[0].title };
     }
     if (error.code === 'VALIDATION' && /source.?branch|does not exist|не существует/i.test(`${error.details}`)) {
-      error.hint = 'Сначала отправьте ветку на сервер (Push).';
+      error.hint = tr('Сначала отправьте ветку на сервер (Push).');
     }
     throw error;
   }
@@ -1154,7 +1170,7 @@ async function branchHeads(root, remoteName) {
         signal: controller.signal,
       });
     } catch (error) {
-      throw new GitError(`Нет связи с ${remote.host}`, { code: 'NETWORK', details: error.message });
+      throw new GitError(tr('Нет связи с {0}', remote.host), { code: 'NETWORK', details: error.message });
     } finally {
       clearTimeout(timer);
     }
@@ -1173,12 +1189,12 @@ async function branchHeads(root, remoteName) {
       }
     } else if (res.status === 429) {
       const retryAfter = Number(res.headers.get('retry-after')) || null;
-      const err = new GitError('GitLab ограничил частоту запросов', { code: 'RATE_LIMIT', details: retryAfter ? `retry-after: ${retryAfter}` : '' });
+      const err = new GitError(tr('GitLab ограничил частоту запросов'), { code: 'RATE_LIMIT', details: retryAfter ? `retry-after: ${retryAfter}` : '' });
       err.retryAfter = retryAfter;
       throw err;
     } else {
       // 401/403/404 и прочее — токен не подходит для этого проекта; вызывающий перейдёт на ls-remote
-      throw new GitError(`GitLab вернул ${res.status}`, { code: res.status === 401 ? 'AUTH' : res.status === 403 ? 'FORBIDDEN' : 'GITLAB_ERROR' });
+      throw new GitError(tr('GitLab вернул {0}', res.status), { code: res.status === 401 ? 'AUTH' : res.status === 403 ? 'FORBIDDEN' : 'GITLAB_ERROR' });
     }
     for (const [n, h] of entry.list) heads.set(n, h);
     if (!entry.next) break;

@@ -1,3 +1,4 @@
+const { t } = require('../i18n.cjs');
 // Единые модели CI/CD для интерфейса — ответы GitLab, GitHub, Gitea/Forgejo и Bitbucket приводятся к ним.
 //
 // PipelineRun:  { id, number, name, status, branch, sha, duration, createdAt, startedAt, finishedAt, url, triggeredBy, source, workflow }
@@ -39,7 +40,7 @@ const NO_CAPS = {
 };
 
 /** Почему функции нет — для подсказки на выключенной кнопке */
-const reasons = (label, list) => Object.fromEntries(list.map((k) => [k, `${label} не даёт этого сделать через API`]));
+const reasons = (label, list) => Object.fromEntries(list.map((k) => [k, t('{0} не даёт этого сделать через API', label)]));
 
 const iso = (v) => (v ? new Date(v).toISOString() : null);
 const secondsBetween = (a, b) => (a && b ? Math.max(0, Math.round((new Date(b) - new Date(a)) / 1000)) : null);

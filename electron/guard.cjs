@@ -2,6 +2,7 @@
 // отладочные вызовы и похожие на секреты строки. Правила приходят из настроек (их можно отключать и дополнять).
 const { git } = require('./git.cjs');
 const { GitError } = require('./errors.cjs');
+const { t } = require('./i18n.cjs');
 
 const MAX_LINE = 4000; // минифицированные файлы: проверяем только начало строки
 const MAX_FINDINGS = 300;
@@ -165,7 +166,7 @@ async function scanStaged(cwd, { rules, exclude }) {
     if (/unknown revision|ambiguous argument 'HEAD'/i.test(`${error.details}`)) diff = ''; // первый коммит без HEAD
     else throw error;
   }
-  if (typeof diff !== 'string') throw new GitError('Не удалось прочитать изменения', { code: 'GIT' });
+  if (typeof diff !== 'string') throw new GitError(t('Не удалось прочитать изменения'), { code: 'GIT' });
   return { ...scanDiff(diff, rules, exclude), ms: Date.now() - started };
 }
 

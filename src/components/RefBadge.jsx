@@ -1,6 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Check, Cloud, CloudOff, Laptop, LogIn, Tag } from 'lucide-react';
+import { t, tj } from '../i18n/index.js';
 
 /**
  * Где живёт ветка: ноутбук — только у вас, облако — только на сервере,
@@ -9,7 +10,7 @@ import { Check, Cloud, CloudOff, Laptop, LogIn, Tag } from 'lucide-react';
 export function RefKindIcon({ local, remote, tag, size = 12, className = '' }) {
   // Локальная и серверная на одном коммите — две маленькие иконки рядом (ноутбук + облако), как в GitKraken.
   // Раньше облако накладывалось на ноутбук, и при размере 12px это читалось как папка.
-  const label = tag ? 'тег' : local && remote ? 'локальная и на сервере' : remote ? 'на сервере' : 'локальная';
+  const label = tag ? t('тег') : local && remote ? t('локальная и на сервере') : remote ? t('на сервере') : t('локальная');
   const small = Math.round(size * 0.9);
   return (
     <span className={`inline-flex shrink-0 items-center gap-px ${className}`} aria-label={label} data-kind={tag ? 'tag' : local && remote ? 'both' : remote ? 'remote' : 'local'}>
@@ -30,10 +31,10 @@ export function RefKindIcon({ local, remote, tag, size = 12, className = '' }) {
 }
 
 export function refKindLabel(g) {
-  if (g.tag) return 'тег';
-  if (g.local && g.remote) return `локальная = ${g.remoteName ?? 'сервер'}`;
-  if (g.remote) return 'на сервере';
-  return 'только локальная';
+  if (g.tag) return t('тег');
+  if (g.local && g.remote) return t('локальная = {0}', g.remoteName ?? t('сервер'));
+  if (g.remote) return t('на сервере');
+  return t('только локальная');
 }
 
 /**
@@ -67,24 +68,16 @@ export function RefsPopover({ anchor, groups, color, currentBranch, actions, onE
       style={{ left: pos.left, top: pos.top }}
       className="glass-strong fixed z-50 w-[300px] animate-pop-in overflow-hidden rounded-lg border border-gk-border bg-gk-panel-2 py-1 text-[12.5px] shadow-2xl"
     >
-      {branches.length > 0 && <Header color={color}>Ветки на этом коммите · {branches.length}</Header>}
+      {branches.length > 0 && <Header color={color}>{tj('Ветки на этом коммите · {0}', [branches.length])}</Header>}
       {branches.map((g) => (
         <Row key={`b:${g.name}`} g={g} currentBranch={currentBranch} actions={actions} />
       ))}
-      {tags.length > 0 && <Header color={color}>Теги · {tags.length}</Header>}
+      {tags.length > 0 && <Header color={color}>{tj('Теги · {0}', [tags.length])}</Header>}
       {tags.map((g) => (
         <Row key={`t:${g.name}`} g={g} currentBranch={currentBranch} actions={actions} />
       ))}
       <div className="mt-1 border-t border-gk-border px-3 pb-0.5 pt-1.5 text-[10.5px] leading-snug text-gk-dim">
-        <span className="inline-flex items-center gap-1">
-          <Laptop size={10} /> у вас
-        </span>
-        <span className="mx-1.5">·</span>
-        <span className="inline-flex items-center gap-1">
-          <Cloud size={10} /> на сервере
-        </span>
-        <span className="mx-1.5">·</span>правый клик — действия
-      </div>
+        {tj('<0>{1} у вас</0><2>·</2><3>{4} на сервере</3><5>·</5>правый клик — действия', [<span className="inline-flex items-center gap-1" />, <Laptop size={10} />, <span className="mx-1.5" />, <span className="inline-flex items-center gap-1" />, <Cloud size={10} />, <span className="mx-1.5" />])}</div>
     </div>,
     document.body,
   );
@@ -112,7 +105,7 @@ function Row({ g, currentBranch, actions }) {
         actions?.menu?.(primary, e.clientX, e.clientY);
       }}
       onDoubleClick={() => canCheckout && actions?.checkout?.(primary)}
-      title={canCheckout ? 'Двойной клик — checkout, правый клик — все действия' : 'Правый клик — действия'}
+      title={canCheckout ? t('Двойной клик — checkout, правый клик — все действия') : t('Правый клик — действия')}
       className="group flex h-8 cursor-default items-center gap-2 px-3 hover:bg-gk-hover"
     >
       <RefKindIcon local={g.local} remote={g.remote} tag={g.tag} size={13} className={g.tag ? 'text-gk-yellow' : g.local ? 'text-gk-text' : 'text-gk-blue'} />
@@ -122,14 +115,14 @@ function Row({ g, currentBranch, actions }) {
           <span className={`truncate ${g.remote && !g.local ? 'text-gk-blue' : 'text-gk-text'}`}>{remoteRef && !localRef ? remoteRef.name : g.name}</span>
         </span>
         <span className="block truncate text-[10.5px] leading-tight text-gk-dim">
-          {isCurrent ? 'текущая · ' : ''}
+          {isCurrent ? t('текущая · ') : ''}
           {refKindLabel({ ...g, remoteName: remoteRef?.name })}
         </span>
       </span>
       <span className="flex shrink-0 items-center gap-0.5 opacity-0 transition-opacity group-hover:opacity-100">
         {canCheckout && (
           <button
-            title={localRef ? `Checkout ${localRef.name}` : `Checkout ${remoteRef?.name} (создаст локальную ветку)`}
+            title={localRef ? `Checkout ${localRef.name}` : t('Checkout {0} (создаст локальную ветку)', remoteRef?.name)}
             onClick={() => actions?.checkout?.(primary)}
             className="rounded p-1 text-gk-muted hover:bg-gk-fg/10 hover:text-gk-text"
           >
@@ -138,7 +131,7 @@ function Row({ g, currentBranch, actions }) {
         )}
         {remoteRef && (
           <button
-            title={`Удалить ${remoteRef.name} с сервера…`}
+            title={t('Удалить {0} с сервера…', remoteRef.name)}
             onClick={() => actions?.deleteRemote?.(remoteRef.name)}
             className="rounded p-1 text-gk-muted hover:bg-gk-red/15 hover:text-gk-red"
           >

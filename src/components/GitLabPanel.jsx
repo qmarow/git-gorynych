@@ -34,14 +34,15 @@ import {
   formatDuration,
   statusInfo,
 } from './PipelineStatus.jsx';
+import { t as tr, tj } from '../i18n/index.js';
 
 const api = window.api;
 
 const SUBTABS = [
-  { id: 'pipelines', label: 'Пайплайны', icon: Zap },
-  { id: 'variables', label: 'Переменные', icon: Variable },
-  { id: 'schedules', label: 'Расписания', icon: CalendarClock },
-  { id: 'runners', label: 'Раннеры', icon: Server },
+  { id: 'pipelines', label: tr('Пайплайны'), icon: Zap },
+  { id: 'variables', label: tr('Переменные'), icon: Variable },
+  { id: 'schedules', label: tr('Расписания'), icon: CalendarClock },
+  { id: 'runners', label: tr('Раннеры'), icon: Server },
 ];
 
 // Повторяем запрос с интервалом, пока вкладка видима; delay может меняться
@@ -92,12 +93,10 @@ export default function GitLabPanel({
         <div className="w-full max-w-[520px] animate-slide-up">
           <div className="mb-1 flex items-center gap-2">
             <span className="h-2.5 w-2.5 rounded-full bg-[#fc6d26]" />
-            <h3 className="text-[15px] font-semibold text-gk-strong">Пайплайны GitLab</h3>
+            <h3 className="text-[15px] font-semibold text-gk-strong">{tr('Пайплайны GitLab')}</h3>
           </div>
           <p className="mb-4 text-[13px] leading-relaxed text-gk-muted">
-            Статусы пайплайнов в графе, логи заданий, перезапуск и отмена работают от авторизации репозитория — той же, что для Pull и
-            Push. Отдельно входить не нужно.
-          </p>
+            {tr('Статусы пайплайнов в графе, логи заданий, перезапуск и отмена работают от авторизации репозитория — той же, что для Pull и Push. Отдельно входить не нужно.')}</p>
           <CiAuth forge={forge} onEditLogin={onEditLogin} />
         </div>
       </div>
@@ -125,18 +124,18 @@ export default function GitLabPanel({
         <button
           onClick={() => api.openExternal(`${forge.webUrl}/-/pipelines`)}
           className="flex items-center gap-1 truncate rounded px-2 py-1 font-mono text-[11px] text-gk-dim hover:bg-gk-hover hover:text-gk-text"
-          title="Открыть проект в GitLab"
+          title={tr('Открыть проект в GitLab')}
         >
           {forge.path} <ExternalLink size={11} />
         </button>
         <span
           data-testid="gl-auth-source"
           className="truncate text-[11px] text-gk-dim"
-          title={`${forge.token.source?.startsWith('legacy') ? 'Токен CI/CD из прежней версии' : 'Авторизация репозитория — та же, что для Pull и Push'}${forge.token.scopes ? ` · ${forge.token.scopes.join(', ')}` : ''}`}
+          title={`${forge.token.source?.startsWith('legacy') ? tr('Токен CI/CD из прежней версии') : tr('Авторизация репозитория — та же, что для Pull и Push')}${forge.token.scopes ? ` · ${forge.token.scopes.join(', ')}` : ''}`}
         >
           {forge.token.user?.username ? `@${forge.token.user.username}` : ''}
-          {(forge.token.source === 'login' || forge.token.source === 'login-shared') && <span className="ml-1">· авторизация репозитория</span>}
-          {forge.token.scopes && !forge.token.scopes.includes('api') && <span className="ml-1 text-gk-yellow">· только просмотр</span>}
+          {(forge.token.source === 'login' || forge.token.source === 'login-shared') && <span className="ml-1">{tr('· авторизация репозитория')}</span>}
+          {forge.token.scopes && !forge.token.scopes.includes('api') && <span className="ml-1 text-gk-yellow">{tr('· только просмотр')}</span>}
         </span>
       </div>
 
@@ -208,7 +207,7 @@ function PipelinesTab({ repoPath, opts, currentBranch, commitsBySha, initialPipe
       notify?.({ type: 'error', title: res.error.message, hint: res.error.hint });
       return;
     }
-    notify?.({ type: 'success', title: `Пайплайн #${res.data.id} запущен`, hint: `Ветка ${ref}` });
+    notify?.({ type: 'success', title: tr('Пайплайн #{0} запущен', res.data.id), hint: tr('Ветка {0}', ref) });
     setSelected(res.data.id);
     setRefreshKey((k) => k + 1);
   };
@@ -220,14 +219,13 @@ function PipelinesTab({ repoPath, opts, currentBranch, commitsBySha, initialPipe
         <div className="flex shrink-0 items-center gap-1.5 border-b border-gk-border px-2 py-1.5">
           <div className="flex overflow-hidden rounded ring-1 ring-gk-border">
             <SegButton active={!onlyBranch} onClick={() => setOnlyBranch(false)}>
-              Все
-            </SegButton>
+              {tr('Все')}</SegButton>
             <SegButton active={onlyBranch} onClick={() => setOnlyBranch(true)} disabled={!currentBranch} title={currentBranch}>
-              <GitBranch size={11} /> <span className="max-w-[110px] truncate">{currentBranch ?? 'ветка'}</span>
+              <GitBranch size={11} /> <span className="max-w-[110px] truncate">{currentBranch ?? tr('ветка')}</span>
             </SegButton>
           </div>
           <div className="flex-1" />
-          <IconBtn title="Обновить" onClick={() => setRefreshKey((k) => k + 1)}>
+          <IconBtn title={tr('Обновить')} onClick={() => setRefreshKey((k) => k + 1)}>
             <RefreshCw size={13} className={list.loading ? 'animate-spin' : ''} />
           </IconBtn>
           <RunPipelineButton disabled={!canWrite || !currentBranch} branch={currentBranch} onRun={createPipeline} />
@@ -236,12 +234,12 @@ function PipelinesTab({ repoPath, opts, currentBranch, commitsBySha, initialPipe
         <div className="min-h-0 flex-1 overflow-y-auto">
           {list.error && !list.data && <ErrorNote error={list.error} />}
           {list.error && list.data && (
-            <div className="border-b border-gk-border px-3 py-1.5 text-[11px] text-gk-yellow">Не удалось обновить: {list.error.message}</div>
+            <div className="border-b border-gk-border px-3 py-1.5 text-[11px] text-gk-yellow">{tj('Не удалось обновить: {0}', [list.error.message])}</div>
           )}
           {list.loading && !list.data && <ListSkeleton />}
           {list.data && pipelines.length === 0 && (
             <div className="px-4 py-8 text-center text-[12px] text-gk-dim">
-              {onlyBranch ? `В ветке ${currentBranch} пайплайнов ещё не было` : 'Пайплайнов ещё не было'}
+              {onlyBranch ? tr('В ветке {0} пайплайнов ещё не было', currentBranch) : tr('Пайплайнов ещё не было')}
             </div>
           )}
           {pipelines.map((p, i) => {
@@ -286,7 +284,7 @@ function PipelinesTab({ repoPath, opts, currentBranch, commitsBySha, initialPipe
             onOpenPipeline={setSelected}
           />
         ) : (
-          <div className="flex flex-1 items-center justify-center text-[13px] text-gk-dim">Выберите пайплайн слева</div>
+          <div className="flex flex-1 items-center justify-center text-[13px] text-gk-dim">{tr('Выберите пайплайн слева')}</div>
         )}
       </div>
     </div>
@@ -310,13 +308,13 @@ function RunPipelineButton({ disabled, branch, onRun }) {
           onRun(branch);
         }
       }}
-      title={disabled ? 'Нужен токен со scope «api» и активная ветка' : `Запустить новый пайплайн для ${branch}`}
+      title={disabled ? tr('Нужен токен со scope «api» и активная ветка') : tr('Запустить новый пайплайн для {0}', branch)}
       className={`flex h-7 items-center gap-1 rounded px-2 text-[12px] font-medium transition-colors disabled:opacity-35 ${
         confirm ? 'bg-gk-green text-gk-ink' : 'bg-gk-green/15 text-gk-green enabled:hover:bg-gk-green/25'
       }`}
     >
       <Play size={12} />
-      {confirm ? `Запустить для ${branch}?` : 'Запустить'}
+      {confirm ? tr('Запустить для {0}?', branch) : tr('Запустить')}
     </button>
   );
 }
@@ -359,8 +357,7 @@ function PipelineDetail({ repoPath, opts, pipelineId, commitsBySha, onLocate, no
   if (state.loading && !state.data) {
     return (
       <div className="flex flex-1 items-center justify-center gap-2 text-[13px] text-gk-muted">
-        <Loader2 size={15} className="animate-spin" /> Загружаем пайплайн #{pipelineId}…
-      </div>
+        {tj('{0} Загружаем пайплайн #{1}…', [<Loader2 size={15} className="animate-spin" />, pipelineId])}</div>
     );
   }
   if (!state.data) return <ErrorNote error={state.error} />;
@@ -384,25 +381,24 @@ function PipelineDetail({ repoPath, opts, pipelineId, commitsBySha, onLocate, no
                 <ActionButton
                   icon={RotateCcw}
                   busy={busy === `pipeline.retry:${p.id}`}
-                  onClick={() => act({ type: 'pipeline.retry', id: p.id }, `Пайплайн #${p.id} перезапущен`)}
+                  onClick={() => act({ type: 'pipeline.retry', id: p.id }, tr('Пайплайн #{0} перезапущен', p.id))}
                 >
-                  {failedCount ? `Перезапустить упавшие (${failedCount})` : 'Перезапустить'}
+                  {failedCount ? tr('Перезапустить упавшие ({0})', failedCount) : tr('Перезапустить')}
                 </ActionButton>
               )}
               {canWrite && ACTIVE_STATUSES.has(p.status) && (
                 <ConfirmAction
                   icon={Square}
                   busy={busy === `pipeline.cancel:${p.id}`}
-                  label="Отменить"
-                  confirmLabel="Точно отменить?"
-                  onConfirm={() => act({ type: 'pipeline.cancel', id: p.id }, `Пайплайн #${p.id} отменён`)}
+                  label={tr('Отменить')}
+                  confirmLabel={tr('Точно отменить?')}
+                  onConfirm={() => act({ type: 'pipeline.cancel', id: p.id }, tr('Пайплайн #{0} отменён', p.id))}
                 />
               )}
               <ActionButton icon={ExternalLink} onClick={() => api.openExternal(p.webUrl)}>
-                В GitLab
-              </ActionButton>
+                {tr('В GitLab')}</ActionButton>
             </div>
-            <div className="mt-2 text-[15px] font-medium text-gk-strong">{commit?.message ?? p.name ?? 'Пайплайн'}</div>
+            <div className="mt-2 text-[15px] font-medium text-gk-strong">{commit?.message ?? p.name ?? tr('Пайплайн')}</div>
             <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-[12px] text-gk-muted">
               <span className="flex items-center gap-1">
                 <GitBranch size={12} /> {p.ref}
@@ -410,33 +406,32 @@ function PipelineDetail({ repoPath, opts, pipelineId, commitsBySha, onLocate, no
               <button
                 onClick={() => onLocate?.(p.sha)}
                 disabled={!commit}
-                title={commit ? 'Показать коммит в графе' : 'Коммита нет в загруженной истории'}
+                title={commit ? tr('Показать коммит в графе') : tr('Коммита нет в загруженной истории')}
                 className="flex items-center gap-1 font-mono text-gk-blue enabled:hover:underline disabled:text-gk-dim"
               >
                 <GitCommitHorizontal size={12} /> {p.sha.slice(0, 8)}
               </button>
-              {p.user && <span>запустил {p.user.name}</span>}
+              {p.user && <span>{tj('запустил {0}', [p.user.name])}</span>}
               <span>{SOURCE_LABELS[p.source] ?? p.source}</span>
               <span title={p.createdAt}>{relativeTime(p.createdAt)}</span>
               {p.duration != null && <span>⏱ {formatDuration(p.duration)}</span>}
-              {p.queuedDuration != null && p.queuedDuration > 5 && <span>в очереди {formatDuration(p.queuedDuration)}</span>}
-              {p.coverage != null && <span>покрытие {p.coverage}%</span>}
+              {p.queuedDuration != null && p.queuedDuration > 5 && <span>{tj('в очереди {0}', [formatDuration(p.queuedDuration)])}</span>}
+              {p.coverage != null && <span>{tj('покрытие {0}%', [p.coverage])}</span>}
             </div>
           </div>
 
           {p.yamlErrors && (
             <div className="rounded-lg border border-gk-red/30 bg-gk-red/10 px-3 py-2 text-[12px] text-gk-text">
               <div className="mb-1 flex items-center gap-1.5 font-semibold text-gk-red">
-                <AlertTriangle size={13} /> Ошибка в .gitlab-ci.yml
-              </div>
+                {tj('{0} Ошибка в .gitlab-ci.yml', [<AlertTriangle size={13} />])}</div>
               {p.yamlErrors}
             </div>
           )}
-          {state.error && <div className="text-[11px] text-gk-yellow">Не удалось обновить: {state.error.message}</div>}
+          {state.error && <div className="text-[11px] text-gk-yellow">{tj('Не удалось обновить: {0}', [state.error.message])}</div>}
 
           {/* Этапы */}
           {state.data.stages.length === 0 ? (
-            <div className="rounded-lg border border-dashed border-gk-border p-6 text-center text-[13px] text-gk-dim">В пайплайне нет заданий</div>
+            <div className="rounded-lg border border-dashed border-gk-border p-6 text-center text-[13px] text-gk-dim">{tr('В пайплайне нет заданий')}</div>
           ) : (
             <div className="overflow-x-auto pb-2">
               <div className="flex min-w-max gap-3">
@@ -496,10 +491,10 @@ function JobRow({ job, selected, canWrite, busy, onOpen, onAction }) {
   const isBusy = (type) => busy === `${type}:${job.id}`;
   const actions = [];
   if (canWrite && job.kind === 'job') {
-    if (job.status === 'manual') actions.push({ type: 'job.play', icon: Play, title: 'Запустить', label: `Задание ${job.name} запущено` });
+    if (job.status === 'manual') actions.push({ type: 'job.play', icon: Play, title: tr('Запустить'), label: tr('Задание {0} запущено', job.name) });
     if (['failed', 'canceled', 'success'].includes(job.status))
-      actions.push({ type: 'job.retry', icon: RotateCcw, title: 'Перезапустить', label: `Задание ${job.name} перезапущено` });
-    if (ACTIVE_STATUSES.has(job.status)) actions.push({ type: 'job.cancel', icon: Square, title: 'Отменить', label: `Задание ${job.name} отменено` });
+      actions.push({ type: 'job.retry', icon: RotateCcw, title: tr('Перезапустить'), label: tr('Задание {0} перезапущено', job.name) });
+    if (ACTIVE_STATUSES.has(job.status)) actions.push({ type: 'job.cancel', icon: Square, title: tr('Отменить'), label: tr('Задание {0} отменено', job.name) });
   }
   return (
     <div
@@ -507,7 +502,7 @@ function JobRow({ job, selected, canWrite, busy, onOpen, onAction }) {
       className={`group flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 transition-colors ${
         selected ? 'bg-gk-blue/15 ring-1 ring-gk-blue/40' : 'hover:bg-gk-hover'
       }`}
-      title={job.kind === 'bridge' ? 'Запускает другой пайплайн — открыть в GitLab' : 'Открыть лог'}
+      title={job.kind === 'bridge' ? tr('Запускает другой пайплайн — открыть в GitLab') : tr('Открыть лог')}
     >
       <StatusIcon status={job.allowFailure && job.status === 'failed' ? 'warning' : job.status} size={15} />
       <div className="min-w-0 flex-1">
@@ -518,12 +513,12 @@ function JobRow({ job, selected, canWrite, busy, onOpen, onAction }) {
         <div className="truncate text-[10.5px] text-gk-dim">
           {job.kind === 'bridge'
             ? job.downstream
-              ? `→ пайплайн #${job.downstream.id} · ${statusInfo(job.downstream.status).label}`
+              ? tr('→ пайплайн #{0} · {1}', job.downstream.id, statusInfo(job.downstream.status).label)
               : statusInfo(job.status).label
             : job.duration != null
               ? formatDuration(job.duration)
               : statusInfo(job.status).label}
-          {job.allowFailure && job.status === 'failed' && ' · можно упасть'}
+          {job.allowFailure && job.status === 'failed' && tr(' · можно упасть')}
         </div>
       </div>
       {actions.map((a) => (
@@ -603,7 +598,7 @@ function JobLog({ repoPath, opts, job: initialJob, canWrite, onClose, onAction }
   return (
     <div className="absolute inset-0 z-10 flex animate-slide-in-right flex-col bg-[var(--gk-base)] shadow-[-12px_0_30px_-12px_rgba(0,0,0,0.6)]">
       <div className="flex shrink-0 items-center gap-2 border-b border-gk-border bg-[var(--gk-solid-2)] px-3 py-2">
-        <IconBtn title="Назад к пайплайну (Esc)" onClick={onClose}>
+        <IconBtn title={tr('Назад к пайплайну (Esc)')} onClick={onClose}>
           <ArrowLeft size={15} />
         </IconBtn>
         <StatusPill status={job.allowFailure && job.status === 'failed' ? 'warning' : job.status} />
@@ -616,28 +611,25 @@ function JobLog({ repoPath, opts, job: initialJob, canWrite, onClose, onAction }
           {job.runner?.description && ` · ${job.runner.description}`}
         </span>
         {canWrite && job.status === 'manual' && (
-          <ActionButton icon={Play} onClick={() => onAction('job.play', `Задание ${job.name} запущено`)}>
-            Запустить
-          </ActionButton>
+          <ActionButton icon={Play} onClick={() => onAction('job.play', tr('Задание {0} запущено', job.name))}>
+            {tr('Запустить')}</ActionButton>
         )}
         {canWrite && ['failed', 'canceled', 'success'].includes(job.status) && (
-          <ActionButton icon={RotateCcw} onClick={() => onAction('job.retry', `Задание ${job.name} перезапущено`)}>
-            Повторить
-          </ActionButton>
+          <ActionButton icon={RotateCcw} onClick={() => onAction('job.retry', tr('Задание {0} перезапущено', job.name))}>
+            {tr('Повторить')}</ActionButton>
         )}
         {canWrite && running && (
-          <ActionButton icon={Square} onClick={() => onAction('job.cancel', `Задание ${job.name} отменено`)}>
-            Отменить
-          </ActionButton>
+          <ActionButton icon={Square} onClick={() => onAction('job.cancel', tr('Задание {0} отменено', job.name))}>
+            {tr('Отменить')}</ActionButton>
         )}
-        <IconBtn title={wrap ? 'Не переносить строки' : 'Переносить строки'} onClick={() => setWrap((v) => !v)} active={wrap}>
+        <IconBtn title={wrap ? tr('Не переносить строки') : tr('Переносить строки')} onClick={() => setWrap((v) => !v)} active={wrap}>
           <WrapText size={14} />
         </IconBtn>
-        <IconBtn title="Скопировать лог" onClick={copyLog}>
+        <IconBtn title={tr('Скопировать лог')} onClick={copyLog}>
           <Copy size={14} />
         </IconBtn>
         <IconBtn
-          title="В конец"
+          title={tr('В конец')}
           onClick={() => {
             stickToBottom.current = true;
             scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'smooth' });
@@ -645,14 +637,14 @@ function JobLog({ repoPath, opts, job: initialJob, canWrite, onClose, onAction }
         >
           <ArrowDownToLine size={14} />
         </IconBtn>
-        <IconBtn title="Открыть в GitLab" onClick={() => job.webUrl && api.openExternal(job.webUrl)}>
+        <IconBtn title={tr('Открыть в GitLab')} onClick={() => job.webUrl && api.openExternal(job.webUrl)}>
           <ExternalLink size={14} />
         </IconBtn>
       </div>
 
       {job.failureReason && job.status === 'failed' && (
         <div className="flex shrink-0 items-center gap-2 border-b border-gk-red/20 bg-gk-red/10 px-4 py-1.5 text-[12px] text-gk-red">
-          <AlertTriangle size={13} /> Причина: {FAILURE_REASONS[job.failureReason] ?? job.failureReason}
+          {tj('{0} Причина: {1}', [<AlertTriangle size={13} />, FAILURE_REASONS[job.failureReason] ?? job.failureReason])}
         </div>
       )}
 
@@ -663,29 +655,26 @@ function JobLog({ repoPath, opts, job: initialJob, canWrite, onClose, onAction }
       >
         {state.loading && !state.data && (
           <div className="flex items-center gap-2 px-4 py-6 font-sans text-[13px] text-gk-muted">
-            <Loader2 size={14} className="animate-spin" /> Загружаем лог…
-          </div>
+            {tj('{0} Загружаем лог…', [<Loader2 size={14} className="animate-spin" />])}</div>
         )}
         {state.error && !state.data && <ErrorNote error={state.error} />}
         {state.data?.truncated && (
           <div className="px-4 pb-2 font-sans text-[11px] text-gk-dim">
-            Лог большой ({Math.round(state.data.size / 1024)} КБ) — показан конец. Полностью — в GitLab.
-          </div>
+            {tj('Лог большой ({0} КБ) — показан конец. Полностью — в GitLab.', [Math.round(state.data.size / 1024)])}</div>
         )}
         {tree && tree.children.length === 0 && (
           <div className="px-4 py-6 font-sans text-[13px] text-gk-dim">
             {job.status === 'manual' || job.status === 'created' || job.status === 'skipped'
-              ? 'Задание ещё не запускалось — лога нет'
+              ? tr('Задание ещё не запускалось — лога нет')
               : running
-                ? 'Ждём вывод раннера…'
-                : 'Лог пуст'}
+                ? tr('Ждём вывод раннера…')
+                : tr('Лог пуст')}
           </div>
         )}
         {tree && <LogNodes nodes={tree.children} wrap={wrap} isCollapsed={isCollapsed} toggle={toggle} />}
         {running && tree?.children.length > 0 && (
           <div className="flex items-center gap-2 px-4 py-1 font-sans text-[11px] text-gk-blue">
-            <Loader2 size={11} className="animate-spin" /> выполняется…
-          </div>
+            {tj('{0} выполняется…', [<Loader2 size={11} className="animate-spin" />])}</div>
         )}
       </div>
     </div>
@@ -752,12 +741,12 @@ function Segs({ segs }) {
 /* =================== Раннеры =================== */
 
 const RUNNER_STATUS = {
-  online: { label: 'онлайн', cls: 'bg-gk-green' },
-  offline: { label: 'офлайн', cls: 'bg-gk-red' },
-  stale: { label: 'давно не выходил на связь', cls: 'bg-gk-yellow' },
-  never_contacted: { label: 'ни разу не подключался', cls: 'bg-gk-dim' },
+  online: { label: tr('онлайн'), cls: 'bg-gk-green' },
+  offline: { label: tr('офлайн'), cls: 'bg-gk-red' },
+  stale: { label: tr('давно не выходил на связь'), cls: 'bg-gk-yellow' },
+  never_contacted: { label: tr('ни разу не подключался'), cls: 'bg-gk-dim' },
 };
-const RUNNER_TYPES = { instance_type: 'общий (instance)', group_type: 'группы', project_type: 'проекта' };
+const RUNNER_TYPES = { instance_type: tr('общий (instance)'), group_type: tr('группы'), project_type: tr('проекта') };
 
 function RunnersTab({ repoPath, opts }) {
   const [state, setState] = useState({ loading: true, data: null, error: null });
@@ -767,16 +756,15 @@ function RunnersTab({ repoPath, opts }) {
     );
   }, [repoPath, opts]);
 
-  if (state.loading) return <Loading text="Загружаем раннеры…" />;
+  if (state.loading) return <Loading text={tr('Загружаем раннеры…')} />;
   if (state.error) return <ErrorNote error={state.error} />;
   const runners = state.data.runners;
   return (
     <div className="min-h-0 flex-1 overflow-y-auto p-4">
-      <p className="mb-3 text-[12px] text-gk-dim">Раннеры, которые могут выполнять задания этого проекта.</p>
+      <p className="mb-3 text-[12px] text-gk-dim">{tr('Раннеры, которые могут выполнять задания этого проекта.')}</p>
       {runners.length === 0 ? (
         <div className="rounded-lg border border-dashed border-gk-border p-6 text-center text-[13px] text-gk-dim">
-          Нет доступных раннеров — задания будут ждать в очереди
-        </div>
+          {tr('Нет доступных раннеров — задания будут ждать в очереди')}</div>
       ) : (
         <div className="grid grid-cols-[repeat(auto-fill,minmax(260px,1fr))] gap-2">
           {runners.map((r, i) => {
@@ -795,7 +783,7 @@ function RunnersTab({ repoPath, opts }) {
                 <div className="mt-1 flex flex-wrap gap-1.5 text-[11px] text-gk-muted">
                   <span>{st.label}</span>
                   {r.type && <span>· {RUNNER_TYPES[r.type] ?? r.type}</span>}
-                  {r.paused && <span className="text-gk-yellow">· на паузе</span>}
+                  {r.paused && <span className="text-gk-yellow">{tr('· на паузе')}</span>}
                 </div>
               </div>
             );

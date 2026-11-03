@@ -1,3 +1,5 @@
+import { getLanguage } from '../i18n/index.js';
+import { t, locale } from '../i18n/index.js';
 export function initials(name = '') {
   return name
     .split(/\s+/)
@@ -11,14 +13,14 @@ export function relativeTime(iso) {
   const date = new Date(iso);
   const diff = Math.max(0, Date.now() - date.getTime());
   const minutes = Math.round(diff / 60000);
-  if (minutes < 1) return 'только что';
-  if (minutes < 60) return `${minutes} мин назад`;
+  if (minutes < 1) return t('только что');
+  if (minutes < 60) return t('{0} мин назад', minutes);
   const hours = Math.round(minutes / 60);
-  if (hours < 24) return `${hours} ч назад`;
+  if (hours < 24) return t('{0} ч назад', hours);
   const days = Math.round(hours / 24);
-  if (days === 1) return 'вчера';
-  if (days < 30) return `${days} дн назад`;
-  return date.toLocaleDateString('ru-RU');
+  if (days === 1) return t('вчера');
+  if (days < 30) return t('{0} дн назад', days);
+  return date.toLocaleDateString(locale());
 }
 
 // Единый вид даты во всём интерфейсе — в таблице коммитов, в панели коммита и в подсказках: 22.09.2021 01:59
@@ -49,6 +51,7 @@ export const FILE_STATUS = {
 
 // Склонение по числу: plural(3, 'файл', 'файла', 'файлов') → «файла»
 export const plural = (n, one, few, many) => {
+  if (getLanguage() !== 'ru') return n === 1 ? one : many; // в английском две формы: one и many (few = many)
   const m10 = n % 10;
   const m100 = n % 100;
   if (m10 === 1 && m100 !== 11) return one;

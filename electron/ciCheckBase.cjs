@@ -13,6 +13,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const YAML = require('./vendor/yaml.cjs');
 const { git } = require('./git.cjs');
+const { t: tr } = require('./i18n.cjs');
 
 const isObj = (v) => v !== null && typeof v === 'object' && !Array.isArray(v);
 const arr = (v) => (v == null ? [] : Array.isArray(v) ? v : [v]);
@@ -55,7 +56,7 @@ function suggest(word, known, max = 2) {
 }
 const didYouMean = (word, known) => {
   const s = suggest(word, known);
-  return s ? ` Возможно, имелось в виду ${q(s)}.` : '';
+  return s ? tr(' Возможно, имелось в виду {0}.', q(s)) : '';
 };
 
 /* =================== Позиции в файлах =================== */
@@ -224,14 +225,14 @@ function parseExpr(src) {
     }
     if (c === '$') {
       const m = /^\$(?:\{([A-Za-z_][A-Za-z0-9_]*)\}|([A-Za-z_][A-Za-z0-9_]*))/.exec(s.slice(i));
-      if (!m) return { error: `после $ должно идти имя переменной (позиция ${i + 1})` };
+      if (!m) return { error: tr('после $ должно идти имя переменной (позиция {0})', i + 1) };
       tokens.push({ t: 'var', v: m[1] ?? m[2] });
       i += m[0].length;
       continue;
     }
     if (c === '"' || c === "'") {
       const end = s.indexOf(c, i + 1);
-      if (end < 0) return { error: `не закрыта кавычка ${c} (позиция ${i + 1})` };
+      if (end < 0) return { error: tr('не закрыта кавычка {0} (позиция {1})', c, i + 1) };
       tokens.push({ t: 'str', v: s.slice(i + 1, end) });
       i = end + 1;
       continue;
@@ -240,13 +241,13 @@ function parseExpr(src) {
       // регулярка: до следующего неэкранированного /
       let j = i + 1;
       while (j < s.length && (s[j] !== '/' || s[j - 1] === '\\')) j++;
-      if (j >= s.length) return { error: `не закрыта регулярка /…/ (позиция ${i + 1})` };
+      if (j >= s.length) return { error: tr('не закрыта регулярка /…/ (позиция {0})', i + 1) };
       const body = s.slice(i + 1, j);
       const flags = /^[a-z]*/.exec(s.slice(j + 1))[0];
       try {
         new RegExp(body, flags.replace(/[^gimsuy]/g, ''));
       } catch (e) {
-        return { error: `неверная регулярка /${body}/: ${e.message}` };
+        return { error: tr('неверная регулярка /{0}/: {1}', body, e.message) };
       }
       tokens.push({ t: 're', v: body, flags });
       i = j + 1 + flags.length;
@@ -268,21 +269,21 @@ function parseExpr(src) {
       i += 4;
       continue;
     }
-    if (c === '=') return { error: `одиночный «=» (позиция ${i + 1}) — для сравнения нужен «==»` };
+    if (c === '=') return { error: tr('одиночный «=» (позиция {0}) — для сравнения нужен «==»', i + 1) };
     const word = /^[A-Za-z0-9_.\-]+/.exec(s.slice(i));
-    if (word) return { error: `${q(word[0])} без кавычек (позиция ${i + 1}) — строки в выражениях пишутся в кавычках: "${word[0]}"` };
-    return { error: `непонятный символ ${q(c)} (позиция ${i + 1})` };
+    if (word) return { error: tr('{0} без кавычек (позиция {1}) — строки в выражениях пишутся в кавычках: "{2}"', q(word[0]), i + 1, word[0]) };
+    return { error: tr('непонятный символ {0} (позиция {1})', q(c), i + 1) };
   }
   let p = 0;
   const peek = () => tokens[p];
   const operand = () => {
     const tk = tokens[p];
-    if (!tk) return { error: 'выражение обрывается' };
+    if (!tk) return { error: tr('выражение обрывается') };
     if (tk.t === '(') {
       p++;
       const e = orExpr();
       if (e.error) return e;
-      if (tokens[p]?.t !== ')') return { error: 'не закрыта скобка (' };
+      if (tokens[p]?.t !== ')') return { error: tr('не закрыта скобка (') };
       p++;
       return e;
     }
@@ -290,7 +291,7 @@ function parseExpr(src) {
       p++;
       return { node: tk };
     }
-    return { error: `ожидалось значение, а встретилось ${q(tk.v ?? tk.t)}` };
+    return { error: tr('ожидалось значение, а встретилось {0}', q(tk.v ?? tk.t)) };
   };
   const compare = () => {
     const left = operand();
@@ -301,7 +302,7 @@ function parseExpr(src) {
       const right = operand();
       if (right.error) return right;
       if ((op.v === '=~' || op.v === '!~') && right.node?.t !== 're' && right.node?.t !== 'var') {
-        return { error: `справа от ${op.v} должна быть регулярка /…/, а не ${right.node?.t === 'str' ? 'строка в кавычках' : 'значение'}` };
+        return { error: tr('справа от {0} должна быть регулярка /…/, а не {1}', op.v, right.node?.t === 'str' ? tr('строка в кавычках') : tr('значение')) };
       }
       return { node: { t: 'cmp', op: op.v, left: left.node, right: right.node } };
     }
@@ -329,10 +330,10 @@ function parseExpr(src) {
     }
     return left;
   }
-  if (!tokens.length) return { error: 'пустое выражение' };
+  if (!tokens.length) return { error: tr('пустое выражение') };
   const res = orExpr();
   if (res.error) return res;
-  if (p < tokens.length) return { error: `лишнее после выражения: ${q(tokens[p].v ?? tokens[p].t)} — не хватает && или ||?` };
+  if (p < tokens.length) return { error: tr('лишнее после выражения: {0} — не хватает && или ||?', q(tokens[p].v ?? tokens[p].t)) };
   return { ast: res.node, vars: tokens.filter((t) => t.t === 'var').map((t) => t.v) };
 }
 
@@ -416,6 +417,7 @@ function durationSeconds(value) {
 /* =================== Секреты в открытом виде =================== */
 
 const SECRET_NAME = /(PASS(WORD|WD)?|SECRET|TOKEN|API_?KEY|PRIVATE_?KEY|ACCESS_?KEY|CREDENTIALS?|AUTH)$/i;
+// Тексты переводятся при использовании (tr(...)): массив создаётся один раз при загрузке модуля
 const SECRET_VALUE = [
   [/\bglpat-[0-9A-Za-z_-]{20,}/, 'токен GitLab (glpat-…)'],
   [/\bgh[pousr]_[0-9A-Za-z]{30,}/, 'токен GitHub (ghp_…)'],

@@ -3,6 +3,7 @@
 const { GitError } = require('../errors.cjs');
 const { request } = require('./http.cjs');
 const M = require('./models.cjs');
+const { t } = require('../i18n.cjs');
 
 const repoApi = (ctx) => `/repositories/${ctx.owner}/${ctx.repo}`;
 const VAR_KEY = /^[A-Za-z_][A-Za-z0-9_]*$/;
@@ -25,21 +26,21 @@ const bitbucket = {
       canManageVariables: write,
       why: {
         ...M.reasons('Bitbucket', ['canRetryFailed', 'canRerunSingleJob', 'canCancelJob', 'canPlayManualJob', 'canRunWithInputs']),
-        canListRunners: 'Bitbucket не открывает раннеры в публичном API — управляйте ими в настройках репозитория (Repository settings → Runners)',
-        canDownloadArtifacts: 'Bitbucket не отдаёт артефакты пайплайна через публичный API',
-        canCreateRunnerToken: 'Раннер Bitbucket регистрируется в настройках репозитория — команда запуска показывается там',
+        canListRunners: t('Bitbucket не открывает раннеры в публичном API — управляйте ими в настройках репозитория (Repository settings → Runners)'),
+        canDownloadArtifacts: t('Bitbucket не отдаёт артефакты пайплайна через публичный API'),
+        canCreateRunnerToken: t('Раннер Bitbucket регистрируется в настройках репозитория — команда запуска показывается там'),
       },
     };
   },
 
   async init(ctx) {
     if (ctx.host !== 'bitbucket.org' && !ctx.apiOverride) {
-      throw new GitError('Bitbucket Data Center не поддерживает Pipelines', {
+      throw new GitError(t('Bitbucket Data Center не поддерживает Pipelines'), {
         code: 'UNSUPPORTED',
-        hint: 'На своём сервере Bitbucket сборки обычно идут в Bamboo или Jenkins',
+        hint: t('На своём сервере Bitbucket сборки обычно идут в Bamboo или Jenkins'),
       });
     }
-    const r = await request(ctx, 'GET', repoApi(ctx), { notFound: `Репозиторий ${ctx.owner}/${ctx.repo} не найден или у входа нет к нему доступа` });
+    const r = await request(ctx, 'GET', repoApi(ctx), { notFound: t('Репозиторий {0}/{1} не найден или у входа нет к нему доступа', ctx.owner, ctx.repo) });
     ctx.defaultBranch = r.mainbranch?.name ?? null;
     ctx.webUrl = r.links?.html?.href ?? ctx.webUrl;
     ctx.canWrite = true;
@@ -79,15 +80,15 @@ const bitbucket = {
 
   async pipelineDetail(ctx, id) {
     const [p, steps] = await Promise.all([
-      request(ctx, 'GET', `${repoApi(ctx)}/pipelines/${Number(id)}`, { notFound: `Пайплайн #${id} не найден` }),
+      request(ctx, 'GET', `${repoApi(ctx)}/pipelines/${Number(id)}`, { notFound: t('Пайплайн #{0} не найден', id) }),
       request(ctx, 'GET', `${repoApi(ctx)}/pipelines/${Number(id)}/steps/`, { query: { pagelen: 100 } }),
     ]);
     const pipeline = this.run(p, ctx);
     const jobs = (steps?.values ?? []).map((s, i) => ({
       id: s.uuid,
       kind: 'job',
-      name: s.name ?? `Шаг ${i + 1}`,
-      stage: s.name ?? `Шаг ${i + 1}`,
+      name: s.name ?? t('Шаг {0}', i + 1),
+      stage: s.name ?? t('Шаг {0}', i + 1),
       status: M.bitbucketStatus(s.state),
       runnerName: s.runs_on?.length ? s.runs_on.join(', ') : null,
       runnerTags: s.runs_on ?? [],
@@ -106,7 +107,7 @@ const bitbucket = {
   },
 
   async jobLog(ctx, stepId, { pipelineId } = {}) {
-    if (!pipelineId) throw new GitError('Не указан пайплайн шага', { code: 'BAD_ARGS' });
+    if (!pipelineId) throw new GitError(t('Не указан пайплайн шага'), { code: 'BAD_ARGS' });
     const log = await request(ctx, 'GET', `${repoApi(ctx)}/pipelines/${Number(pipelineId)}/steps/${encodeURIComponent(stepId)}/log`, { text: true }).catch((error) => {
       if (error.code === 'NOT_FOUND') return { text: '', size: 0 };
       throw error;
@@ -125,7 +126,7 @@ const bitbucket = {
       const res = await request(ctx, 'POST', `${repoApi(ctx)}/pipelines/`, { body: { target: p.target } });
       return { type: a.type, id: res?.build_number ?? null };
     }
-    throw new GitError('Bitbucket не поддерживает это действие', { code: 'UNSUPPORTED' });
+    throw new GitError(t('Bitbucket не поддерживает это действие'), { code: 'UNSUPPORTED' });
   },
 
   async runPipeline(ctx, { ref, workflow, variables = [] }) {
@@ -135,13 +136,13 @@ const bitbucket = {
     if (m) target.selector = { type: 'custom', pattern: m[1].trim() };
     const vars = variables.filter((v) => v.key).map((v) => ({ key: v.key, value: String(v.value ?? ''), secured: Boolean(v.secured) }));
     const bad = vars.find((v) => !VAR_KEY.test(v.key));
-    if (bad) throw new GitError(`Некорректное имя переменной: ${bad.key}`, { code: 'BAD_ARGS' });
+    if (bad) throw new GitError(t('Некорректное имя переменной: {0}', bad.key), { code: 'BAD_ARGS' });
     const res = await request(ctx, 'POST', `${repoApi(ctx)}/pipelines/`, { body: { target, ...(vars.length ? { variables: vars } : {}) } });
     return { id: res?.build_number ?? null };
   },
 
   async listRunners() {
-    throw new GitError('Bitbucket не открывает раннеры в публичном API', { code: 'UNSUPPORTED', hint: 'Repository settings → Runners' });
+    throw new GitError(t('Bitbucket не открывает раннеры в публичном API'), { code: 'UNSUPPORTED', hint: 'Repository settings → Runners' });
   },
 
   async listArtifacts() {
@@ -164,7 +165,7 @@ const bitbucket = {
   },
 
   async saveSecret(ctx, { key, value, secret, original }) {
-    if (!VAR_KEY.test(key ?? '')) throw new GitError('Имя переменной: латинские буквы, цифры и _', { code: 'INVALID_NAME' });
+    if (!VAR_KEY.test(key ?? '')) throw new GitError(t('Имя переменной: латинские буквы, цифры и _'), { code: 'INVALID_NAME' });
     const body = { key, value: String(value ?? ''), secured: Boolean(secret) };
     if (original?.uuid) await request(ctx, 'PUT', `${repoApi(ctx)}/pipelines_config/variables/${encodeURIComponent(original.uuid)}`, { body });
     else await request(ctx, 'POST', `${repoApi(ctx)}/pipelines_config/variables/`, { body });
@@ -172,7 +173,7 @@ const bitbucket = {
   },
 
   async deleteSecret(ctx, { uuid, key }) {
-    if (!uuid) throw new GitError(`Переменная ${key} не найдена`, { code: 'NOT_FOUND' });
+    if (!uuid) throw new GitError(t('Переменная {0} не найдена', key), { code: 'NOT_FOUND' });
     await request(ctx, 'DELETE', `${repoApi(ctx)}/pipelines_config/variables/${encodeURIComponent(uuid)}`);
     return { key };
   },

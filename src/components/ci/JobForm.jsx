@@ -1,20 +1,21 @@
 import { useMemo, useState } from 'react';
 import { ChevronDown, ChevronRight, Loader2, Plus, Save, Trash2, X } from 'lucide-react';
+import { t, tj } from '../../i18n/index.js';
 
 const WHEN_OPTIONS = [
-  ['on_success', 'Если предыдущие этапы успешны (по умолчанию)'],
-  ['manual', 'Вручную — кнопкой в GitLab'],
-  ['always', 'Всегда, даже если что-то упало'],
-  ['on_failure', 'Только если что-то упало'],
-  ['delayed', 'С задержкой'],
-  ['never', 'Не запускать'],
+  ['on_success', t('Если предыдущие этапы успешны (по умолчанию)')],
+  ['manual', t('Вручную — кнопкой в GitLab')],
+  ['always', t('Всегда, даже если что-то упало')],
+  ['on_failure', t('Только если что-то упало')],
+  ['delayed', t('С задержкой')],
+  ['never', t('Не запускать')],
 ];
 const RULE_WHEN = [
-  ['on_success', 'запускать'],
-  ['manual', 'вручную'],
-  ['always', 'всегда'],
-  ['never', 'не запускать'],
-  ['delayed', 'с задержкой'],
+  ['on_success', t('запускать')],
+  ['manual', t('вручную')],
+  ['always', t('всегда')],
+  ['never', t('не запускать')],
+  ['delayed', t('с задержкой')],
 ];
 
 const lines = (v) => (v ?? []).join('\n');
@@ -103,23 +104,23 @@ export default function JobForm({ job, stages, allJobs, mode, presetStage, busy,
     onSubmit(ops, name);
   };
 
-  const inherited = (label, value) => (value ? `унаследовано: ${value}` : label);
+  const inherited = (label, value) => (value ? t('унаследовано: {0}', value) : label);
 
   return (
     <form onSubmit={submit} className="flex min-h-0 flex-1 flex-col">
       <div className="min-h-0 flex-1 space-y-3.5 overflow-y-auto px-4 py-3 text-[12.5px]">
-        <Field label="Имя задания">
+        <Field label={t('Имя задания')}>
           <input
             autoFocus={mode === 'create'}
             value={f.name}
             onChange={(e) => set({ name: e.target.value })}
-            placeholder="например, unit-tests"
+            placeholder={t('например, unit-tests')}
             className={inputCls}
           />
         </Field>
 
         <div className="grid grid-cols-2 gap-3">
-          <Field label="Этап">
+          <Field label={t('Этап')}>
             <input list="ci-stage-options" value={f.stage} onChange={(e) => set({ stage: e.target.value })} className={inputCls} />
             <datalist id="ci-stage-options">
               {stageOptions.map((s) => (
@@ -127,7 +128,7 @@ export default function JobForm({ job, stages, allJobs, mode, presetStage, busy,
               ))}
             </datalist>
           </Field>
-          <Field label="Docker-образ">
+          <Field label={t('Docker-образ')}>
             <input
               value={f.image}
               onChange={(e) => set({ image: e.target.value })}
@@ -137,19 +138,19 @@ export default function JobForm({ job, stages, allJobs, mode, presetStage, busy,
           </Field>
         </div>
 
-        <Field label="Команды (script) — по одной на строку">
+        <Field label={t('Команды (script) — по одной на строку')}>
           <textarea
             value={f.script}
             onChange={(e) => set({ script: e.target.value })}
             rows={Math.min(10, Math.max(3, f.script.split('\n').length + 1))}
-            placeholder={job?.script?.lines?.length && !own.has('script') ? `унаследовано:\n${job.script.lines.join('\n')}` : 'npm ci\nnpm test'}
+            placeholder={job?.script?.lines?.length && !own.has('script') ? t('унаследовано:\n{0}', job.script.lines.join('\n')) : 'npm ci\nnpm test'}
             spellCheck={false}
             className={`${inputCls} resize-y font-mono text-[12px] leading-5`}
           />
         </Field>
 
         <div className="grid grid-cols-2 gap-3">
-          <Field label="Когда запускать">
+          <Field label={t('Когда запускать')}>
             <select value={f.when} onChange={(e) => set({ when: e.target.value })} className={inputCls}>
               {WHEN_OPTIONS.map(([v, l]) => (
                 <option key={v} value={v}>
@@ -158,23 +159,21 @@ export default function JobForm({ job, stages, allJobs, mode, presetStage, busy,
               ))}
             </select>
           </Field>
-          <Field label="Окружение (environment)">
+          <Field label={t('Окружение (environment)')}>
             <input value={f.environment} onChange={(e) => set({ environment: e.target.value })} placeholder="production" className={inputCls} />
           </Field>
         </div>
 
         <label className="flex cursor-pointer items-center gap-2 text-gk-text">
-          <input type="checkbox" checked={f.allow_failure} onChange={(e) => set({ allow_failure: e.target.checked })} className="accent-[var(--color-gk-green)]" />
-          Может упасть — ошибка не остановит пайплайн
-        </label>
+          {tj('{0}Может упасть — ошибка не остановит пайплайн', [<input type="checkbox" checked={f.allow_failure} onChange={(e) => set({ allow_failure: e.target.checked })} className="accent-[var(--color-gk-green)]" />])}</label>
 
         {/* needs */}
-        <Field label="Запускать после (needs)">
+        <Field label={t('Запускать после (needs)')}>
           <div className="flex flex-wrap items-center gap-1.5">
             {f.needs === null ? (
-              <span className="text-[11.5px] text-gk-dim">по порядку этапов</span>
+              <span className="text-[11.5px] text-gk-dim">{t('по порядку этапов')}</span>
             ) : f.needs.length === 0 ? (
-              <span className="text-[11.5px] text-gk-dim">сразу, не дожидаясь этапов</span>
+              <span className="text-[11.5px] text-gk-dim">{t('сразу, не дожидаясь этапов')}</span>
             ) : (
               f.needs.map((n) => (
                 <span key={n} className="flex items-center gap-1 rounded bg-gk-blue/15 px-1.5 py-0.5 font-mono text-[11px] text-gk-blue">
@@ -195,7 +194,7 @@ export default function JobForm({ job, stages, allJobs, mode, presetStage, busy,
               }}
               className="rounded bg-gk-hover px-1.5 py-0.5 text-[11px] text-gk-muted outline-none"
             >
-              <option value="">+ добавить…</option>
+              <option value="">{t('+ добавить…')}</option>
               {otherJobs
                 .filter((n) => !(f.needs ?? []).includes(n))
                 .map((n) => (
@@ -203,25 +202,25 @@ export default function JobForm({ job, stages, allJobs, mode, presetStage, busy,
                     {n}
                   </option>
                 ))}
-              <option value="__stage">— по порядку этапов (без needs)</option>
-              <option value="__now">— сразу (needs: [])</option>
+              <option value="__stage">{t('— по порядку этапов (без needs)')}</option>
+              <option value="__now">{t('— сразу (needs: [])')}</option>
             </select>
           </div>
         </Field>
 
-        <Field label="Теги раннера — через запятую">
+        <Field label={t('Теги раннера — через запятую')}>
           <input
             value={f.tags}
             onChange={(e) => set({ tags: e.target.value })}
-            placeholder={job?.tags?.length && !own.has('tags') ? `унаследовано: ${job.tags.join(', ')}` : 'docker, linux'}
+            placeholder={job?.tags?.length && !own.has('tags') ? t('унаследовано: {0}', job.tags.join(', ')) : 'docker, linux'}
             className={inputCls}
           />
         </Field>
 
         {/* rules */}
-        <Field label="Правила запуска (rules) — срабатывает первое подходящее">
+        <Field label={t('Правила запуска (rules) — срабатывает первое подходящее')}>
           {!rulesEditable ? (
-            <p className="text-[11.5px] text-gk-dim">Здесь сложные правила (changes, exists, variables) — правьте их во вкладке «Файл».</p>
+            <p className="text-[11.5px] text-gk-dim">{t('Здесь сложные правила (changes, exists, variables) — правьте их во вкладке «Файл».')}</p>
           ) : (
             <div className="space-y-1.5">
               {f.rules.map((r, i) => (
@@ -229,7 +228,7 @@ export default function JobForm({ job, stages, allJobs, mode, presetStage, busy,
                   <input
                     value={r.if}
                     onChange={(e) => set({ rules: f.rules.map((x, k) => (k === i ? { ...x, if: e.target.value } : x)) })}
-                    placeholder='$CI_COMMIT_BRANCH == "main" (пусто — всегда)'
+                    placeholder={t('$CI_COMMIT_BRANCH == "main" (пусто — всегда)')}
                     spellCheck={false}
                     className={`${inputCls} min-w-0 flex-1 font-mono text-[11.5px]`}
                   />
@@ -248,7 +247,7 @@ export default function JobForm({ job, stages, allJobs, mode, presetStage, busy,
                     type="button"
                     onClick={() => set({ rules: f.rules.filter((_, k) => k !== i) })}
                     className="rounded p-1 text-gk-dim hover:bg-gk-hover hover:text-gk-red"
-                    title="Удалить правило"
+                    title={t('Удалить правило')}
                   >
                     <X size={12} />
                   </button>
@@ -259,16 +258,14 @@ export default function JobForm({ job, stages, allJobs, mode, presetStage, busy,
                 onClick={() => set({ rules: [...f.rules, { if: '$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH', when: 'on_success', allow_failure: false }] })}
                 className="flex items-center gap-1 text-[11.5px] text-gk-blue hover:underline"
               >
-                <Plus size={11} /> правило
-              </button>
-              {f.rules.length > 0 && <p className="text-[11px] text-gk-dim">Если ни одно правило не подошло — задание не запускается.</p>}
+                {tj('{0} правило', [<Plus size={11} />])}</button>
+              {f.rules.length > 0 && <p className="text-[11px] text-gk-dim">{t('Если ни одно правило не подошло — задание не запускается.')}</p>}
             </div>
           )}
         </Field>
 
         <button type="button" onClick={() => setExtra((v) => !v)} className="flex items-center gap-1 text-[11.5px] text-gk-muted hover:text-gk-text">
-          {extra ? <ChevronDown size={12} /> : <ChevronRight size={12} />} Дополнительно: before_script, after_script, timeout
-        </button>
+          {tj('{0} Дополнительно: before_script, after_script, timeout', [extra ? <ChevronDown size={12} /> : <ChevronRight size={12} />])}</button>
         {extra && (
           <div className="animate-fade-in space-y-3">
             <Field label="before_script">
@@ -276,7 +273,7 @@ export default function JobForm({ job, stages, allJobs, mode, presetStage, busy,
                 value={f.before_script}
                 onChange={(e) => set({ before_script: e.target.value })}
                 rows={3}
-                placeholder={job?.beforeScript?.inherited ? `унаследовано:\n${job.beforeScript.lines.join('\n')}` : ''}
+                placeholder={job?.beforeScript?.inherited ? t('унаследовано:\n{0}', job.beforeScript.lines.join('\n')) : ''}
                 spellCheck={false}
                 className={`${inputCls} resize-y font-mono text-[12px]`}
               />
@@ -290,7 +287,7 @@ export default function JobForm({ job, stages, allJobs, mode, presetStage, busy,
                 className={`${inputCls} resize-y font-mono text-[12px]`}
               />
             </Field>
-            <Field label="Таймаут">
+            <Field label={t('Таймаут')}>
               <input value={f.timeout} onChange={(e) => set({ timeout: e.target.value })} placeholder="30 minutes" className={inputCls} />
             </Field>
           </div>
@@ -312,20 +309,19 @@ export default function JobForm({ job, stages, allJobs, mode, presetStage, busy,
               armDelete ? 'bg-gk-red text-white' : 'text-gk-red hover:bg-gk-red/10'
             }`}
           >
-            <Trash2 size={13} /> {armDelete ? 'Точно удалить?' : 'Удалить'}
+            <Trash2 size={13} /> {armDelete ? t('Точно удалить?') : t('Удалить')}
           </button>
         )}
         <div className="flex-1" />
         <button type="button" onClick={onCancel} className="rounded px-3 py-1.5 text-[12.5px] text-gk-muted hover:bg-gk-hover hover:text-gk-text">
-          Отмена
-        </button>
+          {t('Отмена')}</button>
         <button
           type="submit"
           disabled={busy || !f.name.trim() || (mode === 'create' && !f.script.trim())}
           className="flex items-center gap-1.5 rounded-md bg-gk-green px-3 py-1.5 text-[12.5px] font-semibold text-gk-ink transition hover:brightness-110 disabled:opacity-40"
         >
           {busy ? <Loader2 size={13} className="animate-spin" /> : <Save size={13} />}
-          {mode === 'create' ? 'Добавить задание' : 'Применить'}
+          {mode === 'create' ? t('Добавить задание') : t('Применить')}
         </button>
       </div>
     </form>

@@ -4,6 +4,7 @@ const { GitError } = require('../errors.cjs');
 const { request, download } = require('./http.cjs');
 const M = require('./models.cjs');
 const { seal } = require('./sealedbox.cjs');
+const { t: tr } = require('../i18n.cjs');
 
 const repoApi = (ctx) => `/repos/${ctx.owner}/${ctx.repo}`;
 
@@ -52,16 +53,16 @@ const github = {
       localRunner: admin,
       why: {
         ...M.reasons('GitHub', ['canPauseRunner', 'canEditRunnerSettings', 'canRunWithVariables', 'canCancelJob', 'canPlayManualJob']),
-        canRunWithVariables: 'GitHub запускает workflow только с входными параметрами (inputs) — переменные окружения задаются в самом workflow',
-        canPauseRunner: 'У GitHub нет паузы раннера — остановите службу раннера на сервере',
-        ...(admin ? {} : { canListRunners: 'Раннеры и секреты видны только администраторам репозитория' }),
+        canRunWithVariables: tr('GitHub запускает workflow только с входными параметрами (inputs) — переменные окружения задаются в самом workflow'),
+        canPauseRunner: tr('У GitHub нет паузы раннера — остановите службу раннера на сервере'),
+        ...(admin ? {} : { canListRunners: tr('Раннеры и секреты видны только администраторам репозитория') }),
       },
     };
   },
 
   /** Права в репозитории: push — запуск и отмена, admin — раннеры и секреты */
   async init(ctx) {
-    const r = await request(ctx, 'GET', repoApi(ctx), { notFound: `Репозиторий ${ctx.owner}/${ctx.repo} не найден или у токена нет к нему доступа` });
+    const r = await request(ctx, 'GET', repoApi(ctx), { notFound: tr('Репозиторий {0}/{1} не найден или у токена нет к нему доступа', ctx.owner, ctx.repo) });
     ctx.canWrite = r.permissions ? Boolean(r.permissions.push || r.permissions.admin) : true;
     ctx.isAdmin = r.permissions ? Boolean(r.permissions.admin) : true;
     ctx.defaultBranch = r.default_branch ?? null;
@@ -133,7 +134,7 @@ const github = {
   async pipelineDetail(ctx, id) {
     const runId = Number(id);
     const [r, jobs, arts] = await Promise.all([
-      request(ctx, 'GET', `${repoApi(ctx)}/actions/runs/${runId}`, { notFound: `Запуск #${runId} не найден — возможно, его удалили` }),
+      request(ctx, 'GET', `${repoApi(ctx)}/actions/runs/${runId}`, { notFound: tr('Запуск #{0} не найден — возможно, его удалили', runId) }),
       request(ctx, 'GET', `${repoApi(ctx)}/actions/runs/${runId}/jobs`, { query: { per_page: 100, filter: 'latest' } }),
       this.listArtifacts(ctx, runId).catch(() => []),
     ]);
@@ -143,7 +144,7 @@ const github = {
   async jobLog(ctx, jobId) {
     const id = Number(jobId);
     const [j, log] = await Promise.all([
-      request(ctx, 'GET', `${repoApi(ctx)}/actions/jobs/${id}`, { notFound: `Задание #${id} не найдено` }),
+      request(ctx, 'GET', `${repoApi(ctx)}/actions/jobs/${id}`, { notFound: tr('Задание #{0} не найдено', id) }),
       request(ctx, 'GET', `${repoApi(ctx)}/actions/jobs/${id}/logs`, { text: true }).catch((error) => {
         if (error.code === 'NOT_FOUND' || error.code === 'VALIDATION') return { text: '', size: 0 };
         throw error;
@@ -161,7 +162,7 @@ const github = {
       'job.retry': () => ['POST', `${base}/actions/jobs/${a.id}/rerun`],
     };
     const make = calls[a.type];
-    if (!make) throw new GitError('GitHub не поддерживает это действие', { code: 'UNSUPPORTED' });
+    if (!make) throw new GitError(tr('GitHub не поддерживает это действие'), { code: 'UNSUPPORTED' });
     const [method, p] = make();
     await request(ctx, method, p, { body: {} });
     return { type: a.type, id: a.id };
@@ -169,12 +170,12 @@ const github = {
 
   /** workflow_dispatch: workflow — путь файла (.github/workflows/x.yml), inputs — значения формы */
   async runPipeline(ctx, { ref, workflow, inputs = {} }) {
-    if (!workflow) throw new GitError('Выберите workflow для запуска', { code: 'BAD_ARGS' });
+    if (!workflow) throw new GitError(tr('Выберите workflow для запуска'), { code: 'BAD_ARGS' });
     const file = path.posix.basename(String(workflow));
     const body = { ref, inputs: Object.fromEntries(Object.entries(inputs).map(([k, v]) => [k, typeof v === 'boolean' ? String(v) : String(v ?? '')])) };
     await request(ctx, 'POST', `${repoApi(ctx)}/actions/workflows/${encodeURIComponent(file)}/dispatches`, {
       body,
-      notFound: `Workflow ${file} не найден на сервере — он закоммичен и отправлен в ветку по умолчанию?`,
+      notFound: tr('Workflow {0} не найден на сервере — он закоммичен и отправлен в ветку по умолчанию?', file),
     });
     // GitHub не возвращает номер запуска — ищем свежий запуск этого workflow
     for (let i = 0; i < 4; i++) {
@@ -245,12 +246,12 @@ const github = {
       else await request(ctx, 'DELETE', `${repoApi(ctx)}/actions/runners/${id}/labels`);
     }
     const unsupported = ['paused', 'runUntagged', 'locked', 'description', 'maximumTimeout'].filter((k) => patch[k] !== undefined);
-    if (unsupported.length) throw new GitError('GitHub не позволяет менять эти настройки раннера', { code: 'UNSUPPORTED', hint: unsupported.join(', ') });
+    if (unsupported.length) throw new GitError(tr('GitHub не позволяет менять эти настройки раннера'), { code: 'UNSUPPORTED', hint: unsupported.join(', ') });
     return { id };
   },
 
   async deleteRunner(ctx, id) {
-    await request(ctx, 'DELETE', `${repoApi(ctx)}/actions/runners/${id}`, { notFound: 'Раннер уже удалён' });
+    await request(ctx, 'DELETE', `${repoApi(ctx)}/actions/runners/${id}`, { notFound: tr('Раннер уже удалён') });
     return { id };
   },
 

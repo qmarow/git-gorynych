@@ -5,6 +5,7 @@ import { inlineHighlights } from '../lib/inlineDiff.js';
 import { detectLanguage, findAll, highlightHunks, languageName, layerLine, searchRegex } from '../lib/highlight.js';
 import { isMod, kb } from '../lib/platform.js';
 import { readable } from '../lib/scheme.js';
+import { t as tr, tj } from '../i18n/index.js';
 
 const writePref = (key, on) => {
   try {
@@ -28,10 +29,10 @@ const readPref = (key, def) => {
 };
 
 const MODE_LABELS = {
-  commit: (t) => (t.kind === 'compare' ? `${t.parent.slice(0, 7)} → ${t.hash.slice(0, 7)}` : t.kind === 'stash' ? (t.stashId ?? 'stash') : `коммит ${t.hash.slice(0, 7)}`),
+  commit: (t) => (t.kind === 'compare' ? `${t.parent.slice(0, 7)} → ${t.hash.slice(0, 7)}` : t.kind === 'stash' ? (t.stashId ?? 'stash') : tr('коммит {0}', t.hash.slice(0, 7))),
   staged: () => 'staged',
   unstaged: () => 'unstaged',
-  untracked: () => 'новый файл',
+  untracked: () => tr('новый файл'),
 };
 
 export default function DiffView({
@@ -311,7 +312,7 @@ export default function DiffView({
         <ToggleButton
           active={ignoreWhitespace}
           onClick={onToggleWhitespace}
-          title="Игнорировать изменения пробелов"
+          title={tr('Игнорировать изменения пробелов')}
           className="rounded ring-1 ring-gk-border"
         >
           <Space size={13} />
@@ -319,7 +320,7 @@ export default function DiffView({
         <ToggleButton
           active={inline}
           onClick={toggleInline}
-          title="Подсвечивать, что именно изменилось внутри строки"
+          title={tr('Подсвечивать, что именно изменилось внутри строки')}
           className="rounded ring-1 ring-gk-border"
         >
           <Highlighter size={13} />
@@ -328,7 +329,7 @@ export default function DiffView({
           active={syntaxOn && Boolean(lang)}
           onClick={toggleSyntax}
           disabled={!lang}
-          title={lang ? `Подсветка синтаксиса: ${languageName(lang)}` : 'Подсветка синтаксиса — тип файла не распознан'}
+          title={lang ? tr('Подсветка синтаксиса: {0}', languageName(lang)) : tr('Подсветка синтаксиса — тип файла не распознан')}
           data-testid="diff-syntax"
           className="rounded ring-1 ring-gk-border disabled:opacity-40"
         >
@@ -337,7 +338,7 @@ export default function DiffView({
         <ToggleButton
           active={search.open}
           onClick={() => (search.open ? closeSearch() : openSearch())}
-          title={kb('Поиск в изменениях (Ctrl+F)')}
+          title={kb(tr('Поиск в изменениях (Ctrl+F)'))}
           data-testid="diff-search-toggle"
           className="rounded ring-1 ring-gk-border"
         >
@@ -345,13 +346,13 @@ export default function DiffView({
         </ToggleButton>
         {changeCount > 0 && (
           <div className="ml-1 flex items-center rounded ring-1 ring-gk-border">
-            <ToggleButton onClick={() => goChange(-1)} title="Предыдущее изменение (Shift+F7)">
+            <ToggleButton onClick={() => goChange(-1)} title={tr('Предыдущее изменение (Shift+F7)')}>
               <ArrowUpToLine size={13} />
             </ToggleButton>
-            <span className="min-w-[44px] select-none text-center text-[11px] text-gk-muted" title="Блоков изменений в файле">
-              {current >= 0 ? `${current + 1} / ${changeCount}` : `${changeCount} изм.`}
+            <span className="min-w-[44px] select-none text-center text-[11px] text-gk-muted" title={tr('Блоков изменений в файле')}>
+              {current >= 0 ? `${current + 1} / ${changeCount}` : tr('{0} изм.', changeCount)}
             </span>
-            <ToggleButton onClick={() => goChange(1)} title="Следующее изменение (F7)">
+            <ToggleButton onClick={() => goChange(1)} title={tr('Следующее изменение (F7)')}>
               <ArrowDownToLine size={13} />
             </ToggleButton>
           </div>
@@ -361,13 +362,13 @@ export default function DiffView({
           <span className="mr-1 text-[11px] text-gk-dim">
             {target.index + 1} / {target.list.length}
           </span>
-          <IconBtn title={kb('Предыдущий файл (Alt+↑)')} disabled={!onPrev} onClick={onPrev}>
+          <IconBtn title={kb(tr('Предыдущий файл (Alt+↑)'))} disabled={!onPrev} onClick={onPrev}>
             <ChevronUp size={15} />
           </IconBtn>
-          <IconBtn title={kb('Следующий файл (Alt+↓)')} disabled={!onNext} onClick={onNext}>
+          <IconBtn title={kb(tr('Следующий файл (Alt+↓)'))} disabled={!onNext} onClick={onNext}>
             <ChevronDown size={15} />
           </IconBtn>
-          <IconBtn title="Закрыть (Esc)" onClick={onClose}>
+          <IconBtn title={tr('Закрыть (Esc)')} onClick={onClose}>
             <X size={15} />
           </IconBtn>
         </div>
@@ -391,25 +392,23 @@ export default function DiffView({
       <div ref={scrollRef} className="min-h-0 flex-1 overflow-auto font-mono text-[12px] leading-5 [tab-size:4]">
         {!data ? (
           <Placeholder>
-            <Loader2 size={15} className="animate-spin" /> Загрузка diff…
-          </Placeholder>
+            {tj('{0} Загрузка diff…', [<Loader2 size={15} className="animate-spin" />])}</Placeholder>
         ) : data.error ? (
           <Placeholder className="text-gk-red">{data.error}</Placeholder>
         ) : data.binary ? (
           <Placeholder>
-            <FileText size={15} /> Бинарный файл — построчный diff недоступен
-          </Placeholder>
+            {tj('{0} Бинарный файл — построчный diff недоступен', [<FileText size={15} />])}</Placeholder>
         ) : data.tooLarge ? (
-          <Placeholder>Файл слишком большой ({Math.round(data.size / 1024)} КБ) для просмотра</Placeholder>
+          <Placeholder>{tj('Файл слишком большой ({0} КБ) для просмотра', [Math.round(data.size / 1024)])}</Placeholder>
         ) : data.hunks.length === 0 ? (
           <Placeholder>
             {data.eolOnly
-              ? 'Изменились только окончания строк (CRLF ↔ LF) — текст файла тот же'
+              ? tr('Изменились только окончания строк (CRLF ↔ LF) — текст файла тот же')
               : file.oldPath && file.oldPath !== file.path
-              ? 'Файл переименован без изменения содержимого'
+              ? tr('Файл переименован без изменения содержимого')
               : ignoreWhitespace
-                ? 'Изменения только в пробелах'
-                : 'Нет изменений в содержимом'}
+                ? tr('Изменения только в пробелах')
+                : tr('Нет изменений в содержимом')}
           </Placeholder>
         ) : view === 'split' ? (
           <SplitDiff hunks={data.hunks} highlights={highlights} hunkProps={hunkProps} markers={guardMarkers} {...lineView} />
@@ -418,8 +417,7 @@ export default function DiffView({
         )}
         {data?.truncated && (
           <div className="border-t border-gk-border px-4 py-2 font-sans text-xs text-gk-dim">
-            Diff слишком большой — показана только часть строк
-          </div>
+            {tr('Diff слишком большой — показана только часть строк')}</div>
         )}
       </div>
     </div>
@@ -633,7 +631,7 @@ function LineText({ line, segs, tokens, hits, current }) {
         className={cls}
         data-hit={p.hit ? p.hit.idx : undefined}
         data-hit-current={p.hit?.current ? '' : undefined}
-        title={p.ws ? 'Изменились пробелы' : undefined}
+        title={p.ws ? tr('Изменились пробелы') : undefined}
       >
         {text}
       </Tag>
@@ -685,26 +683,26 @@ function SearchBar({ inputRef, search, onChange, error, count, capped, index, on
               onChange({ regex: !search.regex });
             }
           }}
-          placeholder="Найти в изменениях"
-          aria-label="Найти в изменениях"
+          placeholder={tr('Найти в изменениях')}
+          aria-label={tr('Найти в изменениях')}
           spellCheck={false}
           className="min-w-0 flex-1 bg-transparent py-1 font-mono text-[12px] text-gk-text outline-none placeholder:font-sans placeholder:text-gk-dim"
         />
-        {opt('caseSensitive', CaseSensitive, 'Учитывать регистр (Alt+C)', 'search-case')}
-        {opt('regex', Regex, 'Регулярное выражение (Alt+R)', 'search-regex')}
-        {opt('changedOnly', Diff, 'Только в изменённых строках (+ и −)', 'search-changed')}
+        {opt('caseSensitive', CaseSensitive, tr('Учитывать регистр (Alt+C)'), 'search-case')}
+        {opt('regex', Regex, tr('Регулярное выражение (Alt+R)'), 'search-regex')}
+        {opt('changedOnly', Diff, tr('Только в изменённых строках (+ и −)'), 'search-changed')}
       </div>
       <span className={`min-w-[88px] text-[11.5px] ${error || (search.query && !count) ? 'text-gk-red' : 'text-gk-muted'}`} data-testid="search-count">
-        {error ? error : !search.query ? '' : count ? `${index + 1} из ${count}${capped ? '+' : ''}` : 'Нет совпадений'}
+        {error ? error : !search.query ? '' : count ? tr('{0} из {1}{2}', index + 1, count, capped ? '+' : '') : tr('Нет совпадений')}
       </span>
       <div className="flex items-center">
-        <IconBtn title="Предыдущее (Shift+Enter, Shift+F3)" disabled={!count} onClick={() => onStep(-1)}>
+        <IconBtn title={tr('Предыдущее (Shift+Enter, Shift+F3)')} disabled={!count} onClick={() => onStep(-1)}>
           <ChevronUp size={15} />
         </IconBtn>
-        <IconBtn title="Следующее (Enter, F3)" disabled={!count} onClick={() => onStep(1)}>
+        <IconBtn title={tr('Следующее (Enter, F3)')} disabled={!count} onClick={() => onStep(1)}>
           <ChevronDown size={15} />
         </IconBtn>
-        <IconBtn title="Закрыть поиск (Esc)" onClick={onClose}>
+        <IconBtn title={tr('Закрыть поиск (Esc)')} onClick={onClose}>
           <X size={15} />
         </IconBtn>
       </div>

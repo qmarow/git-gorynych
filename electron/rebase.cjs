@@ -8,6 +8,7 @@ const os = require('node:os');
 const path = require('node:path');
 const { git, readStatus, detectOperation, getCommitFiles, HASH_RE } = require('./git.cjs');
 const { GitError } = require('./errors.cjs');
+const { t } = require('./i18n.cjs');
 
 const ACTIONS = new Set(['pick', 'reword', 'squash', 'fixup', 'drop']);
 const FS = '\x1f';
@@ -21,26 +22,26 @@ async function headHash(cwd) {
 }
 
 async function resolveCommit(cwd, ref, what) {
-  if (typeof ref !== 'string' || !ref.trim() || ref.startsWith('-')) throw new GitError(`Не указан ${what}`, { code: 'BAD_ARGS' });
+  if (typeof ref !== 'string' || !ref.trim() || ref.startsWith('-')) throw new GitError(t('Не указан {0}', what), { code: 'BAD_ARGS' });
   const hash = (await git(cwd, ['rev-parse', '--verify', '--quiet', `${ref}^{commit}`]).catch(() => '')).trim();
-  if (!hash) throw new GitError(`Не найдено: ${ref}`, { code: 'NOT_FOUND_REF' });
+  if (!hash) throw new GitError(t('Не найдено: {0}', ref), { code: 'NOT_FOUND_REF' });
   return hash;
 }
 
 async function requireBranchState(cwd) {
   if (await detectOperation(cwd)) {
-    throw new GitError('Сначала завершите текущую операцию (merge / rebase / cherry-pick)', {
+    throw new GitError(t('Сначала завершите текущую операцию (merge / rebase / cherry-pick)'), {
       code: 'OPERATION_IN_PROGRESS',
-      hint: 'Продолжите или прервите её в жёлтой панели сверху.',
+      hint: t('Продолжите или прервите её в жёлтой панели сверху.'),
     });
   }
   const head = await headHash(cwd);
-  if (!head) throw new GitError('В репозитории ещё нет коммитов', { code: 'NO_COMMITS' });
+  if (!head) throw new GitError(t('В репозитории ещё нет коммитов'), { code: 'NO_COMMITS' });
   const branch = (await git(cwd, ['symbolic-ref', '--quiet', '--short', 'HEAD']).catch(() => '')).trim() || null;
   if (!branch) {
-    throw new GitError('Rebase делается для ветки, а сейчас detached HEAD', {
+    throw new GitError(t('Rebase делается для ветки, а сейчас detached HEAD'), {
       code: 'DETACHED',
-      hint: 'Переключитесь на ветку, историю которой хотите изменить.',
+      hint: t('Переключитесь на ветку, историю которой хотите изменить.'),
     });
   }
   return { head, branch };
@@ -76,18 +77,18 @@ async function commitInfo(cwd, hash) {
 // перенесённых туда же изменений), от старых к новым
 async function scope(cwd, upstreamRef, ontoRef) {
   const { head, branch } = await requireBranchState(cwd);
-  const upstream = await resolveCommit(cwd, upstreamRef, 'коммит');
-  const onto = ontoRef ? await resolveCommit(cwd, ontoRef, 'коммит') : upstream;
-  if (upstream === head) throw new GitError('Это и есть последний коммит ветки — после него нечего менять', { code: 'UP_TO_DATE' });
+  const upstream = await resolveCommit(cwd, upstreamRef, t('коммит'));
+  const onto = ontoRef ? await resolveCommit(cwd, ontoRef, t('коммит')) : upstream;
+  if (upstream === head) throw new GitError(t('Это и есть последний коммит ветки — после него нечего менять'), { code: 'UP_TO_DATE' });
 
   const out = await git(cwd, ['log', '--reverse', '--topo-order', '--no-merges', '--cherry-pick', '--right-only', LOG_FORMAT, `${upstream}...${head}`]);
   const commits = readCommitList(out);
   const merges = Number((await git(cwd, ['rev-list', '--count', '--merges', `${upstream}..${head}`])).trim());
   const isAncestor = await git(cwd, ['merge-base', '--is-ancestor', upstream, head]).then(() => true, () => false);
   if (commits.length > MAX_COMMITS) {
-    throw new GitError(`Слишком много коммитов для rebase: ${commits.length}`, {
+    throw new GitError(t('Слишком много коммитов для rebase: {0}', commits.length), {
       code: 'TOO_MANY',
-      hint: `Выберите точку поближе (не больше ${MAX_COMMITS} коммитов).`,
+      hint: t('Выберите точку поближе (не больше {0} коммитов).', MAX_COMMITS),
     });
   }
   return { head, branch, upstream, onto, commits, merges, isAncestor };
@@ -120,9 +121,9 @@ async function mergeTree(cwd, base, ours, theirs) {
       };
     }
     if (!mergeTreeChecked && /merge-base|write-tree|usage|unknown/i.test(`${error.details}`)) {
-      throw new GitError('Для предпросмотра rebase нужен Git 2.40 или новее', {
+      throw new GitError(t('Для предпросмотра rebase нужен Git 2.40 или новее'), {
         code: 'GIT_TOO_OLD',
-        hint: 'Обновите Git for Windows (git-scm.com) и перезапустите приложение.',
+        hint: t('Обновите Git for Windows (git-scm.com) и перезапустите приложение.'),
         details: error.details,
       });
     }
@@ -139,25 +140,25 @@ async function commitTree(cwd, tree, parent, author, message) {
 
 function validatePlan(commits, plan) {
   if (!Array.isArray(plan) || plan.length !== commits.length) {
-    throw new GitError('План устарел — список коммитов изменился', { code: 'PLAN_STALE', hint: 'Откройте rebase заново.' });
+    throw new GitError(t('План устарел — список коммитов изменился'), { code: 'PLAN_STALE', hint: t('Откройте rebase заново.') });
   }
   const known = new Set(commits.map((c) => c.hash));
   const seen = new Set();
   for (const item of plan) {
     if (!item || !HASH_RE.test(item.hash ?? '') || !known.has(item.hash) || seen.has(item.hash)) {
-      throw new GitError('План устарел — список коммитов изменился', { code: 'PLAN_STALE', hint: 'Откройте rebase заново.' });
+      throw new GitError(t('План устарел — список коммитов изменился'), { code: 'PLAN_STALE', hint: t('Откройте rebase заново.') });
     }
-    if (!ACTIONS.has(item.action)) throw new GitError(`Неизвестное действие: ${item.action}`, { code: 'BAD_ARGS' });
+    if (!ACTIONS.has(item.action)) throw new GitError(t('Неизвестное действие: {0}', item.action), { code: 'BAD_ARGS' });
     if (item.message != null && (typeof item.message !== 'string' || !item.message.trim())) {
-      throw new GitError('Сообщение коммита не может быть пустым', { code: 'EMPTY_MESSAGE' });
+      throw new GitError(t('Сообщение коммита не может быть пустым'), { code: 'EMPTY_MESSAGE' });
     }
     seen.add(item.hash);
   }
   const kept = plan.filter((i) => i.action !== 'drop');
   if (kept[0] && (kept[0].action === 'squash' || kept[0].action === 'fixup')) {
-    throw new GitError('Первый коммит не с чем объединить', {
+    throw new GitError(t('Первый коммит не с чем объединить'), {
       code: 'BAD_PLAN',
-      hint: 'Squash и fixup присоединяют коммит к предыдущему — у самого первого предыдущего нет.',
+      hint: t('Squash и fixup присоединяют коммит к предыдущему — у самого первого предыдущего нет.'),
     });
   }
 }
@@ -202,7 +203,7 @@ async function simulate(cwd, { upstream: upstreamRef, onto: ontoRef, plan: rawPl
     for (let mi = 0; mi < g.members.length; mi++) {
       const { item, c } = g.members[mi];
       if (!c.parents.length) {
-        throw new GitError('Нельзя перенести самый первый коммит репозитория', { code: 'ROOT_COMMIT' });
+        throw new GitError(t('Нельзя перенести самый первый коммит репозитория'), { code: 'ROOT_COMMIT' });
       }
       // Коммит остаётся на своём месте без изменений — git переиспользует его как есть
       if (g.members.length === 1 && item.action !== 'reword' && !item.message && c.parents[0] === work) {
@@ -290,24 +291,24 @@ async function countPushed(cwd, hashes) {
 
 async function apply(cwd, { oldHead, newHead, branch, onto }) {
   if (!HASH_RE.test(oldHead ?? '') || !HASH_RE.test(newHead ?? '') || !HASH_RE.test(onto ?? '')) {
-    throw new GitError('Некорректный предпросмотр', { code: 'BAD_ARGS' });
+    throw new GitError(t('Некорректный предпросмотр'), { code: 'BAD_ARGS' });
   }
   const st = await requireBranchState(cwd);
   if (st.head !== oldHead || st.branch !== branch) {
-    throw new GitError('Ветка изменилась после предпросмотра', { code: 'PLAN_STALE', hint: 'Предпросмотр обновится — проверьте его и примените снова.' });
+    throw new GitError(t('Ветка изменилась после предпросмотра'), { code: 'PLAN_STALE', hint: t('Предпросмотр обновится — проверьте его и примените снова.') });
   }
-  if (newHead === oldHead) throw new GitError('Ничего не меняется', { code: 'UP_TO_DATE' });
+  if (newHead === oldHead) throw new GitError(t('Ничего не меняется'), { code: 'UP_TO_DATE' });
   // Результат должен быть посчитан поверх выбранной основы
   const ok = await git(cwd, ['merge-base', '--is-ancestor', onto, newHead]).then(() => true, () => false);
-  if (!ok) throw new GitError('Некорректный результат предпросмотра', { code: 'BAD_ARGS' });
+  if (!ok) throw new GitError(t('Некорректный результат предпросмотра'), { code: 'BAD_ARGS' });
   try {
     // --keep переносит ветку и обновляет файлы, но не трогает несвязанные локальные правки
-    await git(cwd, ['reset', '--keep', newHead], { env: { GIT_REFLOG_ACTION: `rebase (предпросмотр): ${branch}` } });
+    await git(cwd, ['reset', '--keep', newHead], { env: { GIT_REFLOG_ACTION: t('rebase (предпросмотр): {0}', branch) } });
   } catch (error) {
     if (/not uptodate|would be overwritten|cannot merge|local changes/i.test(`${error.details}`)) {
-      throw new GitError('Незакоммиченные правки в файлах, которые меняет rebase', {
+      throw new GitError(t('Незакоммиченные правки в файлах, которые меняет rebase'), {
         code: 'DIRTY',
-        hint: 'Закоммитьте их или сделайте Stash, затем примените rebase.',
+        hint: t('Закоммитьте их или сделайте Stash, затем примените rebase.'),
         details: error.details,
       });
     }
@@ -320,6 +321,7 @@ async function apply(cwd, { oldHead, newHead, branch, onto }) {
 /* ---------------- Настоящий git rebase -i (когда есть конфликты) ---------------- */
 
 // Скрипты-«редакторы» для git: подставляют наш список действий и новые сообщения коммитов
+// i18n-ignore-start — код скрипта для git, не текст интерфейса
 const EDITOR_JS = `
 const fs = require('fs');
 const [mode, dataFile, target] = process.argv.slice(2);
@@ -334,6 +336,7 @@ if (i !== -1) {
   fs.writeFileSync(dataFile, JSON.stringify(data));
 }
 `;
+// i18n-ignore-end
 
 const sessions = new Map(); // repo → { dir, env } — нужен и при «Продолжить» после конфликтов
 
@@ -384,9 +387,9 @@ async function start(cwd, { upstream: upstreamRef, onto: ontoRef, plan }) {
     await git(cwd, args, { env: { ...env, GIT_REFLOG_ACTION: 'rebase (interactive)' } });
   } catch (error) {
     if (await detectOperation(cwd)) {
-      throw new GitError('Rebase остановился на конфликте', {
+      throw new GitError(t('Rebase остановился на конфликте'), {
         code: 'CONFLICT',
-        hint: 'Разрешите конфликты в файлах и нажмите «Продолжить» в жёлтой панели сверху. «Прервать» вернёт всё как было.',
+        hint: t('Разрешите конфликты в файлах и нажмите «Продолжить» в жёлтой панели сверху. «Прервать» вернёт всё как было.'),
         details: error.details,
       });
     }

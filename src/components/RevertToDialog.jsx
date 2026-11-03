@@ -1,11 +1,14 @@
+import { getLanguage } from '../i18n/index.js';
 import { useEffect, useState } from 'react';
 import { AlertTriangle, Archive, Check, CloudUpload, History, Info, Loader2, ShieldCheck } from 'lucide-react';
 import { Button, ErrorBox, Modal } from './Dialogs.jsx';
 import { fullDate, relativeTime } from '../lib/format.js';
+import { t, tj } from '../i18n/index.js';
 
 const api = window.api;
 
 const plural = (n, one, few, many) => {
+  if (getLanguage() !== 'ru') return n === 1 ? one : many; // в английском две формы: one и many (few = many)
   const m10 = n % 10;
   const m100 = n % 100;
   if (m10 === 1 && m100 !== 11) return one;
@@ -44,7 +47,7 @@ export default function RevertToDialog({ repoPath, commit, busy, onClose, onConf
 
   return (
     <Modal
-      title="Вернуть проект к коммиту"
+      title={t('Вернуть проект к коммиту')}
       icon={History}
       iconClass="text-gk-yellow"
       onClose={busy ? () => {} : onClose}
@@ -52,11 +55,9 @@ export default function RevertToDialog({ repoPath, commit, busy, onClose, onConf
       footer={
         <>
           <Button onClick={onClose} disabled={busy}>
-            Отмена
-          </Button>
+            {t('Отмена')}</Button>
           <Button variant="primary" disabled={!preview || blocked || busy} onClick={() => onConfirm({ push })}>
-            {busy ? <Loader2 size={13} className="animate-spin" /> : <Check size={14} />}
-            Вернуть к {short}
+            {tj('{0}Вернуть к {1}', [busy ? <Loader2 size={13} className="animate-spin" /> : <Check size={14} />, short])}
           </Button>
         </>
       }
@@ -74,8 +75,7 @@ export default function RevertToDialog({ repoPath, commit, busy, onClose, onConf
 
       {!preview && !error && (
         <div className="flex items-center gap-2 text-xs text-gk-muted">
-          <Loader2 size={13} className="animate-spin" /> Считаем, что изменится…
-        </div>
+          {tj('{0} Считаем, что изменится…', [<Loader2 size={13} className="animate-spin" />])}</div>
       )}
       {error && <ErrorBox error={error} />}
 
@@ -83,30 +83,20 @@ export default function RevertToDialog({ repoPath, commit, busy, onClose, onConf
         <>
           {preview.identical ? (
             <Note icon={Info} tone="blue">
-              Файлы проекта уже совпадают с этим коммитом — откатывать нечего.
-            </Note>
+              {t('Файлы проекта уже совпадают с этим коммитом — откатывать нечего.')}</Note>
           ) : (
             <div className="space-y-2 text-[13px] leading-relaxed">
               <p>
-                Все файлы станут такими, как в этом коммите
-                {preview.branch ? (
+                {tj('Все файлы станут такими, как в этом коммите{0}. Изменится <1>{2} {3}</1> (<4>+{5}</4> <6>−{7}</6>).', [preview.branch ? (
                   <>
-                    {' '}на ветке <b>{preview.branch}</b>
+                    {tj(' на ветке <0>{1}</0>', [<b />, preview.branch])}
                   </>
-                ) : null}
-                . Изменится{' '}
-                <b>
-                  {preview.filesChanged} {plural(preview.filesChanged, 'файл', 'файла', 'файлов')}
-                </b>{' '}
-                (<span className="text-gk-green">+{preview.insertions}</span>{' '}
-                <span className="text-gk-red">−{preview.deletions}</span>).
-              </p>
+                ) : null, <b />, preview.filesChanged, plural(preview.filesChanged, t('файл'), t('файла'), t('файлов')), <span className="text-gk-green" />, preview.insertions, <span className="text-gk-red" />, preview.deletions])}</p>
 
               {preview.ancestor && preview.count > 0 && (
                 <div className="rounded-lg bg-gk-sink/20 p-2.5 ring-1 ring-gk-border">
                   <div className="mb-1.5 text-xs text-gk-muted">
-                    Будут отменены изменения {preview.count} {plural(preview.count, 'коммита', 'коммитов', 'коммитов')}:
-                  </div>
+                    {tj('Будут отменены изменения {0} {1}:', [preview.count, plural(preview.count, t('коммита'), t('коммитов'), t('коммитов'))])}</div>
                   <div className="max-h-36 space-y-0.5 overflow-y-auto">
                     {preview.commits.map((c) => (
                       <div key={c.hash} className="flex items-center gap-2 text-xs">
@@ -117,7 +107,7 @@ export default function RevertToDialog({ repoPath, commit, busy, onClose, onConf
                       </div>
                     ))}
                     {preview.count > preview.commits.length && (
-                      <div className="text-xs text-gk-dim">… и ещё {preview.count - preview.commits.length}</div>
+                      <div className="text-xs text-gk-dim">{tj('… и ещё {0}', [preview.count - preview.commits.length])}</div>
                     )}
                   </div>
                 </div>
@@ -125,22 +115,18 @@ export default function RevertToDialog({ repoPath, commit, busy, onClose, onConf
 
               {!preview.ancestor && (
                 <Note icon={AlertTriangle} tone="yellow">
-                  Этот коммит не из истории текущей ветки. Файлы всё равно станут как в нём — убедитесь, что это нужно.
-                </Note>
+                  {t('Этот коммит не из истории текущей ветки. Файлы всё равно станут как в нём — убедитесь, что это нужно.')}</Note>
               )}
 
               <Note icon={ShieldCheck} tone="green">
-                Безопасно: история не переписывается. Сверху появится новый коммит «Revert to {short}», старые коммиты
-                останутся. Передумали — нажмите Undo.
-                {preview.pushedCount > 0 && ' Подходит и для уже отправленных на сервер коммитов.'}
+                {tj('Безопасно: история не переписывается. Сверху появится новый коммит «Revert to {0}», старые коммиты останутся. Передумали — нажмите Undo.{1}', [short, preview.pushedCount > 0 && t(' Подходит и для уже отправленных на сервер коммитов.')])}
               </Note>
             </div>
           )}
 
           {preview.dirtyCount > 0 && (
             <Note icon={AlertTriangle} tone="yellow">
-              Есть незакоммиченные изменения ({preview.dirtyCount}). Их нужно убрать перед откатом.
-              <button
+              {tj('Есть незакоммиченные изменения ({0}). Их нужно убрать перед откатом.{1}', [preview.dirtyCount, <button
                 onClick={async () => {
                   const ok = await onStashFirst();
                   if (ok) setReload((n) => n + 1);
@@ -148,24 +134,17 @@ export default function RevertToDialog({ repoPath, commit, busy, onClose, onConf
                 disabled={busy}
                 className="ml-2 inline-flex items-center gap-1 font-medium text-gk-blue hover:underline"
               >
-                <Archive size={12} /> Спрятать в Stash и продолжить
-              </button>
+                {tj('{0} Спрятать в Stash и продолжить', [<Archive size={12} />])}</button>])}
             </Note>
           )}
           {preview.collisions.length > 0 && (
             <Note icon={AlertTriangle} tone="yellow">
-              Неотслеживаемые файлы совпадают по имени с файлами коммита и будут мешать:{' '}
-              <span className="font-mono text-[11px]">{preview.collisions.slice(0, 5).join(', ')}</span>. Переместите их или
-              спрячьте в Stash.
-            </Note>
+              {tj('Неотслеживаемые файлы совпадают по имени с файлами коммита и будут мешать: <0>{1}</0>. Переместите их или спрячьте в Stash.', [<span className="font-mono text-[11px]" />, preview.collisions.slice(0, 5).join(', ')])}</Note>
           )}
 
           {preview.hasUpstream && !blocked && (
             <label className="flex cursor-pointer items-center gap-2 text-xs text-gk-muted">
-              <input type="checkbox" checked={push} onChange={(e) => setPush(e.target.checked)} className="accent-gk-green" />
-              <CloudUpload size={13} />
-              Сразу отправить на сервер (push)
-            </label>
+              {tj('{0}{1}Сразу отправить на сервер (push)', [<input type="checkbox" checked={push} onChange={(e) => setPush(e.target.checked)} className="accent-gk-green" />, <CloudUpload size={13} />])}</label>
           )}
         </>
       )}

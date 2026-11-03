@@ -1,6 +1,7 @@
 // HTTP для API провайдеров CI/CD (GitHub, Gitea/Forgejo, Bitbucket): JSON, текст логов, файлы артефактов, ошибки по-русски.
 const fs = require('node:fs');
 const { GitError } = require('../errors.cjs');
+const { t: tr } = require('../i18n.cjs');
 
 let electron = null;
 try {
@@ -43,9 +44,9 @@ async function request(ctx, method, apiPath, opts = {}) {
     });
   } catch (error) {
     clearTimeout(timer);
-    throw new GitError(error.name === 'AbortError' ? `${ctx.label} не ответил за ${timeout / 1000} с` : `Нет связи с ${url.host}`, {
+    throw new GitError(error.name === 'AbortError' ? tr('{0} не ответил за {1} с', ctx.label, timeout / 1000) : tr('Нет связи с {0}', url.host), {
       code: 'NETWORK',
-      hint: `Проверьте интернет, VPN и адрес API ${ctx.label}`,
+      hint: tr('Проверьте интернет, VPN и адрес API {0}', ctx.label),
       details: error.message,
     });
   }
@@ -61,32 +62,32 @@ async function request(ctx, method, apiPath, opts = {}) {
       /* не JSON */
     }
     if (res.status === 401) {
-      throw new GitError(`${ctx.label} не принял авторизацию репозитория`, {
+      throw new GitError(tr('{0} не принял авторизацию репозитория', ctx.label), {
         code: 'AUTH',
-        hint: 'Токен неверный, отозван или истёк — обновите авторизацию репозитория',
+        hint: tr('Токен неверный, отозван или истёк — обновите авторизацию репозитория'),
         details: message,
       });
     }
     if (res.status === 403) {
       const limited = res.headers.get('x-ratelimit-remaining') === '0';
-      throw new GitError(limited ? `${ctx.label} ограничил частоту запросов — попробуйте позже` : 'Недостаточно прав', {
+      throw new GitError(limited ? tr('{0} ограничил частоту запросов — попробуйте позже', ctx.label) : tr('Недостаточно прав'), {
         code: limited ? 'RATE_LIMIT' : 'FORBIDDEN',
-        hint: limited ? null : ctx.scopeHint ?? 'У токена нет нужного права или ваша роль в репозитории не позволяет это действие',
+        hint: limited ? null : ctx.scopeHint ?? tr('У токена нет нужного права или ваша роль в репозитории не позволяет это действие'),
         details: message,
       });
     }
     if (res.status === 404) {
-      throw new GitError(notFound ?? `Не найдено в ${ctx.label}`, {
+      throw new GitError(notFound ?? tr('Не найдено в {0}', ctx.label), {
         code: 'NOT_FOUND',
-        hint: notFound ? null : `Репозиторий не существует, у токена нет к нему доступа или ${ctx.label} не поддерживает этот запрос`,
+        hint: notFound ? null : tr('Репозиторий не существует, у токена нет к нему доступа или {0} не поддерживает этот запрос', ctx.label),
         details: message,
       });
     }
     if (res.status === 400 || res.status === 409 || res.status === 422) {
-      throw new GitError(message ? `${ctx.label}: ${message}` : `${ctx.label} отклонил запрос`, { code: 'VALIDATION', details: message });
+      throw new GitError(message ? `${ctx.label}: ${message}` : tr('{0} отклонил запрос', ctx.label), { code: 'VALIDATION', details: message });
     }
-    if (res.status === 429) throw new GitError(`${ctx.label} ограничил частоту запросов — попробуйте через минуту`, { code: 'RATE_LIMIT' });
-    throw new GitError(`${ctx.label} вернул ошибку ${res.status}`, { code: 'API_ERROR', details: message });
+    if (res.status === 429) throw new GitError(tr('{0} ограничил частоту запросов — попробуйте через минуту', ctx.label), { code: 'RATE_LIMIT' });
+    throw new GitError(tr('{0} вернул ошибку {1}', ctx.label, res.status), { code: 'API_ERROR', details: message });
   }
   if (raw) return res;
   if (text) {

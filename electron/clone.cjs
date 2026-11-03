@@ -4,6 +4,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { GitError, fromProcessError } = require('./errors.cjs');
 const { gitInfo } = require('./git.cjs');
+const { t } = require('./i18n.cjs');
 
 const running = new Map(); // id -> { child, target, created }
 
@@ -27,20 +28,20 @@ async function probeClone(url) {
 }
 
 function checkTarget(parent, name) {
-  if (typeof parent !== 'string' || !parent) throw new GitError('Выберите папку для клонирования', { code: 'BAD_ARGS' });
+  if (typeof parent !== 'string' || !parent) throw new GitError(t('Выберите папку для клонирования'), { code: 'BAD_ARGS' });
   if (typeof name !== 'string' || !name.trim() || /[<>:"|?*\\/]/.test(name)) {
-    throw new GitError('Недопустимое имя папки', { code: 'BAD_ARGS' });
+    throw new GitError(t('Недопустимое имя папки'), { code: 'BAD_ARGS' });
   }
   if (!fs.existsSync(parent) || !fs.statSync(parent).isDirectory()) {
-    throw new GitError(`Папка не найдена: ${parent}`, { code: 'NOT_FOUND_PATH' });
+    throw new GitError(t('Папка не найдена: {0}', parent), { code: 'NOT_FOUND_PATH' });
   }
   const target = path.join(parent, name.trim());
   if (fs.existsSync(target)) {
     const empty = fs.statSync(target).isDirectory() && fs.readdirSync(target).length === 0;
     if (!empty) {
-      throw new GitError(`Папка «${name}» уже существует и не пуста`, {
+      throw new GitError(t('Папка «{0}» уже существует и не пуста', name), {
         code: 'TARGET_EXISTS',
-        hint: 'Выберите другое имя или другую папку.',
+        hint: t('Выберите другое имя или другую папку.'),
       });
     }
     return { target, created: false };
@@ -50,11 +51,21 @@ function checkTarget(parent, name) {
 
 // Фазы прогресса git clone → русские подписи и вес в общей шкале
 const PHASES = [
-  { re: /Counting objects/i, label: 'Подсчёт объектов', from: 0, to: 5 },
-  { re: /Compressing objects/i, label: 'Сжатие на сервере', from: 5, to: 10 },
-  { re: /Receiving objects/i, label: 'Загрузка', from: 10, to: 80 },
-  { re: /Resolving deltas/i, label: 'Обработка', from: 80, to: 92 },
-  { re: /Updating files|Checking out files/i, label: 'Распаковка файлов', from: 92, to: 100 },
+  { re: /Counting objects/i, get label() {
+    return t('Подсчёт объектов');
+  }, from: 0, to: 5 },
+  { re: /Compressing objects/i, get label() {
+    return t('Сжатие на сервере');
+  }, from: 5, to: 10 },
+  { re: /Receiving objects/i, get label() {
+    return t('Загрузка');
+  }, from: 10, to: 80 },
+  { re: /Resolving deltas/i, get label() {
+    return t('Обработка');
+  }, from: 80, to: 92 },
+  { re: /Updating files|Checking out files/i, get label() {
+    return t('Распаковка файлов');
+  }, from: 92, to: 100 },
 ];
 
 function parseProgress(line) {
@@ -135,7 +146,7 @@ async function cloneRepository({ id, url, parent, name, branch, depth }, onProgr
       };
       if (job?.cancelled) {
         cleanup();
-        reject(new GitError('Клонирование отменено', { code: 'CANCELLED' }));
+        reject(new GitError(t('Клонирование отменено'), { code: 'CANCELLED' }));
         return;
       }
       if (code !== 0) {
@@ -145,7 +156,7 @@ async function cloneRepository({ id, url, parent, name, branch, depth }, onProgr
         reject(err);
         return;
       }
-      onProgress?.({ phase: 'Готово', percent: 100, phasePercent: 100 });
+      onProgress?.({ phase: t('Готово'), percent: 100, phasePercent: 100 });
       resolve({ path: target, name: path.basename(target) });
     });
   });

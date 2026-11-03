@@ -1,6 +1,7 @@
 import { memo, useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { highlight } from '../../lib/syntax.jsx';
 import { describeCron } from '../../lib/cron.js';
+import { t } from '../../i18n/index.js';
 
 const LINE_H = 20; // px — одинаковая высота строки у подсветки, номеров и textarea
 const INDENT = '  ';
@@ -275,7 +276,7 @@ export default function CiEditor({ value, onChange, lang, errors, jump, onSave, 
             style={{ top: suggest.top + 2, left: Math.max(4, suggest.left) }}
             className="absolute z-20 min-w-[180px] overflow-hidden rounded-md border border-gk-fg/10 bg-[var(--gk-solid-2)] py-1 font-sans shadow-xl"
           >
-            <div className="px-2.5 pb-1 text-[10.5px] uppercase tracking-wider text-gk-dim">Метки живых раннеров</div>
+            <div className="px-2.5 pb-1 text-[10.5px] uppercase tracking-wider text-gk-dim">{t('Метки живых раннеров')}</div>
             {suggest.items.map((label, i) => (
               <button
                 key={label}

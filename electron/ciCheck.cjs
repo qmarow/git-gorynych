@@ -4,6 +4,7 @@ const { Positions, repoIndex, defaultBranch } = require('./ciCheckBase.cjs');
 const { git } = require('./git.cjs');
 const { checkGitlab } = require('./ciCheckGitlab.cjs');
 const { checkGithub, checkBitbucket, checkJenkins, checkCircle, checkAzure } = require('./ciCheckOther.cjs');
+const { t } = require('./i18n.cjs');
 
 const ORDER = { error: 0, warning: 1, info: 2 };
 
@@ -35,11 +36,11 @@ async function checkCi(root, systemId, result) {
     add({
       id: e.severity === 'error' ? 'yaml-syntax' : 'yaml-warning',
       severity: e.severity === 'error' ? 'error' : 'warning',
-      title: e.severity === 'error' ? `Ошибка синтаксиса YAML: ${e.message}` : e.message,
-      when: 'Сразу при push — файл не читается',
-      how: e.severity === 'error' ? 'Сервер CI не сможет прочитать файл и не запустит ни одного задания.' : 'Файл прочитается, но, возможно, не так, как задумано.',
-      why: e.severity === 'error' ? 'Нарушена структура YAML: отступы, двоеточия, кавычки или табуляция вместо пробелов.' : 'Неоднозначная запись в YAML.',
-      fix: 'Проверьте отступы (только пробелы, одинаковое число на уровне) и кавычки вокруг строк с «: » или «#».',
+      title: e.severity === 'error' ? t('Ошибка синтаксиса YAML: {0}', e.message) : e.message,
+      when: t('Сразу при push — файл не читается'),
+      how: e.severity === 'error' ? t('Сервер CI не сможет прочитать файл и не запустит ни одного задания.') : t('Файл прочитается, но, возможно, не так, как задумано.'),
+      why: e.severity === 'error' ? t('Нарушена структура YAML: отступы, двоеточия, кавычки или табуляция вместо пробелов.') : t('Неоднозначная запись в YAML.'),
+      fix: t('Проверьте отступы (только пробелы, одинаковое число на уровне) и кавычки вокруг строк с «: » или «#».'),
       file: e.file,
       line: e.line,
     });
@@ -61,11 +62,11 @@ async function checkCi(root, systemId, result) {
     else if (systemId === 'circleci') checkCircle(result, ctx);
     else if (systemId === 'azure') checkAzure(result, ctx);
   } catch (error) {
-    add({ id: 'check-failed', severity: 'info', title: 'Проверка прервалась', when: '—', how: 'Часть проверок не выполнена.', why: String(error?.message ?? error), fix: 'Сообщите об ошибке — проверка конфигурации не должна падать.' });
+    add({ id: 'check-failed', severity: 'info', title: t('Проверка прервалась'), when: '—', how: t('Часть проверок не выполнена.'), why: String(error?.message ?? error), fix: t('Сообщите об ошибке — проверка конфигурации не должна падать.') });
   }
   // Предупреждения разбора, которые проверки не покрывают (для систем без подробной проверки)
   if (!['gitlab', 'github', 'gitea', 'forgejo', 'bitbucket', 'jenkins'].includes(systemId)) {
-    for (const w of result.warnings ?? []) add({ id: 'loader-warning', severity: 'warning', title: w, when: '—', how: 'Схема пайплайна может быть показана неполно.', why: w, fix: 'Проверьте файл.', file: result.files?.[0]?.path ?? null });
+    for (const w of result.warnings ?? []) add({ id: 'loader-warning', severity: 'warning', title: w, when: '—', how: t('Схема пайплайна может быть показана неполно.'), why: w, fix: t('Проверьте файл.'), file: result.files?.[0]?.path ?? null });
   }
 
   issues.sort((a, b) => ORDER[a.severity] - ORDER[b.severity] || String(a.file).localeCompare(String(b.file)) || (a.line ?? 0) - (b.line ?? 0));

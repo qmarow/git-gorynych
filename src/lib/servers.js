@@ -1,3 +1,4 @@
+import { t } from '../i18n/index.js';
 // Git-серверы: облачные (github.com, gitlab.com) и свои (Self-Managed) — тип, подписи, ссылки на страницы токенов и SSH-ключей.
 // Тип для домена определяет main-процесс (credentials.cjs): выбранный пользователем, догадка по имени или по API сервера.
 
@@ -6,7 +7,7 @@ export const SERVER_KINDS = [
   { id: 'github', label: 'GitHub', self: 'GitHub Enterprise Server', color: '#8b949e' },
   { id: 'gitea', label: 'Gitea / Forgejo', self: 'Gitea / Forgejo', color: '#609926' },
   { id: 'bitbucket', label: 'Bitbucket', self: 'Bitbucket Data Center', color: '#2684ff' },
-  { id: 'other', label: 'Другой Git-сервер', self: 'Другой Git-сервер', color: '#8a92a2' },
+  { id: 'other', label: t('Другой Git-сервер'), self: t('Другой Git-сервер'), color: '#8a92a2' },
 ];
 
 /** Облачные сервисы, которые выбираются одной кнопкой */
@@ -20,7 +21,7 @@ export const kindInfo = (kind) => SERVER_KINDS.find((k) => k.id === kind) ?? nul
 /** Название для человека: «GitLab» для gitlab.com, «GitLab Self-Managed» для своего сервера */
 export function kindLabel(kind, cloud = false) {
   const k = kindInfo(kind);
-  if (!k) return 'Git-сервер';
+  if (!k) return t('Git-сервер');
   return cloud ? k.label : k.self;
 }
 
@@ -32,7 +33,7 @@ export function tokenPage(kind, base, hostname) {
   if (!b) return null;
   if (kind === 'github') return `${hostname === 'github.com' ? 'https://github.com' : b}/settings/tokens`;
   // GitLab: сразу с правом api — один токен и для Pull/Push, и для пайплайнов
-  if (kind === 'gitlab') return `${b}/-/user_settings/personal_access_tokens?name=${encodeURIComponent('git-Горыныч')}&scopes=api`;
+  if (kind === 'gitlab') return `${b}/-/user_settings/personal_access_tokens?name=${encodeURIComponent(t('git-Горыныч'))}&scopes=api`;
   if (kind === 'gitea') return `${b}/user/settings/applications`;
   if (kind === 'bitbucket') return hostname === 'bitbucket.org' ? 'https://bitbucket.org/account/settings/app-passwords/' : `${b}/plugins/servlet/access-tokens/manage`;
   return null;
@@ -59,9 +60,9 @@ export function tokenScopes(kind) {
 }
 
 export function tokenPlaceholder(kind) {
-  if (kind === 'github') return 'ghp_… или github_pat_…';
+  if (kind === 'github') return t('ghp_… или github_pat_…');
   if (kind === 'gitlab') return 'glpat-…';
-  return 'токен доступа';
+  return t('токен доступа');
 }
 
 /** Сервер не принимает обычный пароль для Git (2FA / политика) — подсказать вкладку «Токен» */

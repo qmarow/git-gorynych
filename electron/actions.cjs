@@ -15,6 +15,7 @@ const { GitError } = require('./errors.cjs');
 const conflicts = require('./conflicts.cjs');
 const rebase = require('./rebase.cjs');
 const restore = require('./restore.cjs');
+const { t } = require('./i18n.cjs');
 
 const NETWORK_TIMEOUT = 5 * 60 * 1000; // запас на окно входа Git Credential Manager
 
@@ -76,9 +77,9 @@ const OPERATION_NAMES = { rebase: 'rebase', merge: 'merge', 'cherry-pick': 'cher
 
 function requireNoOperation(state, action) {
   if (state.operation) {
-    throw new GitError(`Нельзя сделать ${action}: не завершён ${OPERATION_NAMES[state.operation]}`, {
+    throw new GitError(t('Нельзя сделать {0}: не завершён {1}', action, OPERATION_NAMES[state.operation]), {
       code: 'OPERATION_IN_PROGRESS',
-      hint: 'Разрешите конфликты и нажмите «Продолжить» в жёлтой панели сверху, либо «Прервать».',
+      hint: t('Разрешите конфликты и нажмите «Продолжить» в жёлтой панели сверху, либо «Прервать».'),
     });
   }
 }
@@ -94,12 +95,12 @@ function pickRemote(state) {
 function requireBranch(state, action) {
   requireNoOperation(state, action);
   if (!state.headHash) {
-    throw new GitError(`Нельзя сделать ${action}: в репозитории ещё нет коммитов`, { code: 'NO_COMMITS' });
+    throw new GitError(t('Нельзя сделать {0}: в репозитории ещё нет коммитов', action), { code: 'NO_COMMITS' });
   }
   if (!state.branchName) {
-    throw new GitError(`Нельзя сделать ${action} из состояния detached HEAD`, {
+    throw new GitError(t('Нельзя сделать {0} из состояния detached HEAD', action), {
       code: 'DETACHED',
-      hint: 'Переключитесь на ветку (двойной клик по ветке в списке слева) или создайте новую.',
+      hint: t('Переключитесь на ветку (двойной клик по ветке в списке слева) или создайте новую.'),
     });
   }
 }
@@ -136,9 +137,9 @@ async function checkAccess(cwd, { write = true } = {}) {
   const state = await currentState(cwd);
   const remote = pickRemote(state);
   if (!remote) {
-    throw new GitError('У репозитория нет remote', {
+    throw new GitError(t('У репозитория нет remote'), {
       code: 'NO_REMOTE',
-      hint: 'Добавьте remote: git remote add origin <url>',
+      hint: t('Добавьте remote: git remote add origin <url>'),
     });
   }
 
@@ -192,7 +193,7 @@ async function checkAccess(cwd, { write = true } = {}) {
 function accessError(access, action) {
   if (!access.canRead) {
     const e = access.error ?? {};
-    return new GitError(e.message ?? `Нет доступа к ${access.remote}`, {
+    return new GitError(e.message ?? t('Нет доступа к {0}', access.remote), {
       code: e.code ?? 'AUTH',
       hint: e.hint,
       details: e.details,
@@ -200,7 +201,7 @@ function accessError(access, action) {
   }
   if (action === 'push' && access.canWrite === false) {
     const e = access.writeError ?? {};
-    return new GitError(e.message ?? 'Нет прав на запись', {
+    return new GitError(e.message ?? t('Нет прав на запись'), {
       code: e.code ?? 'FORBIDDEN',
       hint: e.hint,
       details: e.details,
@@ -213,7 +214,7 @@ function accessError(access, action) {
 
 async function fetchAll(cwd) {
   const state = await currentState(cwd);
-  if (state.remotes.length === 0) throw new GitError('У репозитория нет remote', { code: 'NO_REMOTE' });
+  if (state.remotes.length === 0) throw new GitError(t('У репозитория нет remote'), { code: 'NO_REMOTE' });
   await net(cwd, ['fetch', '--all', '--prune', '--tags']);
   return { remotes: state.remotes };
 }
@@ -225,19 +226,19 @@ const PULL_MODES = {
 };
 
 async function pull(cwd, { mode = 'merge' } = {}) {
-  if (!PULL_MODES[mode]) throw new GitError('Неизвестный режим pull', { code: 'BAD_ARGS' });
+  if (!PULL_MODES[mode]) throw new GitError(t('Неизвестный режим pull'), { code: 'BAD_ARGS' });
   const state = await currentState(cwd);
   requireBranch(state, 'pull');
   if (!state.branch?.upstream) {
-    throw new GitError(`У ветки «${state.branchName}» нет upstream`, {
+    throw new GitError(t('У ветки «{0}» нет upstream', state.branchName), {
       code: 'NO_UPSTREAM',
-      hint: 'Сделайте Push — ветка будет опубликована и связана с remote.',
+      hint: t('Сделайте Push — ветка будет опубликована и связана с remote.'),
     });
   }
   if (state.branch.gone) {
-    throw new GitError(`Remote-ветка ${state.branch.upstream} удалена`, {
+    throw new GitError(t('Remote-ветка {0} удалена', state.branch.upstream), {
       code: 'UPSTREAM_GONE',
-      hint: 'Сделайте Push, чтобы создать её заново, или переключитесь на другую ветку.',
+      hint: t('Сделайте Push, чтобы создать её заново, или переключитесь на другую ветку.'),
     });
   }
 
@@ -259,9 +260,9 @@ async function push(cwd, { force = false } = {}) {
   const denied = accessError(access, 'push');
   if (denied) throw denied;
   if (access.diverged && !force) {
-    throw new GitError(`На ${access.remote} есть коммиты, которых нет в вашей ветке`, {
+    throw new GitError(t('На {0} есть коммиты, которых нет в вашей ветке', access.remote), {
       code: 'REJECTED_NON_FF',
-      hint: 'Сделайте Pull и повторите Push, либо Force Push (with lease), чтобы перезаписать remote-ветку.',
+      hint: t('Сделайте Pull и повторите Push, либо Force Push (with lease), чтобы перезаписать remote-ветку.'),
     });
   }
 
@@ -279,20 +280,20 @@ async function push(cwd, { force = false } = {}) {
 
 async function validateBranchName(cwd, name) {
   if (typeof name !== 'string' || !name.trim()) {
-    throw new GitError('Введите имя ветки', { code: 'INVALID_NAME' });
+    throw new GitError(t('Введите имя ветки'), { code: 'INVALID_NAME' });
   }
   try {
     await git(cwd, ['check-ref-format', '--branch', name.trim()]);
   } catch {
-    throw new GitError(`Недопустимое имя ветки: «${name}»`, {
+    throw new GitError(t('Недопустимое имя ветки: «{0}»', name), {
       code: 'INVALID_NAME',
-      hint: 'Нельзя использовать пробелы, «..», «~», «^», «:», «?», «*», «[» и «\\».',
+      hint: t('Нельзя использовать пробелы, «..», «~», «^», «:», «?», «*», «[» и «\\».'),
     });
   }
   const exists = await git(cwd, ['show-ref', '--verify', '--quiet', `refs/heads/${name.trim()}`])
     .then(() => true)
     .catch(() => false);
-  if (exists) throw new GitError(`Ветка «${name}» уже существует`, { code: 'BRANCH_EXISTS' });
+  if (exists) throw new GitError(t('Ветка «{0}» уже существует', name), { code: 'BRANCH_EXISTS' });
   return name.trim();
 }
 
@@ -318,7 +319,7 @@ async function checkout(cwd, { branch, remoteBranch }) {
   }
 
   // Remote-ветка: переключаемся на локальную с тем же именем или создаём отслеживающую
-  if (!remoteBranch?.fullName || !remoteBranch?.name) throw new GitError('Не указана ветка', { code: 'BAD_ARGS' });
+  if (!remoteBranch?.fullName || !remoteBranch?.name) throw new GitError(t('Не указана ветка'), { code: 'BAD_ARGS' });
   const local = remoteBranch.name;
   const exists = await git(cwd, ['show-ref', '--verify', '--quiet', `refs/heads/${local}`])
     .then(() => true)
@@ -333,15 +334,15 @@ async function checkout(cwd, { branch, remoteBranch }) {
 }
 
 async function createBranch(cwd, { name, start, checkout: doCheckout = true }) {
-  if (!(await hasHead(cwd))) throw new GitError('Сначала сделайте первый коммит', { code: 'NO_COMMITS' });
+  if (!(await hasHead(cwd))) throw new GitError(t('Сначала сделайте первый коммит'), { code: 'NO_COMMITS' });
   if (doCheckout) requireNoOperation(await currentState(cwd), 'checkout');
   const branchName = await validateBranchName(cwd, name);
   // Начало ветки: хэш или любая ссылка (main, origin/main, тег) — проверяем, что она существует
   let startPoint = 'HEAD';
   if (start) {
-    if (typeof start !== 'string' || start.startsWith('-')) throw new GitError('Некорректный коммит', { code: 'BAD_ARGS' });
+    if (typeof start !== 'string' || start.startsWith('-')) throw new GitError(t('Некорректный коммит'), { code: 'BAD_ARGS' });
     startPoint = (await git(cwd, ['rev-parse', '--verify', '--quiet', `${start}^{commit}`]).catch(() => '')).trim();
-    if (!startPoint) throw new GitError(`Не найдено: ${start}`, { code: 'NOT_FOUND_REF', hint: 'Проверьте имя ветки или сделайте Fetch.' });
+    if (!startPoint) throw new GitError(t('Не найдено: {0}', start), { code: 'NOT_FOUND_REF', hint: t('Проверьте имя ветки или сделайте Fetch.') });
   }
   const previous = await currentPosition(cwd);
 
@@ -429,7 +430,7 @@ async function smartCheckout(cwd, target) {
   const files = await readStatus(cwd);
   if (files.length && from && state.headHash) {
     if (files.some((f) => f.status === 'U')) {
-      throw new GitError('В рабочей папке есть неразрешённые конфликты', { code: 'CONFLICT', hint: 'Сначала решите их, затем переключайтесь.' });
+      throw new GitError(t('В рабочей папке есть неразрешённые конфликты'), { code: 'CONFLICT', hint: t('Сначала решите их, затем переключайтесь.') });
     }
     await git(cwd, ['stash', 'push', '--include-untracked', '-m', `${AUTO_STASH}${from}`]);
     // Те же правки уже были спрятаны для этой ветки (например, после неудачного возврата) — не плодим копии
@@ -464,7 +465,7 @@ async function smartCheckout(cwd, target) {
         hash: s.hash,
         conflict: true,
         more: waiting.length - 1,
-        message: error.code === 'CONFLICT' ? 'Изменения вернулись с конфликтами — stash сохранён' : error.message,
+        message: error.code === 'CONFLICT' ? t('Изменения вернулись с конфликтами — stash сохранён') : error.message,
       };
     }
   }
@@ -485,14 +486,14 @@ const DISCARD_STASH = 'gorynych-discard: ';
 /** Коммит, на который указывает цель checkout (локальная ветка или remote-ветка) */
 async function targetCommit(cwd, target) {
   const ref = target.branch ? `refs/heads/${target.branch}` : target.remoteBranch?.fullName ? `refs/remotes/${target.remoteBranch.fullName}` : null;
-  if (!ref) throw new GitError('Не указана ветка', { code: 'BAD_ARGS' });
+  if (!ref) throw new GitError(t('Не указана ветка'), { code: 'BAD_ARGS' });
   // Remote-ветка, у которой уже есть локальная, — переключимся на локальную
   if (target.remoteBranch) {
     const local = (await git(cwd, ['rev-parse', '--verify', '--quiet', `refs/heads/${target.remoteBranch.name}`]).catch(() => '')).trim();
     if (local) return local;
   }
   const hash = (await git(cwd, ['rev-parse', '--verify', '--quiet', `${ref}^{commit}`]).catch(() => '')).trim();
-  if (!hash) throw new GitError(`Ветка «${target.branch ?? target.remoteBranch.fullName}» не найдена`, { code: 'NOT_FOUND', hint: 'Возможно, её удалили — обновите список (Fetch)' });
+  if (!hash) throw new GitError(t('Ветка «{0}» не найдена', target.branch ?? target.remoteBranch.fullName), { code: 'NOT_FOUND', hint: t('Возможно, её удалили — обновите список (Fetch)') });
   return hash;
 }
 
@@ -526,7 +527,7 @@ async function moveCheckout(cwd, target) {
   requireNoOperation(state, 'checkout');
   const files = await readStatus(cwd);
   if (files.some((f) => f.status === 'U')) {
-    throw new GitError('В рабочей папке есть неразрешённые конфликты', { code: 'CONFLICT', hint: 'Сначала решите их, затем переключайтесь.' });
+    throw new GitError(t('В рабочей папке есть неразрешённые конфликты'), { code: 'CONFLICT', hint: t('Сначала решите их, затем переключайтесь.') });
   }
   let stashHash = null;
   if (files.length) {
@@ -589,14 +590,14 @@ async function checkoutWithStrategy(cwd, p) {
   if (strategy === 'stash') return { kind: 'smartCheckout', res: await smartCheckout(cwd, target) };
   if (strategy === 'merge') return { kind: 'moveCheckout', res: await moveCheckout(cwd, target) };
   if (strategy === 'force') return { kind: 'discardCheckout', res: await discardCheckout(cwd, target) };
-  if (strategy && strategy !== 'none') throw new GitError(`Неизвестная стратегия: ${strategy}`, { code: 'BAD_ARGS' });
+  if (strategy && strategy !== 'none') throw new GitError(t('Неизвестная стратегия: {0}', strategy), { code: 'BAD_ARGS' });
   const wip = await inspectWip(cwd, target);
   // Папка чистая, но для целевой ветки что-то спрятано раньше («Спрятать и переключиться») — вернём при переходе
   if (!wip && (await autoStashes(cwd)).some((x) => x.branch === targetName)) return { kind: 'smartCheckout', res: await smartCheckout(cwd, target) };
   if (wip) {
-    throw new GitError(`В рабочей папке есть незакоммиченные изменения (${wip.files})`, {
+    throw new GitError(t('В рабочей папке есть незакоммиченные изменения ({0})', wip.files), {
       code: 'WIP_CONFLICT',
-      hint: 'Выберите, что с ними сделать: спрятать, перенести в новую ветку или выбросить.',
+      hint: t('Выберите, что с ними сделать: спрятать, перенести в новую ветку или выбросить.'),
       data: wip,
     });
   }
@@ -624,14 +625,14 @@ function splitArgs(line) {
       has = false;
     } else cur += ch;
   }
-  if (quote) throw new GitError('Незакрытая кавычка в команде', { code: 'BAD_ARGS' });
+  if (quote) throw new GitError(t('Незакрытая кавычка в команде'), { code: 'BAD_ARGS' });
   if (cur || has) args.push(cur);
   return args;
 }
 
 async function gitRaw(cwd, { command }) {
   const args = splitArgs(String(command ?? '').replace(/^\s*git\s+/, ''));
-  if (!args.length) throw new GitError('Пустая команда', { code: 'BAD_ARGS' });
+  if (!args.length) throw new GitError(t('Пустая команда'), { code: 'BAD_ARGS' });
   const out = await git(cwd, args, NO_EDITOR);
   return { command: `git ${args.join(' ')}`, output: out.trim().slice(0, 4000) };
 }
@@ -640,8 +641,8 @@ async function gitRaw(cwd, { command }) {
 
 async function stashPush(cwd, { message } = {}) {
   const files = await readStatus(cwd);
-  if (files.length === 0) throw new GitError('Нет изменений для stash', { code: 'NOTHING_TO_STASH' });
-  if (!(await hasHead(cwd))) throw new GitError('Stash недоступен до первого коммита', { code: 'NO_COMMITS' });
+  if (files.length === 0) throw new GitError(t('Нет изменений для stash'), { code: 'NOTHING_TO_STASH' });
+  if (!(await hasHead(cwd))) throw new GitError(t('Stash недоступен до первого коммита'), { code: 'NO_COMMITS' });
   const args = ['stash', 'push', '--include-untracked'];
   if (message && message.trim()) args.push('-m', message.trim());
   await git(cwd, args);
@@ -653,7 +654,7 @@ async function stashPush(cwd, { message } = {}) {
 
 async function stashPop(cwd) {
   const top = (await git(cwd, ['rev-parse', '--verify', '--quiet', 'stash@{0}']).catch(() => '')).trim();
-  if (!top) throw new GitError('Нет сташей', { code: 'NO_STASH' });
+  if (!top) throw new GitError(t('Нет сташей'), { code: 'NO_STASH' });
   await git(cwd, ['stash', 'pop']); // при конфликте stash остаётся в списке, ошибка = CONFLICT
   return { hash: top };
 }
@@ -661,7 +662,7 @@ async function stashPop(cwd) {
 /* =================== Операции над коммитом (контекстное меню) =================== */
 
 function requireHash(hash) {
-  if (typeof hash !== 'string' || !HASH_RE.test(hash)) throw new GitError('Некорректный коммит', { code: 'BAD_ARGS' });
+  if (typeof hash !== 'string' || !HASH_RE.test(hash)) throw new GitError(t('Некорректный коммит'), { code: 'BAD_ARGS' });
   return hash;
 }
 
@@ -686,17 +687,17 @@ async function checkoutCommit(cwd, { hash }) {
 
 async function createTag(cwd, { name, hash, message }) {
   requireHash(hash);
-  if (typeof name !== 'string' || !name.trim()) throw new GitError('Введите имя тега', { code: 'INVALID_NAME' });
+  if (typeof name !== 'string' || !name.trim()) throw new GitError(t('Введите имя тега'), { code: 'INVALID_NAME' });
   const tag = name.trim();
   try {
     await git(cwd, ['check-ref-format', `refs/tags/${tag}`]);
   } catch {
-    throw new GitError(`Недопустимое имя тега: «${tag}»`, { code: 'INVALID_NAME' });
+    throw new GitError(t('Недопустимое имя тега: «{0}»', tag), { code: 'INVALID_NAME' });
   }
   const exists = await git(cwd, ['show-ref', '--verify', '--quiet', `refs/tags/${tag}`])
     .then(() => true)
     .catch(() => false);
-  if (exists) throw new GitError(`Тег «${tag}» уже существует`, { code: 'TAG_EXISTS' });
+  if (exists) throw new GitError(t('Тег «{0}» уже существует', tag), { code: 'TAG_EXISTS' });
 
   if (message && message.trim()) await git(cwd, ['tag', '-a', tag, hash, '-m', message.trim()]);
   else await git(cwd, ['tag', tag, hash]);
@@ -705,7 +706,7 @@ async function createTag(cwd, { name, hash, message }) {
 
 async function deleteTag(cwd, { name }) {
   const info = await git(cwd, ['for-each-ref', `--format=%(objecttype)${'\x1f'}%(*objectname)${'\x1f'}%(objectname)${'\x1f'}%(contents)`, `refs/tags/${name}`]);
-  if (!info.trim()) throw new GitError(`Тег «${name}» не найден`, { code: 'NOT_FOUND_REF' });
+  if (!info.trim()) throw new GitError(t('Тег «{0}» не найден', name), { code: 'NOT_FOUND_REF' });
   const [type, peeled, obj, contents] = info.split('\x1f');
   await git(cwd, ['tag', '-d', name]);
   return { name, hash: type === 'tag' ? peeled : obj.trim(), message: type === 'tag' ? contents.trim() : null };
@@ -714,13 +715,13 @@ async function deleteTag(cwd, { name }) {
 /** Переименовать локальную ветку (git branch -m). Ветка на сервере не трогается; upstream сохраняется. */
 async function renameBranch(cwd, { from, to }) {
   const next = String(to ?? '').trim();
-  if (!from || !next) throw new GitError('Укажите новое имя ветки', { code: 'BAD_ARGS' });
-  if (next === from) throw new GitError('Имя не изменилось', { code: 'BAD_ARGS' });
-  if (!(await branchTip(cwd, from))) throw new GitError(`Ветка «${from}» не найдена`, { code: 'NOT_FOUND_REF' });
+  if (!from || !next) throw new GitError(t('Укажите новое имя ветки'), { code: 'BAD_ARGS' });
+  if (next === from) throw new GitError(t('Имя не изменилось'), { code: 'BAD_ARGS' });
+  if (!(await branchTip(cwd, from))) throw new GitError(t('Ветка «{0}» не найдена', from), { code: 'NOT_FOUND_REF' });
   await git(cwd, ['check-ref-format', '--branch', next]).catch(() => {
-    throw new GitError(`Недопустимое имя ветки: «${next}»`, { code: 'INVALID_NAME', hint: 'Без пробелов, «..», «~», «^», «:», «?», «*», «[» и «\\».' });
+    throw new GitError(t('Недопустимое имя ветки: «{0}»', next), { code: 'INVALID_NAME', hint: t('Без пробелов, «..», «~», «^», «:», «?», «*», «[» и «\\».') });
   });
-  if (await branchTip(cwd, next)) throw new GitError(`Ветка «${next}» уже есть`, { code: 'BRANCH_EXISTS' });
+  if (await branchTip(cwd, next)) throw new GitError(t('Ветка «{0}» уже есть', next), { code: 'BRANCH_EXISTS' });
   await git(cwd, ['branch', '-m', from, next]);
   return { from, to: next };
 }
@@ -728,20 +729,20 @@ async function renameBranch(cwd, { from, to }) {
 async function deleteBranch(cwd, { name, force = false }) {
   const state = await currentState(cwd);
   if (state.branchName === name) {
-    throw new GitError('Нельзя удалить текущую ветку', {
+    throw new GitError(t('Нельзя удалить текущую ветку'), {
       code: 'CURRENT_BRANCH',
-      hint: 'Сначала переключитесь на другую ветку.',
+      hint: t('Сначала переключитесь на другую ветку.'),
     });
   }
   const hash = await branchTip(cwd, name);
-  if (!hash) throw new GitError(`Ветка «${name}» не найдена`, { code: 'NOT_FOUND_REF' });
+  if (!hash) throw new GitError(t('Ветка «{0}» не найдена', name), { code: 'NOT_FOUND_REF' });
   try {
     await git(cwd, ['branch', force ? '-D' : '-d', name]);
   } catch (error) {
     if (/not fully merged/i.test(error.details)) {
-      throw new GitError(`Ветка «${name}» не слита с текущей`, {
+      throw new GitError(t('Ветка «{0}» не слита с текущей', name), {
         code: 'NOT_MERGED',
-        hint: 'Коммиты, которые есть только в этой ветке, станут недоступны (их можно вернуть через Undo).',
+        hint: t('Коммиты, которые есть только в этой ветке, станут недоступны (их можно вернуть через Undo).'),
       });
     }
     throw error;
@@ -757,16 +758,16 @@ async function deleteBranch(cwd, { name, force = false }) {
  */
 async function deleteRemoteBranch(cwd, { remote, branch }) {
   if (typeof remote !== 'string' || !remote || remote.startsWith('-') || typeof branch !== 'string' || !branch || branch.startsWith('-')) {
-    throw new GitError('Не указана ветка', { code: 'BAD_ARGS' });
+    throw new GitError(t('Не указана ветка'), { code: 'BAD_ARGS' });
   }
   const state = await currentState(cwd);
-  if (!state.remotes.includes(remote)) throw new GitError(`Remote «${remote}» не найден`, { code: 'NO_REMOTE' });
+  if (!state.remotes.includes(remote)) throw new GitError(t('Remote «{0}» не найден', remote), { code: 'NO_REMOTE' });
   // Узнаём реальное состояние сервера: ветку могли уже удалить или передвинуть
   const out = await net(cwd, ['ls-remote', '--heads', remote, `refs/heads/${branch}`]);
   const line = out.split('\n').find((l) => l.split('\t')[1] === `refs/heads/${branch}`);
   if (!line) {
     await git(cwd, ['update-ref', '-d', `refs/remotes/${remote}/${branch}`]).catch(() => {});
-    throw new GitError(`Ветки ${branch} уже нет на ${remote}`, { code: 'NOT_FOUND_REF', hint: 'Её удалили раньше — список веток обновлён.' });
+    throw new GitError(t('Ветки {0} уже нет на {1}', branch, remote), { code: 'NOT_FOUND_REF', hint: t('Её удалили раньше — список веток обновлён.') });
   }
   const hash = line.split('\t')[0].trim();
   try {
@@ -774,16 +775,16 @@ async function deleteRemoteBranch(cwd, { remote, branch }) {
   } catch (error) {
     const text = `${error.details ?? ''}\n${error.message ?? ''}`;
     if (/refusing to delete the current branch|deletion of the current branch prohibited|default branch/i.test(text)) {
-      throw new GitError(`Нельзя удалить ${branch}: это основная ветка репозитория на сервере`, {
+      throw new GitError(t('Нельзя удалить {0}: это основная ветка репозитория на сервере', branch), {
         code: 'DEFAULT_BRANCH',
-        hint: 'Сначала смените ветку по умолчанию в настройках проекта на GitLab/GitHub.',
+        hint: t('Сначала смените ветку по умолчанию в настройках проекта на GitLab/GitHub.'),
         details: error.details,
       });
     }
     if (/protected|only delete protected branches|GH006|cannot delete/i.test(text)) {
-      throw new GitError(`Ветка ${branch} защищена на сервере — удалить её нельзя`, {
+      throw new GitError(t('Ветка {0} защищена на сервере — удалить её нельзя', branch), {
         code: 'PROTECTED',
-        hint: 'Снимите защиту ветки в настройках проекта (Settings → Repository → Protected branches) или удалите её в веб-интерфейсе.',
+        hint: t('Снимите защиту ветки в настройках проекта (Settings → Repository → Protected branches) или удалите её в веб-интерфейсе.'),
         details: error.details,
       });
     }
@@ -799,7 +800,7 @@ async function cherryPick(cwd, { hash }) {
   const state = await currentState(cwd);
   requireBranchOrDetachedHead(state, 'cherry-pick');
   if (await isAncestor(cwd, hash, 'HEAD')) {
-    throw new GitError('Этот коммит уже есть в текущей ветке', { code: 'ALREADY_IN_BRANCH' });
+    throw new GitError(t('Этот коммит уже есть в текущей ветке'), { code: 'ALREADY_IN_BRANCH' });
   }
   const args = ['cherry-pick'];
   if ((await parentsOf(cwd, hash)).length > 1) args.push('-m', '1'); // мердж — относительно 1-го родителя
@@ -821,7 +822,7 @@ const RESET_MODES = new Set(['soft', 'mixed', 'hard']);
 
 async function resetTo(cwd, { hash, mode = 'mixed' }) {
   requireHash(hash);
-  if (!RESET_MODES.has(mode)) throw new GitError('Неизвестный режим reset', { code: 'BAD_ARGS' });
+  if (!RESET_MODES.has(mode)) throw new GitError(t('Неизвестный режим reset'), { code: 'BAD_ARGS' });
   const state = await currentState(cwd);
   requireBranchOrDetachedHead(state, 'reset');
   await git(cwd, ['reset', `--${mode}`, hash]);
@@ -832,10 +833,10 @@ async function mergeRef(cwd, { ref }) {
   const state = await currentState(cwd);
   requireBranch(state, 'merge');
   await git(cwd, ['rev-parse', '--verify', '--quiet', `${ref}^{commit}`]).catch(() => {
-    throw new GitError(`Не найдено: ${ref}`, { code: 'NOT_FOUND_REF' });
+    throw new GitError(t('Не найдено: {0}', ref), { code: 'NOT_FOUND_REF' });
   });
   if (await isAncestor(cwd, ref, 'HEAD')) {
-    throw new GitError(`${ref} уже слита в ${state.branchName}`, { code: 'UP_TO_DATE' });
+    throw new GitError(t('{0} уже слита в {1}', ref, state.branchName), { code: 'UP_TO_DATE' });
   }
   await git(cwd, ['merge', '--no-edit', ref], NO_EDITOR);
   return { ref, branch: state.branchName, from: state.headHash, to: await headHash(cwd) };
@@ -845,7 +846,7 @@ async function rebaseOnto(cwd, { ref }) {
   const state = await currentState(cwd);
   requireBranch(state, 'rebase');
   if (await isAncestor(cwd, ref, 'HEAD')) {
-    throw new GitError(`${state.branchName} уже содержит ${ref}`, { code: 'UP_TO_DATE' });
+    throw new GitError(t('{0} уже содержит {1}', state.branchName, ref), { code: 'UP_TO_DATE' });
   }
   await git(cwd, ['rebase', ref], NO_EDITOR);
   return { ref, branch: state.branchName, from: state.headHash, to: await headHash(cwd) };
@@ -854,17 +855,17 @@ async function rebaseOnto(cwd, { ref }) {
 // Перемотать ветку вперёд до коммита (fast-forward) — без переключения на неё
 async function fastForward(cwd, { branch, to }) {
   if (typeof branch !== 'string' || !branch || typeof to !== 'string' || !to || to.startsWith('-')) {
-    throw new GitError('Не указана ветка', { code: 'BAD_ARGS' });
+    throw new GitError(t('Не указана ветка'), { code: 'BAD_ARGS' });
   }
   const tip = await branchTip(cwd, branch);
-  if (!tip) throw new GitError(`Ветка «${branch}» не найдена`, { code: 'NOT_FOUND_REF' });
+  if (!tip) throw new GitError(t('Ветка «{0}» не найдена', branch), { code: 'NOT_FOUND_REF' });
   const target = (await git(cwd, ['rev-parse', '--verify', '--quiet', `${to}^{commit}`]).catch(() => '')).trim();
-  if (!target) throw new GitError(`Не найдено: ${to}`, { code: 'NOT_FOUND_REF' });
-  if (tip === target) throw new GitError(`${branch} уже указывает на этот коммит`, { code: 'UP_TO_DATE' });
+  if (!target) throw new GitError(t('Не найдено: {0}', to), { code: 'NOT_FOUND_REF' });
+  if (tip === target) throw new GitError(t('{0} уже указывает на этот коммит', branch), { code: 'UP_TO_DATE' });
   if (!(await isAncestor(cwd, tip, target))) {
-    throw new GitError(`Перемотать ${branch} нельзя: в ней есть коммиты, которых нет в ${to.length === 40 ? to.slice(0, 7) : to}`, {
+    throw new GitError(t('Перемотать {0} нельзя: в ней есть коммиты, которых нет в {1}', branch, to.length === 40 ? to.slice(0, 7) : to), {
       code: 'NOT_FAST_FORWARD',
-      hint: 'Используйте слияние (merge) или rebase.',
+      hint: t('Используйте слияние (merge) или rebase.'),
     });
   }
   const state = await currentState(cwd);
@@ -884,38 +885,38 @@ async function fastForward(cwd, { branch, to }) {
  * Текущая: fetch и merge --ff-only. Если в ветке есть свои коммиты — отказ: тут нужен pull/rebase.
  */
 async function updateBranch(cwd, { branch }) {
-  if (typeof branch !== 'string' || !branch || branch.startsWith('-')) throw new GitError('Не указана ветка', { code: 'BAD_ARGS' });
+  if (typeof branch !== 'string' || !branch || branch.startsWith('-')) throw new GitError(t('Не указана ветка'), { code: 'BAD_ARGS' });
   const state = await currentState(cwd);
   const b = state.refs.localBranches.find((x) => x.name === branch);
-  if (!b) throw new GitError(`Ветка «${branch}» не найдена`, { code: 'NOT_FOUND_REF' });
+  if (!b) throw new GitError(t('Ветка «{0}» не найдена', branch), { code: 'NOT_FOUND_REF' });
   if (!b.upstream || !b.upstreamRemote || !b.upstreamRef || b.upstreamRemote === '.') {
-    throw new GitError(`У ветки «${branch}» нет ветки на сервере`, { code: 'NO_UPSTREAM', hint: 'Сделайте Push, чтобы опубликовать её.' });
+    throw new GitError(t('У ветки «{0}» нет ветки на сервере', branch), { code: 'NO_UPSTREAM', hint: t('Сделайте Push, чтобы опубликовать её.') });
   }
   if (b.gone) {
-    throw new GitError(`${b.upstream} удалена на сервере`, { code: 'UPSTREAM_GONE', hint: 'Обновлять неоткуда: ветку на сервере удалили.' });
+    throw new GitError(t('{0} удалена на сервере', b.upstream), { code: 'UPSTREAM_GONE', hint: t('Обновлять неоткуда: ветку на сервере удалили.') });
   }
-  if (!state.remotes.includes(b.upstreamRemote)) throw new GitError(`Remote «${b.upstreamRemote}» не найден`, { code: 'NO_REMOTE' });
+  if (!state.remotes.includes(b.upstreamRemote)) throw new GitError(t('Remote «{0}» не найден', b.upstreamRemote), { code: 'NO_REMOTE' });
   const current = state.branchName === branch;
   const from = b.hash;
 
   if (current) {
-    requireNoOperation(state, 'обновление');
+    requireNoOperation(state, t('обновление'));
     await net(cwd, ['fetch', '--no-tags', b.upstreamRemote, `+${b.upstreamRef}:refs/remotes/${b.upstream}`]);
     const target = (await git(cwd, ['rev-parse', '--verify', '--quiet', `refs/remotes/${b.upstream}^{commit}`]).catch(() => '')).trim();
     if (!target || target === from) return { branch, from, to: from, current, count: 0 };
     if (!(await isAncestor(cwd, from, target))) {
-      throw new GitError(`В ${branch} есть свои коммиты — перемотать нельзя`, {
+      throw new GitError(t('В {0} есть свои коммиты — перемотать нельзя', branch), {
         code: 'NOT_FAST_FORWARD',
-        hint: 'Используйте Pull (merge или rebase), чтобы объединить изменения.',
+        hint: t('Используйте Pull (merge или rebase), чтобы объединить изменения.'),
       });
     }
     try {
       await git(cwd, ['merge', '--ff-only', '-q', target]);
     } catch (error) {
       if (/overwritten|would be overwritten|untracked working tree/i.test(error.details ?? error.message)) {
-        throw new GitError('Обновление затронет файлы с вашими незакоммиченными правками', {
+        throw new GitError(t('Обновление затронет файлы с вашими незакоммиченными правками'), {
           code: 'LOCAL_CHANGES',
-          hint: 'Закоммитьте или спрячьте правки (Stash) и повторите.',
+          hint: t('Закоммитьте или спрячьте правки (Stash) и повторите.'),
           details: error.details,
         });
       }
@@ -923,9 +924,9 @@ async function updateBranch(cwd, { branch }) {
     }
   } else {
     if (b.ahead > 0) {
-      throw new GitError(`В ${branch} есть неотправленные коммиты (${b.ahead})`, {
+      throw new GitError(t('В {0} есть неотправленные коммиты ({1})', branch, b.ahead), {
         code: 'NOT_FAST_FORWARD',
-        hint: 'Без переключения обновить нельзя: переключитесь на ветку и сделайте Pull (merge или rebase).',
+        hint: t('Без переключения обновить нельзя: переключитесь на ветку и сделайте Pull (merge или rebase).'),
       });
     }
     try {
@@ -934,14 +935,14 @@ async function updateBranch(cwd, { branch }) {
     } catch (error) {
       const text = `${error.message}\n${error.details ?? ''}`;
       if (/non-fast-forward|rejected/i.test(text)) {
-        throw new GitError(`${branch} разошлась с ${b.upstream}`, {
+        throw new GitError(t('{0} разошлась с {1}', branch, b.upstream), {
           code: 'NOT_FAST_FORWARD',
-          hint: 'Переключитесь на ветку и сделайте Pull (merge или rebase).',
+          hint: t('Переключитесь на ветку и сделайте Pull (merge или rebase).'),
           details: error.details,
         });
       }
       if (/checked out|refusing to fetch into/i.test(text)) {
-        throw new GitError(`${branch} открыта в другой рабочей папке (worktree)`, { code: 'BRANCH_IN_USE', details: error.details });
+        throw new GitError(t('{0} открыта в другой рабочей папке (worktree)', branch), { code: 'BRANCH_IN_USE', details: error.details });
       }
       throw error;
     }
@@ -957,7 +958,7 @@ async function updateBranch(cwd, { branch }) {
 async function discardAll(cwd) {
   requireNoOperation(await currentState(cwd), 'discard');
   const files = await readStatus(cwd);
-  if (files.length === 0) throw new GitError('Нет изменений', { code: 'NOTHING_TO_DISCARD' });
+  if (files.length === 0) throw new GitError(t('Нет изменений'), { code: 'NOTHING_TO_DISCARD' });
   if (await hasHead(cwd)) await git(cwd, ['reset', '--hard', '-q', 'HEAD']);
   else await git(cwd, ['rm', '-r', '-q', '--cached', '--ignore-unmatch', '.']);
   await git(cwd, ['clean', '-fd', '-q']);
@@ -966,17 +967,17 @@ async function discardAll(cwd) {
 
 function requireBranchOrDetachedHead(state, action) {
   requireNoOperation(state, action);
-  if (!state.headHash) throw new GitError(`Нельзя сделать ${action}: нет коммитов`, { code: 'NO_COMMITS' });
+  if (!state.headHash) throw new GitError(t('Нельзя сделать {0}: нет коммитов', action), { code: 'NO_COMMITS' });
 }
 
 /* =================== Stash: применить / забрать / удалить конкретный =================== */
 
 // stash@{n} сдвигаются при каждом изменении списка — проверяем, что по индексу всё ещё нужный stash
 async function resolveStash(cwd, { id, hash }) {
-  if (!/^stash@\{\d+\}$/.test(id || '')) throw new GitError('Некорректный stash', { code: 'BAD_ARGS' });
+  if (!/^stash@\{\d+\}$/.test(id || '')) throw new GitError(t('Некорректный stash'), { code: 'BAD_ARGS' });
   const actual = (await git(cwd, ['rev-parse', '--verify', '--quiet', id]).catch(() => '')).trim();
-  if (!actual) throw new GitError('Stash не найден — список изменился', { code: 'NO_STASH' });
-  if (hash && actual !== hash) throw new GitError('Список stash изменился — обновите и повторите', { code: 'HISTORY_STALE' });
+  if (!actual) throw new GitError(t('Stash не найден — список изменился'), { code: 'NO_STASH' });
+  if (hash && actual !== hash) throw new GitError(t('Список stash изменился — обновите и повторите'), { code: 'HISTORY_STALE' });
   const message = (await git(cwd, ['log', '-1', '--format=%gs', '-g', id]).catch(() => '')).trim();
   return { id, hash: actual, message };
 }
@@ -1058,27 +1059,27 @@ async function revertToPreview(cwd, { hash }) {
 // Один новый коммит, который делает файлы проекта такими, как в выбранном коммите. История не переписывается.
 async function revertTo(cwd, { hash, message }) {
   const preview = await revertToPreview(cwd, { hash });
-  if (preview.identical) throw new GitError('Файлы уже совпадают с этим коммитом — откатывать нечего', { code: 'UP_TO_DATE' });
+  if (preview.identical) throw new GitError(t('Файлы уже совпадают с этим коммитом — откатывать нечего'), { code: 'UP_TO_DATE' });
   if (preview.dirtyCount) {
-    throw new GitError(`Есть незакоммиченные изменения (${preview.dirtyCount})`, {
+    throw new GitError(t('Есть незакоммиченные изменения ({0})', preview.dirtyCount), {
       code: 'DIRTY',
-      hint: 'Закоммитьте их или сделайте Stash, затем повторите.',
+      hint: t('Закоммитьте их или сделайте Stash, затем повторите.'),
     });
   }
   if (preview.collisions.length) {
-    throw new GitError('Неотслеживаемые файлы мешают откату', {
+    throw new GitError(t('Неотслеживаемые файлы мешают откату'), {
       code: 'DIRTY',
-      hint: `Переместите или удалите: ${preview.collisions.slice(0, 5).join(', ')}${preview.collisions.length > 5 ? '…' : ''}`,
+      hint: t('Переместите или удалите: {0}{1}', preview.collisions.slice(0, 5).join(', '), preview.collisions.length > 5 ? '…' : ''),
     });
   }
   const from = (await git(cwd, ['rev-parse', 'HEAD'])).trim();
   const short = hash.slice(0, 7);
   const subject = (message && message.trim()) || `Revert to ${short}: ${preview.target.message}`;
   const body = preview.ancestor
-    ? `Файлы возвращены к состоянию ${hash}.\nОтменены изменения ${preview.count} коммитов:\n${preview.commits
+    ? t('Файлы возвращены к состоянию {0}.\nОтменены изменения {1} коммитов:\n{2}{3}', hash, preview.count, preview.commits
         .map((c) => `- ${c.hash.slice(0, 7)} ${c.message}`)
-        .join('\n')}${preview.count > preview.commits.length ? '\n- …' : ''}`
-    : `Файлы приведены к состоянию ${hash}.`;
+        .join('\n'), preview.count > preview.commits.length ? '\n- …' : '')
+    : t('Файлы приведены к состоянию {0}.', hash);
   // Индекс и рабочие файлы → ровно как в целевом коммите (удалённые там файлы тоже удаляются)
   await git(cwd, ['read-tree', '-u', '--reset', hash]);
   await git(cwd, ['commit', '-q', '-m', subject, '-m', body]);
@@ -1092,19 +1093,19 @@ const NO_EDITOR = { env: { GIT_EDITOR: 'true', GIT_SEQUENCE_EDITOR: 'true' } };
 
 async function abortOperation(cwd) {
   const op = await detectOperation(cwd);
-  if (!op) throw new GitError('Нет незавершённой операции', { code: 'NO_OPERATION' });
+  if (!op) throw new GitError(t('Нет незавершённой операции'), { code: 'NO_OPERATION' });
   await git(cwd, [op, '--abort']);
   return { operation: op };
 }
 
 async function continueOperation(cwd) {
   const op = await detectOperation(cwd);
-  if (!op) throw new GitError('Нет незавершённой операции', { code: 'NO_OPERATION' });
+  if (!op) throw new GitError(t('Нет незавершённой операции'), { code: 'NO_OPERATION' });
   const conflicted = (await readStatus(cwd)).filter((f) => f.status === 'U');
   if (conflicted.length) {
-    throw new GitError(`Остались неразрешённые конфликты: ${conflicted.length}`, {
+    throw new GitError(t('Остались неразрешённые конфликты: {0}', conflicted.length), {
       code: 'CONFLICT',
-      hint: 'Исправьте файлы с пометкой U и застейджите их (кнопка + в списке файлов).',
+      hint: t('Исправьте файлы с пометкой U и застейджите их (кнопка + в списке файлов).'),
       details: conflicted.map((f) => f.path).join('\n'),
     });
   }
@@ -1165,21 +1166,21 @@ async function branchTip(cwd, name) {
 }
 
 const stale = (what) =>
-  new GitError(`Нельзя отменить: ${what} изменилось после операции`, {
+  new GitError(t('Нельзя отменить: {0} изменилось после операции', what), {
     code: 'HISTORY_STALE',
-    hint: 'Репозиторий изменился вне приложения или другой операцией.',
+    hint: t('Репозиторий изменился вне приложения или другой операцией.'),
   });
 
 const HANDLERS = {
   commit: {
     async undo(cwd, e) {
       if ((await headHash(cwd)) !== e.hash) throw stale('HEAD');
-      if (!e.parent) throw new GitError('Первый коммит репозитория отменить нельзя', { code: 'HISTORY_ROOT' });
+      if (!e.parent) throw new GitError(t('Первый коммит репозитория отменить нельзя'), { code: 'HISTORY_ROOT' });
       const pushed = (await git(cwd, ['branch', '-r', '--contains', e.hash])).trim();
       if (pushed) {
-        throw new GitError('Коммит уже отправлен на remote — отмена переписала бы общую историю', {
+        throw new GitError(t('Коммит уже отправлен на remote — отмена переписала бы общую историю'), {
           code: 'HISTORY_PUSHED',
-          hint: 'Используйте revert (будет добавлен позже).',
+          hint: t('Используйте revert (будет добавлен позже).'),
         });
       }
       await git(cwd, ['reset', '--soft', e.parent]); // изменения остаются застейдженными
@@ -1192,12 +1193,12 @@ const HANDLERS = {
   // Ветка перемотана (fast-forward): возвращаем её на прежний коммит
   branchMove: {
     async undo(cwd, e) {
-      if ((await branchTip(cwd, e.branch)) !== e.to) throw stale(`ветка ${e.branch}`);
+      if ((await branchTip(cwd, e.branch)) !== e.to) throw stale(t('ветка {0}', e.branch));
       if ((await currentState(cwd)).branchName === e.branch) await git(cwd, ['reset', '--keep', e.from]);
       else await git(cwd, ['update-ref', `refs/heads/${e.branch}`, e.from, e.to]);
     },
     async redo(cwd, e) {
-      if ((await branchTip(cwd, e.branch)) !== e.from) throw stale(`ветка ${e.branch}`);
+      if ((await branchTip(cwd, e.branch)) !== e.from) throw stale(t('ветка {0}', e.branch));
       if ((await currentState(cwd)).branchName === e.branch) await git(cwd, ['reset', '--keep', e.to]);
       else await git(cwd, ['update-ref', `refs/heads/${e.branch}`, e.to, e.from]);
     },
@@ -1205,7 +1206,7 @@ const HANDLERS = {
   // Отмена умного переключения — такое же умное переключение обратно (изменения снова меняются местами)
   smartCheckout: {
     async undo(cwd, e) {
-      if (!e.previous.branch) throw new GitError('Нельзя вернуться: до переключения был detached HEAD', { code: 'HISTORY_STALE' });
+      if (!e.previous.branch) throw new GitError(t('Нельзя вернуться: до переключения был detached HEAD'), { code: 'HISTORY_STALE' });
       await smartCheckout(cwd, { branch: e.previous.branch });
       if (e.created && (await branchTip(cwd, e.created.name)) === e.created.hash) await git(cwd, ['branch', '-D', e.created.name]);
     },
@@ -1217,7 +1218,7 @@ const HANDLERS = {
   // Перенос изменений — обратно тем же переносом
   moveCheckout: {
     async undo(cwd, e) {
-      if (!e.previous.branch) throw new GitError('Нельзя вернуться: до переключения был detached HEAD', { code: 'HISTORY_STALE' });
+      if (!e.previous.branch) throw new GitError(t('Нельзя вернуться: до переключения был detached HEAD'), { code: 'HISTORY_STALE' });
       await moveCheckout(cwd, { branch: e.previous.branch });
       if (e.created && (await branchTip(cwd, e.created.name)) === e.created.hash) await git(cwd, ['branch', '-D', e.created.name]);
     },
@@ -1230,7 +1231,7 @@ const HANDLERS = {
   discardCheckout: {
     async undo(cwd, e) {
       if ((await readStatus(cwd)).length) {
-        throw new GitError('В рабочей папке уже есть изменения', { code: 'HISTORY_STALE', hint: 'Закоммитьте или спрячьте их, затем повторите Undo.' });
+        throw new GitError(t('В рабочей папке уже есть изменения'), { code: 'HISTORY_STALE', hint: t('Закоммитьте или спрячьте их, затем повторите Undo.') });
       }
       await switchTo(cwd, e.previous);
       if (e.created && (await branchTip(cwd, e.created.name)) === e.created.hash) await git(cwd, ['branch', '-D', e.created.name]);
@@ -1258,7 +1259,7 @@ const HANDLERS = {
   },
   branch: {
     async undo(cwd, e) {
-      if ((await branchTip(cwd, e.name)) !== e.hash) throw stale(`ветка ${e.name}`);
+      if ((await branchTip(cwd, e.name)) !== e.hash) throw stale(t('ветка {0}', e.name));
       if (e.checkedOut) await switchTo(cwd, e.previous);
       await git(cwd, ['branch', '-D', e.name]);
     },
@@ -1291,7 +1292,7 @@ const HANDLERS = {
   tag: {
     async undo(cwd, e) {
       const at = (await git(cwd, ['rev-parse', '--verify', '--quiet', `refs/tags/${e.name}^{commit}`]).catch(() => '')).trim();
-      if (at !== e.hash) throw stale(`тег ${e.name}`);
+      if (at !== e.hash) throw stale(t('тег {0}', e.name));
       await git(cwd, ['tag', '-d', e.name]);
     },
     async redo(cwd, e) {
@@ -1321,7 +1322,7 @@ const HANDLERS = {
     },
     async redo(cwd, e) {
       const top = (await git(cwd, ['rev-parse', '--verify', '--quiet', 'stash@{0}']).catch(() => '')).trim();
-      if (top !== e.hash) throw stale('список сташей');
+      if (top !== e.hash) throw stale(t('список сташей'));
       await git(cwd, ['stash', 'drop', '-q', 'stash@{0}']);
     },
   },
@@ -1338,15 +1339,15 @@ const HANDLERS = {
       await git(cwd, ['branch', e.name, e.hash]);
     },
     async redo(cwd, e) {
-      if ((await branchTip(cwd, e.name)) !== e.hash) throw stale(`ветка ${e.name}`);
+      if ((await branchTip(cwd, e.name)) !== e.hash) throw stale(t('ветка {0}', e.name));
       await git(cwd, ['branch', '-D', e.name]);
     },
   },
   deleteRemoteBranch: {
     async undo(cwd, e) {
-      if (!e.hash) throw new GitError('Не известно, на каком коммите была ветка', { code: 'HISTORY_STALE' });
+      if (!e.hash) throw new GitError(t('Не известно, на каком коммите была ветка'), { code: 'HISTORY_STALE' });
       const have = await git(cwd, ['cat-file', '-e', `${e.hash}^{commit}`]).then(() => true, () => false);
-      if (!have) throw new GitError('Коммита ветки нет локально — вернуть на сервер нельзя', { code: 'HISTORY_STALE', hint: 'Сделайте fetch у коллеги или восстановите ветку на сервере.' });
+      if (!have) throw new GitError(t('Коммита ветки нет локально — вернуть на сервер нельзя'), { code: 'HISTORY_STALE', hint: t('Сделайте fetch у коллеги или восстановите ветку на сервере.') });
       await net(cwd, ['push', '--porcelain', e.remote, `${e.hash}:refs/heads/${e.branch}`]);
       await git(cwd, ['update-ref', `refs/remotes/${e.remote}/${e.branch}`, e.hash]);
     },
@@ -1357,7 +1358,7 @@ const HANDLERS = {
   stash: {
     async undo(cwd, e) {
       const top = (await git(cwd, ['rev-parse', '--verify', '--quiet', 'stash@{0}']).catch(() => '')).trim();
-      if (top !== e.hash) throw stale('список сташей');
+      if (top !== e.hash) throw stale(t('список сташей'));
       await stashPop(cwd);
     },
     async redo(cwd, e) {
@@ -1370,7 +1371,7 @@ const HANDLERS = {
 async function undo(cwd) {
   const h = historyFor(cwd);
   const entry = h.undo.at(-1);
-  if (!entry) throw new GitError('Нечего отменять', { code: 'HISTORY_EMPTY' });
+  if (!entry) throw new GitError(t('Нечего отменять'), { code: 'HISTORY_EMPTY' });
   requireNoOperation(await currentState(cwd), 'undo');
   await HANDLERS[entry.type].undo(cwd, entry);
   h.undo.pop();
@@ -1381,7 +1382,7 @@ async function undo(cwd) {
 async function redo(cwd) {
   const h = historyFor(cwd);
   const entry = h.redo.at(-1);
-  if (!entry) throw new GitError('Нечего повторять', { code: 'HISTORY_EMPTY' });
+  if (!entry) throw new GitError(t('Нечего повторять'), { code: 'HISTORY_EMPTY' });
   requireNoOperation(await currentState(cwd), 'redo');
   await HANDLERS[entry.type].redo(cwd, entry);
   h.redo.pop();
@@ -1410,7 +1411,7 @@ const ACTIONS = {
       pendingOps.delete(cwd);
       rebase.cleanup(cwd);
       const to = await headHash(cwd);
-      if (pending && pending.from !== to) record(cwd, { type: 'headMove', label: `${pending.label} (с решением конфликтов)`, from: pending.from, to });
+      if (pending && pending.from !== to) record(cwd, { type: 'headMove', label: t('{0} (с решением конфликтов)', pending.label), from: pending.from, to });
     }
     return res;
   },
@@ -1433,8 +1434,8 @@ const ACTIONS = {
     if (changed) {
       const base = { label: `Checkout ${posLabel(res.to)}`, previous: res.previous, to: res.to, created: res.created };
       if (kind === 'smartCheckout') record(cwd, { type: 'smartCheckout', ...base });
-      else if (kind === 'moveCheckout') record(cwd, { type: 'moveCheckout', ...base, label: `Checkout ${posLabel(res.to)} с переносом изменений` });
-      else if (kind === 'discardCheckout') record(cwd, { type: 'discardCheckout', ...base, backup: res.discarded?.backup ?? null, label: `Checkout ${posLabel(res.to)} без изменений` });
+      else if (kind === 'moveCheckout') record(cwd, { type: 'moveCheckout', ...base, label: t('Checkout {0} с переносом изменений', posLabel(res.to)) });
+      else if (kind === 'discardCheckout') record(cwd, { type: 'discardCheckout', ...base, backup: res.discarded?.backup ?? null, label: t('Checkout {0} без изменений', posLabel(res.to)) });
       else record(cwd, { type: 'checkout', ...base });
     }
     // Новый HEAD — чтобы интерфейс сразу выделил коммит и прокрутил к нему
@@ -1448,7 +1449,7 @@ const ACTIONS = {
   },
   async createBranch(cwd, p) {
     const res = await createBranch(cwd, p);
-    record(cwd, { type: 'branch', label: `Создание ветки ${res.name}`, ...res });
+    record(cwd, { type: 'branch', label: t('Создание ветки {0}', res.name), ...res });
     return res;
   },
   async stash(cwd, p) {
@@ -1468,7 +1469,7 @@ const ACTIONS = {
   },
   async stashDrop(cwd, p) {
     const res = await stashDropAt(cwd, p);
-    record(cwd, { type: 'stashDrop', label: `Удаление ${res.id}`, ...res });
+    record(cwd, { type: 'stashDrop', label: t('Удаление {0}', res.id), ...res });
     return res;
   },
   revertToPreview: (cwd, p) => revertToPreview(cwd, p),
@@ -1479,7 +1480,7 @@ const ACTIONS = {
   markResolved: (cwd, p) => conflicts.markResolved(cwd, p),
   async revertTo(cwd, p) {
     const res = await revertTo(cwd, p);
-    record(cwd, { type: 'headMove', label: `Возврат к ${p.hash.slice(0, 7)}`, from: res.from, to: res.to });
+    record(cwd, { type: 'headMove', label: t('Возврат к {0}', p.hash.slice(0, 7)), from: res.from, to: res.to });
     return res;
   },
   async checkoutCommit(cwd, p) {
@@ -1489,27 +1490,27 @@ const ACTIONS = {
   },
   async createTag(cwd, p) {
     const res = await createTag(cwd, p);
-    record(cwd, { type: 'tag', label: `Тег ${res.name}`, ...res });
+    record(cwd, { type: 'tag', label: t('Тег {0}', res.name), ...res });
     return res;
   },
   async deleteTag(cwd, p) {
     const res = await deleteTag(cwd, p);
-    record(cwd, { type: 'deleteTag', label: `Удаление тега ${res.name}`, ...res });
+    record(cwd, { type: 'deleteTag', label: t('Удаление тега {0}', res.name), ...res });
     return res;
   },
   async deleteRemoteBranch(cwd, p) {
     const res = await deleteRemoteBranch(cwd, p);
-    record(cwd, { type: 'deleteRemoteBranch', label: `Удаление ${res.remote}/${res.branch} с сервера`, ...res });
+    record(cwd, { type: 'deleteRemoteBranch', label: t('Удаление {0}/{1} с сервера', res.remote, res.branch), ...res });
     return res;
   },
   async renameBranch(cwd, p) {
     const res = await renameBranch(cwd, p);
-    record(cwd, { type: 'renameBranch', label: `Переименование ${res.from} → ${res.to}`, ...res });
+    record(cwd, { type: 'renameBranch', label: t('Переименование {0} → {1}', res.from, res.to), ...res });
     return res;
   },
   async deleteBranch(cwd, p) {
     const res = await deleteBranch(cwd, p);
-    record(cwd, { type: 'deleteBranch', label: `Удаление ветки ${res.name}`, ...res });
+    record(cwd, { type: 'deleteBranch', label: t('Удаление ветки {0}', res.name), ...res });
     return res;
   },
   async cherryPick(cwd, p) {
@@ -1533,8 +1534,8 @@ const ACTIONS = {
     return res;
   },
   async rebase(cwd, p) {
-    const res = await trackConflicts(cwd, `Rebase на ${p.ref}`, () => rebaseOnto(cwd, p));
-    record(cwd, { type: 'headMove', label: `Rebase на ${p.ref}`, ...res });
+    const res = await trackConflicts(cwd, t('Rebase на {0}', p.ref), () => rebaseOnto(cwd, p));
+    record(cwd, { type: 'headMove', label: t('Rebase на {0}', p.ref), ...res });
     return res;
   },
   // Интерактивный rebase: применить посчитанный в предпросмотре результат
@@ -1551,22 +1552,22 @@ const ACTIONS = {
   },
   async restoreFile(cwd, p) {
     const res = await restore.restoreFile(cwd, p);
-    const what = p.side === 'before' ? 'до' : 'из';
-    if (res.snapshot) record(cwd, { type: 'fileSnapshot', label: `Файл ${res.path} → версия ${what} ${p.hash.slice(0, 7)}`, snapshots: [res.snapshot] });
+    const what = p.side === 'before' ? t('до') : t('из');
+    if (res.snapshot) record(cwd, { type: 'fileSnapshot', label: t('Файл {0} → версия {1} {2}', res.path, what, p.hash.slice(0, 7)), snapshots: [res.snapshot] });
     else historyFor(cwd).redo = [];
     return { path: res.path, deleted: res.deleted, side: res.side, undoable: Boolean(res.snapshot) };
   },
   async restoreFromStash(cwd, p) {
     const res = await restore.restoreFromStash(cwd, p);
     if (res.snapshots.length) {
-      record(cwd, { type: 'fileSnapshot', label: `Из ${p.id ?? 'stash'}: ${res.changed} ${res.changed === 1 ? 'файл' : 'файлов'}`, snapshots: res.snapshots });
+      record(cwd, { type: 'fileSnapshot', label: t('Из {0}: {1} {2}', p.id ?? 'stash', res.changed, res.changed === 1 ? t('файл') : t('файлов')), snapshots: res.snapshots });
     }
     return { files: res.files, changed: res.changed, undoable: res.complete };
   },
   async applyHunks(cwd, p) {
     const res = await restore.applyHunks(cwd, p);
-    const labels = { revert: 'Откат фрагмента коммита', discard: 'Удаление правок', apply: 'Фрагмент из stash' };
-    if (res.snapshot) record(cwd, { type: 'fileSnapshot', label: `${labels[res.op]} в ${res.path}`, snapshots: [res.snapshot] });
+    const labels = { revert: t('Откат фрагмента коммита'), discard: t('Удаление правок'), apply: t('Фрагмент из stash') };
+    if (res.snapshot) record(cwd, { type: 'fileSnapshot', label: t('{0} в {1}', labels[res.op], res.path), snapshots: [res.snapshot] });
     else if (labels[res.op]) historyFor(cwd).redo = [];
     return { op: res.op, path: res.path, hunks: res.hunks, total: res.total, undoable: Boolean(res.snapshot) };
   },
@@ -1583,7 +1584,7 @@ const ACTIONS = {
   },
   async updateBranch(cwd, p) {
     const res = await updateBranch(cwd, p);
-    if (res.from !== res.to) record(cwd, { type: 'branchMove', label: `Обновление ${res.branch}`, branch: res.branch, from: res.from, to: res.to });
+    if (res.from !== res.to) record(cwd, { type: 'branchMove', label: t('Обновление {0}', res.branch), branch: res.branch, from: res.from, to: res.to });
     return res;
   },
   async fastForward(cwd, p) {
@@ -1633,7 +1634,7 @@ function runBackground(cwd, fn) {
 
 async function runAction(cwd, name, payload = {}) {
   const action = ACTIONS[name];
-  if (!action) throw new GitError(`Неизвестное действие: ${name}`, { code: 'BAD_ARGS' });
+  if (!action) throw new GitError(t('Неизвестное действие: {0}', name), { code: 'BAD_ARGS' });
   busy.set(cwd, (busy.get(cwd) ?? 0) + 1);
   try {
     const bg = background.get(cwd);

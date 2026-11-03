@@ -1,3 +1,4 @@
+import { t } from '../i18n/index.js';
 // Разбор лога задания: ANSI-цвета, перезапись строки через \r и сворачиваемые секции —
 // GitLab (section_start:<время>:<имя>[collapsed=true] … section_end), GitHub/Gitea (##[group] / ::group:: … ##[endgroup]),
 // метки времени GitHub в начале строк и аннотации ##[error] / ##[warning].
@@ -72,8 +73,8 @@ export const ERROR_LINE = /(^|[\s:>\]])(error:|error\b(?=\s*[:!])|fatal:|failed\
 const TS = /^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d(?:\.\d+)?Z ?/;
 const GH_CMD = /^(?:##\[(group|endgroup|error|warning|notice|debug|command|section)\]|::(group|endgroup|error|warning|notice|debug)(?: [^:]*)?::)(.*)$/;
 const ANNOTATION = {
-  error: { fg: '#ff6b6b', bold: true, prefix: 'Ошибка: ' },
-  warning: { fg: '#f5c451', bold: true, prefix: 'Предупреждение: ' },
+  error: { fg: '#ff6b6b', bold: true, prefix: t('Ошибка: ') },
+  warning: { fg: '#f5c451', bold: true, prefix: t('Предупреждение: ') },
   notice: { fg: '#5aa2ff', bold: false, prefix: '' },
   debug: { fg: null, dim: true, prefix: '' },
   command: { fg: '#56d4e0', bold: false, prefix: '' },
@@ -112,7 +113,7 @@ export function parseLog(text) {
       const rest = gh[3];
       if (kind === 'group') {
         n += 1;
-        const section = { type: 'section', group: true, key: key++, name: `::group${key}`, start: null, end: null, duration: null, collapsed: true, title: toSegments(rest || 'Группа', { ...state }), n, children: [] };
+        const section = { type: 'section', group: true, key: key++, name: `::group${key}`, start: null, end: null, duration: null, collapsed: true, title: toSegments(rest || t('Группа'), { ...state }), n, children: [] };
         top().children.push(section);
         stack.push(section);
       } else if (kind === 'endgroup') {

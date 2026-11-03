@@ -1,3 +1,4 @@
+import { t as tr } from '../i18n/index.js';
 // Конструктор действий: цепочки шагов (ветка, rebase, push, MR…) с горячими клавишами и кнопками на панели.
 
 /* ---------------- Шаги ---------------- */
@@ -7,136 +8,136 @@ export const STEP_TYPES = {
   fetch: {
     group: 'sync',
     label: 'Fetch',
-    hint: 'Узнать, что нового на сервере',
+    hint: tr('Узнать, что нового на сервере'),
     fields: [],
-    describe: () => 'Fetch — загрузить новое с сервера',
+    describe: () => tr('Fetch — загрузить новое с сервера'),
   },
   pull: {
     group: 'sync',
     label: 'Pull',
-    hint: 'Забрать изменения в текущую ветку',
+    hint: tr('Забрать изменения в текущую ветку'),
     fields: [
       {
         key: 'mode',
-        label: 'Режим',
+        label: tr('Режим'),
         type: 'select',
         def: 'merge',
         options: [
-          ['merge', 'Fast-forward, если возможно'],
-          ['ff-only', 'Только fast-forward'],
+          ['merge', tr('Fast-forward, если возможно')],
+          ['ff-only', tr('Только fast-forward')],
           ['rebase', 'Rebase'],
         ],
       },
     ],
-    describe: (p) => `Pull${p.mode === 'rebase' ? ' (rebase)' : p.mode === 'ff-only' ? ' (только fast-forward)' : ''}`,
+    describe: (p) => `Pull${p.mode === 'rebase' ? ' (rebase)' : p.mode === 'ff-only' ? tr(' (только fast-forward)') : ''}`,
   },
   push: {
     group: 'sync',
     label: 'Push',
-    hint: 'Отправить текущую ветку',
-    fields: [{ key: 'force', label: 'Force push (--force-with-lease) — нужен после rebase отправленной ветки', type: 'bool', def: false }],
-    describe: (p) => (p.force ? 'Force push текущей ветки' : 'Push текущей ветки'),
+    hint: tr('Отправить текущую ветку'),
+    fields: [{ key: 'force', label: tr('Force push (--force-with-lease) — нужен после rebase отправленной ветки'), type: 'bool', def: false }],
+    describe: (p) => (p.force ? tr('Force push текущей ветки') : tr('Push текущей ветки')),
   },
   createBranch: {
     group: 'branch',
-    label: 'Создать ветку',
-    hint: 'Новая ветка от любой ветки или коммита',
+    label: tr('Создать ветку'),
+    hint: tr('Новая ветка от любой ветки или коммита'),
     fields: [
-      { key: 'name', label: 'Имя ветки', type: 'text', def: 'feature/{input:Название задачи|slug}', placeholder: 'feature/{input:Название|slug}' },
-      { key: 'from', label: 'От чего', type: 'branch', def: '{default}', placeholder: '{default}, origin/main, {branch}…' },
-      { key: 'checkout', label: 'Сразу переключиться на неё', type: 'bool', def: true },
+      { key: 'name', label: tr('Имя ветки'), type: 'text', def: tr('feature/{input:Название задачи|slug}'), placeholder: tr('feature/{input:Название|slug}') },
+      { key: 'from', label: tr('От чего'), type: 'branch', def: '{default}', placeholder: '{default}, origin/main, {branch}…' },
+      { key: 'checkout', label: tr('Сразу переключиться на неё'), type: 'bool', def: true },
     ],
-    describe: (p) => `Создать ветку «${p.name || '?'}» от ${p.from || 'HEAD'}${p.checkout ? ' и переключиться' : ''}`,
+    describe: (p) => tr('Создать ветку «{0}» от {1}{2}', p.name || '?', p.from || 'HEAD', p.checkout ? tr(' и переключиться') : ''),
   },
   checkout: {
     group: 'branch',
-    label: 'Переключить ветку',
-    hint: 'Checkout (учитывает «умное переключение»)',
-    fields: [{ key: 'branch', label: 'Ветка', type: 'branch', def: '{default}' }],
-    describe: (p) => `Переключиться на ${p.branch || '?'}`,
+    label: tr('Переключить ветку'),
+    hint: tr('Checkout (учитывает «умное переключение»)'),
+    fields: [{ key: 'branch', label: tr('Ветка'), type: 'branch', def: '{default}' }],
+    describe: (p) => tr('Переключиться на {0}', p.branch || '?'),
   },
   rebase: {
     group: 'branch',
     label: 'Rebase',
-    hint: 'Перенести текущую ветку поверх другой',
-    fields: [{ key: 'onto', label: 'На что', type: 'branch', def: '{default}' }],
-    describe: (p) => `Rebase текущей ветки на ${p.onto || '?'}`,
+    hint: tr('Перенести текущую ветку поверх другой'),
+    fields: [{ key: 'onto', label: tr('На что'), type: 'branch', def: '{default}' }],
+    describe: (p) => tr('Rebase текущей ветки на {0}', p.onto || '?'),
   },
   merge: {
     group: 'branch',
     label: 'Merge',
-    hint: 'Слить ветку в текущую',
-    fields: [{ key: 'ref', label: 'Какую ветку слить', type: 'branch', def: '{default}' }],
-    describe: (p) => `Слить ${p.ref || '?'} в текущую ветку`,
+    hint: tr('Слить ветку в текущую'),
+    fields: [{ key: 'ref', label: tr('Какую ветку слить'), type: 'branch', def: '{default}' }],
+    describe: (p) => tr('Слить {0} в текущую ветку', p.ref || '?'),
   },
   deleteBranch: {
     group: 'branch',
-    label: 'Удалить ветку',
-    hint: 'Локальная ветка (Undo вернёт)',
+    label: tr('Удалить ветку'),
+    hint: tr('Локальная ветка (Undo вернёт)'),
     fields: [
-      { key: 'name', label: 'Ветка', type: 'branch', def: '{start}' },
-      { key: 'force', label: 'Даже если не слита', type: 'bool', def: false },
+      { key: 'name', label: tr('Ветка'), type: 'branch', def: '{start}' },
+      { key: 'force', label: tr('Даже если не слита'), type: 'bool', def: false },
     ],
-    describe: (p) => `Удалить ветку ${p.name || '?'}${p.force ? ' (принудительно)' : ''}`,
+    describe: (p) => tr('Удалить ветку {0}{1}', p.name || '?', p.force ? tr(' (принудительно)') : ''),
   },
   stash: {
     group: 'changes',
     label: 'Stash',
-    hint: 'Спрятать незакоммиченные изменения',
-    fields: [{ key: 'message', label: 'Подпись (необязательно)', type: 'text', def: '', optional: true }],
-    describe: (p) => `Спрятать изменения${p.message ? ` «${p.message}»` : ''}`,
+    hint: tr('Спрятать незакоммиченные изменения'),
+    fields: [{ key: 'message', label: tr('Подпись (необязательно)'), type: 'text', def: '', optional: true }],
+    describe: (p) => tr('Спрятать изменения{0}', p.message ? ` «${p.message}»` : ''),
   },
   stashPop: {
     group: 'changes',
     label: 'Pop',
-    hint: 'Вернуть последний stash',
+    hint: tr('Вернуть последний stash'),
     fields: [],
-    describe: () => 'Вернуть последний stash',
+    describe: () => tr('Вернуть последний stash'),
   },
   commit: {
     group: 'changes',
-    label: 'Коммит',
-    hint: 'С проверкой Pre-commit Guard',
+    label: tr('Коммит'),
+    hint: tr('С проверкой Pre-commit Guard'),
     fields: [
-      { key: 'message', label: 'Сообщение', type: 'text', def: '{input:Сообщение коммита}' },
-      { key: 'stageAll', label: 'Сначала добавить все изменения (Stage all)', type: 'bool', def: true },
+      { key: 'message', label: tr('Сообщение'), type: 'text', def: tr('{input:Сообщение коммита}') },
+      { key: 'stageAll', label: tr('Сначала добавить все изменения (Stage all)'), type: 'bool', def: true },
     ],
-    describe: (p) => `Коммит «${p.message || '?'}»${p.stageAll ? ' всех изменений' : ''}`,
+    describe: (p) => tr('Коммит «{0}»{1}', p.message || '?', p.stageAll ? tr(' всех изменений') : ''),
   },
   mergeRequest: {
     group: 'server',
     label: 'Merge request / PR',
-    hint: 'GitLab — через API, GitHub — откроется страница PR',
+    hint: tr('GitLab — через API, GitHub — откроется страница PR'),
     fields: [
-      { key: 'target', label: 'В какую ветку', type: 'branch', def: '{default}' },
-      { key: 'title', label: 'Заголовок', type: 'text', def: '{branch}', optional: true },
-      { key: 'draft', label: 'Черновик (Draft)', type: 'bool', def: false },
-      { key: 'open', label: 'Открыть в браузере', type: 'bool', def: true },
+      { key: 'target', label: tr('В какую ветку'), type: 'branch', def: '{default}' },
+      { key: 'title', label: tr('Заголовок'), type: 'text', def: '{branch}', optional: true },
+      { key: 'draft', label: tr('Черновик (Draft)'), type: 'bool', def: false },
+      { key: 'open', label: tr('Открыть в браузере'), type: 'bool', def: true },
     ],
-    describe: (p) => `${p.draft ? 'Черновик MR' : 'Merge request'} из текущей ветки в ${p.target || '?'}`,
+    describe: (p) => tr('{0} из текущей ветки в {1}', p.draft ? tr('Черновик MR') : 'Merge request', p.target || '?'),
   },
   confirm: {
     group: 'other',
-    label: 'Спросить',
-    hint: 'Пауза: продолжить или остановиться',
-    fields: [{ key: 'text', label: 'Вопрос', type: 'text', def: 'Продолжить?' }],
-    describe: (p) => `Спросить: «${p.text || 'Продолжить?'}»`,
+    label: tr('Спросить'),
+    hint: tr('Пауза: продолжить или остановиться'),
+    fields: [{ key: 'text', label: tr('Вопрос'), type: 'text', def: tr('Продолжить?') }],
+    describe: (p) => tr('Спросить: «{0}»', p.text || tr('Продолжить?')),
   },
   git: {
     group: 'other',
-    label: 'Своя git-команда',
-    hint: 'Любая команда git (без shell)',
-    fields: [{ key: 'command', label: 'Команда', type: 'text', def: 'git status', placeholder: 'git tag v{date}' }],
+    label: tr('Своя git-команда'),
+    hint: tr('Любая команда git (без shell)'),
+    fields: [{ key: 'command', label: tr('Команда'), type: 'text', def: 'git status', placeholder: 'git tag v{date}' }],
     describe: (p) => p.command || 'git …',
   },
 };
 
 export const STEP_GROUPS = [
-  ['branch', 'Ветки'],
-  ['sync', 'Сервер'],
-  ['changes', 'Изменения'],
+  ['branch', tr('Ветки')],
+  ['sync', tr('Сервер')],
+  ['changes', tr('Изменения')],
   ['server', 'Merge request'],
-  ['other', 'Другое'],
+  ['other', tr('Другое')],
 ];
 
 export function newStep(type) {
@@ -161,40 +162,40 @@ const tpl = (name, icon, steps, extra = {}) => ({
 export const TEMPLATES = [
   {
     id: 'feature-mr',
-    title: 'Новая задача → MR',
-    description: 'Ветка от основной, rebase на свежую основу, push и merge request',
+    title: tr('Новая задача → MR'),
+    description: tr('Ветка от основной, rebase на свежую основу, push и merge request'),
     make: () =>
-      tpl('Новая задача', 'Rocket', [
+      tpl(tr('Новая задача'), 'Rocket', [
         ['fetch'],
-        ['createBranch', { name: 'feature/{input:Название задачи|slug}', from: '{default}', checkout: true }],
+        ['createBranch', { name: tr('feature/{input:Название задачи|slug}'), from: '{default}', checkout: true }],
         ['rebase', { onto: 'origin/{default}' }],
         ['push'],
-        ['mergeRequest', { target: '{default}', title: '{input:Название задачи}', draft: true }],
+        ['mergeRequest', { target: '{default}', title: tr('{input:Название задачи}'), draft: true }],
       ]),
   },
   {
     id: 'update-branch',
-    title: 'Обновить ветку из основной',
-    description: 'Fetch, rebase на origin/основную и force push',
-    make: () => tpl('Обновить из main', 'RefreshCw', [['fetch'], ['rebase', { onto: 'origin/{default}' }], ['push', { force: true }]]),
+    title: tr('Обновить ветку из основной'),
+    description: tr('Fetch, rebase на origin/основную и force push'),
+    make: () => tpl(tr('Обновить из main'), 'RefreshCw', [['fetch'], ['rebase', { onto: 'origin/{default}' }], ['push', { force: true }]]),
   },
   {
     id: 'finish',
-    title: 'Закончить задачу',
-    description: 'Коммит всех изменений, push и merge request',
+    title: tr('Закончить задачу'),
+    description: tr('Коммит всех изменений, push и merge request'),
     make: () =>
-      tpl('Отправить на ревью', 'Send', [
-        ['commit', { message: '{input:Сообщение коммита}', stageAll: true }],
+      tpl(tr('Отправить на ревью'), 'Send', [
+        ['commit', { message: tr('{input:Сообщение коммита}'), stageAll: true }],
         ['push'],
         ['mergeRequest', { target: '{default}', title: '{branch}' }],
       ]),
   },
   {
     id: 'sync-main',
-    title: 'Подтянуть основную ветку',
-    description: 'Переключиться на основную, pull и вернуться обратно',
+    title: tr('Подтянуть основную ветку'),
+    description: tr('Переключиться на основную, pull и вернуться обратно'),
     make: () =>
-      tpl('Обновить main', 'Download', [
+      tpl(tr('Обновить main'), 'Download', [
         ['checkout', { branch: '{default}' }],
         ['pull', { mode: 'ff-only' }],
         ['checkout', { branch: '{start}' }],
@@ -202,11 +203,11 @@ export const TEMPLATES = [
   },
   {
     id: 'cleanup',
-    title: 'Ветка слита — убрать',
-    description: 'Переключиться на основную, pull и удалить ветку, с которой начали',
+    title: tr('Ветка слита — убрать'),
+    description: tr('Переключиться на основную, pull и удалить ветку, с которой начали'),
     make: () =>
-      tpl('Убрать слитую ветку', 'Trash2', [
-        ['confirm', { text: 'Удалить ветку {start} после обновления основной?' }],
+      tpl(tr('Убрать слитую ветку'), 'Trash2', [
+        ['confirm', { text: tr('Удалить ветку {start} после обновления основной?') }],
         ['checkout', { branch: '{default}' }],
         ['pull', { mode: 'ff-only' }],
         ['deleteBranch', { name: '{start}', force: false }],
@@ -238,12 +239,12 @@ export function writeActions(list) {
 /* ---------------- Переменные ---------------- */
 
 export const VARIABLES = [
-  ['{branch}', 'текущая ветка в момент шага'],
-  ['{start}', 'ветка, с которой запустили действие'],
-  ['{default}', 'основная ветка (main / master)'],
-  ['{date}', 'сегодняшняя дата, 2026-10-26'],
-  ['{input:Вопрос}', 'спросить при запуске'],
-  ['{input:Вопрос|slug}', 'спросить и сделать имя ветки: «Новая форма» → novaya-forma'],
+  ['{branch}', tr('текущая ветка в момент шага')],
+  ['{start}', tr('ветка, с которой запустили действие')],
+  ['{default}', tr('основная ветка (main / master)')],
+  ['{date}', tr('сегодняшняя дата, 2026-10-26')],
+  [tr('{input:Вопрос}'), tr('спросить при запуске')],
+  [tr('{input:Вопрос|slug}'), tr('спросить и сделать имя ветки: «Новая форма» → novaya-forma')],
 ];
 
 const INPUT_RE = /\{input:([^}|]+)(\|slug)?\}/g;
@@ -329,11 +330,11 @@ export function hotkeyProblem(combo, actions, selfId) {
   if (!combo) return null;
   const parts = combo.split('+');
   const key = parts.at(-1);
-  if (parts.length === 1 && !/^F\d+$/.test(key)) return 'Нужен модификатор: Ctrl, Alt или Shift';
-  if (parts.length === 2 && parts[0] === 'Shift' && !/^F\d+$/.test(key)) return 'Shift + буква мешает вводу текста — добавьте Ctrl или Alt';
-  if (RESERVED_HOTKEYS.has(combo)) return 'Это сочетание уже занято программой';
+  if (parts.length === 1 && !/^F\d+$/.test(key)) return tr('Нужен модификатор: Ctrl, Alt или Shift');
+  if (parts.length === 2 && parts[0] === 'Shift' && !/^F\d+$/.test(key)) return tr('Shift + буква мешает вводу текста — добавьте Ctrl или Alt');
+  if (RESERVED_HOTKEYS.has(combo)) return tr('Это сочетание уже занято программой');
   const other = actions.find((a) => a.id !== selfId && a.hotkey === combo);
-  if (other) return `Уже назначено действию «${other.name}»`;
+  if (other) return tr('Уже назначено действию «{0}»', other.name);
   return null;
 }
 
@@ -348,14 +349,14 @@ export function defaultBranchOf(repo) {
 
 export function validateAction(a) {
   const problems = [];
-  if (!a.name?.trim()) problems.push('Введите название');
-  if (!a.steps.length) problems.push('Добавьте хотя бы один шаг');
+  if (!a.name?.trim()) problems.push(tr('Введите название'));
+  if (!a.steps.length) problems.push(tr('Добавьте хотя бы один шаг'));
   a.steps.forEach((s, i) => {
     const t = STEP_TYPES[s.type];
-    if (!t) problems.push(`Шаг ${i + 1}: неизвестный тип`);
+    if (!t) problems.push(tr('Шаг {0}: неизвестный тип', i + 1));
     for (const f of t?.fields ?? []) {
       if (f.type !== 'bool' && !f.optional && !String(s.params?.[f.key] ?? '').trim()) {
-        problems.push(`Шаг ${i + 1} «${t.label}»: заполните «${f.label}»`);
+        problems.push(tr('Шаг {0} «{1}»: заполните «{2}»', i + 1, t.label, f.label));
       }
     }
   });

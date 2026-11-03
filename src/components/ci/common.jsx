@@ -2,6 +2,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { AlertTriangle, Loader2 } from 'lucide-react';
 import { formatDuration } from '../PipelineStatus.jsx';
+import { t as tr, locale } from '../../i18n/index.js';
 
 /** Повторяем запрос с интервалом, пока окно видимо; delay может меняться, 0 — не опрашивать */
 export function usePolling(fn, delay, deps) {
@@ -44,7 +45,7 @@ export function Duration({ startedAt, duration, running, className = '', prefix 
   const text = formatDuration(sec);
   if (!text) return null;
   return (
-    <span className={`tabular-nums ${className}`} data-testid={running ? 'live-duration' : 'duration'} title={running ? 'Идёт сейчас' : 'Длительность'}>
+    <span className={`tabular-nums ${className}`} data-testid={running ? 'live-duration' : 'duration'} title={running ? tr('Идёт сейчас') : tr('Длительность')}>
       {prefix}
       {text}
     </span>
@@ -53,11 +54,11 @@ export function Duration({ startedAt, duration, running, className = '', prefix 
 
 export function formatSize(bytes) {
   if (bytes == null) return '';
-  if (bytes < 1024) return `${bytes} Б`;
-  const num = (n, digits) => n.toLocaleString('ru-RU', { maximumFractionDigits: digits, minimumFractionDigits: digits });
-  if (bytes < 1024 * 1024) return `${num(bytes / 1024, bytes < 10240 ? 1 : 0)} КБ`;
-  if (bytes < 1024 ** 3) return `${num(bytes / 1024 / 1024, 1)} МБ`;
-  return `${num(bytes / 1024 ** 3, 2)} ГБ`;
+  if (bytes < 1024) return tr('{0} Б', bytes);
+  const num = (n, digits) => n.toLocaleString(locale(), { maximumFractionDigits: digits, minimumFractionDigits: digits });
+  if (bytes < 1024 * 1024) return tr('{0} КБ', num(bytes / 1024, bytes < 10240 ? 1 : 0));
+  if (bytes < 1024 ** 3) return tr('{0} МБ', num(bytes / 1024 / 1024, 1));
+  return tr('{0} ГБ', num(bytes / 1024 ** 3, 2));
 }
 
 export function ErrorNote({ error, className = 'm-4' }) {
@@ -193,7 +194,7 @@ export function Toggle({ checked, onChange, label, hint, disabled, why, testid }
 }
 
 /** Ввод тегов чипсами: Enter, запятая или пробел — добавить, Backspace — убрать последний */
-export function ChipsInput({ value, onChange, suggestions = [], placeholder = 'тег', locked = [], disabled, testid }) {
+export function ChipsInput({ value, onChange, suggestions = [], placeholder = tr('тег'), locked = [], disabled, testid }) {
   const [text, setText] = useState('');
   const [focus, setFocus] = useState(false);
   const [open, setOpen] = useState(false); // список подсказок: открыт, пока печатают; после добавления тега — закрыт
@@ -229,13 +230,13 @@ export function ChipsInput({ value, onChange, suggestions = [], placeholder = '�
               key={t}
               data-testid="chip"
               className={`flex items-center gap-1 rounded px-1.5 py-0.5 font-mono text-[11.5px] ${isLocked ? 'bg-gk-fg/5 text-gk-dim' : 'bg-gk-blue/15 text-gk-blue'}`}
-              data-tip={isLocked ? 'Метку задаёт сам сервер — её не убрать' : undefined}
+              data-tip={isLocked ? tr('Метку задаёт сам сервер — её не убрать') : undefined}
             >
               {t}
               {!isLocked && !disabled && (
                 <button
                   type="button"
-                  aria-label={`Убрать ${t}`}
+                  aria-label={tr('Убрать {0}', t)}
                   onClick={(e) => {
                     e.stopPropagation();
                     onChange(value.filter((x) => x !== t));

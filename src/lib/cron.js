@@ -1,14 +1,17 @@
-// Расписания в формате cron: готовые варианты и описание по-русски
+// Расписания в формате cron: готовые варианты и описание по-русски (и по-английски)
+import { getLanguage } from '../i18n/index.js';
+import { t } from '../i18n/index.js';
 
 export const CRON_PRESETS = [
-  { cron: '0 3 * * *', label: 'Каждый день в 3:00' },
-  { cron: '0 9 * * 1-5', label: 'По будням в 9:00' },
-  { cron: '0 * * * *', label: 'Каждый час' },
-  { cron: '*/15 * * * *', label: 'Каждые 15 минут' },
-  { cron: '0 4 * * 1', label: 'По понедельникам в 4:00' },
-  { cron: '0 2 1 * *', label: '1-го числа каждого месяца в 2:00' },
+  { cron: '0 3 * * *', label: t('Каждый день в 3:00') },
+  { cron: '0 9 * * 1-5', label: t('По будням в 9:00') },
+  { cron: '0 * * * *', label: t('Каждый час') },
+  { cron: '*/15 * * * *', label: t('Каждые 15 минут') },
+  { cron: '0 4 * * 1', label: t('По понедельникам в 4:00') },
+  { cron: '0 2 1 * *', label: t('1-го числа каждого месяца в 2:00') },
 ];
 
+// i18n-ignore-start — русская грамматика; для английского — describeCronEn ниже
 const DOW_SHORT = ['вс', 'пн', 'вт', 'ср', 'чт', 'пт', 'сб', 'вс'];
 const MONTHS = ['', 'январе', 'феврале', 'марте', 'апреле', 'мае', 'июне', 'июле', 'августе', 'сентябре', 'октябре', 'ноябре', 'декабре'];
 
@@ -34,6 +37,7 @@ function dowPlural(d) {
 
 /** «0 3 * * 1-5» → «по будням в 03:00». Если формат непонятен — null */
 export function describeCron(expr) {
+  if (getLanguage() !== 'ru') return describeCronEn(expr);
   const f = String(expr ?? '').trim().split(/\s+/);
   if (f.length !== 5) return null;
   const [min, hour, dom, mon, dow] = f;
@@ -62,6 +66,48 @@ export function describeCron(expr) {
     else return null;
   }
   return `${when}${month} в ${time}`;
+}
+
+// i18n-ignore-end
+
+/* ---------- English ---------- */
+const DOW_EN = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+const DOW_EN_LONG = ['Sundays', 'Mondays', 'Tuesdays', 'Wednesdays', 'Thursdays', 'Fridays', 'Saturdays', 'Sundays'];
+const MONTHS_EN = ['', 'January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+const ordinal = (n) => `${n}${[11, 12, 13].includes(n % 100) ? 'th' : ['th', 'st', 'nd', 'rd'][n % 10] ?? 'th'}`;
+
+function describeCronEn(expr) {
+  const f = String(expr ?? '').trim().split(/\s+/);
+  if (f.length !== 5) return null;
+  const [min, hour, dom, mon, dow] = f;
+  const everyMin = /^\*\/(\d+)$/.exec(min);
+  if (everyMin && hour === '*' && dom === '*' && mon === '*' && dow === '*') return `every ${everyMin[1]} min`;
+  if (min === '*' && hour === '*' && dom === '*' && mon === '*' && dow === '*') return 'every minute';
+  if (isNum(min) && hour === '*' && dom === '*' && mon === '*' && dow === '*') return `every hour at :${pad(min)}`;
+  const everyHour = /^\*\/(\d+)$/.exec(hour);
+  if (isNum(min) && everyHour && dom === '*' && mon === '*' && dow === '*') return `every ${everyHour[1]} h at :${pad(min)}`;
+  if (!isNum(min) || !(isNum(hour) || /^\d+(,\d+)+$/.test(hour))) return null;
+  const time = hour.split(',').map((h) => `${pad(h)}:${pad(min)}`).join(', ');
+  let when;
+  if (dom === '*' && dow === '*') when = 'every day';
+  else if (dom === '*' && dow !== '*') {
+    if (dow === '1-5') when = 'on weekdays';
+    else if (['0,6', '6,0', '6-7', '6,7'].includes(dow)) when = 'on weekends';
+    else {
+      const parts = dow.split(',');
+      const range = /^(\d)-(\d)$/.exec(dow);
+      if (parts.every(isNum)) when = parts.length === 1 ? `on ${DOW_EN_LONG[Number(parts[0])]}` : `on ${parts.map((p) => DOW_EN[Number(p)]).join(', ')}`;
+      else if (range) when = `${DOW_EN[Number(range[1])]}–${DOW_EN[Number(range[2])]}`;
+      else return null;
+    }
+  } else if (isNum(dom) && dow === '*') when = `on the ${ordinal(Number(dom))}`;
+  else return null;
+  let month = '';
+  if (mon !== '*') {
+    if (isNum(mon)) month = ` in ${MONTHS_EN[Number(mon)] ?? mon}`;
+    else return null;
+  }
+  return `${when}${month} at ${time}`;
 }
 
 export const TIMEZONES = [

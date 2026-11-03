@@ -23,6 +23,7 @@ import { CodeLang, HighlightedLines, TokenText, useLineTokens } from './CodeText
 import { detectLanguage } from '../lib/highlight.js';
 import { isMod, kb } from '../lib/platform.js';
 import { readable } from '../lib/scheme.js';
+import { t, tj } from '../i18n/index.js';
 
 const api = window.api;
 const LEFT = '#2f9bff'; // сторона ours (stage 2)
@@ -76,8 +77,8 @@ export default function ConflictView({ repoPath, path, fileIndex, fileCount, onP
   const blocks = useMemo(() => (data?.segments ?? []).filter((s) => s.type === 'conflict'), [data]);
   const decidedCount = choices.filter((c) => c.decided).length;
   const allDecided = blocks.length > 0 && decidedCount === blocks.length;
-  const L = data?.labels?.ours ?? { title: 'Моё', sub: '' };
-  const R = data?.labels?.theirs ?? { title: 'Их', sub: '' };
+  const L = data?.labels?.ours ?? { title: t('Моё'), sub: '' };
+  const R = data?.labels?.theirs ?? { title: t('Их'), sub: '' };
 
   const setChoice = (i, patch) =>
     setChoices((list) => list.map((c, k) => (k === i ? { ...c, ...(typeof patch === 'function' ? patch(c) : patch), decided: true } : c)));
@@ -128,21 +129,21 @@ export default function ConflictView({ repoPath, path, fileIndex, fileCount, onP
   const save = async () => {
     if (!allDecided || saving) return;
     setSaving(true);
-    const res = await runAction('saveResolution', { path, content: resultText }, { label: 'Сохранение' });
+    const res = await runAction('saveResolution', { path, content: resultText }, { label: t('Сохранение') });
     setSaving(false);
     if (res.ok) onResolved(path);
   };
 
   const whole = async (side) => {
     setSaving(true);
-    const res = await runAction('resolveWhole', { path, side }, { label: 'Конфликт' });
+    const res = await runAction('resolveWhole', { path, side }, { label: t('Конфликт') });
     setSaving(false);
     if (res.ok) onResolved(path);
   };
 
   const markResolved = async () => {
     setSaving(true);
-    const res = await runAction('markResolved', { path }, { label: 'Конфликт' });
+    const res = await runAction('markResolved', { path }, { label: t('Конфликт') });
     setSaving(false);
     if (res.ok) onResolved(path);
   };
@@ -187,40 +188,33 @@ export default function ConflictView({ repoPath, path, fileIndex, fileCount, onP
 
         {fileCount > 1 && (
           <span className="flex items-center gap-0.5 text-[11px] text-gk-muted">
-            <IconBtn title="Предыдущий конфликтный файл" onClick={onPrevFile} disabled={!onPrevFile}>
+            {tj('{0}файл {1} из {2}{3}', [<IconBtn title={t('Предыдущий конфликтный файл')} onClick={onPrevFile} disabled={!onPrevFile}>
               <ChevronLeft size={14} />
-            </IconBtn>
-            файл {fileIndex + 1} из {fileCount}
-            <IconBtn title="Следующий конфликтный файл" onClick={onNextFile} disabled={!onNextFile}>
+            </IconBtn>, fileIndex + 1, fileCount, <IconBtn title={t('Следующий конфликтный файл')} onClick={onNextFile} disabled={!onNextFile}>
               <ChevronRight size={14} />
-            </IconBtn>
+            </IconBtn>])}
           </span>
         )}
 
         {data?.kind === 'text' && (
           <>
-            <span
+            {tj('<0>Решено {1} из {2}</0>{3}{4}{5}', [<span
               className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${
                 allDecided ? 'bg-gk-green/15 text-gk-green' : 'bg-gk-red/15 text-gk-red'
               }`}
-            >
-              Решено {decidedCount} из {blocks.length}
-            </span>
-            <IconBtn title={kb('Предыдущий нерешённый (Alt+↑)')} onClick={() => nextUnresolved(-1)}>
+             />, decidedCount, blocks.length, <IconBtn title={kb(t('Предыдущий нерешённый (Alt+↑)'))} onClick={() => nextUnresolved(-1)}>
               <ChevronUp size={15} />
-            </IconBtn>
-            <IconBtn title={kb('Следующий нерешённый (Alt+↓)')} onClick={() => nextUnresolved(1)}>
+            </IconBtn>, <IconBtn title={kb(t('Следующий нерешённый (Alt+↓)'))} onClick={() => nextUnresolved(1)}>
               <ChevronDown size={15} />
-            </IconBtn>
-            <IconBtn title={preview ? 'Показать блоки' : 'Предпросмотр итогового файла'} onClick={() => setPreview((v) => !v)} active={preview}>
+            </IconBtn>, <IconBtn title={preview ? t('Показать блоки') : t('Предпросмотр итогового файла')} onClick={() => setPreview((v) => !v)} active={preview}>
               {preview ? <Columns2 size={14} /> : <Eye size={14} />}
-            </IconBtn>
+            </IconBtn>])}
           </>
         )}
-        <IconBtn title="Открыть файл во внешнем редакторе" onClick={openInEditor}>
+        <IconBtn title={t('Открыть файл во внешнем редакторе')} onClick={openInEditor}>
           <ExternalLink size={14} />
         </IconBtn>
-        <IconBtn title="Перечитать файл с диска" onClick={() => setReloadKey((k) => k + 1)}>
+        <IconBtn title={t('Перечитать файл с диска')} onClick={() => setReloadKey((k) => k + 1)}>
           <RefreshCw size={14} />
         </IconBtn>
 
@@ -228,14 +222,14 @@ export default function ConflictView({ repoPath, path, fileIndex, fileCount, onP
           <button
             onClick={save}
             disabled={!allDecided || saving}
-            title={allDecided ? 'Сохранить файл и отметить конфликт решённым (Ctrl+S)' : 'Сначала решите все конфликты в файле'}
+            title={allDecided ? t('Сохранить файл и отметить конфликт решённым (Ctrl+S)') : t('Сначала решите все конфликты в файле')}
             className="flex items-center gap-1.5 rounded-md bg-gk-green px-3 py-1.5 text-[12px] font-semibold text-gk-ink shadow-lg shadow-gk-green/20 transition hover:brightness-110 disabled:bg-gk-fg/10 disabled:text-gk-dim disabled:shadow-none"
           >
             {saving ? <Loader2 size={13} className="animate-spin" /> : <Check size={14} />}
-            {fileCount > 1 ? 'Сохранить и дальше' : 'Сохранить'}
+            {fileCount > 1 ? t('Сохранить и дальше') : t('Сохранить')}
           </button>
         )}
-        <IconBtn title="Закрыть (Esc)" onClick={onClose}>
+        <IconBtn title={t('Закрыть (Esc)')} onClick={onClose}>
           <X size={15} />
         </IconBtn>
       </div>
@@ -251,8 +245,7 @@ export default function ConflictView({ repoPath, path, fileIndex, fileCount, onP
       <div className="min-h-0 flex-1 overflow-y-auto">
         {!data && !error && (
           <div className="flex h-full items-center justify-center gap-2 text-[13px] text-gk-muted">
-            <Loader2 size={15} className="animate-spin" /> Читаем конфликт…
-          </div>
+            {tj('{0} Читаем конфликт…', [<Loader2 size={15} className="animate-spin" />])}</div>
         )}
         {error && <div className="p-4 text-[13px] text-gk-red">{error.message}</div>}
 
@@ -338,8 +331,7 @@ function CommonLines({ lines, isFirst, isLast }) {
         onClick={() => setOpen(true)}
         className="my-0.5 w-full rounded bg-gk-fg/[0.03] py-1 text-center text-[11px] text-gk-dim hover:bg-gk-fg/[0.06] hover:text-gk-muted"
       >
-        ⋯ {lines.length - head - tail} строк без конфликтов — показать
-      </button>
+        {tj('⋯ {0} строк без конфликтов — показать', [lines.length - head - tail])}</button>
       {tail > 0 && <Code lines={lines.slice(lines.length - tail)} />}
     </div>
   );
@@ -366,30 +358,20 @@ function ConflictCard({ refFn, index, total, block, choice, L, R, onPick, onTogg
     >
       {/* Заголовок и быстрые решения */}
       <div className="flex flex-wrap items-center gap-1.5 border-b border-gk-border bg-gk-sink/15 px-3 py-2">
-        <span className={`text-xs font-semibold ${decided ? 'text-gk-green' : 'text-gk-red'}`}>
-          {decided ? '✓' : '●'} Конфликт {index + 1} из {total}
-        </span>
-        <span className="mr-auto text-[11px] text-gk-dim">строка {block.startLine}</span>
-        <QuickBtn color={readable(LEFT)} active={decided && choice.manual == null && choice.ours.every(Boolean) && !choice.theirs.some(Boolean)} onClick={() => onPick('left')}>
+        {tj('<0>{1} Конфликт {2} из {3}</0><4>строка {5}</4>{6}{7}{8}{9}{10}{11}', [<span className={`text-xs font-semibold ${decided ? 'text-gk-green' : 'text-gk-red'}`} />, decided ? '✓' : '●', index + 1, total, <span className="mr-auto text-[11px] text-gk-dim" />, block.startLine, <QuickBtn color={readable(LEFT)} active={decided && choice.manual == null && choice.ours.every(Boolean) && !choice.theirs.some(Boolean)} onClick={() => onPick('left')}>
           <ArrowLeft size={12} /> {L.title}
-        </QuickBtn>
-        <QuickBtn color={readable(RIGHT)} active={decided && choice.manual == null && choice.theirs.every(Boolean) && !choice.ours.some(Boolean)} onClick={() => onPick('right')}>
+        </QuickBtn>, <QuickBtn color={readable(RIGHT)} active={decided && choice.manual == null && choice.theirs.every(Boolean) && !choice.ours.some(Boolean)} onClick={() => onPick('right')}>
           {R.title} <ArrowRight size={12} />
-        </QuickBtn>
-        <QuickBtn onClick={() => onPick('leftRight')} title={`Оставить обе версии: сначала «${L.title}», потом «${R.title}»`}>
-          Оба: {L.title} + {R.title}
-        </QuickBtn>
-        <QuickBtn onClick={() => onPick('rightLeft')} title={`Оставить обе версии: сначала «${R.title}», потом «${L.title}»`}>
+        </QuickBtn>, <QuickBtn onClick={() => onPick('leftRight')} title={t('Оставить обе версии: сначала «{0}», потом «{1}»', L.title, R.title)}>
+          {tj('Оба: {0} + {1}', [L.title, R.title])}
+        </QuickBtn>, <QuickBtn onClick={() => onPick('rightLeft')} title={t('Оставить обе версии: сначала «{0}», потом «{1}»', R.title, L.title)}>
           {R.title} + {L.title}
-        </QuickBtn>
-        <QuickBtn onClick={() => onPick('none')} title="Убрать обе версии">
-          <Trash2 size={12} /> Ничего
-        </QuickBtn>
-        {decided && (
-          <button onClick={onReset} title="Сбросить решение" className="rounded p-1 text-gk-dim hover:bg-gk-hover hover:text-gk-text">
+        </QuickBtn>, <QuickBtn onClick={() => onPick('none')} title={t('Убрать обе версии')}>
+          {tj('{0} Ничего', [<Trash2 size={12} />])}</QuickBtn>, decided && (
+          <button onClick={onReset} title={t('Сбросить решение')} className="rounded p-1 text-gk-dim hover:bg-gk-hover hover:text-gk-text">
             <RotateCcw size={12} />
           </button>
-        )}
+        )])}
       </div>
 
       {/* Две версии с выбором строк */}
@@ -415,8 +397,7 @@ function ConflictCard({ refFn, index, total, block, choice, L, R, onPick, onTogg
       {block.base && (
         <div className="border-t border-gk-border">
           <button onClick={() => setShowBase((v) => !v)} className="flex w-full items-center gap-1 px-3 py-1 text-left text-[11px] text-gk-dim hover:text-gk-muted">
-            {showBase ? <ChevronDown size={11} /> : <ChevronRight size={11} />} Как было до обоих изменений (общий предок)
-          </button>
+            {tj('{0} Как было до обоих изменений (общий предок)', [showBase ? <ChevronDown size={11} /> : <ChevronRight size={11} />])}</button>
           {showBase && <Code lines={block.base} />}
         </div>
       )}
@@ -424,29 +405,21 @@ function ConflictCard({ refFn, index, total, block, choice, L, R, onPick, onTogg
       {/* Результат */}
       <div className="border-t border-gk-border bg-gk-sink/20 px-3 py-2">
         <div className="mb-1 flex items-center gap-2 text-[11px] text-gk-muted">
-          <span className="font-semibold uppercase tracking-wider">Результат</span>
-          {choice.manual == null && choice.ours.some(Boolean) && choice.theirs.some(Boolean) && (
+          {tj('<0>Результат</0>{1}{2}{3}', [<span className="font-semibold uppercase tracking-wider" />, choice.manual == null && choice.ours.some(Boolean) && choice.theirs.some(Boolean) && (
             <span className="flex items-center gap-1">
-              порядок:
-              <button onClick={() => onOrder('ours')} className={choice.order === 'ours' ? 'text-gk-text underline' : 'hover:text-gk-text'}>
+              {tj('порядок:{0}/{1}', [<button onClick={() => onOrder('ours')} className={choice.order === 'ours' ? 'text-gk-text underline' : 'hover:text-gk-text'}>
                 {L.title} → {R.title}
-              </button>
-              /
-              <button onClick={() => onOrder('theirs')} className={choice.order === 'theirs' ? 'text-gk-text underline' : 'hover:text-gk-text'}>
+              </button>, <button onClick={() => onOrder('theirs')} className={choice.order === 'theirs' ? 'text-gk-text underline' : 'hover:text-gk-text'}>
                 {R.title} → {L.title}
-              </button>
+              </button>])}
             </span>
-          )}
-          <span className="ml-auto" />
-          {choice.manual == null ? (
+          ), <span className="ml-auto" />, choice.manual == null ? (
             <button onClick={onEditManual} className="flex items-center gap-1 hover:text-gk-text">
-              <Pencil size={11} /> Править вручную
-            </button>
+              {tj('{0} Править вручную', [<Pencil size={11} />])}</button>
           ) : (
             <button onClick={() => onManual(null)} className="flex items-center gap-1 hover:text-gk-text">
-              <RotateCcw size={11} /> Вернуться к выбору строк
-            </button>
-          )}
+              {tj('{0} Вернуться к выбору строк', [<RotateCcw size={11} />])}</button>
+          )])}
         </div>
         {choice.manual != null ? (
           <textarea
@@ -458,9 +431,9 @@ function ConflictCard({ refFn, index, total, block, choice, L, R, onPick, onTogg
             className="w-full resize-y rounded bg-gk-bg px-2 py-1.5 font-mono text-[12px] leading-5 outline-none ring-1 ring-gk-blue/50 focus:ring-gk-blue [tab-size:4]"
           />
         ) : !decided ? (
-          <div className="text-[12px] italic text-gk-dim">Выберите версию кнопками выше или отметьте нужные строки</div>
+          <div className="text-[12px] italic text-gk-dim">{t('Выберите версию кнопками выше или отметьте нужные строки')}</div>
         ) : result.length === 0 ? (
-          <div className="text-[12px] italic text-gk-dim">— блок будет удалён —</div>
+          <div className="text-[12px] italic text-gk-dim">{t('— блок будет удалён —')}</div>
         ) : (
           <pre className="select-text overflow-x-auto whitespace-pre rounded bg-gk-green/[0.06] px-2 py-1 font-mono text-[12px] leading-5 text-gk-text [tab-size:4]">
             <HighlightedLines lines={result} />
@@ -484,7 +457,7 @@ function SideLines({ color, lines, selected, disabled, onToggle, onToggleAll }) 
           onChange={(e) => onToggleAll(e.target.checked)}
           style={{ accentColor: color }}
         />
-        {lines.length === 0 ? 'пусто — с этой стороны строки удалены' : `все строки (${lines.length})`}
+        {lines.length === 0 ? t('пусто — с этой стороны строки удалены') : t('все строки ({0})', lines.length)}
       </label>
       <div className="overflow-x-auto py-0.5">
         {lines.map((line, k) => (
@@ -528,14 +501,13 @@ function ResultPreview({ data, choices }) {
         if (!ch.decided) {
           return (
             <div key={si} className="my-0.5 rounded bg-gk-red/15 px-2 py-0.5 text-gk-red">
-              ● конфликт {bi + 1} ещё не решён
-            </div>
+              {tj('● конфликт {0} ещё не решён', [bi + 1])}</div>
           );
         }
         const lines = blockResult(seg, ch);
         return (
           <pre key={si} className="select-text whitespace-pre rounded bg-gk-green/10 text-gk-text">
-            {lines.length ? <HighlightedLines lines={lines} /> : <span className="italic text-gk-dim">(блок удалён)</span>}
+            {lines.length ? <HighlightedLines lines={lines} /> : <span className="italic text-gk-dim">{t('(блок удалён)')}</span>}
           </pre>
         );
       })}
@@ -553,61 +525,54 @@ function SpecialConflict({ data, L, R, busy, onWhole, onMarkResolved, onOpen, on
   if (data.kind === 'deleted') {
     const del = sideOf(data.deletedSide);
     const keep = sideOf(data.keepSide);
-    title = `Файл удалён в «${del.title}», но изменён в «${keep.title}»`;
-    text = `${del.title}: ${del.sub}. ${keep.title}: ${keep.sub}. Решите, нужен ли файл.`;
+    title = t('Файл удалён в «{0}», но изменён в «{1}»', del.title, keep.title);
+    text = t('{0}: {1}. {2}: {3}. Решите, нужен ли файл.', del.title, del.sub, keep.title, keep.sub);
     actions = (
       <>
         <BigButton color={data.keepSide === 'ours' ? readable(LEFT) : readable(RIGHT)} disabled={busy} onClick={() => onWhole(data.keepSide)}>
-          <Check size={14} /> Оставить файл (версия «{keep.title}»)
-        </BigButton>
+          {tj('{0} Оставить файл (версия «{1}»)', [<Check size={14} />, keep.title])}</BigButton>
         <BigButton danger disabled={busy} onClick={() => onWhole('delete')}>
-          <Trash2 size={14} /> Удалить файл
-        </BigButton>
+          {tj('{0} Удалить файл', [<Trash2 size={14} />])}</BigButton>
       </>
     );
   } else if (data.kind === 'binary') {
-    title = 'Бинарный файл изменён с обеих сторон';
-    text = 'Объединить картинку или другой бинарный файл построчно нельзя — выберите одну версию целиком.';
+    title = t('Бинарный файл изменён с обеих сторон');
+    text = t('Объединить картинку или другой бинарный файл построчно нельзя — выберите одну версию целиком.');
     actions = (
       <>
         <BigButton color={readable(LEFT)} disabled={busy} onClick={() => onWhole('ours')}>
-          <ArrowLeft size={14} /> Взять «{L.title}» ({L.sub})
-        </BigButton>
+          {tj('{0} Взять «{1}» ({2})', [<ArrowLeft size={14} />, L.title, L.sub])}</BigButton>
         <BigButton color={readable(RIGHT)} disabled={busy} onClick={() => onWhole('theirs')}>
-          Взять «{R.title}» ({R.sub}) <ArrowRight size={14} />
+          {tj('Взять «{0}» ({1}) {2}', [R.title, R.sub, <ArrowRight size={14} />])}
         </BigButton>
       </>
     );
   } else if (data.kind === 'both-deleted') {
-    title = 'Файл удалён с обеих сторон';
-    text = 'Осталось подтвердить удаление.';
+    title = t('Файл удалён с обеих сторон');
+    text = t('Осталось подтвердить удаление.');
     actions = (
       <BigButton danger disabled={busy} onClick={() => onWhole('delete')}>
-        <Trash2 size={14} /> Удалить файл
-      </BigButton>
+        {tj('{0} Удалить файл', [<Trash2 size={14} />])}</BigButton>
     );
   } else if (data.kind === 'no-markers') {
-    title = data.exists ? 'Маркеров конфликта в файле нет' : 'Файла нет на диске';
+    title = data.exists ? t('Маркеров конфликта в файле нет') : t('Файла нет на диске');
     text = data.exists
-      ? 'Похоже, вы уже исправили файл (например, в редакторе). Проверьте и отметьте его решённым.'
-      : 'Отметьте конфликт решённым — файл будет удалён из репозитория.';
+      ? t('Похоже, вы уже исправили файл (например, в редакторе). Проверьте и отметьте его решённым.')
+      : t('Отметьте конфликт решённым — файл будет удалён из репозитория.');
     actions = (
       <>
         <BigButton color={readable('#3cf0a0')} disabled={busy} onClick={onMarkResolved}>
-          <Check size={14} /> Отметить решённым
-        </BigButton>
+          {tj('{0} Отметить решённым', [<Check size={14} />])}</BigButton>
         <BigButton color={readable(LEFT)} disabled={busy} onClick={() => onWhole('ours')}>
-          Взять «{L.title}» целиком
-        </BigButton>
+          {tj('Взять «{0}» целиком', [L.title])}</BigButton>
         <BigButton color={readable(RIGHT)} disabled={busy} onClick={() => onWhole('theirs')}>
-          Взять «{R.title}» целиком
-        </BigButton>
+          {tj('Взять «{0}» целиком', [R.title])}</BigButton>
       </>
     );
   } else {
-    title = 'Конфликт в этом файле уже решён';
+    title = t('Конфликт в этом файле уже решён');
     text = '';
-    actions = <BigButton onClick={onClose}>Закрыть</BigButton>;
+    actions = <BigButton onClick={onClose}>{t('Закрыть')}</BigButton>;
   }
   return (
     <div className="flex h-full items-center justify-center p-6">
@@ -622,8 +587,7 @@ function SpecialConflict({ data, L, R, busy, onWhole, onMarkResolved, onOpen, on
         <div className="flex flex-wrap gap-2 pl-7">{actions}</div>
         {data.exists !== false && data.kind !== 'resolved' && (
           <button onClick={onOpen} className="ml-7 flex items-center gap-1 text-xs text-gk-blue hover:underline">
-            <ExternalLink size={12} /> Открыть файл в редакторе
-          </button>
+            {tj('{0} Открыть файл в редакторе', [<ExternalLink size={12} />])}</button>
         )}
       </div>
     </div>
@@ -642,12 +606,11 @@ function SideLabel({ color, side, onTakeAll }) {
       <span className="min-w-0 truncate text-gk-muted">{side.sub}</span>
       <button
         onClick={onTakeAll}
-        title={`Во всех конфликтах этого файла взять «${side.title}»`}
+        title={t('Во всех конфликтах этого файла взять «{0}»', side.title)}
         className="ml-auto shrink-0 rounded px-2 py-0.5 text-[11px] text-gk-muted ring-1 transition hover:bg-gk-fg/10 hover:text-gk-text"
         style={{ '--tw-ring-color': `${color}66` }}
       >
-        Взять «{side.title}» везде
-      </button>
+        {tj('Взять «{0}» везде', [side.title])}</button>
     </div>
   );
 }
