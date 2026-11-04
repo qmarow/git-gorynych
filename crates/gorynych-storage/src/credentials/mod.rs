@@ -568,7 +568,7 @@ fn upsert_entry(db: &Db, entry: &NewEntry<'_>) -> Result<()> {
 }
 
 /// `shQuote`.
-fn sh_quote(text: &str) -> String {
+pub(crate) fn sh_quote(text: &str) -> String {
     format!("'{}'", text.replace('\'', r"'\''"))
 }
 

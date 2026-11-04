@@ -36,12 +36,17 @@ fn encryption_error(error: impl std::fmt::Display) -> GorynychError {
     .with_details(error.to_string())
 }
 
+/// 256 случайных бит в шестнадцатеричном виде.
+pub fn random_hex() -> Result<String> {
+    let mut bytes = [0u8; 32];
+    getrandom::fill(&mut bytes).map_err(encryption_error)?;
+    Ok(bytes.iter().map(|byte| format!("{byte:02x}")).collect())
+}
+
 /// Случайный идентификатор записи. Секрет и данные входа из него не восстановить.
 pub fn new_account() -> Result<String> {
-    let mut bytes = [0u8; 16];
-    getrandom::fill(&mut bytes).map_err(encryption_error)?;
-    let hex: String = bytes.iter().map(|byte| format!("{byte:02x}")).collect();
-    Ok(format!("login-{hex}"))
+    let hex = random_hex()?;
+    Ok(format!("login-{}", &hex[..32]))
 }
 
 /// Системное хранилище: Windows Credential Manager, macOS Keychain или Secret Service.

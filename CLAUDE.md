@@ -58,7 +58,7 @@
 | `errors.cjs` | `gorynych-core::error` | 1 | ✅ |
 | `i18n.cjs` + `i18n/en.json` | `gorynych-core::i18n` (хранение языка — в `storage`, `en.json` пока подключён из `electron/`: перед Фазой 4 перенести в крейт) | 1 | ✅ |
 | `lineDiff.cjs` | `gorynych-core::line_diff` | 1 | ✅ |
-| `credentials.cjs` | `gorynych-storage::{credentials, secrets, ssh_keys}` ✅; передача в git (`env_for`) — `askpass` ⏳; `detectServer` (HTTP) — `gorynych-cicd`, Фаза 2 | 1 | 🔶 |
+| `credentials.cjs` | `gorynych-storage::{credentials, secrets, ssh_keys, askpass}` ✅; `detectServer` (HTTP) — `gorynych-cicd`, Фаза 2 | 1 | ✅ |
 | Хранилища из `main.cjs`, `cicd/settings.cjs`, стек undo из `actions.cjs`, `actions.v1` | `gorynych-storage::{db, preferences, workspaces, repo_providers, undo, custom_actions}` | 1 | ✅ |
 | Перенос данных 1.x | `gorynych-storage::migrator` | 1 | ⏳ |
 | `guard.cjs`, `ci.cjs`, `ciEdit.cjs`, `ciCheck*.cjs`, `cicd/tagCheck.cjs` | `gorynych-ci-linter` | 2 | 📝 конспект |
@@ -302,6 +302,9 @@
   (`GK_TEST_USERDATA` включает режим `plain`), воспроизводится шаг за шагом на обоих языках. Секрет в Keyring лежит под случайным `login-<hex>`, и одна запись
   Keyring может использоваться несколькими входами: удалять только через `Credentials::release`. Нечитаемый секрет 1.x = идентификатор без записи в Keyring.
   Лимит Windows Credential Manager — 2560 байт на секрет: более длинный токен даёт `NO_ENCRYPTION`.
-  Следующий шаг: `askpass` (`--internal-askpass`, `--internal-cred-helper`, Named Pipes): превращает `Credentials::git_auth` в окружение git без секретов в env.
-  Затем `migrator`. Перед ним проверить гипотезу: шифротекст `safeStorage` на Windows можно расшифровать из Rust (ключ в `Local State`, защищён DPAPI, далее AES-GCM) —
+- 2026-11-04 — Сессия 4, продолжение: готов `askpass`. `Credentials::git_auth` → `AuthBroker::session` → окружение для git; сессию держать живой до конца процесса git, `Drop` отзывает токен.
+  В `gorynych-git` (Фаза 3) `networkOptions` из `actions.cjs` собирать так же, а `GIT_TERMINAL_PROMPT=0` и `BatchMode` по умолчанию добавлять там. `run_helper()` — первая строка `main` в `gorynych-tauri`.
+  `ssh` не умеет передавать флаг в `SSH_ASKPASS`, поэтому режим задаёт `GORYNYCH_ASKPASS=1`. Сквозные тесты — `crates/gorynych-tauri/tests/auth_helper.rs`: настоящие git и ssh, в том числе путь с кириллицей.
+  Проверено только на Windows; на Linux и macOS канал не запускался. `interprocess`: клиент, ушедший раньше `accept`, теряется (ERROR_NO_DATA) — пробуждающее соединение держать открытым.
+  Следующий шаг: `migrator`. Перед ним проверить гипотезу: шифротекст `safeStorage` на Windows можно расшифровать из Rust (ключ в `Local State`, защищён DPAPI, далее AES-GCM) —
   тогда пользователям не придётся вводить пароли заново. В CLAUDE.md выше сказано «не расшифровывается»: это не проверялось.

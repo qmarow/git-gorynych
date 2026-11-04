@@ -13,3 +13,6 @@ gorynych-git.workspace = true
 gorynych-watcher.workspace = true
 gorynych-ci-linter.workspace = true
 gorynych-cicd.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true

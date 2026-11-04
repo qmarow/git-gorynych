@@ -9,6 +9,7 @@ publish.workspace = true
 [dependencies]
 getrandom.workspace = true
 gorynych-core.workspace = true
+interprocess.workspace = true
 keyring.workspace = true
 regex.workspace = true
 rusqlite.workspace = true
