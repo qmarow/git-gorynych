@@ -6,3 +6,6 @@ release/
 
 # Rust
 /target/
+
+# Tauri
+/crates/gorynych-tauri/gen/

@@ -65,7 +65,7 @@
 | `gitlab.cjs` + `cicd/*` | `gorynych-cicd` | 2 | 📝 конспект |
 | `git.cjs`, `actions.cjs`, `rebase.cjs`, `restore.cjs`, `compare.cjs`, `fileHistory.cjs`, `conflicts.cjs`, `init.cjs`, `clone.cjs` | `gorynych-git` | 3 | — |
 | `watch.cjs`, `indexSync.cjs`, `remoteWatch.cjs` | `gorynych-watcher` | 3 | — |
-| `main.cjs`, `preload.cjs`, `system.cjs` | `gorynych-tauri` | 1 (каркас) / 4 | — |
+| `main.cjs`, `preload.cjs`, `system.cjs` | `gorynych-tauri` | 1 (каркас ✅) / 4 | 🔶 |
 
 ## Хранилище 2.0
 
@@ -309,4 +309,8 @@
 - 2026-11-04 — Сессия 4, продолжение: готов `migrator` (схема v3), `gorynych-storage` завершён. `migrate_from_1x` вызывать при старте, до открытия окна: при недоступном Keyring он вернёт `NO_ENCRYPTION` без маркера и повторится при следующем запуске; `MigrationReport.issues` показать пользователю.
   `localStorage` читается из копии LevelDB (`local_storage.rs`), поэтому отдельный экспорт из 1.x не нужен. Значения лежат в `app_preferences` под прежними ключами строкой как есть: UI 2.0 читает их так же (`preference::<String>`).
   Проверка на настоящем Electron: `cargo test -p gorynych-storage --test electron_migration -- --ignored`; повторять при обновлении Electron. На настоящем профиле пользователя перенос не запускался.
-  Следующий шаг: каркас Tauri в `gorynych-tauri` (конец Фазы 1), затем Фаза 2.
+- 2026-11-04 — Сессия 4, продолжение: готов каркас Tauri 2.12 (окно без рамки, Mica/Acrylic, CSP, перенос при старте, команды окна/вкладок/недавних/языка/оформления, `bindings/commands.ts`). Страница `ui/` — заглушка до Фазы 4.
+  ⚠ Запуск бинаря без флагов — настоящее приложение с настоящим профилем (`%APPDATA%\git-Gorynych`) и Keyring. Тесты и ручные проверки только с `GORYNYCH_DEV_ROOT=<временная папка>` (есть лишь в debug). На настоящем профиле приложение ещё не запускалось: перед этим спросить пользователя.
+  Известное: модульные тесты крейта не должны вызывать код Tauri — такой exe на Windows падает с 0xc0000139 (нет манифеста comctl); проверки с Tauri делать через настоящий бинарь (`tests/app_smoke.rs`). CSP: Tauri добавляет nonce к `<script>`, поэтому `script-src 'none'` скрипт не блокирует; действие CSP проверяет `assertCspEnforced` в `ui/app.js`.
+  Для инсталлятора в Фазе 4 нужна фича `tauri/custom-protocol` и `bundle.active`. macOS-часть окна (`TitleBarStyle::Overlay`) не собиралась и не запускалась. Кнопки окна и события развёртывания и фокуса проверены только компиляцией.
+  Фаза 1 завершена. Следующий шаг: Фаза 2, `gorynych-ci-linter`, начать с `core`-части: `guard`, затем выбор YAML-парсера (см. конспект, главный риск).

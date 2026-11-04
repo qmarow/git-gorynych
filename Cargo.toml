@@ -32,8 +32,13 @@ specta = { version = "=2.0.0-rc.26", features = ["derive"] }
 # Те же версии, что у tauri-specta 2.0.0-rc.26.
 specta-serde = "=0.0.13"
 specta-typescript = "=0.0.13"
+tauri = "2"
+tauri-build = "2"
+# Точная версия: как и specta, находится в rc.
+tauri-specta = { version = "=2.0.0-rc.26", features = ["derive", "typescript"] }
 tempfile = "3"
 thiserror = "2"
 unic-langid = "0.9"
 url = "2"
 windows-sys = "0.61"
+windows-version = "0.1"

@@ -1,8 +1,9 @@
 //! Сквозная проверка помощника входа: настоящие `git`, `ssh-keygen`, `ssh-agent`, `ssh-add` запускают настоящий бинарь.
 //! Главный риск здесь не логика, а запуск: GUI-бинарь на Windows, кириллица и пробелы в пути, разбор кавычек оболочкой git.
+//! Бинарь всегда запускается с флагом или `GORYNYCH_ASKPASS`: без них это настоящее приложение с настоящим профилем.
 
 use std::fs;
-use std::io::{BufRead, BufReader, Read, Write};
+use std::io::{BufRead, BufReader, Write};
 use std::net::TcpListener;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output, Stdio};
@@ -249,14 +250,4 @@ fn ssh_gets_passphrase_through_askpass_mode() {
 fn ssh_askpass_works_from_path_with_cyrillic_spaces_and_quotes() {
     let dir = tempfile::tempdir().unwrap();
     assert_ssh_add_uses_passphrase(&helper_in_hard_path(dir.path()));
-}
-
-#[test]
-fn normal_launch_is_not_a_helper_and_reads_no_stdin() {
-    let mut child = Command::new(HELPER).stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::piped()).spawn().unwrap();
-    let status = child.wait().unwrap();
-    let mut out = String::new();
-    child.stdout.take().unwrap().read_to_string(&mut out).unwrap();
-    assert!(status.success());
-    assert!(out.is_empty());
 }
