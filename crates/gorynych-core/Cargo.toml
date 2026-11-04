@@ -1,0 +1,20 @@
+[package]
+name = "gorynych-core"
+description = "Ошибки, классификатор stderr git, локализация и построчный diff"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+publish.workspace = true
+
+[dependencies]
+fluent-bundle.workspace = true
+regex.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+specta.workspace = true
+thiserror.workspace = true
+unic-langid.workspace = true
+
+[dev-dependencies]
+specta-serde = "=0.0.13"
+specta-typescript = "=0.0.13"

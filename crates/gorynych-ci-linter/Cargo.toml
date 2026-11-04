@@ -1,0 +1,10 @@
+[package]
+name = "gorynych-ci-linter"
+description = "Загрузка и проверка CI-конфигов, Pre-commit Guard"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+publish.workspace = true
+
+[dependencies]
+gorynych-core.workspace = true

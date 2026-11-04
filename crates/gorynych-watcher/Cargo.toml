@@ -1,0 +1,11 @@
+[package]
+name = "gorynych-watcher"
+description = "Наблюдение за .git, рабочей копией и remote"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+publish.workspace = true
+
+[dependencies]
+gorynych-core.workspace = true
+gorynych-git.workspace = true

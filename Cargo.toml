@@ -1,0 +1,26 @@
+[workspace]
+resolver = "3"
+members = ["crates/*"]
+
+[workspace.package]
+version = "2.0.0-alpha.0"
+edition = "2024"
+authors = ["ironxenot"]
+publish = false
+
+[workspace.dependencies]
+gorynych-core = { path = "crates/gorynych-core" }
+gorynych-storage = { path = "crates/gorynych-storage" }
+gorynych-git = { path = "crates/gorynych-git" }
+gorynych-watcher = { path = "crates/gorynych-watcher" }
+gorynych-ci-linter = { path = "crates/gorynych-ci-linter" }
+gorynych-cicd = { path = "crates/gorynych-cicd" }
+
+fluent-bundle = "0.16"
+regex = "1"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+# Точная версия: её требует tauri-specta 2.0.0-rc.26 (`specta = "=2.0.0-rc.26"`).
+specta = { version = "=2.0.0-rc.26", features = ["derive"] }
+thiserror = "2"
+unic-langid = "0.9"
