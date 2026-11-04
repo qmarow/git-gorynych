@@ -22,6 +22,8 @@ fluent-bundle = "0.16"
 getrandom = "0.4"
 interprocess = "2"
 keyring = "4"
+# Синтаксис и семантика регулярных выражений ECMAScript: правила пользователя написаны для JS.
+regress = { version = "0.12", default-features = false, features = ["std", "utf16"] }
 regex = "1"
 rusqlite = { version = "0.41", features = ["bundled"] }
 rusty-leveldb = "4"

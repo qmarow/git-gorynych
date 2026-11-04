@@ -40,7 +40,7 @@
 | `gorynych-git` | Гибридный Git-движок: чтение через `gix` / `git2`, диффы `imara-diff`, симуляция interactive rebase в памяти (`git2::Repository::merge_trees`), запись через `tokio::process::Command` (`git`), актор `RepoSession` с `enum RepoAction`. |
 | `gorynych-watcher` | `notify` + `notify-debouncer-full`: раздельно `.git/refs`, `.git/index` (`IndexSync`) и рабочая копия; `RemoteRepoWatcher` (ETag / `ls-remote`, экспоненциальный backoff 60 с → 10 мин). |
 | `gorynych-cicd` | Трейт `CiCdProvider` на `reqwest` (rustls): GitLab, GitHub, Gitea/Forgejo, Bitbucket; слияние `gitlab.cjs` + `cicd/*`; шифрование секретов `crypto_box` (sealed box); Docker-раннер. |
-| `gorynych-ci-linter` | YAML без потери комментариев (`tree-sitter-yaml` / `yaml-edit`), 4 группы проверок (`Base`, `GitLab`, `Other`, `Scripts`), сверка тегов с живыми раннерами, Pre-commit Guard на `regex::RegexSet`. |
+| `gorynych-ci-linter` | YAML без потери комментариев (`tree-sitter-yaml` / `yaml-edit`), 4 группы проверок (`Base`, `GitLab`, `Other`, `Scripts`), сверка тегов с живыми раннерами, Pre-commit Guard на `regress` (семантика `RegExp`). |
 | `gorynych-tauri` | Бинарь Tauri v2: команды `tauri-specta`, нативное меню, окно без рамки, CSP, суб-режим askpass. |
 
 Граф зависимостей: `core` ← `storage` ← `git` ← `watcher`; `core` ← `ci-linter` ← `cicd`; `storage` ← `cicd`; все ← `tauri`.
@@ -61,7 +61,8 @@
 | `credentials.cjs` | `gorynych-storage::{credentials, secrets, ssh_keys, askpass}` ✅; `detectServer` (HTTP) — `gorynych-cicd`, Фаза 2 | 1 | ✅ |
 | Хранилища из `main.cjs`, `cicd/settings.cjs`, стек undo из `actions.cjs`, `actions.v1` | `gorynych-storage::{db, preferences, workspaces, repo_providers, undo, custom_actions}` | 1 | ✅ |
 | Перенос данных 1.x | `gorynych-storage::{migrator, legacy_crypto, local_storage}` | 1 | ✅ |
-| `guard.cjs`, `ci.cjs`, `ciEdit.cjs`, `ciCheck*.cjs`, `cicd/tagCheck.cjs` | `gorynych-ci-linter` | 2 | 📝 конспект |
+| `guard.cjs` | `gorynych-ci-linter::{guard, js_regex, repo}` | 2 | ✅ |
+| `ci.cjs`, `ciEdit.cjs`, `ciCheck*.cjs`, `cicd/tagCheck.cjs` | `gorynych-ci-linter` | 2 | 📝 конспект |
 | `gitlab.cjs` + `cicd/*` | `gorynych-cicd` | 2 | 📝 конспект |
 | `git.cjs`, `actions.cjs`, `rebase.cjs`, `restore.cjs`, `compare.cjs`, `fileHistory.cjs`, `conflicts.cjs`, `init.cjs`, `clone.cjs` | `gorynych-git` | 3 | — |
 | `watch.cjs`, `indexSync.cjs`, `remoteWatch.cjs` | `gorynych-watcher` | 3 | — |
@@ -134,8 +135,8 @@
   (`saphyr`/`yaml-rust2` c маркерами) для чтения и (б) CST без потерь (`yaml-edit`/rowan или `tree-sitter-yaml`) для правок. `minimalPatch`
   переносит в исходник только изменённые строки и страхуется `sameData()` — значит CST может быть неидеален, но сериализация «нормализованного»
   текста обязана быть детерминированной.
-- **Регулярки.** `rules:if` / `only:variables` GitLab на сервере исполняет RE2 → крейт `regex` даже точнее JS. Но пользовательские правила
-  Pre-commit Guard написаны в синтаксисе JS (флаги `imsu`, возможны lookaround/обратные ссылки) → `fancy-regex`; невалидные — в `invalid[]`, как сейчас.
+- **Регулярки.** `rules:if` / `only:variables` GitLab на сервере исполняет RE2 → при переносе `evalExpr` решить: `regex` точнее сервера, `JsRegex` точнее 1.x.
+  Пользовательские правила Pre-commit Guard написаны для JS → `gorynych_ci_linter::js_regex::JsRegex` на `regress` (не `fancy-regex`: у него `\b`, `\w`, `\d` учитывают Unicode, и результат молча изменился бы). Поверх `regress` исправлен разбор `\u` без флага `u`; известные отличия от V8 — в шапке `js_regex.rs`, а тесты держат их точный список.
 - **Sealed box GitHub/Gitea:** `crypto_box` (feature `seal`) совместим с libsodium (`nonce = BLAKE2b-192(epk‖pk)`, вывод `epk ‖ box`, base64) —
   ручной BLAKE2b из `sealedbox.cjs` и `vendor/tweetnacl.cjs` не переносить, только тест-вектор.
 - HTTP: `reqwest` (rustls), таймаут 20 с; артефакты потоком, таймаут 10 мин; логи — хвост ≤ 1,5 МБ (`MAX_LOG`) + исходный `size`.
@@ -313,4 +314,8 @@
   ⚠ Запуск бинаря без флагов — настоящее приложение с настоящим профилем (`%APPDATA%\git-Gorynych`) и Keyring. Тесты и ручные проверки только с `GORYNYCH_DEV_ROOT=<временная папка>` (есть лишь в debug). На настоящем профиле приложение ещё не запускалось: перед этим спросить пользователя.
   Известное: модульные тесты крейта не должны вызывать код Tauri — такой exe на Windows падает с 0xc0000139 (нет манифеста comctl); проверки с Tauri делать через настоящий бинарь (`tests/app_smoke.rs`). CSP: Tauri добавляет nonce к `<script>`, поэтому `script-src 'none'` скрипт не блокирует; действие CSP проверяет `assertCspEnforced` в `ui/app.js`.
   Для инсталлятора в Фазе 4 нужна фича `tauri/custom-protocol` и `bundle.active`. macOS-часть окна (`TitleBarStyle::Overlay`) не собиралась и не запускалась. Кнопки окна и события развёртывания и фокуса проверены только компиляцией.
-  Фаза 1 завершена. Следующий шаг: Фаза 2, `gorynych-ci-linter`, начать с `core`-части: `guard`, затем выбор YAML-парсера (см. конспект, главный риск).
+  Фаза 1 завершена.
+- 2026-11-04 — Сессия 4, продолжение: Фаза 2 начата, готов `guard` (+ `js_regex`, `repo::RepoView` пока с одним методом `staged_diff`). Эталон: `node crates/gorynych-ci-linter/tests/fixtures/gen-guard-parity.cjs` прогоняет настоящие `guard.cjs`, `RegExp` из V8 и правила по умолчанию из `src/lib/guardRules.js`. Команда `repo:guard-scan` в Tauri пока не подключена.
+  Позиции в `GuardFinding` — единицы UTF-16 (интерфейс передаёт их в `String.slice`). Правила по умолчанию живут в интерфейсе и приходят параметром.
+  Три ошибки 1.x сохранены ради паритета; решение пользователя о них ещё не принято. Первые две описаны в шапке `guard.rs`: добавленная строка, начинающаяся с `++ `, считается заголовком файла и не проверяется; секрет на границе 240 символов показывается частично. Третья — в правилах по умолчанию из `guardRules.js`: `\b` рядом с кириллицей не срабатывает, поэтому `НЕ КОММИТИТЬ` и `TODO: убрать` не находятся (английские варианты работают).
+  Следующий шаг: выбор YAML-парсера (см. конспект, главный риск), затем `detect` и загрузчики `ci.cjs`.
