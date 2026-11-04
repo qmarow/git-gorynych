@@ -13,7 +13,7 @@
 //!
 //! # Отличия регулярных выражений от JS
 //! - `.` в JS не совпадает ещё и с `\r`, U+2028, U+2029 — в шаблоне это выписано явно ([`JS_DOT`]).
-//! - `trim` и `\s` в JS и Rust различаются (U+FEFF, U+0085) — используется [`is_js_whitespace`].
+//! - `trim` и `\s` в JS и Rust различаются (U+FEFF, U+0085) — используется [`crate::js`].
 //! - **Известное расхождение:** Unicode-флаг `(?i)` в `regex` дополнительно сближает `s`/`ſ` (U+017F) и `k`/`K` (U+212A),
 //!   а `/i` в JS — нет. В выводе git этих символов в ключевых словах не бывает.
 //! - Код `BUSY` создаётся только в UI (`App.jsx`) и в [`ErrorCode`] не входит.
@@ -24,6 +24,7 @@ use regex::{Regex, RegexSet};
 use serde::{Deserialize, Serialize};
 
 use crate::i18n::{Language, translate, tr};
+use crate::js::{is_whitespace as is_js_whitespace, trim as js_trim};
 
 macro_rules! error_codes {
     ($($variant:ident => $wire:literal,)+) => {
@@ -386,18 +387,6 @@ pub enum ProcessFailure<'a> {
     TimedOut { message: &'a str },
     /// Процесс завершился с ошибкой.
     Exited { message: &'a str },
-}
-
-/// Пробельные символы `String.prototype.trim` и `\s` в JS.
-fn is_js_whitespace(c: char) -> bool {
-    matches!(c,
-        '\t' | '\n' | '\u{B}' | '\u{C}' | '\r' | ' ' | '\u{A0}' | '\u{1680}' | '\u{2000}'..='\u{200A}'
-        | '\u{2028}' | '\u{2029}' | '\u{202F}' | '\u{205F}' | '\u{3000}' | '\u{FEFF}')
-}
-
-/// Аналог `String.prototype.trim`: набор пробелов отличается от `str::trim` (U+FEFF, U+0085).
-pub fn js_trim(text: &str) -> &str {
-    text.trim_matches(is_js_whitespace)
 }
 
 static LEADING_LABEL: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"(?i)^(?:fatal|error):").expect("корректный шаблон"));

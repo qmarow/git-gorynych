@@ -111,6 +111,15 @@ fn line_diff_matches_electron() {
 }
 
 #[test]
+fn locale_cmp_sorts_like_local_compare() {
+    let expected = string_list(&FIXTURE["sorted"]);
+    let mut actual = expected.clone();
+    actual.reverse();
+    actual.sort_by(|a, b| gorynych_core::js::locale_cmp(a, b));
+    assert_eq!(actual, expected);
+}
+
+#[test]
 fn fixture_is_not_empty() {
     for name in ["classify", "process", "t", "diff"] {
         assert!(!cases(name).is_empty(), "{name}");

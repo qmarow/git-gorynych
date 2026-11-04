@@ -18,6 +18,7 @@ use rusqlite::{OptionalExtension, params};
 use serde::{Deserialize, Serialize};
 use url::Url;
 
+use crate::credentials::target::has_http_scheme;
 use crate::db::{Db, NOW};
 
 /// Провайдер CI/CD.
@@ -72,12 +73,6 @@ pub fn repo_key(host: &str, repo_path: &str) -> String {
     format!("{}/{path}", host.to_lowercase())
 }
 
-fn has_http_scheme(text: &str) -> bool {
-    ["http://", "https://"].iter().any(|scheme| {
-        text.get(..scheme.len()).is_some_and(|head| head.eq_ignore_ascii_case(scheme))
-    })
-}
-
 /// Есть ли в начале схема вида `xxx://`: `/^[a-z][a-z0-9+.-]*:\/\//i`.
 fn has_any_scheme(text: &str) -> bool {
     let Some((scheme, _)) = text.split_once("://") else {
@@ -90,7 +85,7 @@ fn has_any_scheme(text: &str) -> bool {
 
 /// Приводит адрес API к виду `https://host[:порт]/путь`; пустой адрес — `None`.
 pub fn normalize_base(input: Option<&str>, language: Language) -> Result<Option<String>> {
-    let raw = gorynych_core::error::js_trim(input.unwrap_or_default()).trim_end_matches('/');
+    let raw = gorynych_core::js::trim(input.unwrap_or_default()).trim_end_matches('/');
     if raw.is_empty() {
         return Ok(None);
     }

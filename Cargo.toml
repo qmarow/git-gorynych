@@ -17,6 +17,8 @@ gorynych-ci-linter = { path = "crates/gorynych-ci-linter" }
 gorynych-cicd = { path = "crates/gorynych-cicd" }
 
 fluent-bundle = "0.16"
+getrandom = "0.4"
+keyring = "4"
 regex = "1"
 rusqlite = { version = "0.41", features = ["bundled"] }
 serde = { version = "1", features = ["derive"] }

@@ -139,6 +139,14 @@ for (let i = 0; i < 40; i++) { // Длинные файлы с редкими п
   addDiff(a, b, rnd(2) ? undefined : rnd(5));
 }
 
-const out = { codes: [...codes].sort(), classify: classifyCases, process: processCases, rules, t: tCases, locales, diff: diffCases };
+// ---------- localeCompare: адреса и пути на латинице ----------
+const SORT_WORDS = [
+  'a', 'A', 'b', 'B', 'ab', 'aB', 'Ab', 'AB', 'a1', 'a2', 'a10', '1', '10', '2', 'a-b', 'a_b', 'a.b', 'a/b', 'a b', 'ab-c', 'ab_c', 'ab.c', 'ab/c',
+  'group/app', 'group/App', 'Group/app', 'group-x/app', 'group_x/app', 'group.x/app', 'group/app2', 'group/app-2', 'github.com', 'gitlab.com', 'gitlab.company.ru',
+  'git.local', 'git-local', 'git1.local', '192.168.0.1', 'z', 'Z', '', '-a', '_a', '.a', '/a',
+];
+const sorted = [...SORT_WORDS].sort((x, y) => x.localeCompare(y));
+
+const out = { codes: [...codes].sort(), classify: classifyCases, process: processCases, rules, t: tCases, locales, diff: diffCases, sorted };
 fs.writeFileSync(path.join(__dirname, 'parity.json'), `${JSON.stringify(out)}\n`);
 console.log(`codes=${out.codes.length} classify=${classifyCases.length} process=${processCases.length} rules=${Object.keys(rules).length} t=${tCases.length} diff=${diffCases.length}`);

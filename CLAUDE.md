@@ -58,7 +58,7 @@
 | `errors.cjs` | `gorynych-core::error` | 1 | ✅ |
 | `i18n.cjs` + `i18n/en.json` | `gorynych-core::i18n` (хранение языка — в `storage`, `en.json` пока подключён из `electron/`: перед Фазой 4 перенести в крейт) | 1 | ✅ |
 | `lineDiff.cjs` | `gorynych-core::line_diff` | 1 | ✅ |
-| `credentials.cjs` | `gorynych-storage::credentials` (+ `askpass`, `ssh_keys`, `secrets`) | 1 | ⏳ |
+| `credentials.cjs` | `gorynych-storage::{credentials, secrets, ssh_keys}` ✅; передача в git (`env_for`) — `askpass` ⏳; `detectServer` (HTTP) — `gorynych-cicd`, Фаза 2 | 1 | 🔶 |
 | Хранилища из `main.cjs`, `cicd/settings.cjs`, стек undo из `actions.cjs`, `actions.v1` | `gorynych-storage::{db, preferences, workspaces, repo_providers, undo, custom_actions}` | 1 | ✅ |
 | Перенос данных 1.x | `gorynych-storage::migrator` | 1 | ⏳ |
 | `guard.cjs`, `ci.cjs`, `ciEdit.cjs`, `ciCheck*.cjs`, `cicd/tagCheck.cjs` | `gorynych-ci-linter` | 2 | 📝 конспект |
@@ -298,3 +298,10 @@
   Эталон — `crates/gorynych-storage/tests/fixtures/gen-parity.cjs`, но только для `settings.cjs`: логика `main.cjs` и `actions.cjs` проверена ручными тестами,
   потому что эти модули нельзя запустить без Electron. `GorynychError.data` теперь в `Box` (ошибка была 240 байт).
   Следующий шаг: `credentials` + `secrets` (keyring), `ssh_keys`, `askpass`, затем `migrator`.
+- 2026-11-04 — Сессия 4, продолжение: готовы `credentials`, `secrets`, `ssh_keys`, `core::js` (схема v2). Эталон — сценарий через настоящий `credentials.cjs`
+  (`GK_TEST_USERDATA` включает режим `plain`), воспроизводится шаг за шагом на обоих языках. Секрет в Keyring лежит под случайным `login-<hex>`, и одна запись
+  Keyring может использоваться несколькими входами: удалять только через `Credentials::release`. Нечитаемый секрет 1.x = идентификатор без записи в Keyring.
+  Лимит Windows Credential Manager — 2560 байт на секрет: более длинный токен даёт `NO_ENCRYPTION`.
+  Следующий шаг: `askpass` (`--internal-askpass`, `--internal-cred-helper`, Named Pipes): превращает `Credentials::git_auth` в окружение git без секретов в env.
+  Затем `migrator`. Перед ним проверить гипотезу: шифротекст `safeStorage` на Windows можно расшифровать из Rust (ключ в `Local State`, защищён DPAPI, далее AES-GCM) —
+  тогда пользователям не придётся вводить пароли заново. В CLAUDE.md выше сказано «не расшифровывается»: это не проверялось.

@@ -76,6 +76,29 @@ const MIGRATIONS: &[&str] = &[r#"
         hotkey   TEXT,
         toolbar  INTEGER NOT NULL
     ) WITHOUT ROWID;
+"#, r#"
+    CREATE TABLE credential_servers (
+        hostname TEXT PRIMARY KEY,
+        kind     TEXT NOT NULL CHECK (kind IN ('github', 'gitlab', 'gitea', 'bitbucket', 'other')),
+        base     TEXT,
+        saved_at TEXT
+    ) WITHOUT ROWID;
+
+    -- В базе только идентификаторы записей Keyring. id задаёт порядок обхода, как порядок ключей в JSON из 1.x.
+    CREATE TABLE credential_logins (
+        id                 INTEGER PRIMARY KEY AUTOINCREMENT,
+        scope              TEXT NOT NULL CHECK (scope IN ('repo', 'host')),
+        key                TEXT NOT NULL,
+        method             TEXT NOT NULL CHECK (method IN ('password', 'token', 'ssh')),
+        url                TEXT,
+        username           TEXT,
+        key_path           TEXT,
+        secret_account     TEXT,
+        passphrase_account TEXT,
+        api_token_account  TEXT,
+        saved_at           TEXT,
+        UNIQUE (scope, key)
+    );
 "#];
 
 /// Ошибка хранилища для UI.
@@ -240,6 +263,25 @@ mod tests {
 
         let conn = Connection::open(&path).unwrap();
         assert_eq!(read_meta(&conn, SCHEMA_VERSION_KEY).unwrap(), Some(future));
+    }
+
+    #[test]
+    fn older_database_is_upgraded_and_keeps_data() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("state.db");
+        {
+            // База версии 1: только первая миграция
+            let conn = Connection::open(&path).unwrap();
+            conn.execute_batch("CREATE TABLE meta (key TEXT PRIMARY KEY, value TEXT NOT NULL) WITHOUT ROWID;").unwrap();
+            conn.execute_batch(MIGRATIONS[0]).unwrap();
+            write_meta(&conn, SCHEMA_VERSION_KEY, "1").unwrap();
+            conn.execute("INSERT INTO app_preferences (key, value, updated_at) VALUES ('k', '\"v\"', '')", []).unwrap();
+        }
+        let db = Db::open(&path).unwrap();
+        assert_eq!(db.preference::<String>("k").unwrap().as_deref(), Some("v"));
+        assert_eq!(db.meta(SCHEMA_VERSION_KEY).unwrap(), Some(MIGRATIONS.len().to_string()));
+        let logins: i64 = db.with(|conn| conn.query_row("SELECT COUNT(*) FROM credential_logins", [], |row| row.get(0))).unwrap();
+        assert_eq!(logins, 0);
     }
 
     #[test]
