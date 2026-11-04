@@ -18,9 +18,15 @@ gorynych-cicd = { path = "crates/gorynych-cicd" }
 
 fluent-bundle = "0.16"
 regex = "1"
+rusqlite = { version = "0.41", features = ["bundled"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 # Точная версия: её требует tauri-specta 2.0.0-rc.26 (`specta = "=2.0.0-rc.26"`).
 specta = { version = "=2.0.0-rc.26", features = ["derive"] }
+# Те же версии, что у tauri-specta 2.0.0-rc.26.
+specta-serde = "=0.0.13"
+specta-typescript = "=0.0.13"
+tempfile = "3"
 thiserror = "2"
 unic-langid = "0.9"
+url = "2"

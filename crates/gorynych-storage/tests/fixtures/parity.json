@@ -1,0 +1,711 @@
+{
+ "base": [
+  {
+   "language": "ru",
+   "input": null,
+   "ok": null
+  },
+  {
+   "language": "ru",
+   "input": "",
+   "ok": null
+  },
+  {
+   "language": "ru",
+   "input": "   ",
+   "ok": null
+  },
+  {
+   "language": "ru",
+   "input": "/",
+   "ok": null
+  },
+  {
+   "language": "ru",
+   "input": "///",
+   "ok": null
+  },
+  {
+   "language": "ru",
+   "input": "gitlab.company.ru",
+   "ok": "https://gitlab.company.ru"
+  },
+  {
+   "language": "ru",
+   "input": "gitlab.company.ru/",
+   "ok": "https://gitlab.company.ru"
+  },
+  {
+   "language": "ru",
+   "input": "GitLab.Company.RU/Api/V4/",
+   "ok": "https://gitlab.company.ru/Api/V4"
+  },
+  {
+   "language": "ru",
+   "input": "localhost:8080",
+   "ok": "https://localhost:8080"
+  },
+  {
+   "language": "ru",
+   "input": "host:443/x",
+   "ok": "https://host/x"
+  },
+  {
+   "language": "ru",
+   "input": "https://a.b",
+   "ok": "https://a.b"
+  },
+  {
+   "language": "ru",
+   "input": "https://a.b/",
+   "ok": "https://a.b"
+  },
+  {
+   "language": "ru",
+   "input": "https://a.b/c/d///",
+   "ok": "https://a.b/c/d"
+  },
+  {
+   "language": "ru",
+   "input": "  https://a.b/c/  ",
+   "ok": "https://a.b/c"
+  },
+  {
+   "language": "ru",
+   "input": "HTTPS://GitLab.Company.RU:443/api/v4/",
+   "ok": "https://gitlab.company.ru/api/v4"
+  },
+  {
+   "language": "ru",
+   "input": "http://x:8080/a//",
+   "ok": "http://x:8080/a"
+  },
+  {
+   "language": "ru",
+   "input": "http://h:80",
+   "ok": "http://h"
+  },
+  {
+   "language": "ru",
+   "input": "https://h:80",
+   "ok": "https://h:80"
+  },
+  {
+   "language": "ru",
+   "input": "http://h:443",
+   "ok": "http://h:443"
+  },
+  {
+   "language": "ru",
+   "input": "HtTp://h",
+   "ok": "http://h"
+  },
+  {
+   "language": "ru",
+   "input": "https://user:pw@h/p?q=1#f",
+   "ok": "https://h/p"
+  },
+  {
+   "language": "ru",
+   "input": "h?x=1",
+   "ok": "https://h"
+  },
+  {
+   "language": "ru",
+   "input": "h#f",
+   "ok": "https://h"
+  },
+  {
+   "language": "ru",
+   "input": "https://h/a/../b",
+   "ok": "https://h/b"
+  },
+  {
+   "language": "ru",
+   "input": "https://h/a/./b/",
+   "ok": "https://h/a/b"
+  },
+  {
+   "language": "ru",
+   "input": "https://h/a%20b/c d",
+   "ok": "https://h/a%20b/c%20d"
+  },
+  {
+   "language": "ru",
+   "input": "http://[::1]:3000/p",
+   "ok": "http://[::1]:3000/p"
+  },
+  {
+   "language": "ru",
+   "input": "https://192.168.0.1:3000/",
+   "ok": "https://192.168.0.1:3000"
+  },
+  {
+   "language": "ru",
+   "input": "https://пример.рф/путь",
+   "ok": "https://xn--e1afmkfd.xn--p1ai/%D0%BF%D1%83%D1%82%D1%8C"
+  },
+  {
+   "language": "ru",
+   "input": "пример.рф",
+   "ok": "https://xn--e1afmkfd.xn--p1ai"
+  },
+  {
+   "language": "ru",
+   "input": "ftp://x",
+   "error": {
+    "code": "BAD_ARGS",
+    "message": "Адрес API должен начинаться с https://",
+    "hint": null,
+    "details": ""
+   }
+  },
+  {
+   "language": "ru",
+   "input": "ssh://git@x/y",
+   "error": {
+    "code": "BAD_ARGS",
+    "message": "Адрес API должен начинаться с https://",
+    "hint": null,
+    "details": ""
+   }
+  },
+  {
+   "language": "ru",
+   "input": "git+ssh://x",
+   "error": {
+    "code": "BAD_ARGS",
+    "message": "Адрес API должен начинаться с https://",
+    "hint": null,
+    "details": ""
+   }
+  },
+  {
+   "language": "ru",
+   "input": "FILE://x",
+   "error": {
+    "code": "BAD_ARGS",
+    "message": "Адрес API должен начинаться с https://",
+    "hint": null,
+    "details": ""
+   }
+  },
+  {
+   "language": "ru",
+   "input": "a.b-c+d://x",
+   "error": {
+    "code": "BAD_ARGS",
+    "message": "Адрес API должен начинаться с https://",
+    "hint": null,
+    "details": ""
+   }
+  },
+  {
+   "language": "ru",
+   "input": "https://",
+   "ok": "https://https"
+  },
+  {
+   "language": "ru",
+   "input": "http://",
+   "ok": "https://http"
+  },
+  {
+   "language": "ru",
+   "input": "https:// /x",
+   "error": {
+    "code": "BAD_ARGS",
+    "message": "Некорректный адрес API",
+    "hint": "Например: https://gitlab.company.ru или https://github.company.ru/api/v3",
+    "details": ""
+   }
+  },
+  {
+   "language": "ru",
+   "input": "a b",
+   "error": {
+    "code": "BAD_ARGS",
+    "message": "Некорректный адрес API",
+    "hint": "Например: https://gitlab.company.ru или https://github.company.ru/api/v3",
+    "details": ""
+   }
+  },
+  {
+   "language": "ru",
+   "input": "https://a b",
+   "error": {
+    "code": "BAD_ARGS",
+    "message": "Некорректный адрес API",
+    "hint": "Например: https://gitlab.company.ru или https://github.company.ru/api/v3",
+    "details": ""
+   }
+  },
+  {
+   "language": "ru",
+   "input": "x:y",
+   "error": {
+    "code": "BAD_ARGS",
+    "message": "Некорректный адрес API",
+    "hint": "Например: https://gitlab.company.ru или https://github.company.ru/api/v3",
+    "details": ""
+   }
+  },
+  {
+   "language": "ru",
+   "input": "h:99999",
+   "error": {
+    "code": "BAD_ARGS",
+    "message": "Некорректный адрес API",
+    "hint": "Например: https://gitlab.company.ru или https://github.company.ru/api/v3",
+    "details": ""
+   }
+  },
+  {
+   "language": "ru",
+   "input": "https://h:abc",
+   "error": {
+    "code": "BAD_ARGS",
+    "message": "Некорректный адрес API",
+    "hint": "Например: https://gitlab.company.ru или https://github.company.ru/api/v3",
+    "details": ""
+   }
+  },
+  {
+   "language": "ru",
+   "input": "1://x",
+   "ok": "https://0.0.0.1//x"
+  },
+  {
+   "language": "ru",
+   "input": "-a://x",
+   "ok": "https://-a//x"
+  },
+  {
+   "language": "ru",
+   "input": "a_b://x",
+   "ok": "https://a_b//x"
+  },
+  {
+   "language": "ru",
+   "input": "https:/a.b",
+   "ok": "https://https/a.b"
+  },
+  {
+   "language": "ru",
+   "input": "https:a.b",
+   "error": {
+    "code": "BAD_ARGS",
+    "message": "Некорректный адрес API",
+    "hint": "Например: https://gitlab.company.ru или https://github.company.ru/api/v3",
+    "details": ""
+   }
+  },
+  {
+   "language": "ru",
+   "input": "tel:123",
+   "ok": "https://tel:123"
+  },
+  {
+   "language": "ru",
+   "input": "mailto:a@b.c",
+   "ok": "https://b.c"
+  },
+  {
+   "language": "en",
+   "input": null,
+   "ok": null
+  },
+  {
+   "language": "en",
+   "input": "",
+   "ok": null
+  },
+  {
+   "language": "en",
+   "input": "   ",
+   "ok": null
+  },
+  {
+   "language": "en",
+   "input": "/",
+   "ok": null
+  },
+  {
+   "language": "en",
+   "input": "///",
+   "ok": null
+  },
+  {
+   "language": "en",
+   "input": "gitlab.company.ru",
+   "ok": "https://gitlab.company.ru"
+  },
+  {
+   "language": "en",
+   "input": "gitlab.company.ru/",
+   "ok": "https://gitlab.company.ru"
+  },
+  {
+   "language": "en",
+   "input": "GitLab.Company.RU/Api/V4/",
+   "ok": "https://gitlab.company.ru/Api/V4"
+  },
+  {
+   "language": "en",
+   "input": "localhost:8080",
+   "ok": "https://localhost:8080"
+  },
+  {
+   "language": "en",
+   "input": "host:443/x",
+   "ok": "https://host/x"
+  },
+  {
+   "language": "en",
+   "input": "https://a.b",
+   "ok": "https://a.b"
+  },
+  {
+   "language": "en",
+   "input": "https://a.b/",
+   "ok": "https://a.b"
+  },
+  {
+   "language": "en",
+   "input": "https://a.b/c/d///",
+   "ok": "https://a.b/c/d"
+  },
+  {
+   "language": "en",
+   "input": "  https://a.b/c/  ",
+   "ok": "https://a.b/c"
+  },
+  {
+   "language": "en",
+   "input": "HTTPS://GitLab.Company.RU:443/api/v4/",
+   "ok": "https://gitlab.company.ru/api/v4"
+  },
+  {
+   "language": "en",
+   "input": "http://x:8080/a//",
+   "ok": "http://x:8080/a"
+  },
+  {
+   "language": "en",
+   "input": "http://h:80",
+   "ok": "http://h"
+  },
+  {
+   "language": "en",
+   "input": "https://h:80",
+   "ok": "https://h:80"
+  },
+  {
+   "language": "en",
+   "input": "http://h:443",
+   "ok": "http://h:443"
+  },
+  {
+   "language": "en",
+   "input": "HtTp://h",
+   "ok": "http://h"
+  },
+  {
+   "language": "en",
+   "input": "https://user:pw@h/p?q=1#f",
+   "ok": "https://h/p"
+  },
+  {
+   "language": "en",
+   "input": "h?x=1",
+   "ok": "https://h"
+  },
+  {
+   "language": "en",
+   "input": "h#f",
+   "ok": "https://h"
+  },
+  {
+   "language": "en",
+   "input": "https://h/a/../b",
+   "ok": "https://h/b"
+  },
+  {
+   "language": "en",
+   "input": "https://h/a/./b/",
+   "ok": "https://h/a/b"
+  },
+  {
+   "language": "en",
+   "input": "https://h/a%20b/c d",
+   "ok": "https://h/a%20b/c%20d"
+  },
+  {
+   "language": "en",
+   "input": "http://[::1]:3000/p",
+   "ok": "http://[::1]:3000/p"
+  },
+  {
+   "language": "en",
+   "input": "https://192.168.0.1:3000/",
+   "ok": "https://192.168.0.1:3000"
+  },
+  {
+   "language": "en",
+   "input": "https://пример.рф/путь",
+   "ok": "https://xn--e1afmkfd.xn--p1ai/%D0%BF%D1%83%D1%82%D1%8C"
+  },
+  {
+   "language": "en",
+   "input": "пример.рф",
+   "ok": "https://xn--e1afmkfd.xn--p1ai"
+  },
+  {
+   "language": "en",
+   "input": "ftp://x",
+   "error": {
+    "code": "BAD_ARGS",
+    "message": "The API address must start with https://",
+    "hint": null,
+    "details": ""
+   }
+  },
+  {
+   "language": "en",
+   "input": "ssh://git@x/y",
+   "error": {
+    "code": "BAD_ARGS",
+    "message": "The API address must start with https://",
+    "hint": null,
+    "details": ""
+   }
+  },
+  {
+   "language": "en",
+   "input": "git+ssh://x",
+   "error": {
+    "code": "BAD_ARGS",
+    "message": "The API address must start with https://",
+    "hint": null,
+    "details": ""
+   }
+  },
+  {
+   "language": "en",
+   "input": "FILE://x",
+   "error": {
+    "code": "BAD_ARGS",
+    "message": "The API address must start with https://",
+    "hint": null,
+    "details": ""
+   }
+  },
+  {
+   "language": "en",
+   "input": "a.b-c+d://x",
+   "error": {
+    "code": "BAD_ARGS",
+    "message": "The API address must start with https://",
+    "hint": null,
+    "details": ""
+   }
+  },
+  {
+   "language": "en",
+   "input": "https://",
+   "ok": "https://https"
+  },
+  {
+   "language": "en",
+   "input": "http://",
+   "ok": "https://http"
+  },
+  {
+   "language": "en",
+   "input": "https:// /x",
+   "error": {
+    "code": "BAD_ARGS",
+    "message": "Invalid API address",
+    "hint": "For example: https://gitlab.company.com or https://github.company.com/api/v3",
+    "details": ""
+   }
+  },
+  {
+   "language": "en",
+   "input": "a b",
+   "error": {
+    "code": "BAD_ARGS",
+    "message": "Invalid API address",
+    "hint": "For example: https://gitlab.company.com or https://github.company.com/api/v3",
+    "details": ""
+   }
+  },
+  {
+   "language": "en",
+   "input": "https://a b",
+   "error": {
+    "code": "BAD_ARGS",
+    "message": "Invalid API address",
+    "hint": "For example: https://gitlab.company.com or https://github.company.com/api/v3",
+    "details": ""
+   }
+  },
+  {
+   "language": "en",
+   "input": "x:y",
+   "error": {
+    "code": "BAD_ARGS",
+    "message": "Invalid API address",
+    "hint": "For example: https://gitlab.company.com or https://github.company.com/api/v3",
+    "details": ""
+   }
+  },
+  {
+   "language": "en",
+   "input": "h:99999",
+   "error": {
+    "code": "BAD_ARGS",
+    "message": "Invalid API address",
+    "hint": "For example: https://gitlab.company.com or https://github.company.com/api/v3",
+    "details": ""
+   }
+  },
+  {
+   "language": "en",
+   "input": "https://h:abc",
+   "error": {
+    "code": "BAD_ARGS",
+    "message": "Invalid API address",
+    "hint": "For example: https://gitlab.company.com or https://github.company.com/api/v3",
+    "details": ""
+   }
+  },
+  {
+   "language": "en",
+   "input": "1://x",
+   "ok": "https://0.0.0.1//x"
+  },
+  {
+   "language": "en",
+   "input": "-a://x",
+   "ok": "https://-a//x"
+  },
+  {
+   "language": "en",
+   "input": "a_b://x",
+   "ok": "https://a_b//x"
+  },
+  {
+   "language": "en",
+   "input": "https:/a.b",
+   "ok": "https://https/a.b"
+  },
+  {
+   "language": "en",
+   "input": "https:a.b",
+   "error": {
+    "code": "BAD_ARGS",
+    "message": "Invalid API address",
+    "hint": "For example: https://gitlab.company.com or https://github.company.com/api/v3",
+    "details": ""
+   }
+  },
+  {
+   "language": "en",
+   "input": "tel:123",
+   "ok": "https://tel:123"
+  },
+  {
+   "language": "en",
+   "input": "mailto:a@b.c",
+   "ok": "https://b.c"
+  }
+ ],
+ "keys": [
+  {
+   "host": "github.com",
+   "repoPath": "a/b",
+   "key": "github.com/a/b"
+  },
+  {
+   "host": "GitHub.COM",
+   "repoPath": "A/B",
+   "key": "github.com/a/b"
+  },
+  {
+   "host": "h",
+   "repoPath": "/a/b/",
+   "key": "h/a/b"
+  },
+  {
+   "host": "h",
+   "repoPath": "///a/b///",
+   "key": "h/a/b"
+  },
+  {
+   "host": "h",
+   "repoPath": "a/b.git",
+   "key": "h/a/b"
+  },
+  {
+   "host": "h",
+   "repoPath": "a/b.GIT",
+   "key": "h/a/b"
+  },
+  {
+   "host": "h",
+   "repoPath": "/a/b.git/",
+   "key": "h/a/b"
+  },
+  {
+   "host": "h",
+   "repoPath": "a/b.git.git",
+   "key": "h/a/b.git"
+  },
+  {
+   "host": "h",
+   "repoPath": "a/b.git/",
+   "key": "h/a/b"
+  },
+  {
+   "host": "h",
+   "repoPath": ".git",
+   "key": "h/"
+  },
+  {
+   "host": "h",
+   "repoPath": "",
+   "key": "h/"
+  },
+  {
+   "host": "h",
+   "repoPath": "/",
+   "key": "h/"
+  },
+  {
+   "host": "",
+   "repoPath": "a",
+   "key": "/a"
+  },
+  {
+   "host": "Хост.РФ",
+   "repoPath": "Группа/Проект.git",
+   "key": "хост.рф/группа/проект"
+  },
+  {
+   "host": "h:8443",
+   "repoPath": "a/b",
+   "key": "h:8443/a/b"
+  },
+  {
+   "host": "h",
+   "repoPath": "a//b",
+   "key": "h/a//b"
+  },
+  {
+   "host": "h",
+   "repoPath": " a/b ",
+   "key": "h/ a/b "
+  }
+ ]
+}

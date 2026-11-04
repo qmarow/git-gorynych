@@ -8,3 +8,13 @@ publish.workspace = true
 
 [dependencies]
 gorynych-core.workspace = true
+rusqlite.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+specta.workspace = true
+url.workspace = true
+
+[dev-dependencies]
+specta-serde.workspace = true
+specta-typescript.workspace = true
+tempfile.workspace = true

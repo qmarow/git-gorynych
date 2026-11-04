@@ -16,5 +16,5 @@ thiserror.workspace = true
 unic-langid.workspace = true
 
 [dev-dependencies]
-specta-serde = "=0.0.13"
-specta-typescript = "=0.0.13"
+specta-serde.workspace = true
+specta-typescript.workspace = true

@@ -183,8 +183,9 @@ pub struct GorynychError {
     /// Только для кода, который разбирает вывод упавшей команды. В UI не передаётся.
     #[serde(skip)]
     pub stdout: String,
+    /// В `Box`: данные редки и большие, а `Result` с этой ошибкой возвращает почти каждая функция.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub data: Option<ErrorData>,
+    pub data: Option<Box<ErrorData>>,
 }
 
 pub type Result<T, E = GorynychError> = std::result::Result<T, E>;
@@ -222,7 +223,7 @@ impl GorynychError {
     }
 
     pub fn with_data(mut self, data: ErrorData) -> Self {
-        self.data = Some(data);
+        self.data = Some(Box::new(data));
         self
     }
 }
@@ -394,7 +395,8 @@ fn is_js_whitespace(c: char) -> bool {
         | '\u{2028}' | '\u{2029}' | '\u{202F}' | '\u{205F}' | '\u{3000}' | '\u{FEFF}')
 }
 
-fn js_trim(text: &str) -> &str {
+/// Аналог `String.prototype.trim`: набор пробелов отличается от `str::trim` (U+FEFF, U+0085).
+pub fn js_trim(text: &str) -> &str {
     text.trim_matches(is_js_whitespace)
 }
 

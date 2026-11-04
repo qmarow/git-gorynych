@@ -59,7 +59,8 @@
 | `i18n.cjs` + `i18n/en.json` | `gorynych-core::i18n` (хранение языка — в `storage`, `en.json` пока подключён из `electron/`: перед Фазой 4 перенести в крейт) | 1 | ✅ |
 | `lineDiff.cjs` | `gorynych-core::line_diff` | 1 | ✅ |
 | `credentials.cjs` | `gorynych-storage::credentials` (+ `askpass`, `ssh_keys`, `secrets`) | 1 | ⏳ |
-| Хранилища из `main.cjs`, `cicd/settings.cjs`, стек undo из `actions.cjs` | `gorynych-storage::db` + `migrator` | 1 | ⏳ |
+| Хранилища из `main.cjs`, `cicd/settings.cjs`, стек undo из `actions.cjs`, `actions.v1` | `gorynych-storage::{db, preferences, workspaces, repo_providers, undo, custom_actions}` | 1 | ✅ |
+| Перенос данных 1.x | `gorynych-storage::migrator` | 1 | ⏳ |
 | `guard.cjs`, `ci.cjs`, `ciEdit.cjs`, `ciCheck*.cjs`, `cicd/tagCheck.cjs` | `gorynych-ci-linter` | 2 | 📝 конспект |
 | `gitlab.cjs` + `cicd/*` | `gorynych-cicd` | 2 | 📝 конспект |
 | `git.cjs`, `actions.cjs`, `rebase.cjs`, `restore.cjs`, `compare.cjs`, `fileHistory.cjs`, `conflicts.cjs`, `init.cjs`, `clone.cjs` | `gorynych-git` | 3 | — |
@@ -69,7 +70,9 @@
 ## Хранилище 2.0
 
 - БД: `%APPDATA%\com.ironxenot.gitgorynych\state.db`, `PRAGMA journal_mode = WAL; synchronous = NORMAL; foreign_keys = ON`.
-- Таблицы: `app_preferences`, `workspaces`, `repo_providers`, `undo_history`, `custom_actions` (+ служебная `meta` для версии схемы и маркера миграции).
+- Таблицы: `app_preferences`, `workspaces` (`kind` = `tab`|`recent`: логика дублей у них разная), `repo_providers`, `undo_history`, `undo_blobs`, `custom_actions` (+ служебная `meta` для версии схемы и маркера миграции).
+- `undo_blobs`: снимки файлов `fileSnapshot` (до 20 МБ на версию) не хранятся в JSON. `kind` и `payload` в `undo_history` для хранилища непрозрачны: типизированная запись и обработчики — в `gorynych-git` (Фаза 3). Там же решить вопрос общего размера: 1.x держал их только в памяти, здесь они переживают перезапуск.
+- Новые таблицы (например, для `credentials`) — только новой записью в `MIGRATIONS`; выпущенные миграции не менять.
 - Секреты — только в Keyring, сервис `com.ironxenot.gitgorynych`; в БД хранится лишь `keyring_account_id`.
 - Миграция 1.x → 2.0 однократная и идемпотентная (маркер в `meta`); старые файлы не удаляются.
 
@@ -291,3 +294,7 @@
   паритет с `electron/*.cjs` по фикстуре и контракт TS. Сверка кодов: 85 в main-процессе; `BUSY` живёт только в UI и в `ErrorCode` не входит.
   `.ftl` содержат только сообщения классификатора, и в рабочем коде Fluent пока не вызывается. Известное расхождение `(?i)` с JS — в шапке `error.rs`.
   Следующий шаг: `gorynych-storage` (`db`, затем `credentials`/`askpass`/`migrator`).
+- 2026-11-04 — Сессия 4, продолжение: готова SQLite-часть `gorynych-storage` (схема v1, настройки, вкладки и недавние, провайдеры, undo, действия).
+  Эталон — `crates/gorynych-storage/tests/fixtures/gen-parity.cjs`, но только для `settings.cjs`: логика `main.cjs` и `actions.cjs` проверена ручными тестами,
+  потому что эти модули нельзя запустить без Electron. `GorynychError.data` теперь в `Box` (ошибка была 240 байт).
+  Следующий шаг: `credentials` + `secrets` (keyring), `ssh_keys`, `askpass`, затем `migrator`.
