@@ -44,3 +44,7 @@ unic-langid = "0.9"
 url = "2"
 windows-sys = "0.61"
 windows-version = "0.1"
+
+# Без оптимизации компиляция \p{…} в тестах Guard занимает десятки секунд.
+[profile.dev.package.regress]
+opt-level = 3

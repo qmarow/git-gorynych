@@ -24,8 +24,9 @@ export const DEFAULT_RULES = [
   { id: 'pdb', category: 'debug', label: 'breakpoint() / pdb', files: 'py', pattern: '\\b(?:breakpoint\\s*\\(\\)|pdb\\.set_trace\\s*\\(|import\\s+i?pdb)' },
   { id: 'php-dump', category: 'debug', label: 'var_dump / dd()', files: 'php', pattern: '\\b(?:var_dump|print_r|dd|dump)\\s*\\(' },
   { id: 'test-only', category: 'debug', label: t('.only в тестах'), files: 'js,jsx,ts,tsx,mjs,cjs', pattern: '\\b(?:it|describe|test)\\.only\\s*\\(' },
-  { id: 'todo-remove', category: 'debug', label: 'TODO: remove', flags: 'i', pattern: '\\b(?:TODO|FIXME|XXX|HACK)\\b.*\\b(?:remove|delete|убрать|удалить|temp|временн)' }, // gorynych-ignore
-  { id: 'do-not-commit', category: 'debug', label: 'DO NOT COMMIT', flags: 'i', pattern: '\\b(?:DO\\s*NOT\\s*COMMIT|NOCOMMIT|НЕ\\s*КОММИТИТЬ)\\b' }, // gorynych-ignore
+  // \b в JS понимает только ASCII и рядом с кириллицей не срабатывает, поэтому границы слова заданы явно через \p{…}
+  { id: 'todo-remove', category: 'debug', label: 'TODO: remove', flags: 'iu', pattern: '(?<![\\p{L}\\p{N}_])(?:TODO|FIXME|XXX|HACK)(?![\\p{L}\\p{N}_]).*(?<![\\p{L}\\p{N}_])(?:remove|delete|убрать|удалить|temp|временн)' }, // gorynych-ignore
+  { id: 'do-not-commit', category: 'debug', label: 'DO NOT COMMIT', flags: 'iu', pattern: '(?<![\\p{L}\\p{N}_])(?:DO\\s*NOT\\s*COMMIT|NOCOMMIT|НЕ\\s*КОММИТИТЬ)(?![\\p{L}\\p{N}_])' }, // gorynych-ignore
 ];
 
 export const CATEGORY_LABELS = { secret: t('Похоже на секрет'), debug: t('Забытая отладка'), other: t('Свои правила') };

@@ -84,6 +84,7 @@ const SCANS = [
     hunk('d.txt', 10, '<<<<<<< HEAD', '=======', '>>>>>>> branch', '======= ', ' <<<<<<< HEAD', 'TODO убрать', 'TODO: remove this', 'fixme temp', 'do not commit', 'НЕ КОММИТИТЬ', 'nocommit'),
     hunk('s.env', 1, 'AWS_SECRET_ACCESS_KEY=abcdefghijklmnop0123', 'token: AKIA0123456789ABCDEF', `x = "${LONG_SECRET}"`, 'Authorization: Bearer abcdefghijklmnopqrstuvwx==', 'password = "hunter2hunter2"', 'password = "short"', 'API_KEY: "абвгдежзий"', 'eyJaaaaaaaaaaaa.bbbbbbbbbbbb.cccccccccccc', '-----BEGIN OPENSSH PRIVATE KEY-----', 'AIza' + 'y'.repeat(35), 'xoxb-1234567890', 'sk-test-' + 'z'.repeat(24), 'ghp_' + 'q'.repeat(36)),
   ].join('') },
+  { name: 'русские и английские метки в правилах по умолчанию', rules: DEFAULT_RULES, diff: hunk('r.txt', 1, 'НЕ КОММИТИТЬ', 'не коммитить', '// не  коммитить!', 'xНЕ КОММИТИТЬ', 'НЕ КОММИТИТЬx', 'неНЕ КОММИТИТЬ', 'НЕ КОММИТИТЬСЯ', '_НЕ КОММИТИТЬ', 'DO NOT COMMIT', 'nocommit', 'aNOCOMMIT', 'NOCOMMITa', 'TODO: убрать это', 'FIXME временно', 'HACK: удалить', 'todo remove', 'TODO xубрать', 'TODOубрать', 'ЖTODO убрать', 'TODO: attempt', 'TODO: temp', 'x TODO y remove') },
   { name: 'уровни: block побеждает, при равенстве первое', diff: hunk('a.txt', 1, 'abc', 'xbz'), rules: [r({ id: 'w1', pattern: 'b', level: 'warn' }), r({ id: 'w2', pattern: 'a' }), r({ id: 'b1', pattern: 'c', level: 'block' }), r({ id: 'b2', pattern: 'x', level: 'block' }), r({ id: 'unk', pattern: 'z', level: 'off' })] },
   { name: 'первый block прекращает перебор', diff: hunk('a.txt', 1, 'abc'), rules: [r({ id: 'b1', pattern: 'a', level: 'block' }), r({ id: 'b2', pattern: 'b', level: 'block' })] },
   { name: 'расширения', diff: [hunk('a.JS', 1, 'q'), hunk('b.ts', 1, 'q'), hunk('.env', 1, 'q'), hunk('Makefile', 1, 'q'), hunk('dir.x/noext', 1, 'q'), hunk('c.tar.gz', 1, 'q')].join(''), rules: [r({ id: 'a', pattern: 'q', files: '*.js, .env ,makefile' }), r({ id: 'b', pattern: 'q', files: 'GZ  noext' }), r({ id: 'c', pattern: 'q', files: ' , ' , level: 'warn', label: 'все' })] },
@@ -115,6 +116,7 @@ const SCANS = [
   { name: 'правило без полей', diff: hunk('a', 1, 'q'), rules: [{ pattern: 'q' }] },
   { name: 'флаг u и i', diff: hunk('a', 1, '😀', 'ЖУК'), rules: [{ id: 'u', pattern: '^.$', flags: 'u' }, { id: 'i', pattern: 'жук', flags: 'i' }] },
   { name: 'флаг без u: половина эмодзи', diff: hunk('a', 1, '😀'), rules: [{ id: 'n', pattern: '^.', category: 'secret' }] },
+  { name: 'пустое совпадение секрета', diff: hunk('a', 1, 'abc', '  abc'), rules: [r({ pattern: 'x*', category: 'secret' })] },
   { name: 'файл повторяется', diff: `${hunk('a', 1, 'q')}${hunk('a', 9, 'q')}`, rules: [r({ pattern: 'q' })] },
 ];
 

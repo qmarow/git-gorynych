@@ -121,8 +121,11 @@ fn without_error_text(mut scan: Value) -> Value {
 #[test]
 fn scan_diff_matches_electron() {
     let cases = FIXTURE["scans"].as_array().unwrap();
+    // Исправленные ошибки 1.x, см. «Отличия от 1.x» в шапке `guard.rs`. Новое поведение проверяют модульные тесты `guard.rs`
+    const FIXED_IN_2X: [&str; 3] =
+        ["секрет на границе 240", "совпадение в отступе", "добавленная строка с ++ считается заголовком"];
     let mut mismatches = Vec::new();
-    for case in cases {
+    for case in cases.iter().filter(|case| !FIXED_IN_2X.contains(&case["name"].as_str().unwrap())) {
         let params: GuardParams = serde_json::from_value(case["params"].clone()).unwrap();
         let mut actual = serde_json::to_value(scan_diff(case["diff"].as_str().unwrap(), &params)).unwrap();
         actual.as_object_mut().unwrap().remove("ms");
@@ -133,6 +136,21 @@ fn scan_diff_matches_electron() {
         }
     }
     assert_no_mismatches(&mismatches, cases.len());
+}
+
+#[test]
+fn default_rules_find_russian_markers_at_word_boundaries() {
+    let case = FIXTURE["scans"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|case| case["name"] == "русские и английские метки в правилах по умолчанию")
+        .unwrap();
+    let params: GuardParams = serde_json::from_value(case["params"].clone()).unwrap();
+    let scan = scan_diff(case["diff"].as_str().unwrap(), &params);
+    let lines: Vec<u32> = scan.findings.iter().map(|item| item.line).collect();
+    // 1-3 и 13-15: русские метки. 4-8 и 19: граница слова внутри кириллицы и латиницы, находок быть не должно
+    assert_eq!(lines, [1, 2, 3, 9, 10, 13, 14, 15, 16, 21, 22]);
 }
 
 #[test]

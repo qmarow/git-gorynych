@@ -26,12 +26,13 @@
 //!   - На 300 находках `truncated = true` и остановка. `blocked` — есть ли находка `block`. `level` на выходе — `block` или `warn`;
 //!     `category` по умолчанию `other`.
 //!
-//! ## Особенности 1.x, сохранённые ради паритета
-//! - Добавленная строка, начинающаяся с `++ `, в diff выглядит как `+++ `, поэтому считается заголовком файла: дальнейшие находки
-//!   приписываются «файлу» с таким именем, а сама строка не проверяется.
-//! - Секрет, пересекающий границу 240 символов, не маскируется: `end` больше длины `text`, и его начало видно в `text`.
-//!
 //! ## Отличия от 1.x
+//! - **Исправлено.** Добавленная строка, начинающаяся с `++ `, в diff выглядит как `+++ `. В 1.x она считалась заголовком файла:
+//!   сама не проверялась, а следующие находки приписывались «файлу» с таким именем. Теперь заголовком считается только `+++ `
+//!   вне тела блока, длина которого берётся из `@@ … +N,M @@`.
+//! - **Исправлено.** Секрет маскируется всегда, когда его видно в `text`. В 1.x маска пропускалась, если совпадение выходило за
+//!   границы `text`: пересекало предел 240 символов либо захватывало отступ или пробелы в конце строки. Новый `text` тоже
+//!   не длиннее 240.
 //! - Правило приходит типизированным: шаблон не строкой (возможен только при ручной правке `localStorage`) даёт ошибку вызова,
 //!   а не пропуск правила.
 //! - Проверка `typeof diff !== 'string'` не нужна: тип гарантирует строку.
@@ -243,11 +244,14 @@ fn finding(file: &str, line: u32, rule: &GuardRule, sample: &[u16], matched: std
     let start = matched.start as i64 - offset as i64;
     let mut end = start + matched_text.len() as i64;
     let mut display = shown.to_vec();
-    if rule.category.as_deref() == Some("secret") && start >= 0 && end <= shown.len() as i64 {
+    let length = shown.len() as i64;
+    let visible = start.max(0) < end.min(length);
+    if rule.category.as_deref() == Some("secret") && (visible || (start >= 0 && end <= length)) {
         let masked = mask(matched_text);
-        let (from, to) = (start as usize, end as usize);
+        let (from, to) = (start.max(0) as usize, end.min(length) as usize);
         display = [&shown[..from], &masked, &shown[to..]].concat();
-        end = start + masked.len() as i64;
+        display.truncate(MAX_SHOWN);
+        end = start.max(0) + masked.len() as i64;
     }
     GuardFinding {
         file: file.to_owned(),
@@ -295,14 +299,13 @@ fn file_from_header(header: &str) -> Option<&str> {
     Some(path.strip_suffix('"').unwrap_or(path))
 }
 
-/// Номер строки из заголовка `@@`: первое `+N`.
-fn hunk_start(header: &str) -> u32 {
-    header
-        .split('+')
-        .skip(1)
-        .map(|part| &part[..part.find(|c: char| !c.is_ascii_digit()).unwrap_or(part.len())])
-        .find(|digits| !digits.is_empty())
-        .map_or(0, |digits| digits.parse().unwrap_or(u32::MAX))
+/// Из заголовка `@@`: номер строки (первое `+N`) и число строк нового файла в блоке (`,M`, по умолчанию 1).
+fn hunk_range(header: &str) -> (u32, u32) {
+    let digits_end = |text: &str| text.find(|c: char| !c.is_ascii_digit()).unwrap_or(text.len());
+    let Some(part) = header.split('+').skip(1).find(|part| digits_end(part) > 0) else { return (0, 0) };
+    let (digits, rest) = part.split_at(digits_end(part));
+    let count = rest.strip_prefix(',').map_or(1, |rest| rest[..digits_end(rest)].parse().unwrap_or(0));
+    (digits.parse().unwrap_or(u32::MAX), count)
 }
 
 fn has_ignore_mark(text: &str) -> bool {
@@ -319,6 +322,8 @@ pub fn scan_diff(diff: &str, params: &GuardParams) -> GuardScan {
     let mut findings = Vec::new();
     let mut file: Option<&str> = None;
     let mut line = 0u32;
+    // Сколько строк нового файла ещё осталось в блоке: внутри него `+++ ` — это содержимое, а не заголовок
+    let mut hunk_left = 0u32;
     let mut added_lines = 0;
     let mut files = HashSet::new();
     let mut truncated = false;
@@ -326,9 +331,10 @@ pub fn scan_diff(diff: &str, params: &GuardParams) -> GuardScan {
     for raw in diff.split('\n') {
         if raw.starts_with("diff --git ") {
             file = None;
+            hunk_left = 0;
             continue;
         }
-        if let Some(header) = raw.strip_prefix("+++ ") {
+        if let Some(header) = raw.strip_prefix("+++ ").filter(|_| hunk_left == 0) {
             file = file_from_header(header);
             if file.is_some_and(|name| excluded.iter().any(|regex| regex.is_match(name))) {
                 skipped += 1;
@@ -343,8 +349,11 @@ pub fn scan_diff(diff: &str, params: &GuardParams) -> GuardScan {
             continue;
         }
         if raw.starts_with("@@ ") {
-            line = hunk_start(raw);
+            (line, hunk_left) = hunk_range(raw);
             continue;
+        }
+        if raw.starts_with(['+', ' ']) {
+            hunk_left = hunk_left.saturating_sub(1);
         }
         let Some(name) = file else { continue };
         if let Some(added) = raw.strip_prefix('+') {
@@ -410,9 +419,120 @@ mod tests {
 
     #[test]
     fn hunk_header_takes_first_plus_number() {
-        assert_eq!(hunk_start("@@ -1,2 +30,4 @@ context +99"), 30);
-        assert_eq!(hunk_start("@@ -1 @@ a+b +7"), 7);
-        assert_eq!(hunk_start("@@ broken"), 0);
-        assert_eq!(hunk_start("@@ -1 +99999999999999 @@"), u32::MAX);
+        assert_eq!(hunk_range("@@ -1,2 +30,4 @@ context +99"), (30, 4));
+        assert_eq!(hunk_range("@@ -1 @@ a+b +7"), (7, 1));
+        assert_eq!(hunk_range("@@ -1 +5,0 @@"), (5, 0));
+        assert_eq!(hunk_range("@@ broken"), (0, 0));
+        assert_eq!(hunk_range("@@ -1 +99999999999999 @@").0, u32::MAX);
+    }
+
+    fn scan_lines(rules: Vec<GuardRule>, lines: &[&str]) -> GuardScan {
+        let body: String = lines.iter().map(|line| format!("+{line}\n")).collect();
+        let diff = format!("diff --git a/a.txt b/a.txt\n--- a/a.txt\n+++ b/a.txt\n@@ -0,0 +1,{} @@\n{body}", lines.len());
+        scan_diff(&diff, &GuardParams { rules, exclude: Vec::new() })
+    }
+
+    fn rule(pattern: &str, category: Option<&str>) -> GuardRule {
+        GuardRule { pattern: pattern.to_owned(), category: category.map(str::to_owned), ..GuardRule::default() }
+    }
+
+    const TOKEN: &str = "glpat-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+
+    #[test]
+    fn line_starting_with_plus_plus_is_content_not_a_header() {
+        let scan = scan_lines(vec![rule("glpat-", None)], &["ok", &format!("++ {TOKEN}"), TOKEN, "+++ x"]);
+        let found: Vec<_> = scan.findings.iter().map(|item| (item.file.as_str(), item.line)).collect();
+        assert_eq!(found, [("a.txt", 2), ("a.txt", 3)]);
+        assert_eq!((scan.files, scan.added_lines), (1, 4));
+    }
+
+    #[test]
+    fn removed_dashes_then_added_pluses_stay_content() {
+        let diff = "diff --git a/a b/a\n--- a/a\n+++ b/a\n@@ -1 +1 @@\n--- old\n+++ q new\n";
+        let scan = scan_diff(diff, &GuardParams { rules: vec![rule("q", None)], exclude: Vec::new() });
+        assert_eq!(scan.findings[0].file, "a");
+        assert_eq!(scan.findings[0].line, 1);
+    }
+
+    #[test]
+    fn plus_plus_line_in_excluded_file_does_not_start_a_new_file() {
+        let diff = format!(
+            "diff --git a/a.md b/a.md\n--- a/a.md\n+++ b/a.md\n@@ -0,0 +1,2 @@\n+++ fake\n+{TOKEN}\n\
+             diff --git a/b b/b\n--- a/b\n+++ b/b\n@@ -0,0 +7 @@\n+{TOKEN}\n"
+        );
+        let params = GuardParams { rules: vec![rule("glpat", None)], exclude: vec!["*.md".to_owned()] };
+        let scan = scan_diff(&diff, &params);
+        assert_eq!(scan.files, 1);
+        assert_eq!((scan.findings.len(), scan.findings[0].file.as_str(), scan.findings[0].line), (1, "b", 7));
+    }
+
+    #[test]
+    fn next_file_header_works_after_a_full_hunk() {
+        let diff = "diff --git a/a b/a\n--- a/a\n+++ b/a\n@@ -0,0 +1 @@\n+x\n--- a/b\n+++ b/b\n@@ -0,0 +4 @@\n+q\n";
+        let scan = scan_diff(diff, &GuardParams { rules: vec![rule("q", None)], exclude: Vec::new() });
+        assert_eq!((scan.findings[0].file.as_str(), scan.findings[0].line), ("b", 4));
+    }
+
+    #[test]
+    fn context_lines_count_towards_the_hunk() {
+        let diff = "diff --git a/a b/a\n--- a/a\n+++ b/a\n@@ -1 +1,2 @@\n ctx\n+x\n--- a/b\n+++ b/b\n@@ -0,0 +4 @@\n+q\n";
+        let scan = scan_diff(diff, &GuardParams { rules: vec![rule("q", None)], exclude: Vec::new() });
+        assert_eq!((scan.findings[0].file.as_str(), scan.findings[0].line), ("b", 4));
+    }
+
+    #[test]
+    fn new_file_resets_an_unfinished_hunk() {
+        let diff = "diff --git a/a b/a\n--- a/a\n+++ b/a\n@@ -0,0 +1,5 @@\n+x\ndiff --git a/b b/b\n--- a/b\n+++ b/b\n@@ -0,0 +4 @@\n+q\n";
+        let scan = scan_diff(diff, &GuardParams { rules: vec![rule("q", None)], exclude: Vec::new() });
+        assert_eq!((scan.findings[0].file.as_str(), scan.findings[0].line), ("b", 4));
+    }
+
+    #[test]
+    fn mask_bounds_are_exact_when_the_match_covers_the_indent() {
+        let scan = scan_lines(vec![rule(r"\s+glpat-[a-z]+", Some("secret"))], &[&format!("    {TOKEN} tail")]);
+        let found = &scan.findings[0];
+        // Совпадение с отступом начинается с четырёх пробелов: маска показывает их вместо начала секрета
+        assert_eq!(found.text, format!("    {}aa tail", "•".repeat(12)));
+        assert_eq!((found.start, found.end), (0, 18));
+    }
+
+    fn assert_no_token_part(finding: &GuardFinding) {
+        // Маска оставляет 4 первых символа и 2 последних, длиннее ничего от секрета видно быть не должно
+        assert!(!finding.text.contains("glpat-"), "{}", finding.text);
+        assert!(!finding.text.contains("aaa"), "{}", finding.text);
+    }
+
+    #[test]
+    fn secret_is_masked_whenever_visible() {
+        let cases = [
+            (format!("{}{TOKEN}", "x".repeat(230)), "glpat-[a-z]+"),
+            (format!("{}{TOKEN}", "x".repeat(239)), "glpat-[a-z]+"),
+            (format!("{}{TOKEN}z", "x".repeat(205)), "glpat-[a-z]+"),
+            (format!("    {TOKEN}"), r"\s+glpat-[a-z]+"),
+            (format!("{TOKEN}    "), r"glpat-[a-z]+\s+"),
+            (format!("   {TOKEN}   "), r"\s+glpat-[a-z]+\s+"),
+        ];
+        for (line, pattern) in &cases {
+            let scan = scan_lines(vec![rule(pattern, Some("secret"))], &[line]);
+            let found = &scan.findings[0];
+            assert_no_token_part(found);
+            let units: Vec<u16> = found.text.encode_utf16().collect();
+            assert!(units.len() <= MAX_SHOWN, "{}", units.len());
+            assert!(found.start < found.end && found.end as usize <= units.len(), "{found:?}");
+        }
+    }
+
+    #[test]
+    fn secret_past_the_visible_part_changes_nothing() {
+        let line = format!("{}{TOKEN}", "x".repeat(300));
+        let scan = scan_lines(vec![rule("glpat-[a-z]+", Some("secret"))], &[&line]);
+        assert_eq!(scan.findings[0].text, "x".repeat(240));
+    }
+
+    #[test]
+    fn match_only_in_indent_changes_nothing() {
+        let scan = scan_lines(vec![rule(r"^\s+", Some("secret"))], &["    code"]);
+        assert_eq!(scan.findings[0].text, "code");
+        assert_eq!((scan.findings[0].start, scan.findings[0].end), (0, 0));
     }
 }
