@@ -88,6 +88,18 @@ impl Db {
         self.with(|conn| write_pref(conn, key, value))
     }
 
+    /// Записывает настройку, только если её ещё нет. Возвращает, записана ли она.
+    pub(crate) fn preference_if_absent<T: Serialize + ?Sized>(&self, key: &str, value: &T) -> Result<bool> {
+        self.with(|conn| {
+            let text = serde_json::to_string(value).map_err(json_error)?;
+            let changed = conn.execute(
+                &format!("INSERT OR IGNORE INTO app_preferences (key, value, updated_at) VALUES (?1, ?2, {NOW})"),
+                params![key, text],
+            )?;
+            Ok(changed > 0)
+        })
+    }
+
     pub fn remove_preference(&self, key: &str) -> Result<()> {
         self.with(|conn| remove_pref(conn, key))
     }

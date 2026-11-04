@@ -99,6 +99,15 @@ const MIGRATIONS: &[&str] = &[r#"
         saved_at           TEXT,
         UNIQUE (scope, key)
     );
+"#, r#"
+    -- Старые отдельные токены CI/CD из gitlab-tokens.json: запасной вариант только для API, git их не использует.
+    CREATE TABLE legacy_ci_tokens (
+        scope    TEXT NOT NULL CHECK (scope IN ('repo', 'host')),
+        key      TEXT NOT NULL,
+        account  TEXT NOT NULL,
+        saved_at TEXT,
+        PRIMARY KEY (scope, key)
+    ) WITHOUT ROWID;
 "#];
 
 /// Ошибка хранилища для UI.

@@ -343,6 +343,19 @@ impl fmt::Debug for LegacySecret {
     }
 }
 
+/// Старый отдельный токен CI/CD. Содержит секрет и в UI не передаётся.
+#[derive(Clone, PartialEq, Eq)]
+pub struct LegacyCiToken {
+    pub value: Option<String>,
+    pub saved_at: Option<String>,
+}
+
+impl fmt::Debug for LegacyCiToken {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("LegacyCiToken").field("readable", &self.value.is_some()).field("saved_at", &self.saved_at).finish()
+    }
+}
+
 /// Область записи.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum LoginScope {
@@ -1193,8 +1206,8 @@ impl Credentials {
         }
     }
 
-    /// Переносит запись из 1.x. Существующий вход не перезаписывается.
-    pub fn import_login(&self, login: &LegacyLogin) -> Result<()> {
+    /// Переносит запись из 1.x. Существующий вход не перезаписывается. Возвращает, добавлена ли запись.
+    pub fn import_login(&self, login: &LegacyLogin) -> Result<bool> {
         let _guard = self.lock();
         let exists: bool = self.db.with(|conn| {
             conn.query_row(
@@ -1204,7 +1217,7 @@ impl Credentials {
             )
         })?;
         if exists {
-            return Ok(());
+            return Ok(false);
         }
         let mut written = Vec::new();
         let result = (|| {
@@ -1230,19 +1243,85 @@ impl Credentials {
         if result.is_err() {
             self.rollback(&written);
         }
-        result
+        result.map(|()| true)
     }
 
-    /// Переносит сохранённый тип сервера из 1.x.
-    pub fn import_server(&self, hostname: &str, kind: ServerKind, base: Option<&str>, saved_at: Option<&str>) -> Result<()> {
+    /// Проверяет, что хранилище секретов работает: запись и удаление служебной записи.
+    pub fn check_secret_store(&self) -> Result<()> {
+        let account = new_account()?;
+        self.secrets.set(&account, "check")?;
+        self.secrets.delete(&account)
+    }
+
+    /// Переносит старый токен CI/CD из `gitlab-tokens.json`. Существующий не перезаписывается. Возвращает, добавлен ли он.
+    pub fn import_legacy_ci_token(&self, scope: LoginScope, key: &str, token: &LegacySecret, saved_at: Option<&str>) -> Result<bool> {
         let _guard = self.lock();
-        self.db.with(|conn| {
+        let exists: bool = self.db.with(|conn| {
+            conn.query_row(
+                "SELECT EXISTS (SELECT 1 FROM legacy_ci_tokens WHERE scope = ?1 AND key = ?2)",
+                params![scope.as_str(), key],
+                |row| row.get(0),
+            )
+        })?;
+        if exists {
+            return Ok(false);
+        }
+        let mut written = Vec::new();
+        // У записи всегда есть идентификатор: нечитаемый токен — идентификатор без записи в Keyring
+        let account = match self.import_secret(token, &mut written)? {
+            Some(account) => account,
+            None => new_account()?,
+        };
+        let inserted = self.db.with(|conn| {
+            conn.execute(
+                "INSERT INTO legacy_ci_tokens (scope, key, account, saved_at) VALUES (?1, ?2, ?3, ?4)",
+                params![scope.as_str(), key, account, saved_at],
+            )
+        });
+        if let Err(error) = inserted {
+            self.rollback(&written);
+            return Err(error);
+        }
+        Ok(true)
+    }
+
+    /// Старый токен CI/CD. `value: None` — запись есть, но прочитать её нельзя (`unreadable` в `authOptions`).
+    pub fn legacy_ci_token(&self, scope: LoginScope, key: &str) -> Result<Option<LegacyCiToken>> {
+        let row: Option<(String, Option<String>)> = self.db.with(|conn| {
+            conn.query_row(
+                "SELECT account, saved_at FROM legacy_ci_tokens WHERE scope = ?1 AND key = ?2",
+                params![scope.as_str(), key],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .optional()
+        })?;
+        Ok(row.map(|(account, saved_at)| LegacyCiToken { value: self.secrets.get(&account), saved_at }))
+    }
+
+    /// Удаляет старый токен CI/CD: `migrateLegacy` перенёс его во вход репозитория.
+    pub fn remove_legacy_ci_token(&self, scope: LoginScope, key: &str) -> Result<()> {
+        let _guard = self.lock();
+        let account: Option<String> = self.db.with(|conn| {
+            conn.query_row("SELECT account FROM legacy_ci_tokens WHERE scope = ?1 AND key = ?2", params![scope.as_str(), key], |row| row.get(0))
+                .optional()
+        })?;
+        self.db.with(|conn| conn.execute("DELETE FROM legacy_ci_tokens WHERE scope = ?1 AND key = ?2", params![scope.as_str(), key]))?;
+        if let Some(account) = account {
+            let _ = self.secrets.delete(&account);
+        }
+        Ok(())
+    }
+
+    /// Переносит сохранённый тип сервера из 1.x. Существующий не меняется. Возвращает, добавлен ли он.
+    pub fn import_server(&self, hostname: &str, kind: ServerKind, base: Option<&str>, saved_at: Option<&str>) -> Result<bool> {
+        let _guard = self.lock();
+        let changed = self.db.with(|conn| {
             conn.execute(
                 "INSERT OR IGNORE INTO credential_servers (hostname, kind, base, saved_at) VALUES (?1, ?2, ?3, ?4)",
                 params![hostname.to_lowercase(), kind.as_str(), base, saved_at],
             )
         })?;
-        Ok(())
+        Ok(changed > 0)
     }
 }
 

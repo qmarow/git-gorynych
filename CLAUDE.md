@@ -60,7 +60,7 @@
 | `lineDiff.cjs` | `gorynych-core::line_diff` | 1 | ✅ |
 | `credentials.cjs` | `gorynych-storage::{credentials, secrets, ssh_keys, askpass}` ✅; `detectServer` (HTTP) — `gorynych-cicd`, Фаза 2 | 1 | ✅ |
 | Хранилища из `main.cjs`, `cicd/settings.cjs`, стек undo из `actions.cjs`, `actions.v1` | `gorynych-storage::{db, preferences, workspaces, repo_providers, undo, custom_actions}` | 1 | ✅ |
-| Перенос данных 1.x | `gorynych-storage::migrator` | 1 | ⏳ |
+| Перенос данных 1.x | `gorynych-storage::{migrator, legacy_crypto, local_storage}` | 1 | ✅ |
 | `guard.cjs`, `ci.cjs`, `ciEdit.cjs`, `ciCheck*.cjs`, `cicd/tagCheck.cjs` | `gorynych-ci-linter` | 2 | 📝 конспект |
 | `gitlab.cjs` + `cicd/*` | `gorynych-cicd` | 2 | 📝 конспект |
 | `git.cjs`, `actions.cjs`, `rebase.cjs`, `restore.cjs`, `compare.cjs`, `fileHistory.cjs`, `conflicts.cjs`, `init.cjs`, `clone.cjs` | `gorynych-git` | 3 | — |
@@ -70,7 +70,7 @@
 ## Хранилище 2.0
 
 - БД: `%APPDATA%\com.ironxenot.gitgorynych\state.db`, `PRAGMA journal_mode = WAL; synchronous = NORMAL; foreign_keys = ON`.
-- Таблицы: `app_preferences`, `workspaces` (`kind` = `tab`|`recent`: логика дублей у них разная), `repo_providers`, `undo_history`, `undo_blobs`, `custom_actions` (+ служебная `meta` для версии схемы и маркера миграции).
+- Таблицы: `app_preferences`, `workspaces` (`kind` = `tab`|`recent`: логика дублей у них разная), `repo_providers`, `undo_history`, `undo_blobs`, `custom_actions`, `credential_logins`, `credential_servers`, `legacy_ci_tokens` (+ служебная `meta` для версии схемы и маркера миграции).
 - `undo_blobs`: снимки файлов `fileSnapshot` (до 20 МБ на версию) не хранятся в JSON. `kind` и `payload` в `undo_history` для хранилища непрозрачны: типизированная запись и обработчики — в `gorynych-git` (Фаза 3). Там же решить вопрос общего размера: 1.x держал их только в памяти, здесь они переживают перезапуск.
 - Новые таблицы (например, для `credentials`) — только новой записью в `MIGRATIONS`; выпущенные миграции не менять.
 - Секреты — только в Keyring, сервис `com.ironxenot.gitgorynych`; в БД хранится лишь `keyring_account_id`.
@@ -108,8 +108,8 @@
 - `cicd-settings.json`: `{ repos: { "<host>/<path без .git, lower>": { provider∈{gitlab,github,gitea,bitbucket}|null, apiBase|null, savedAt } } }`; `normalizeBase` — только http(s), без хвостовых `/`.
 - `remote-credentials.json` (credentials.cjs): `{ hosts: {"https://host[:port]"|"ssh://host": entry}, repos: {"<serverKey>/<path lower>": entry}, servers: {hostname: {kind, base, savedAt}} }`,
   `entry = { method∈{password,token,ssh}, url, username, secret{enc|plain}, keyPath, passphrase{enc}, apiToken{enc}, savedAt }`; `enc` = Electron safeStorage (DPAPI) base64 —
-  **из Rust не расшифровывается**: мигратор переносит метаданные, а записи с `enc` помечает «нужно ввести заново» (кроме случая, когда UI 1.x передаст расшифрованные значения в одноразовом экспорте).
-- `gitlab-tokens.json` (gitlab.cjs): `{ hosts: {base: {enc}}, repos: {"<base>/<path lower>": {enc}} }` → `migrateLegacy` прикрепляет токен как `apiToken` ко входу репозитория.
+  на Windows расшифровывается из Rust (`gorynych-storage::legacy_crypto`, проверено на настоящем Electron 37). Под другим пользователем Windows, на macOS и Linux запись становится «нужно ввести заново».
+- `gitlab-tokens.json` (gitlab.cjs): `{ hosts: {base: {enc}}, repos: {"<base>/<path lower>": {enc}} }` → `migrateLegacy` прикрепляет токен как `apiToken` ко входу репозитория. В 2.0 переносится в таблицу `legacy_ci_tokens` и входом git не становится; `migrateLegacy` и порядок `authOptions` реализовать в `gorynych-cicd` (Фаза 2).
 - Undo/Redo (actions.cjs): только в памяти, `Map<repo, {undo[], redo[]}>`, лимит 50, новая запись очищает redo; коды `HISTORY_EMPTY/STALE/ROOT/PUSHED`.
 - Миграция профиля 1.x: однократное копирование из `%APPDATA%\GitIdea` или `GitKraken Clone` с маркером `.migrated`.
 
@@ -306,5 +306,7 @@
   В `gorynych-git` (Фаза 3) `networkOptions` из `actions.cjs` собирать так же, а `GIT_TERMINAL_PROMPT=0` и `BatchMode` по умолчанию добавлять там. `run_helper()` — первая строка `main` в `gorynych-tauri`.
   `ssh` не умеет передавать флаг в `SSH_ASKPASS`, поэтому режим задаёт `GORYNYCH_ASKPASS=1`. Сквозные тесты — `crates/gorynych-tauri/tests/auth_helper.rs`: настоящие git и ssh, в том числе путь с кириллицей.
   Проверено только на Windows; на Linux и macOS канал не запускался. `interprocess`: клиент, ушедший раньше `accept`, теряется (ERROR_NO_DATA) — пробуждающее соединение держать открытым.
-  Следующий шаг: `migrator`. Перед ним проверить гипотезу: шифротекст `safeStorage` на Windows можно расшифровать из Rust (ключ в `Local State`, защищён DPAPI, далее AES-GCM) —
-  тогда пользователям не придётся вводить пароли заново. В CLAUDE.md выше сказано «не расшифровывается»: это не проверялось.
+- 2026-11-04 — Сессия 4, продолжение: готов `migrator` (схема v3), `gorynych-storage` завершён. `migrate_from_1x` вызывать при старте, до открытия окна: при недоступном Keyring он вернёт `NO_ENCRYPTION` без маркера и повторится при следующем запуске; `MigrationReport.issues` показать пользователю.
+  `localStorage` читается из копии LevelDB (`local_storage.rs`), поэтому отдельный экспорт из 1.x не нужен. Значения лежат в `app_preferences` под прежними ключами строкой как есть: UI 2.0 читает их так же (`preference::<String>`).
+  Проверка на настоящем Electron: `cargo test -p gorynych-storage --test electron_migration -- --ignored`; повторять при обновлении Electron. На настоящем профиле пользователя перенос не запускался.
+  Следующий шаг: каркас Tauri в `gorynych-tauri` (конец Фазы 1), затем Фаза 2.

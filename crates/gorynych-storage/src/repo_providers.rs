@@ -127,6 +127,20 @@ impl Db {
         })
     }
 
+    /// Переносит запись `cicd-settings.json` как есть. Существующая не меняется. Возвращает, добавлена ли она.
+    pub(crate) fn import_repo_provider(&self, key: &str, provider: Option<CiProvider>, api_base: Option<&str>, saved_at: Option<&str>) -> Result<bool> {
+        self.with(|conn| {
+            let changed = conn.execute(
+                &format!(
+                    "INSERT OR IGNORE INTO repo_providers (repo_key, provider, api_base, saved_at)
+                     VALUES (?1, ?2, ?3, COALESCE(?4, {NOW}))"
+                ),
+                params![key, provider.map(CiProvider::as_str), api_base, saved_at],
+            )?;
+            Ok(changed > 0)
+        })
+    }
+
     /// Сохраняет настройки. Без провайдера и адреса запись удаляется.
     pub fn set_repo_provider(
         &self,

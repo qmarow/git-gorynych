@@ -137,6 +137,31 @@ impl Db {
         })
     }
 
+    /// Переносит вкладки и недавние из `settings.json`, если соответствующий список ещё пуст.
+    /// Возвращает, сколько записей каждого вида добавлено.
+    pub(crate) fn import_workspaces(&self, tabs: &[String], active: Option<&str>, recents: &[RecentRepo]) -> Result<(u32, u32)> {
+        self.transaction(|tx| {
+            let is_empty = |kind: &str| -> rusqlite::Result<bool> {
+                tx.query_row("SELECT NOT EXISTS (SELECT 1 FROM workspaces WHERE kind = ?1)", [kind], |row| row.get(0))
+            };
+            let (mut imported_tabs, mut imported_recents) = (0, 0);
+            if !tabs.is_empty() && is_empty(KIND_TAB)? {
+                let mut insert = tx.prepare_cached("INSERT OR IGNORE INTO workspaces (kind, path, position) VALUES (?1, ?2, ?3)")?;
+                for (position, path) in tabs.iter().enumerate() {
+                    imported_tabs += insert.execute(params![KIND_TAB, path, position as i64])? as u32;
+                }
+                if let Some(path) = active {
+                    write_pref(tx, keys::ACTIVE_TAB, path)?;
+                }
+            }
+            if !recents.is_empty() && is_empty(KIND_RECENT)? {
+                write_recent(tx, recents)?;
+                imported_recents = tx.query_row("SELECT COUNT(*) FROM workspaces WHERE kind = ?1", [KIND_RECENT], |row| row.get(0))?;
+            }
+            Ok((imported_tabs, imported_recents))
+        })
+    }
+
     /// Последний открытый репозиторий, если его папка существует.
     pub fn last_repo(&self) -> Result<Option<String>> {
         let last: Option<String> = self.with(|conn| read_pref(conn, keys::LAST_REPO))?;
