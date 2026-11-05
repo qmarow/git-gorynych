@@ -5,6 +5,7 @@ pub mod error;
 pub mod i18n;
 pub mod js;
 pub mod line_diff;
+pub mod paths;
 
 pub use error::{ErrorCode, GorynychError, Result};
 pub use i18n::Language;

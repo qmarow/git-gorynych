@@ -8,12 +8,16 @@ publish.workspace = true
 
 [dependencies]
 gorynych-core.workspace = true
+indexmap.workspace = true
 regress.workspace = true
+saphyr-parser.workspace = true
 serde.workspace = true
+sha1.workspace = true
 specta.workspace = true
 
 [dev-dependencies]
-serde_json.workspace = true
+# В эталоне порядок ключей значим: как у объекта в 1.x.
+serde_json = { workspace = true, features = ["preserve_order"] }
 specta-serde.workspace = true
 specta-typescript.workspace = true
 tempfile.workspace = true

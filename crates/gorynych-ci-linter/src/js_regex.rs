@@ -80,6 +80,10 @@ fn legacy_pattern_units(pattern: &str) -> Vec<u32> {
     result
 }
 
+fn groups_of(matched: &regress::Match) -> Vec<Option<Range<usize>>> {
+    std::iter::once(Some(matched.range())).chain(matched.captures.iter().cloned()).collect()
+}
+
 /// Скомпилированное выражение, как `new RegExp(pattern, flags)`.
 #[derive(Debug, Clone)]
 pub struct JsRegex {
@@ -117,6 +121,31 @@ impl JsRegex {
         let found =
             if self.unicode { self.regex.find_from_utf16(text, 0).next() } else { self.regex.find_from_ucs2(text, 0).next() };
         found.map(|matched| matched.range())
+    }
+
+    /// Все совпадения, как `matchAll`. Диапазоны — в единицах UTF-16.
+    pub fn find_all(&self, text: &[u16]) -> Vec<Range<usize>> {
+        if self.unicode {
+            self.regex.find_from_utf16(text, 0).map(|matched| matched.range()).collect()
+        } else {
+            self.regex.find_from_ucs2(text, 0).map(|matched| matched.range()).collect()
+        }
+    }
+
+    /// Как `exec`: диапазоны всего совпадения и групп, `None` у группы без совпадения.
+    pub fn captures(&self, text: &[u16]) -> Option<Vec<Option<Range<usize>>>> {
+        let found =
+            if self.unicode { self.regex.find_from_utf16(text, 0).next() } else { self.regex.find_from_ucs2(text, 0).next() };
+        found.map(|matched| groups_of(&matched))
+    }
+
+    /// Как `matchAll`, с группами.
+    pub fn captures_all(&self, text: &[u16]) -> Vec<Vec<Option<Range<usize>>>> {
+        if self.unicode {
+            self.regex.find_from_utf16(text, 0).map(|matched| groups_of(&matched)).collect()
+        } else {
+            self.regex.find_from_ucs2(text, 0).map(|matched| groups_of(&matched)).collect()
+        }
     }
 
     /// Как `test`.

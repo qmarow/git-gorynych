@@ -62,7 +62,10 @@
 | Хранилища из `main.cjs`, `cicd/settings.cjs`, стек undo из `actions.cjs`, `actions.v1` | `gorynych-storage::{db, preferences, workspaces, repo_providers, undo, custom_actions}` | 1 | ✅ |
 | Перенос данных 1.x | `gorynych-storage::{migrator, legacy_crypto, local_storage}` | 1 | ✅ |
 | `guard.cjs` | `gorynych-ci-linter::{guard, js_regex, repo}` | 2 | ✅ |
-| `ci.cjs`, `ciEdit.cjs`, `ciCheck*.cjs`, `cicd/tagCheck.cjs` | `gorynych-ci-linter` | 2 | 📝 конспект |
+| `parseYaml` из `ci.cjs`, `Positions` из `ciCheckBase.cjs` | `gorynych-ci-linter::yaml` | 2 | ✅ |
+| `toYaml` (`YAML.stringify`) | `gorynych-ci-linter::yaml_write` | 2 | ✅ |
+| Остальное в `ci.cjs` (без вызова `checkCi`) | `gorynych-ci-linter::{detect, load}`, `safeRelative` — `gorynych-core::paths` | 2 | ✅ |
+| `ciEdit.cjs`, `ciCheck*.cjs`, `cicd/tagCheck.cjs` | `gorynych-ci-linter` | 2 | 📝 конспект |
 | `gitlab.cjs` + `cicd/*` | `gorynych-cicd` | 2 | 📝 конспект |
 | `git.cjs`, `actions.cjs`, `rebase.cjs`, `restore.cjs`, `compare.cjs`, `fileHistory.cjs`, `conflicts.cjs`, `init.cjs`, `clone.cjs` | `gorynych-git` | 3 | — |
 | `watch.cjs`, `indexSync.cjs`, `remoteWatch.cjs` | `gorynych-watcher` | 3 | — |
@@ -318,5 +321,19 @@
 - 2026-11-04 — Сессия 4, продолжение: Фаза 2 начата, готов `guard` (+ `js_regex`, `repo::RepoView` пока с одним методом `staged_diff`). Эталон: `node crates/gorynych-ci-linter/tests/fixtures/gen-guard-parity.cjs` прогоняет настоящие `guard.cjs`, `RegExp` из V8 и правила по умолчанию из `src/lib/guardRules.js`. Команда `repo:guard-scan` в Tauri пока не подключена.
   Позиции в `GuardFinding` — единицы UTF-16 (интерфейс передаёт их в `String.slice`). Правила по умолчанию живут в интерфейсе и приходят параметром.
   Три ошибки 1.x исправлены по решению пользователя: `guard.rs` теперь намеренно отличается от `electron/guard.cjs` (шапка `guard.rs`, «Отличия от 1.x»; эти сценарии исключены из сравнения в `FIXED_IN_2X`, новое поведение проверяют модульные тесты), а в `src/lib/guardRules.js` граница слова у `todo-remove` и `do-not-commit` задана через `\p{…}` с флагами `iu`, потому что `\b` не понимает кириллицу.
-  ⚠ Не исправлено, ждёт решения пользователя: в показанной строке остаётся открытым второй секрет на той же строке, а также секрет, если сработало более строгое несекретное правило.
-  Следующий шаг: выбор YAML-парсера (см. конспект, главный риск), затем `detect` и загрузчики `ci.cjs`.
+- 2026-11-04 — Сессия 4, продолжение: сравнение YAML-парсеров с эталоном `electron/vendor/yaml.cjs`. Корпус: 40 настоящих CI-файлов, 63 из `node_modules`, 402 из YAML Test Suite (в репозиторий не добавлен, код сравнения — во временной папке сессии).
+  Чтение: `saphyr-parser` — настоящие файлы: данные 38/38 и 63/63, строки ключей 39/39 и 63/63 (с поправками: блочный скаляр начинается на строке `|`; коллекция с якорем или тегом — на первом элементе), ложных принятий 0. Расхождения только в ключах-коллекциях, `!!set`/`!!omap`/`!!binary` и пустых ключах. Комментарии он не отдаёт. `yaml-rust2` хуже (ложный отказ на настоящем файле, строки 31/39), `yaml-edit` принимает 71 файл, отвергаемый эталоном, `tree-sitter-yaml` без декодирования значений.
+  Что теряется при `saphyr` относительно 1.x: другой текст ошибки YAML, только первая ошибка (строка совпала в 66 из 93 случаев Test Suite), данные только до места ошибки. Настоящий пример: `.gitlab/ci/rules.gitlab-ci.yml` из GitLab — 1.x отвергает его на строке 303, но показывает все 442 ключа.
+  Правка: на 255 правках настоящего `applyEdit` ни один подход не лидирует (текст совпал: прототип по позициям 194, `yaml-edit` 182, оба упрощённые). Перенос `merge`/`!reference` учесть: `ciEdit.parse` работает без `merge`.
+  Ошибка 1.x: `renameJob` теряет комментарий в строке ключа. `deleteJob` задания с якорем, на который есть ссылки, падает без кода ошибки: `Unresolved alias`.
+  **Решение пользователя:** `saphyr-parser` для чтения + точечная правка текста по его позициям + свой перенос `stringifyString`; каждая правка проверяется повторным разбором и сравнением данных, при расхождении — отказ, а не переформатирование всего файла. Полный перенос eemeli/yaml отклонён как слишком дорогой.
+- 2026-11-04 — Сессия 4, продолжение: готов `ci_linter::yaml` (`parse_yaml`, `Document`: `to_value`, `line`, `duplicates`, `key_lines`, `get_in`) и `core::js::number_to_string`. Узлы хранят точные байтовые позиции для будущей правки; индексы `saphyr` считаются в символах, перевод — в `Offsets`. Конец блочной коллекции неточен (заходит на комментарии до следующего узла): учесть в `edit`.
+  Эталон: `gen-yaml-parity.cjs` (настоящие `parseYaml` и `Positions`). Внешний корпус (809 файлов) в репозиторий не добавлен, команда прогона — в шапке `tests/yaml_parity.rs`. Отличия от 1.x — в шапке `yaml.rs`.
+  Guard: закрыты ещё две утечки, маскируются все совпадения секретных правил на строке.
+  Следующий шаг: `detect` и загрузчики `ci.cjs` (`RepoView` дополнять по мере надобности), затем `edit`.
+- 2026-11-05 — Сессия 5: готовы `yaml_write` (`YAML.stringify` при `lineWidth: 0`), `detect`, `load` (все загрузчики, `load_ci`, `preview_ci`), `core::paths::safe_relative`; `RepoView` дополнен `ci_log` и `ci_status`. `CiLoaded::gitlab` — бывший `_raw`, его потребитель `check` ещё не перенесён, поэтому поля `check` в `CiCurrent` пока нет.
+  Эталон: `gen-load-parity.cjs` (настоящий `previewCi`, `checkCi` заменён заглушкой). В репозитории 106 случаев, каждая 40-я подмена значения и 7942 случая `YAML.stringify`. Вне репозитория проверены и совпали: все 6975 подмен (`null`, `0`, списки и т. п. в каждом поле; падения 1.x воспроизведены с тем же текстом `TypeError`) и 40 настоящих файлов, каждый как файл 6 систем. Команды — в шапке `tests/load_parity.rs`.
+  Поля IPC: значение из файла как есть — `yaml::Value` (`timeout` бывает и числом, и строкой); `null` и отсутствие поля на проводе не различаются, интерфейс 1.x проверен на это поиском, а не запуском. Отличия от 1.x — в шапках `yaml_write.rs` (алиасы в `raw` пишутся целиком, это встречается в настоящих файлах GitLab), `gitlab.rs`, `pipelines.rs`.
+  В 1.x найдена особенность, сохранена: `inherit: {default: [список]}` наследует всё, потому что `inheritDefault === true` при любом значении, кроме `false`.
+  ⚠ В инструменте Bash `\\` в heredoc превращается в `\`: файлы с обратной чертой писать через Write или Edit.
+  Следующий шаг: `edit` (`ciEdit.cjs`, решение по подходу — в записи о сравнении YAML-парсеров; `disk_hash` и `yaml_write::string` уже есть), затем `check`.

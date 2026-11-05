@@ -33,6 +33,9 @@
 //! - **Исправлено.** Секрет маскируется всегда, когда его видно в `text`. В 1.x маска пропускалась, если совпадение выходило за
 //!   границы `text`: пересекало предел 240 символов либо захватывало отступ или пробелы в конце строки. Новый `text` тоже
 //!   не длиннее 240.
+//! - **Исправлено.** На показанной строке маскируются все совпадения всех секретных правил (подходящих по расширению файла), а не
+//!   только сработавшего. В 1.x оставались открытыми второй секрет на строке и секрет, когда находку дало более строгое
+//!   несекретное правило. Число находок и их правила от этого не меняются.
 //! - Правило приходит типизированным: шаблон не строкой (возможен только при ручной правке `localStorage`) даёт ошибку вызова,
 //!   а не пропуск правила.
 //! - Проверка `typeof diff !== 'string'` не нужна: тип гарантирует строку.
@@ -40,6 +43,7 @@
 //! - Текст в `invalid[].error` другой, см. [`crate::js_regex`].
 
 use std::collections::HashSet;
+use std::ops::Range;
 use std::time::Instant;
 
 use gorynych_core::error::Result;
@@ -143,6 +147,12 @@ struct CompiledRule<'a> {
     rank: u8,
 }
 
+impl CompiledRule<'_> {
+    fn applies_to(&self, extension: &str) -> bool {
+        self.extensions.is_empty() || self.extensions.iter().any(|item| item == extension)
+    }
+}
+
 fn extensions(files: Option<&str>) -> Vec<String> {
     files
         .unwrap_or_default()
@@ -233,26 +243,90 @@ fn mask(text: &[u16]) -> Vec<u16> {
     masked
 }
 
+/// Участок показанной строки, заменённый маской: координаты в `shown` и в итоговом тексте.
+struct MaskedPart {
+    from: i64,
+    to: i64,
+    shown_from: i64,
+    shown_to: i64,
+}
+
+/// Диапазоны секретов на строке: все непустые совпадения всех секретных правил плюс сработавшее правило, если оно секретное.
+/// Пересечения объединяются, иначе маска открыла бы края одного секрета внутри другого.
+fn secret_ranges(rules: &[CompiledRule<'_>], extension: &str, sample: &[u16], primary: Option<Range<usize>>) -> Vec<Range<usize>> {
+    let mut ranges: Vec<Range<usize>> = rules
+        .iter()
+        .filter(|rule| rule.rule.category.as_deref() == Some("secret") && rule.applies_to(extension))
+        .flat_map(|rule| rule.regex.find_all(sample))
+        .filter(|range| !range.is_empty())
+        .chain(primary)
+        .collect();
+    ranges.sort_by_key(|range| (range.start, range.end));
+    let mut merged: Vec<Range<usize>> = Vec::with_capacity(ranges.len());
+    for range in ranges {
+        match merged.last_mut() {
+            Some(last) if range.start < last.end => last.end = last.end.max(range.end),
+            _ => merged.push(range),
+        }
+    }
+    merged
+}
+
 /// Находка в строке `sample` по сработавшему правилу.
-fn finding(file: &str, line: u32, rule: &GuardRule, sample: &[u16], matched: std::ops::Range<usize>) -> GuardFinding {
+fn finding(
+    file: &str,
+    line: u32,
+    best: &CompiledRule<'_>,
+    rules: &[CompiledRule<'_>],
+    extension: &str,
+    sample: &[u16],
+    matched: Range<usize>,
+) -> GuardFinding {
+    let rule = best.rule;
     let offset = sample.iter().take_while(|unit| is_whitespace_unit(**unit)).count();
     let trimmed_end = sample.iter().rposition(|unit| !is_whitespace_unit(*unit)).map_or(offset, |last| last + 1);
     let trimmed = &sample[offset..trimmed_end.max(offset)];
     let shown = &trimmed[..trimmed.len().min(MAX_SHOWN)];
-
-    let matched_text = &sample[matched.clone()];
-    let start = matched.start as i64 - offset as i64;
-    let mut end = start + matched_text.len() as i64;
-    let mut display = shown.to_vec();
     let length = shown.len() as i64;
-    let visible = start.max(0) < end.min(length);
-    if rule.category.as_deref() == Some("secret") && (visible || (start >= 0 && end <= length)) {
-        let masked = mask(matched_text);
+
+    let is_secret = rule.category.as_deref() == Some("secret");
+    let mut display = Vec::with_capacity(shown.len());
+    let mut parts: Vec<MaskedPart> = Vec::new();
+    let mut cursor = 0;
+    for range in secret_ranges(rules, extension, sample, is_secret.then(|| matched.clone())) {
+        let (start, end) = (range.start as i64 - offset as i64, range.end as i64 - offset as i64);
+        let visible = start.max(0) < end.min(length);
+        if !visible && !(start >= 0 && end <= length) {
+            continue;
+        }
         let (from, to) = (start.max(0) as usize, end.min(length) as usize);
-        display = [&shown[..from], &masked, &shown[to..]].concat();
-        display.truncate(MAX_SHOWN);
-        end = start.max(0) + masked.len() as i64;
+        display.extend_from_slice(&shown[cursor..from]);
+        let shown_from = display.len() as i64;
+        display.extend_from_slice(&mask(&sample[range]));
+        parts.push(MaskedPart { from: from as i64, to: to as i64, shown_from, shown_to: display.len() as i64 });
+        cursor = to;
     }
+    display.extend_from_slice(&shown[cursor..]);
+    display.truncate(MAX_SHOWN);
+
+    // Позиция совпадения в итоговом тексте: внутри маски выделяется вся маска
+    let (raw_start, raw_end) = (matched.start as i64 - offset as i64, matched.end as i64 - offset as i64);
+    let locate = |position: i64, is_end: bool| {
+        let mut shift = 0;
+        for part in &parts {
+            let inside = if is_end { part.from < position && position <= part.to } else { part.from <= position && position < part.to };
+            if inside || (part.from == part.to && part.from == position) {
+                return if is_end { part.shown_to } else { part.shown_from };
+            }
+            if position <= part.from {
+                break;
+            }
+            shift = part.shown_to - part.to;
+        }
+        position + shift
+    };
+    let start = locate(raw_start.max(0), false);
+    let end = locate(raw_end.max(0), true);
     GuardFinding {
         file: file.to_owned(),
         line,
@@ -271,12 +345,9 @@ fn best_match<'r, 'a>(
     rules: &'r [CompiledRule<'a>],
     extension: &str,
     sample: &[u16],
-) -> Option<(&'r CompiledRule<'a>, std::ops::Range<usize>)> {
-    let mut best: Option<(&CompiledRule, std::ops::Range<usize>)> = None;
-    for rule in rules {
-        if !rule.extensions.is_empty() && !rule.extensions.iter().any(|item| item == extension) {
-            continue;
-        }
+) -> Option<(&'r CompiledRule<'a>, Range<usize>)> {
+    let mut best: Option<(&CompiledRule, Range<usize>)> = None;
+    for rule in rules.iter().filter(|rule| rule.applies_to(extension)) {
         let Some(matched) = rule.regex.find(sample) else { continue };
         if best.as_ref().is_none_or(|(current, _)| rule.rank > current.rank) {
             best = Some((rule, matched));
@@ -361,8 +432,9 @@ pub fn scan_diff(diff: &str, params: &GuardParams) -> GuardScan {
             let text = added.strip_suffix('\r').unwrap_or(added);
             if !has_ignore_mark(text) {
                 let sample: Vec<u16> = text.encode_utf16().take(MAX_LINE).collect();
-                if let Some((best, matched)) = best_match(&rules, &ext_of(name), &sample) {
-                    findings.push(finding(name, line, best.rule, &sample, matched));
+                let extension = ext_of(name);
+                if let Some((best, matched)) = best_match(&rules, &extension, &sample) {
+                    findings.push(finding(name, line, best, &rules, &extension, &sample, matched));
                     truncated = findings.len() >= MAX_FINDINGS;
                 }
             }
@@ -494,6 +566,56 @@ mod tests {
         // Совпадение с отступом начинается с четырёх пробелов: маска показывает их вместо начала секрета
         assert_eq!(found.text, format!("    {}aa tail", "•".repeat(12)));
         assert_eq!((found.start, found.end), (0, 18));
+    }
+
+    #[test]
+    fn every_secret_on_the_line_is_masked() {
+        let other = "glpat-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
+        let scan = scan_lines(vec![rule("glpat-[a-z]+", Some("secret"))], &[&format!("x={TOKEN} y={other} z")]);
+        let found = &scan.findings[0];
+        assert_eq!(found.text, format!("x=glpa{0}aa y=glpa{0}bb z", "•".repeat(12)));
+        assert_eq!((found.start, found.end), (2, 20));
+        assert_eq!(scan.findings.len(), 1);
+    }
+
+    #[test]
+    fn secret_is_masked_when_a_stricter_plain_rule_wins() {
+        let debug = GuardRule { level: Some("block".to_owned()), id: Some("d".to_owned()), ..rule("DEBUG", Some("debug")) };
+        let secret = rule("glpat-[a-z]+", Some("secret"));
+        // Маска секрета сдвигает всё, что стоит после него
+        let scan = scan_lines(vec![secret, debug], &[&format!("{TOKEN} DEBUG")]);
+        let found = &scan.findings[0];
+        assert_eq!(found.rule.as_deref(), Some("d"));
+        assert_eq!(found.text, format!("glpa{}aa DEBUG", "•".repeat(12)));
+        assert_eq!((found.start, found.end), (19, 24));
+    }
+
+    #[test]
+    fn plain_match_covering_a_secret_highlights_through_the_mask() {
+        let debug = GuardRule { level: Some("block".to_owned()), ..rule("x=.* end", None) };
+        let scan = scan_lines(vec![rule("glpat-[a-z]+", Some("secret")), debug], &[&format!("x={TOKEN} end")]);
+        let found = &scan.findings[0];
+        assert_eq!(found.text, format!("x=glpa{}aa end", "•".repeat(12)));
+        assert_eq!((found.start, found.end), (0, found.text.encode_utf16().count() as u32));
+    }
+
+    #[test]
+    fn overlapping_secrets_merge_into_one_mask() {
+        let scan = scan_lines(vec![rule("glpat-[a-z]+", Some("secret")), rule("t-a+ tail", Some("secret"))], &[&format!("{TOKEN} tail")]);
+        assert_eq!(scan.findings[0].text, format!("glpa{}il", "•".repeat(12)));
+    }
+
+    #[test]
+    fn secret_nested_in_a_longer_one_does_not_shrink_the_mask() {
+        let scan = scan_lines(vec![rule("glpat-[a-z]+", Some("secret")), rule("glpat", Some("secret"))], &[TOKEN]);
+        assert_eq!(scan.findings[0].text, format!("glpa{}aa", "•".repeat(12)));
+    }
+
+    #[test]
+    fn secret_rule_of_another_file_type_does_not_mask() {
+        let scoped = GuardRule { files: Some("py".to_owned()), ..rule("secretword", Some("secret")) };
+        let scan = scan_lines(vec![rule("q", None), scoped], &["q secretword"]);
+        assert_eq!(scan.findings[0].text, "q secretword");
     }
 
     fn assert_no_token_part(finding: &GuardFinding) {

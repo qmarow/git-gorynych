@@ -20,6 +20,7 @@ aes-gcm = "0.11"
 base64 = "0.23"
 fluent-bundle = "0.16"
 getrandom = "0.4"
+indexmap = "2"
 interprocess = "2"
 keyring = "4"
 # Синтаксис и семантика регулярных выражений ECMAScript: правила пользователя написаны для JS.
@@ -27,8 +28,10 @@ regress = { version = "0.12", default-features = false, features = ["std", "utf1
 regex = "1"
 rusqlite = { version = "0.41", features = ["bundled"] }
 rusty-leveldb = "4"
+saphyr-parser = "0.3"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+sha1 = "0.11"
 # Точная версия: её требует tauri-specta 2.0.0-rc.26 (`specta = "=2.0.0-rc.26"`).
 specta = { version = "=2.0.0-rc.26", features = ["derive"] }
 # Те же версии, что у tauri-specta 2.0.0-rc.26.

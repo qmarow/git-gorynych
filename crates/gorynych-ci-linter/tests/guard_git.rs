@@ -38,6 +38,14 @@ impl RepoView for RealRepo<'_> {
         }
         Err(GorynychError::new(ErrorCode::Git, "git").with_details(String::from_utf8_lossy(&output.stderr)))
     }
+
+    fn ci_log(&self, _paths: &[String]) -> Result<String> {
+        unreachable!("Guard это не вызывает")
+    }
+
+    fn ci_status(&self, _paths: &[String]) -> Result<String> {
+        unreachable!("Guard это не вызывает")
+    }
 }
 
 struct FailingRepo(&'static str);
@@ -45,6 +53,14 @@ struct FailingRepo(&'static str);
 impl RepoView for FailingRepo {
     fn staged_diff(&self) -> Result<String> {
         Err(GorynychError::new(ErrorCode::Git, "git").with_details(self.0))
+    }
+
+    fn ci_log(&self, _paths: &[String]) -> Result<String> {
+        unreachable!("Guard это не вызывает")
+    }
+
+    fn ci_status(&self, _paths: &[String]) -> Result<String> {
+        unreachable!("Guard это не вызывает")
     }
 }
 
