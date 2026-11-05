@@ -1646,6 +1646,8 @@
  "В этапе «{0}» есть задания: {1}": "Stage \"{0}\" has jobs: {1}",
  "Сначала перенесите или удалите эти задания": "Move or delete these jobs first",
  "Неизвестная правка": "Unknown edit",
+ "Не удалось внести правку, не переписывая файл": "Couldn't apply the edit without rewriting the file",
+ "Внесите это изменение вручную во вкладке «Файл»": "Make this change by hand in the File tab",
  "# Пайплайн GitLab CI: этапы выполняются по порядку, задания одного этапа — параллельно\nstages: [build, test, deploy]\n\ndefault:\n  image: node:20\n\nbuild:\n  stage: build\n  script:\n    - npm ci\n    - npm run build\n  artifacts:\n    paths: [dist/]\n\ntest:\n  stage: test\n  script:\n    - npm ci\n    - npm test\n\ndeploy:\n  stage: deploy\n  script:\n    - echo \"Деплой\"\n  rules:\n    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH\n      when: manual\n": "# GitLab CI pipeline: stages run in order, jobs of one stage run in parallel\nstages: [build, test, deploy]\n\ndefault:\n  image: node:20\n\nbuild:\n  stage: build\n  script:\n    - npm ci\n    - npm run build\n  artifacts:\n    paths: [dist/]\n\ntest:\n  stage: test\n  script:\n    - npm ci\n    - npm test\n\ndeploy:\n  stage: deploy\n  script:\n    - echo \"Deploy\"\n  rules:\n    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH\n      when: manual\n",
  "Нет шаблона для этой системы": "No template for this system",
  "Файл {0} уже существует": "File {0} already exists",

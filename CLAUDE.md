@@ -65,7 +65,8 @@
 | `parseYaml` из `ci.cjs`, `Positions` из `ciCheckBase.cjs` | `gorynych-ci-linter::yaml` | 2 | ✅ |
 | `toYaml` (`YAML.stringify`) | `gorynych-ci-linter::yaml_write` | 2 | ✅ |
 | Остальное в `ci.cjs` (без вызова `checkCi`) | `gorynych-ci-linter::{detect, load}`, `safeRelative` — `gorynych-core::paths` | 2 | ✅ |
-| `ciEdit.cjs`, `ciCheck*.cjs`, `cicd/tagCheck.cjs` | `gorynych-ci-linter` | 2 | 📝 конспект |
+| `ciEdit.cjs` | `gorynych-ci-linter::edit` | 2 | ✅ |
+| `ciCheck*.cjs`, `cicd/tagCheck.cjs` | `gorynych-ci-linter` | 2 | 📝 конспект |
 | `gitlab.cjs` + `cicd/*` | `gorynych-cicd` | 2 | 📝 конспект |
 | `git.cjs`, `actions.cjs`, `rebase.cjs`, `restore.cjs`, `compare.cjs`, `fileHistory.cjs`, `conflicts.cjs`, `init.cjs`, `clone.cjs` | `gorynych-git` | 3 | — |
 | `watch.cjs`, `indexSync.cjs`, `remoteWatch.cjs` | `gorynych-watcher` | 3 | — |
@@ -336,4 +337,8 @@
   Поля IPC: значение из файла как есть — `yaml::Value` (`timeout` бывает и числом, и строкой); `null` и отсутствие поля на проводе не различаются, интерфейс 1.x проверен на это поиском, а не запуском. Отличия от 1.x — в шапках `yaml_write.rs` (алиасы в `raw` пишутся целиком, это встречается в настоящих файлах GitLab), `gitlab.rs`, `pipelines.rs`.
   В 1.x найдена особенность, сохранена: `inherit: {default: [список]}` наследует всё, потому что `inheritDefault === true` при любом значении, кроме `false`.
   ⚠ В инструменте Bash `\\` в heredoc превращается в `\`: файлы с обратной чертой писать через Write или Edit.
-  Следующий шаг: `edit` (`ciEdit.cjs`, решение по подходу — в записи о сравнении YAML-парсеров; `disk_hash` и `yaml_write::string` уже есть), затем `check`.
+  ⚠ Апостроф в heredoc инструмента Bash тоже ломает разбор: скрипты правки держать в файле из scratchpad.
+- 2026-11-05 — Сессия 5, продолжение: готов `edit` (`file` — сохранение, чтение, diff, шаблоны; `ops` и `text` — правки). Подход — по решению пользователя: `minimalPatch` не перенесён, каждый шаг меняет свой участок текста и разбирает файл заново, а `Editor::tree` (ожидаемое дерево, алиасы не раскрыты) в конце сравнивается с разбором результата. Расхождение — отказ `YAML_ERROR` с подсказкой, файл не переписывается целиком. Два ключа перевода добавлены в `electron/i18n/en.json`.
+  Эталон: `gen-edit-parity.cjs` (настоящий `applyEdit` и файловые функции). В репозитории 5472 правки на 36 видах файлов (2932 успешны в 1.x, остальные проверяют ошибки) и 74 файловых сценария; вне репозитория — 3600 правок на 40 настоящих файлах. Совпадают коды и тексты ошибок, заметки и данные результата; текст файла совпадать не обязан. На настоящих файлах отказов 0; на написанных 31, все на файле с повторяющимся ключом задания (1.x правил первое определение, правка молча не действовала): список допустимых отказов — `ALLOWED_REFUSALS`. Отличия — в шапке `edit/ops.rs`. Различия текста проверены выборочно по дампу (`GORYNYCH_EDIT_TEXT_DIFFS`), не все.
+  Команды Tauri к `load` и `edit` не подключены.
+  Следующий шаг: `check` (`ciCheck.cjs`, `ciCheckBase.cjs`), `RepoView` дополнить `ls_files`, веткой по умолчанию и списком веток.

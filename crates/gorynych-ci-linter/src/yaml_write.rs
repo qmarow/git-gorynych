@@ -2,14 +2,17 @@
 //!
 //! ## Конспект
 //! - При `lineWidth: 0` `foldFlowLines` ничего не делает, а многострочная строка всегда становится блоком `|` (не `>`).
-//! - Строка, контекст плоский: управляющие символы (кроме `\t`, `\n`) — в двойных кавычках. Иначе [`plain_string`]: ключ с переводом строки — в
-//!   кавычках; опасное начало или содержимое — в кавычках, если это ключ или в строке нет перевода, иначе блок; `---`, `...`, `%` в начале
-//!   строки — блок на верхнем уровне и кавычки у ключа на отступе одного шага; строка, которая читается как другой тип, — в кавычках.
+//! - Строка, контекст плоский: управляющие символы (кроме `\t`, `\n`) — в двойных кавычках. Иначе [`plain_string`]: ключ с переводом строки или
+//!   строка со скобкой внутри строчной коллекции — в кавычках; опасное начало или содержимое — в кавычках, если это ключ, строчная коллекция или в
+//!   строке нет перевода, иначе блок; `---`, `...`, `%` в начале строки — блок на верхнем уровне и кавычки у ключа на отступе одного шага; строка,
+//!   которая читается как другой тип, — в кавычках.
 //! - Кавычки (`quotedString`): есть `"` и нет `'` — одинарные; иначе двойные. Одинарные невозможны при пробеле рядом с переводом строки.
 //! - Двойные: `JSON.stringify`, затем `\u00XX` → `\xXX` и `\0 \a \v \e`; `\n` внутри длинной строки (от 40 единиц UTF-16) разворачивается в
 //!   настоящие переводы строки; пробел перед `\n` экранируется.
 //! - Блочная коллекция: элементы списка `- ` с отступом, словарь без отступа в списке, пустые — `[]` и `{}`. Значение-коллекция — с новой
-//!   строки, скаляр — через пробел. Ключ длиннее 1024 единиц UTF-16 — явный `? ключ`.
+//!   строки, скаляр — через пробел. Ключ длиннее 1024 единиц UTF-16 — явный `? ключ`. `indentSeq: false`: список на отступе своего ключа.
+//! - Строчная коллекция (`flowCollectionPadding: false`, как в `ciEdit`): элементы через `, ` без пробелов у скобок; если в элементе есть перевод
+//!   строки — каждый элемент с новой строки.
 //! - `Document`: у результата перевод строки в конце, `toYaml` снимает его `trimEnd`.
 //!
 //! ## Отличие от 1.x
@@ -24,25 +27,106 @@ const INDENT_STEP: &str = "  ";
 const DOUBLE_QUOTED_MIN_MULTI_LINE: usize = 40;
 const MAX_IMPLICIT_KEY: usize = 1024;
 
+/// Контекст записи.
+#[derive(Debug, Clone, Copy)]
+pub struct Style {
+    /// Список на отступ глубже своего ключа.
+    pub indent_seq: bool,
+    /// Внутри строчной коллекции.
+    pub in_flow: bool,
+}
+
+impl Default for Style {
+    fn default() -> Self {
+        Self { indent_seq: true, in_flow: false }
+    }
+}
+
+/// Исходный вид заменяемого скаляра: `node.type` в 1.x.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ScalarStyle {
+    Any,
+    DoubleQuoted,
+    SingleQuoted,
+    Block,
+}
+
 /// `toYaml`: `YAML.stringify(value, { lineWidth: 0 }).trimEnd()`.
 pub fn to_yaml(value: &Value) -> String {
-    let text = stringify(value, "", false);
+    let text = stringify(value, "", false, Style::default());
     text.trim_end_matches(js::is_whitespace).to_owned()
 }
 
-fn stringify(value: &Value, indent: &str, implicit_key: bool) -> String {
+/// Значение на отступе `indent`: блочная коллекция или скаляр. Первая строка не получает отступа.
+pub fn render(value: &Value, indent: &str, indent_seq: bool) -> String {
+    stringify(value, indent, false, Style { indent_seq, in_flow: false })
+}
+
+/// Значение строчной записью, как узел с `flow: true` при `flowCollectionPadding: false`.
+pub fn render_flow(value: &Value, indent: &str) -> String {
+    stringify(value, indent, false, Style { indent_seq: true, in_flow: true })
+}
+
+/// Пара `ключ: значение` на отступе `indent`. `flow` — значение строчной записью, как `node.flow = true` у блочного родителя.
+pub fn render_pair(key: &str, value: &Value, indent: &str, indent_seq: bool, flow: bool) -> String {
+    if flow {
+        let child = format!("{indent}{INDENT_STEP}");
+        return format!("{}: {}", string(key, &child, true, false), render_flow(value, &child));
+    }
+    pair(key, value, indent, Style { indent_seq, in_flow: false })
+}
+
+/// Скаляр-строка с сохранением исходного вида. `implicit_key` — как ключ словаря.
+pub fn render_string(text: &str, indent: &str, implicit_key: bool, in_flow: bool, style: ScalarStyle) -> String {
+    let control = has_control(text);
+    match style {
+        ScalarStyle::DoubleQuoted => double_quoted(text, indent, implicit_key),
+        ScalarStyle::SingleQuoted if !control => single_quoted(text, indent, implicit_key),
+        ScalarStyle::Block if !control && !implicit_key && !in_flow => block(text, indent, false),
+        _ => string(text, indent, implicit_key, in_flow),
+    }
+}
+
+fn stringify(value: &Value, indent: &str, implicit_key: bool, style: Style) -> String {
     match value {
         Value::Null => "null".to_owned(),
         Value::Bool(value) => value.to_string(),
         Value::Number(value) => number(*value),
-        Value::String(text) => string(text, indent, implicit_key),
-        Value::Seq(items) => sequence(items, indent),
+        Value::String(text) => string(text, indent, implicit_key, style.in_flow),
+        Value::Seq(items) if style.in_flow => {
+            let item_indent = format!("{indent}{INDENT_STEP}{INDENT_STEP}");
+            let parts: Vec<String> = items.iter().map(|item| stringify(item, &item_indent, false, style)).collect();
+            flow_collection(&parts, indent, '[', ']')
+        }
+        Value::Map(map) if style.in_flow => {
+            let item_indent = format!("{indent}{INDENT_STEP}");
+            let parts: Vec<String> = map.iter().map(|(key, value)| pair(key, value, &item_indent, style)).collect();
+            flow_collection(&parts, indent, '{', '}')
+        }
+        Value::Seq(items) => sequence(items, indent, style),
         Value::Map(map) if map.is_empty() => "{}".to_owned(),
         Value::Map(map) => {
-            let pairs: Vec<String> = map.iter().map(|(key, value)| pair(key, value, indent)).collect();
+            let pairs: Vec<String> = map.iter().map(|(key, value)| pair(key, value, indent, style)).collect();
             pairs.join(&format!("\n{indent}"))
         }
     }
+}
+
+/// `stringifyFlowCollection` без комментариев.
+fn flow_collection(parts: &[String], indent: &str, start: char, end: char) -> String {
+    if parts.is_empty() {
+        return format!("{start}{end}");
+    }
+    if parts.iter().any(|part| part.contains('\n')) {
+        let mut out = start.to_string();
+        for (index, part) in parts.iter().enumerate() {
+            let comma = if index + 1 < parts.len() { "," } else { "" };
+            out.push_str(&format!("\n{INDENT_STEP}{indent}{part}{comma}"));
+        }
+        out.push_str(&format!("\n{indent}{end}"));
+        return out;
+    }
+    format!("{start}{}{end}", parts.join(", "))
 }
 
 /// `stringifyNumber`.
@@ -58,28 +142,32 @@ fn number(value: f64) -> String {
     }
 }
 
-fn sequence(items: &[Value], indent: &str) -> String {
+fn sequence(items: &[Value], indent: &str, style: Style) -> String {
     if items.is_empty() {
         return "[]".to_owned();
     }
     let item_indent = format!("{indent}{INDENT_STEP}");
-    let lines: Vec<String> = items.iter().map(|item| format!("- {}", stringify(item, &item_indent, false))).collect();
+    let lines: Vec<String> = items.iter().map(|item| format!("- {}", stringify(item, &item_indent, false, style))).collect();
     lines.join(&format!("\n{indent}"))
 }
 
 /// `stringifyPair` для ключа-строки без комментариев.
-fn pair(key: &str, value: &Value, indent: &str) -> String {
-    let value_indent = format!("{indent}{INDENT_STEP}");
-    let key_text = string(key, &value_indent, true);
-    let explicit = js::utf16_len(&key_text) > MAX_IMPLICIT_KEY;
+fn pair(key: &str, value: &Value, indent: &str, style: Style) -> String {
+    let child_indent = format!("{indent}{INDENT_STEP}");
+    let key_text = string(key, &child_indent, true, style.in_flow);
+    let explicit = js::utf16_len(&key_text) > MAX_IMPLICIT_KEY && !style.in_flow;
     let head = if explicit { format!("? {key_text}\n{indent}:") } else { format!("{key_text}:") };
-    let body = stringify(value, &value_indent, false);
-    let non_empty_collection = match value {
-        Value::Seq(items) => !items.is_empty(),
-        Value::Map(map) => !map.is_empty(),
+    let block_seq = matches!(value, Value::Seq(_)) && !style.in_flow && !explicit;
+    let value_indent = if block_seq && !style.indent_seq { indent } else { child_indent.as_str() };
+    let body = stringify(value, value_indent, false, style);
+    let is_collection = matches!(value, Value::Seq(_) | Value::Map(_));
+    let empty_collection = match value {
+        Value::Seq(items) => items.is_empty(),
+        Value::Map(map) => map.is_empty(),
         _ => false,
     };
-    let gap = if !explicit && non_empty_collection {
+    let breaks = if style.in_flow { body.contains('\n') } else { !empty_collection };
+    let gap = if !explicit && is_collection && breaks {
         format!("\n{value_indent}")
     } else if body.is_empty() || body.starts_with('\n') {
         String::new()
@@ -89,10 +177,13 @@ fn pair(key: &str, value: &Value, indent: &str) -> String {
     format!("{head}{gap}{body}")
 }
 
+fn has_control(text: &str) -> bool {
+    text.chars().any(|c| matches!(c as u32, 0x00..=0x08 | 0x0B..=0x1F | 0x7F..=0x9F))
+}
+
 /// `stringifyString` для узла без исходного стиля.
-pub fn string(text: &str, indent: &str, implicit_key: bool) -> String {
-    let control = text.chars().any(|c| matches!(c as u32, 0x00..=0x08 | 0x0B..=0x1F | 0x7F..=0x9F));
-    if control { double_quoted(text, indent, implicit_key) } else { plain_string(text, indent, implicit_key) }
+pub fn string(text: &str, indent: &str, implicit_key: bool, in_flow: bool) -> String {
+    if has_control(text) { double_quoted(text, indent, implicit_key) } else { plain_string(text, indent, implicit_key, in_flow) }
 }
 
 /// `/^(%|---|\.\.\.)/m`.
@@ -117,15 +208,15 @@ fn needs_quoting(text: &str) -> bool {
     starts || indicator || inside || matches!(bytes.last(), Some(b'\n' | b'\t' | b' ' | b':'))
 }
 
-fn plain_string(text: &str, indent: &str, implicit_key: bool) -> String {
+fn plain_string(text: &str, indent: &str, implicit_key: bool, in_flow: bool) -> String {
     let multi_line = text.contains('\n');
-    if implicit_key && multi_line {
+    if (implicit_key && multi_line) || (in_flow && text.contains(['[', ']', '{', '}', ','])) {
         return quoted(text, indent, implicit_key);
     }
     if needs_quoting(text) {
-        return if implicit_key || !multi_line { quoted(text, indent, implicit_key) } else { block(text, indent, false) };
+        return if implicit_key || in_flow || !multi_line { quoted(text, indent, implicit_key) } else { block(text, indent, false) };
     }
-    if !implicit_key && multi_line {
+    if !implicit_key && !in_flow && multi_line {
         return block(text, indent, false);
     }
     if has_document_marker(text) {
@@ -136,7 +227,9 @@ fn plain_string(text: &str, indent: &str, implicit_key: bool) -> String {
             return quoted(text, indent, implicit_key);
         }
     }
-    if matches!(resolve_plain(text), Value::String(_)) { text.to_owned() } else { quoted(text, indent, implicit_key) }
+    // Многострочная запись без кавычек возможна только внутри строчной коллекции
+    let folded = if multi_line { after_line_breaks(text, &format!("\n{indent}")) } else { text.to_owned() };
+    if matches!(resolve_plain(&folded), Value::String(_)) { folded } else { quoted(text, indent, implicit_key) }
 }
 
 /// `quotedString`.

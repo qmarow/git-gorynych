@@ -63,6 +63,13 @@ pub fn safe_relative(root: &Path, rel: &str, language: Language) -> Result<PathB
     Ok(resolved.iter().collect())
 }
 
+/// Как `path.relative(root, full)` для пути из [`safe_relative`], разделитель `/`.
+pub fn relative_inside(root: &Path, full: &Path) -> String {
+    let base = normalize(root).len();
+    let parts: Vec<String> = normalize(full).iter().skip(base).map(|part| part.as_os_str().to_string_lossy().into_owned()).collect();
+    parts.join("/")
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

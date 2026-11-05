@@ -17,13 +17,9 @@ pub mod model;
 mod pipelines;
 
 use std::collections::HashMap;
-use std::fs;
 use std::path::Path;
 
 use gorynych_core::Language;
-use gorynych_core::error::Result;
-use gorynych_core::paths;
-use sha1::{Digest, Sha1};
 
 use self::common::{Ctx, norm_rel};
 use self::gitlab::GitlabModel;
@@ -45,15 +41,6 @@ pub const CI_STATUS_UNTRACKED: &str = "--untracked-files=all";
 pub struct CiLoaded {
     pub load: CiLoad,
     pub gitlab: Option<GitlabModel>,
-}
-
-/// Отпечаток файла на диске: `hash(readRaw(full))`. Файла нет — `None`.
-pub(crate) fn disk_hash(root: &Path, rel: &str, language: Language) -> Result<Option<String>> {
-    let full = paths::safe_relative(root, rel, language)?;
-    let Ok(bytes) = fs::read(&full) else { return Ok(None) };
-    let text = String::from_utf8_lossy(&bytes);
-    let digest = Sha1::digest(text.as_bytes());
-    Ok(Some(digest.iter().map(|byte| format!("{byte:02x}")).collect()))
 }
 
 fn run_loader(ctx: &Ctx<'_>, system: &str, file: &str) -> common::LoadResult<(CiConfig, Option<GitlabModel>)> {
@@ -126,7 +113,7 @@ fn load(root: &Path, requested: &str, language: Language, drafts: Option<&HashMa
         }
     };
     for item in &mut config.files {
-        item.hash = disk_hash(root, &item.path, language).ok().flatten();
+        item.hash = crate::edit::file::read_file(root, &item.path, language).ok().and_then(|file| file.hash);
         item.draft = drafts.is_some_and(|drafts| drafts.contains_key(&norm_rel(&item.path)));
     }
     let job_count = config.pipelines.iter().flat_map(|pipeline| &pipeline.stages).map(|stage| stage.jobs.len()).sum::<usize>() as u32;

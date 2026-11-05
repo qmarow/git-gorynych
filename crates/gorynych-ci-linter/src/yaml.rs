@@ -40,6 +40,7 @@ use std::ops::Range;
 use gorynych_core::js;
 use indexmap::IndexMap;
 use saphyr_parser::{Event, Parser, ScalarStyle, Span, Tag};
+use serde::de::{Deserialize, Deserializer, MapAccess, SeqAccess, Visitor};
 use serde::{Serialize, Serializer};
 
 /// Предел вложенности документа.
@@ -82,6 +83,10 @@ impl Value {
     }
 
     pub fn as_map(&self) -> Option<&JsMap> {
+        if let Value::Map(map) = self { Some(map) } else { None }
+    }
+
+    pub fn as_map_mut(&mut self) -> Option<&mut JsMap> {
         if let Value::Map(map) = self { Some(map) } else { None }
     }
 
@@ -205,6 +210,37 @@ impl JsMap {
         self.entries.get(key)
     }
 
+    pub fn get_mut(&mut self, key: &str) -> Option<&mut Value> {
+        self.entries.get_mut(key)
+    }
+
+    /// Как `delete`.
+    pub fn remove(&mut self, key: &str) -> Option<Value> {
+        if array_index(key).is_some() && self.entries.contains_key(key) {
+            self.indexes -= 1;
+        }
+        self.entries.shift_remove(key)
+    }
+
+    /// Новый ключ перед `before`, без него — в конец. Целые индексы всё равно встают по возрастанию, как у объекта JS.
+    pub fn insert_before(&mut self, before: Option<&str>, key: String, value: Value) {
+        if self.entries.contains_key(&key) || array_index(&key).is_some() {
+            self.insert(key, value);
+            return;
+        }
+        let at = before.and_then(|before| self.entries.get_index_of(before)).map_or(self.entries.len(), |at| at.max(self.indexes));
+        self.entries.shift_insert(at, key, value);
+    }
+
+    /// Новый ключ вместо старого на той же позиции.
+    pub fn rename(&self, from: &str, to: &str) -> Self {
+        let mut out = Self::new();
+        for (key, value) in self.iter() {
+            out.insert(if key == from { to.to_owned() } else { key.clone() }, value.clone());
+        }
+        out
+    }
+
     pub fn contains_key(&self, key: &str) -> bool {
         self.entries.contains_key(key)
     }
@@ -223,6 +259,79 @@ impl JsMap {
 
     pub fn is_empty(&self) -> bool {
         self.entries.is_empty()
+    }
+}
+
+impl<'de> Deserialize<'de> for Value {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        struct ValueVisitor;
+
+        impl<'de> Visitor<'de> for ValueVisitor {
+            type Value = Value;
+
+            fn expecting(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                formatter.write_str("значение JSON")
+            }
+
+            fn visit_unit<E>(self) -> Result<Value, E> {
+                Ok(Value::Null)
+            }
+
+            fn visit_none<E>(self) -> Result<Value, E> {
+                Ok(Value::Null)
+            }
+
+            fn visit_some<D: Deserializer<'de>>(self, deserializer: D) -> Result<Value, D::Error> {
+                Value::deserialize(deserializer)
+            }
+
+            fn visit_bool<E>(self, value: bool) -> Result<Value, E> {
+                Ok(Value::Bool(value))
+            }
+
+            fn visit_i64<E>(self, value: i64) -> Result<Value, E> {
+                Ok(Value::Number(value as f64))
+            }
+
+            fn visit_u64<E>(self, value: u64) -> Result<Value, E> {
+                Ok(Value::Number(value as f64))
+            }
+
+            fn visit_f64<E>(self, value: f64) -> Result<Value, E> {
+                Ok(Value::Number(value))
+            }
+
+            fn visit_str<E>(self, value: &str) -> Result<Value, E> {
+                Ok(Value::String(value.to_owned()))
+            }
+
+            fn visit_seq<A: SeqAccess<'de>>(self, mut access: A) -> Result<Value, A::Error> {
+                let mut items = Vec::new();
+                while let Some(item) = access.next_element()? {
+                    items.push(item);
+                }
+                Ok(Value::Seq(items))
+            }
+
+            fn visit_map<A: MapAccess<'de>>(self, mut access: A) -> Result<Value, A::Error> {
+                let mut map = JsMap::new();
+                while let Some((key, value)) = access.next_entry::<String, Value>()? {
+                    map.insert(key, value);
+                }
+                Ok(Value::Map(map))
+            }
+        }
+
+        deserializer.deserialize_any(ValueVisitor)
+    }
+}
+
+impl<'de> Deserialize<'de> for JsMap {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        match Value::deserialize(deserializer)? {
+            Value::Map(map) => Ok(map),
+            _ => Err(serde::de::Error::custom("ожидался словарь")),
+        }
     }
 }
 
@@ -550,6 +659,57 @@ impl Document {
             }),
             NodeKind::Alias(_) => Some(text[node.span.clone()].trim_start_matches('*').to_owned()),
             _ => None,
+        }
+    }
+
+    /// В файле нет содержимого: только комментарии. Как `doc.contents == null`, в отличие от файла из одного `---`.
+    pub fn is_empty_document(&self, text: &str) -> bool {
+        let empty_root = self.root.is_none_or(|root| matches!(&self.node(root).kind, NodeKind::Scalar { value, plain: true } if value.is_empty()));
+        empty_root && text.lines().all(|line| line.trim().is_empty() || line.trim_start().starts_with('#'))
+    }
+
+    /// Значение скаляра; у другого узла `None`.
+    pub fn scalar(&self, id: NodeId) -> Option<Value> {
+        matches!(self.node(id).kind, NodeKind::Scalar { .. }).then(|| scalar_value(self.node(id)))
+    }
+
+    /// `keyOf` из `ciEdit.cjs`: `String(pair.key.value)` у скаляра (`null` — строка «null»), иначе `String(pair.key)`.
+    pub fn key_of(&self, key: NodeId, text: &str) -> String {
+        self.node_string(key, text)
+    }
+
+    /// Как `String(node)` у узла: значение скаляра, `*имя` у алиаса, JSON у коллекции.
+    pub fn node_string(&self, id: NodeId, text: &str) -> String {
+        let node = self.node(id);
+        match &node.kind {
+            NodeKind::Scalar { .. } => scalar_value(node).js_string(),
+            NodeKind::Alias(_) => text[node.span.clone()].to_owned(),
+            NodeKind::Seq(_) | NodeKind::Map(_) => self.tree_of(id, text).json_string(),
+        }
+    }
+
+    /// Дерево документа без раскрытия алиасов: алиас — словарь `{"*": "*имя"}`. Для сравнения структуры до и после правки.
+    pub fn to_tree(&self, text: &str) -> Value {
+        self.root.map_or(Value::Null, |root| self.tree_of(root, text))
+    }
+
+    fn tree_of(&self, id: NodeId, text: &str) -> Value {
+        let node = self.node(id);
+        match &node.kind {
+            NodeKind::Scalar { .. } => scalar_value(node),
+            NodeKind::Alias(_) => {
+                let mut map = JsMap::new();
+                map.insert("*".to_owned(), Value::String(text[node.span.clone()].to_owned()));
+                Value::Map(map)
+            }
+            NodeKind::Seq(items) => Value::Seq(items.iter().map(|item| self.tree_of(*item, text)).collect()),
+            NodeKind::Map(pairs) => {
+                let mut map = JsMap::new();
+                for (key, value) in pairs {
+                    map.insert(self.key_of(*key, text), self.tree_of(*value, text));
+                }
+                Value::Map(map)
+            }
         }
     }
 
