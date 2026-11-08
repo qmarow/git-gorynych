@@ -131,7 +131,7 @@ pub struct CloneProgressEvent {
 
 /* ---------- Вспомогательное ---------- */
 
-async fn blocking<T: Send + 'static>(work: impl FnOnce() -> Result<T> + Send + 'static) -> Result<T> {
+pub(crate) async fn blocking<T: Send + 'static>(work: impl FnOnce() -> Result<T> + Send + 'static) -> Result<T> {
     tauri::async_runtime::spawn_blocking(work).await.map_err(GorynychError::unknown)?
 }
 

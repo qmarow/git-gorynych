@@ -17,7 +17,9 @@
 //!
 //! # Подмена путей
 //! Только в debug-сборке, `GORYNYCH_DEV_ROOT`: все данные и профиль WebView2 лежат во временной папке, чтобы тесты не касались
-//! настоящего профиля. `GORYNYCH_DEV_READY_FILE`: проверка окна, см. [`commands::frontend_ready`].
+//! настоящего профиля. Там же папка SSH-ключей (`<папка>/.ssh`) и «буфер обмена» (`<папка>/clipboard.txt`), а секреты идут в
+//! Keyring под сервисом `com.ironxenot.gitgorynych.dev`: это всё ещё настоящее системное хранилище, поэтому тест удаляет
+//! свои записи сам. `GORYNYCH_DEV_READY_FILE`: проверка окна, см. [`commands::frontend_ready`].
 //! `GORYNYCH_DEV_EXPORT_BINDINGS`: экспорт типов для интерфейса. В релизе этого кода нет, это проверено по содержимому exe.
 
 mod bridge;
@@ -38,7 +40,8 @@ use gorynych_storage::askpass::AuthBroker;
 use gorynych_storage::credentials::Credentials;
 use gorynych_storage::migrator::{MigrationPaths, MigrationReport, migrate_from_1x};
 use gorynych_storage::preferences::Appearance;
-use gorynych_storage::secrets::KeyringStore;
+use gorynych_storage::secrets::{KeyringStore, SERVICE};
+use gorynych_storage::ssh_keys::default_ssh_dir;
 use gorynych_watcher::index_sync::IndexSync;
 use gorynych_watcher::remote_watch::RemoteRepoWatcher;
 use serde::Serialize;
@@ -72,6 +75,10 @@ pub struct Services {
     pub index_sync: Arc<IndexSync>,
     pub remote_watch: RemoteRepoWatcher,
     pub data_dir: PathBuf,
+    /// Папка SSH-ключей: `~/.ssh`.
+    pub ssh_dir: PathBuf,
+    /// Файл вместо буфера обмена: только при подмене путей.
+    pub clipboard_file: Option<PathBuf>,
 }
 
 /// Состояние приложения. `services` — ошибка, если хранилище не открылось.
@@ -96,6 +103,9 @@ struct Paths {
     data_dir: PathBuf,
     /// Папка профиля WebView2: задаётся только при подмене путей.
     webview_dir: Option<PathBuf>,
+    ssh_dir: PathBuf,
+    keyring_service: String,
+    clipboard_file: Option<PathBuf>,
 }
 
 fn resolve_paths<R: Runtime>(app: &App<R>) -> std::result::Result<Paths, tauri::Error> {
@@ -104,17 +114,20 @@ fn resolve_paths<R: Runtime>(app: &App<R>) -> std::result::Result<Paths, tauri::
         return Ok(Paths {
             data_dir: root.join("com.ironxenot.gitgorynych"),
             webview_dir: Some(root.join("webview")),
+            ssh_dir: root.join(".ssh"),
+            keyring_service: format!("{SERVICE}.dev"),
+            clipboard_file: Some(root.join("clipboard.txt")),
             app_data: root,
         });
     }
     let data_dir = app.path().app_data_dir()?;
     let app_data = data_dir.parent().map(PathBuf::from).unwrap_or_else(|| data_dir.clone());
-    Ok(Paths { app_data, data_dir, webview_dir: None })
+    Ok(Paths { app_data, data_dir, webview_dir: None, ssh_dir: default_ssh_dir(), keyring_service: SERVICE.to_owned(), clipboard_file: None })
 }
 
 fn open_services(paths: &Paths) -> Result<Services> {
     let db = Arc::new(Db::open(&paths.data_dir.join(DB_FILE))?);
-    let credentials = Arc::new(Credentials::new(Arc::clone(&db), Arc::new(KeyringStore::default())));
+    let credentials = Arc::new(Credentials::new(Arc::clone(&db), Arc::new(KeyringStore::with_service(paths.keyring_service.clone()))));
     // Этот же exe — помощник входа для git и ssh и редактор для `git rebase -i`: см. `main.rs`
     let helper = std::env::current_exe().map_err(GorynychError::unknown)?;
     let broker = Arc::new(AuthBroker::start(helper.clone())?);
@@ -123,7 +136,18 @@ fn open_services(paths: &Paths) -> Result<Services> {
     let cicd = CicdService::new(Arc::clone(&db), Arc::clone(&credentials), Arc::new(bridge::GitForCicd), Docker::default());
     let index_sync = Arc::new(IndexSync::new(Arc::clone(&engine)));
     let remote_watch = RemoteRepoWatcher::new(Arc::clone(&engine), Some(Arc::new(bridge::GitlabHeads(cicd.clone()))));
-    Ok(Services { db, credentials, broker, engine, cicd, index_sync, remote_watch, data_dir: paths.data_dir.clone() })
+    Ok(Services {
+        db,
+        credentials,
+        broker,
+        engine,
+        cicd,
+        index_sync,
+        remote_watch,
+        data_dir: paths.data_dir.clone(),
+        ssh_dir: paths.ssh_dir.clone(),
+        clipboard_file: paths.clipboard_file.clone(),
+    })
 }
 
 /// Запускает перенос и применяет сохранённый язык. Перенос может отложиться, но запуску не мешает.
@@ -306,6 +330,20 @@ pub fn specta_builder() -> Builder<tauri::Wry> {
             commands::repo::repo_clone_cancel,
             commands::repo::repo_action,
             commands::repo::repo_watch,
+            commands::creds::creds_describe,
+            commands::creds::creds_save,
+            commands::creds::creds_clear,
+            commands::creds::creds_check_url,
+            commands::creds::creds_detect_server,
+            commands::creds::creds_servers,
+            commands::creds::creds_forget_login,
+            commands::creds::creds_forget_server,
+            commands::creds::creds_set_kind,
+            commands::creds::creds_ssh_keys,
+            commands::creds::creds_key_defaults,
+            commands::creds::creds_generate_key,
+            commands::creds::creds_switch_to_ssh,
+            commands::creds::creds_copy_public_key,
         ])
         .events(collect_events![WindowMaximizedChanged, WindowFocused, commands::repo::RepoChanged, commands::repo::RepoIndexSynced, commands::repo::CloneProgressEvent])
 }
@@ -323,6 +361,7 @@ pub fn run() {
         return;
     }
     tauri::Builder::default()
+        .plugin(tauri_plugin_clipboard_manager::init())
         .invoke_handler(builder.invoke_handler())
         .setup(move |app| {
             builder.mount_events(app);

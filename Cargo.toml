@@ -49,6 +49,8 @@ specta-serde = "=0.0.13"
 specta-typescript = "=0.0.13"
 tauri = "2"
 tauri-build = "2"
+# Буфер обмена только со стороны Rust: разрешений для страницы нет.
+tauri-plugin-clipboard-manager = "2.5"
 # Точная версия: как и specta, находится в rc.
 tauri-specta = { version = "=2.0.0-rc.26", features = ["derive", "typescript"] }
 tempfile = "3"

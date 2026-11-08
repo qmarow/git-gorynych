@@ -71,7 +71,7 @@
 | `git.cjs`, `conflicts.cjs`, `fileHistory.cjs`, `compare.cjs` | `gorynych-git::{run, read, diff, write, conflicts, history, compare}` | 3 | ✅ |
 | `actions.cjs`, `rebase.cjs`, `restore.cjs`, `init.cjs`, `clone.cjs` | `gorynych-git::{actions, network, rebase, restore, init, clone}` | 3 | ✅ |
 | `watch.cjs`, `indexSync.cjs`, `remoteWatch.cjs` | `gorynych-watcher::{watch, index_sync, remote_watch}` | 3 | ✅ |
-| `main.cjs`, `preload.cjs`, `system.cjs` | `gorynych-tauri` (`repo:*` и `clone:*` — `commands/repo.rs`; мосты — `bridge.rs`) | 1 (каркас ✅) / 4 | 🔶 |
+| `main.cjs`, `preload.cjs`, `system.cjs` | `gorynych-tauri` (`repo:*` и `clone:*` — `commands/repo.rs`; `creds:*` — `commands/creds.rs`; мосты — `bridge.rs`) | 1 (каркас ✅) / 4 | 🔶 |
 
 ## Хранилище 2.0
 
@@ -378,3 +378,9 @@
   Не перенесены: `repo:open-dialog`, `repo:open-path` (нужны плагины диалогов и открытия; вместе с `shell:*`, `appearance:pick-image`, `creds:pick-key`).
   Следующий шаг: команды `creds:*` (`credTarget`, `describeTarget`, `serversWithCi`, `apiState`), `cicd:*`, `gitlab:*`; затем плагины диалогов и `shell:*`.
   ⚠ `cargo test --workspace` запускать из PowerShell: в Git Bash в `PATH` первым стоит `Git\ucrt64\bin\git.exe`, а эталоны `actions_parity` снимались с `Git\cmd\git.exe`. Путь входит в текст ошибки, поэтому 8 шагов расходятся только им.
+- 2026-11-08 — Сессия 9: работа сессий 5–8 закоммичена четырьмя коммитами. Подключены 14 команд `creds:*` (`commands/creds.rs`: `credTarget`, `describeTarget`, `apiState`, `serversWithCi`). Буфер обмена — `tauri-plugin-clipboard-manager` 2.5 только со стороны Rust, разрешений для страницы нет.
+  Подмена путей (`GORYNYCH_DEV_ROOT`, только debug) теперь включает папку SSH-ключей, буфер обмена (файл `clipboard.txt`) и сервис Keyring `com.ironxenot.gitgorynych.dev`. Это всё ещё настоящий Credential Manager: сквозной тест удаляет свой вход сам (`creds_clear`), после прогона записей `gitgorynych` в `cmdkey /list` нет.
+  Отличия от 1.x — в шапке `commands/creds.rs`: пустой `dir` сразу `NOT_A_REPO` (1.x искал репозиторий в текущей папке процесса), аргумент `keyType` вместо `type`, `copied` — настоящий итог записи в буфер.
+  Проверка: `app_smoke.rs::git_commands_work_through_the_page` (вход с новым адресом → remote добавлен, описание, серверы, удаление входа, переход на SSH, ключ ed25519 через настоящий `ssh-keygen`, ошибки) и модульный тест `serversWithCi` со старыми токенами CI/CD. Сервер `gitlab.example.invalid` в этой сети не отвечает быстро: проверка API ждёт свои 8 с, тест стал на столько же длиннее.
+  Не перенесён `creds:pick-key` (плагин диалогов). `creds:detect-server` и `creds:check-url` через окно не запускались: нужна сеть, их логика проверена эталоном `gorynych-cicd` и `gorynych-git`.
+  Следующий шаг: команды `cicd:*` и `gitlab:*`; затем плагины диалогов и открытия (`repo:open-dialog`, `repo:open-path`, `creds:pick-key`, `appearance:pick-image`, `cicd:artifact-download`, `shell:*`).

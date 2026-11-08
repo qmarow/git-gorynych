@@ -59,6 +59,24 @@ export const commands = {
 	/**  Все изменяющие и сетевые операции. См. `gorynych_git::actions`. */
 	repoAction: (dir: string, action: RepoAction_Deserialize) => typedError<ActionOutput_Serialize, GorynychError_Serialize>(__TAURI_INVOKE("repo_action", { dir, action })),
 	repoWatch: (dir: string | null, opts: WatchOptions_Deserialize | null) => typedError<boolean, GorynychError_Serialize>(__TAURI_INVOKE("repo_watch", { dir, opts })),
+	credsDescribe: (dir: string | null, url: string | null) => typedError<CredTarget_Serialize, GorynychError_Serialize>(__TAURI_INVOKE("creds_describe", { dir, url })),
+	credsSave: (dir: string | null, url: string | null, data: CredSaveInput_Deserialize | null) => typedError<CredSaved_Serialize, GorynychError_Serialize>(__TAURI_INVOKE("creds_save", { dir, url, data })),
+	credsClear: (dir: string | null, url: string | null) => typedError<ClearResult, GorynychError_Serialize>(__TAURI_INVOKE("creds_clear", { dir, url })),
+	/**  Доступ к репозиторию, который сейчас не открыт: `git ls-remote` с сохранённым входом. */
+	credsCheckUrl: (url: string | null) => typedError<UrlChecked, GorynychError_Serialize>(__TAURI_INVOKE("creds_check_url", { url })),
+	/**  Тип своего сервера (GitLab, GitHub Enterprise, Gitea…) по адресу. */
+	credsDetectServer: (input: string | null) => typedError<DetectedServer_Serialize, GorynychError_Serialize>(__TAURI_INVOKE("creds_detect_server", { input })),
+	credsServers: () => typedError<ServerWithCi_Serialize[], GorynychError_Serialize>(__TAURI_INVOKE("creds_servers")),
+	credsForgetLogin: (key: string) => typedError<ForgetResult, GorynychError_Serialize>(__TAURI_INVOKE("creds_forget_login", { key })),
+	credsForgetServer: (hostname: string) => typedError<ForgetResult, GorynychError_Serialize>(__TAURI_INVOKE("creds_forget_server", { hostname })),
+	credsSetKind: (hostname: string, kind: string | null) => typedError<ServerKindSet_Serialize, GorynychError_Serialize>(__TAURI_INVOKE("creds_set_kind", { hostname, kind })),
+	credsSshKeys: () => typedError<SshKeyList_Serialize, GorynychError_Serialize>(__TAURI_INVOKE("creds_ssh_keys")),
+	/**  Подсказки для формы нового ключа: имя файла и email автора из git config — как комментарий ключа. */
+	credsKeyDefaults: (dir: string | null, url: string | null, keyType: string | null) => typedError<KeyDefaults_Serialize, GorynychError_Serialize>(__TAURI_INVOKE("creds_key_defaults", { dir, url, keyType })),
+	credsGenerateKey: (options: GenerateKeyOptions_Deserialize | null) => typedError<GeneratedKeyCopied_Serialize, GorynychError_Serialize>(__TAURI_INVOKE("creds_generate_key", { options })),
+	/**  Перевести remote с `https://` на SSH (`git@host:path.git`), чтобы входить по ключу. */
+	credsSwitchToSsh: (dir: string | null) => typedError<SwitchedToSsh_Serialize, GorynychError_Serialize>(__TAURI_INVOKE("creds_switch_to_ssh", { dir })),
+	credsCopyPublicKey: (keyPath: string | null) => typedError<PublicKeyCopied, GorynychError_Serialize>(__TAURI_INVOKE("creds_copy_public_key", { keyPath })),
 };
 
 /** Events */
@@ -118,6 +136,15 @@ export type ActionOutput_Deserialize = AccessInfo_Deserialize | FetchResult | Pu
 
 /**  Результат действия. На проводе — сама структура, как в 1.x. */
 export type ActionOutput_Serialize = AccessInfo_Serialize | FetchResult | PullResult_Serialize | PushResult_Serialize | HistoryLabel | OperationResult_Serialize | string | CommitResult_Serialize | Checkout_Serialize | CheckoutPreview_Serialize | BranchCreated_Serialize | StashPushed | StashRef | StashPopped | RevertPreview_Serialize | ConflictInfo_Serialize | ResolveResult_Serialize | RevertedTo_Serialize | TagInfo_Serialize | RemoteBranchDeleted | BranchRenamed | BranchDeleted | HeadMoved_Serialize | ResetResult_Serialize | RefMoved_Serialize | RebaseDone_Serialize | FileRestored | StashFilesRestored | HunksApplied | BranchUpdated_Serialize | FastForwarded | GitRawResult | Discarded;
+
+/**  Работают ли пайплайны от авторизации репозитория. */
+export type ApiState = ApiState_Serialize | ApiState_Deserialize;
+
+/**  Работают ли пайплайны от авторизации репозитория. */
+export type ApiState_Deserialize = LoginCheckResult_Deserialize | UncheckedApi_Deserialize;
+
+/**  Работают ли пайплайны от авторизации репозитория. */
+export type ApiState_Serialize = LoginCheckResult_Serialize | UncheckedApi_Serialize;
 
 /**  Оформление (`DEFAULT_APPEARANCE` + `base`, `scheme` из `nativeAppearance`). */
 export type Appearance = Appearance_Serialize | Appearance_Deserialize;
@@ -966,6 +993,31 @@ export type CiNeed_Serialize = {
 	external?: boolean,
 };
 
+/**  Репозиторий, у которого есть только старый токен CI/CD. */
+export type CiOnlyRepo = CiOnlyRepo_Serialize | CiOnlyRepo_Deserialize;
+
+/**  Репозиторий, у которого есть только старый токен CI/CD. */
+export type CiOnlyRepo_Deserialize = {
+	key: string,
+	url?: string | null,
+	path: string,
+	/**  Всегда `ci`. */
+	protocol: string,
+	ciOnly: boolean,
+	ci: RepoCi_Deserialize,
+};
+
+/**  Репозиторий, у которого есть только старый токен CI/CD. */
+export type CiOnlyRepo_Serialize = {
+	key: string,
+	url: string | null,
+	path: string,
+	/**  Всегда `ci`. */
+	protocol: string,
+	ciOnly: boolean,
+	ci: RepoCi_Serialize,
+};
+
 export type CiPipeline = CiPipeline_Serialize | CiPipeline_Deserialize;
 
 export type CiPipeline_Deserialize = {
@@ -1207,6 +1259,12 @@ export type CiVariable_Serialize = {
 	value: string,
 	description?: YamlValue_Serialize,
 	options?: YamlValue_Serialize,
+};
+
+/**  Итог `clear`. */
+export type ClearResult = {
+	removed: boolean,
+	shared: boolean,
 };
 
 /**  Результат `probeClone`. */
@@ -1698,6 +1756,43 @@ export type CreatedBranch = {
 	track: string,
 };
 
+/**  Данные окна входа для `creds:save`. */
+export type CredSaveInput = CredSaveInput_Serialize | CredSaveInput_Deserialize;
+
+/**  Данные окна входа для `creds:save`. */
+export type CredSaveInput_Deserialize = {
+	/**  В окне входа выбрали другой адрес: remote репозитория меняется (или добавляется) после сохранения входа. */
+	remoteUrl?: string | null,
+} & LoginInput_Deserialize;
+
+/**  Данные окна входа для `creds:save`. */
+export type CredSaveInput_Serialize = {
+	/**  В окне входа выбрали другой адрес: remote репозитория меняется (или добавляется) после сохранения входа. */
+	remoteUrl: string | null,
+} & LoginInput_Serialize;
+
+/**  Ответ `creds:save`. */
+export type CredSaved = CredSaved_Serialize | CredSaved_Deserialize;
+
+/**  Ответ `creds:save`. */
+export type CredSaved_Deserialize = {
+	remoteChange?: RemoteChange_Deserialize | null,
+} & CredTarget_Deserialize;
+
+/**  Ответ `creds:save`. */
+export type CredSaved_Serialize = {
+	remoteChange: RemoteChange_Serialize | null,
+} & CredTarget_Serialize;
+
+/**  Ответ `creds:describe`. Различаются по `noRemote`. */
+export type CredTarget = CredTarget_Serialize | CredTarget_Deserialize;
+
+/**  Ответ `creds:describe`. Различаются по `noRemote`. */
+export type CredTarget_Deserialize = NoRemoteTarget_Deserialize | RemoteCredTarget_Deserialize;
+
+/**  Ответ `creds:describe`. Различаются по `noRemote`. */
+export type CredTarget_Serialize = NoRemoteTarget_Serialize | RemoteCredTarget_Serialize;
+
 /**  Параметры `deleteBranch`. */
 export type DeleteBranch = DeleteBranch_Serialize | DeleteBranch_Deserialize;
 
@@ -1739,6 +1834,35 @@ export type DeleteTag_Deserialize = {
 /**  Параметры `deleteTag`. */
 export type DeleteTag_Serialize = {
 	name: string | null,
+};
+
+/**  Итог определения. */
+export type DetectedServer = DetectedServer_Serialize | DetectedServer_Deserialize;
+
+/**  Итог определения. */
+export type DetectedServer_Deserialize = {
+	base: string,
+	scheme: string,
+	host: string,
+	hostname: string,
+	kind?: ServerKind | null,
+	version?: YamlValue_Deserialize | null,
+	reachable: boolean,
+	cloud?: boolean | null,
+	error?: string | null,
+};
+
+/**  Итог определения. */
+export type DetectedServer_Serialize = {
+	base: string,
+	scheme: string,
+	host: string,
+	hostname: string,
+	kind: ServerKind | null,
+	version: YamlValue_Serialize | null,
+	reachable: boolean,
+	cloud: boolean | null,
+	error: string | null,
 };
 
 /**  Фрагмент diff. */
@@ -2042,6 +2166,66 @@ export type ForgeStatus_Serialize = {
 	detectedKind: ServerKind | null,
 };
 
+/**  Итог `forgetLogin` и `forgetServer`. */
+export type ForgetResult = {
+	removed: boolean,
+};
+
+/**  Параметры нового ключа. Пароль не попадает в `Debug`. */
+export type GenerateKeyOptions = GenerateKeyOptions_Serialize | GenerateKeyOptions_Deserialize;
+
+/**  Параметры нового ключа. Пароль не попадает в `Debug`. */
+export type GenerateKeyOptions_Deserialize = {
+	type?: string | null,
+	comment?: string | null,
+	passphrase?: string | null,
+	name?: string | null,
+	host?: string | null,
+};
+
+/**  Параметры нового ключа. Пароль не попадает в `Debug`. */
+export type GenerateKeyOptions_Serialize = {
+	type: string | null,
+	comment: string | null,
+	passphrase: string | null,
+	name: string | null,
+	host: string | null,
+};
+
+/**  Созданный ключ. */
+export type GeneratedKey = GeneratedKey_Serialize | GeneratedKey_Deserialize;
+
+/**  Ответ `creds:generate-key`. */
+export type GeneratedKeyCopied = GeneratedKeyCopied_Serialize | GeneratedKeyCopied_Deserialize;
+
+/**  Ответ `creds:generate-key`. */
+export type GeneratedKeyCopied_Deserialize = {
+	copied: boolean,
+} & GeneratedKey_Deserialize;
+
+/**  Ответ `creds:generate-key`. */
+export type GeneratedKeyCopied_Serialize = {
+	copied: boolean,
+} & GeneratedKey_Serialize;
+
+/**  Созданный ключ. */
+export type GeneratedKey_Deserialize = {
+	path: string,
+	name: string,
+	publicKey: string,
+	type: string,
+	fingerprint?: string | null,
+};
+
+/**  Созданный ключ. */
+export type GeneratedKey_Serialize = {
+	path: string,
+	name: string,
+	publicKey: string,
+	type: string,
+	fingerprint: string | null,
+};
+
 /**  Параметры `gitRaw`. */
 export type GitRaw = GitRaw_Serialize | GitRaw_Deserialize;
 
@@ -2084,6 +2268,37 @@ export type GitflowConfig_Serialize = {
 export type GitignoreTemplate = {
 	label: string,
 	lines: string[],
+};
+
+/**  Строка списка старых токенов. */
+export type GlTokenRow = GlTokenRow_Serialize | GlTokenRow_Deserialize;
+
+/**  Строка списка старых токенов. */
+export type GlTokenRow_Deserialize = {
+	key: string,
+	hostname?: string | null,
+	base: string,
+	path?: string | null,
+	url?: string | null,
+	user?: LegacyCiUser_Deserialize | null,
+	scopes?: string[] | null,
+	expiresAt?: string | null,
+	savedAt?: string | null,
+	readable: boolean,
+};
+
+/**  Строка списка старых токенов. */
+export type GlTokenRow_Serialize = {
+	key: string,
+	hostname: string | null,
+	base: string,
+	path: string | null,
+	url: string | null,
+	user: LegacyCiUser_Serialize | null,
+	scopes: string[] | null,
+	expiresAt: string | null,
+	savedAt: string | null,
+	readable: boolean,
 };
 
 /**  Ошибка, пересекающая IPC. JSON совпадает с `GitError.toJSON()` из 1.x. */
@@ -2562,8 +2777,42 @@ export type JsMap_Deserialize = { [key in string]: YamlValue_Deserialize };
 /**  Словарь с порядком ключей объекта JS: целые индексы по возрастанию, затем остальные в порядке появления. */
 export type JsMap_Serialize = { [key in string]: YamlValue_Serialize };
 
+/**  Ответ `creds:key-defaults`. */
+export type KeyDefaults = KeyDefaults_Serialize | KeyDefaults_Deserialize;
+
+/**  Ответ `creds:key-defaults`. */
+export type KeyDefaults_Deserialize = {
+	name: string,
+	comment?: string | null,
+	dir: string,
+};
+
+/**  Ответ `creds:key-defaults`. */
+export type KeyDefaults_Serialize = {
+	name: string,
+	comment: string | null,
+	dir: string,
+};
+
 /**  Язык интерфейса и сообщений. */
 export type Language = "ru" | "en";
+
+/**  Старый токен CI/CD при входе репозитория. */
+export type LegacyCiRef = LegacyCiRef_Serialize | LegacyCiRef_Deserialize;
+
+/**  Старый токен CI/CD при входе репозитория. */
+export type LegacyCiRef_Deserialize = {
+	key: string,
+	user?: LegacyCiUser_Deserialize | null,
+	scopes?: string[] | null,
+};
+
+/**  Старый токен CI/CD при входе репозитория. */
+export type LegacyCiRef_Serialize = {
+	key: string,
+	user: LegacyCiUser_Serialize | null,
+	scopes: string[] | null,
+};
 
 /**  Пользователь старого токена CI/CD. */
 export type LegacyCiUser = LegacyCiUser_Serialize | LegacyCiUser_Deserialize;
@@ -2666,6 +2915,87 @@ export type LocalBranch_Serialize = {
 	ahead: number | null,
 	behind: number | null,
 	date: string | null,
+};
+
+/**  Итог проверки входа. */
+export type LoginCheckResult = LoginCheckResult_Serialize | LoginCheckResult_Deserialize;
+
+/**  Итог проверки входа. */
+export type LoginCheckResult_Deserialize = {
+	state: string,
+	reason?: string | null,
+	user?: LegacyCiUser_Deserialize | null,
+	scopes?: string[] | null,
+	method?: AuthMethod | null,
+	viaApiToken?: boolean | null,
+};
+
+/**  Итог проверки входа. */
+export type LoginCheckResult_Serialize = {
+	state: string,
+	reason: string | null,
+	user: LegacyCiUser_Serialize | null,
+	scopes: string[] | null,
+	method: AuthMethod | null,
+	viaApiToken: boolean | null,
+};
+
+/**  Сохранённый вход без секретов. */
+export type LoginInfo = LoginInfo_Serialize | LoginInfo_Deserialize;
+
+/**  Сохранённый вход без секретов. */
+export type LoginInfo_Deserialize = {
+	method: AuthMethod,
+	username?: string | null,
+	keyPath?: string | null,
+	hasSecret: boolean,
+	hasPassphrase: boolean,
+	/**  Токен для API сервера (пайплайны) — к входу паролем или SSH-ключом, которые API не принимает. */
+	hasApiToken: boolean,
+	savedAt?: string | null,
+	readable: boolean,
+};
+
+/**  Сохранённый вход без секретов. */
+export type LoginInfo_Serialize = {
+	method: AuthMethod,
+	username: string | null,
+	keyPath: string | null,
+	hasSecret: boolean,
+	hasPassphrase: boolean,
+	/**  Токен для API сервера (пайплайны) — к входу паролем или SSH-ключом, которые API не принимает. */
+	hasApiToken: boolean,
+	savedAt: string | null,
+	readable: boolean,
+};
+
+/**  Данные формы входа. Секреты не попадают в `Debug`. */
+export type LoginInput = LoginInput_Serialize | LoginInput_Deserialize;
+
+/**  Данные формы входа. Секреты не попадают в `Debug`. */
+export type LoginInput_Deserialize = {
+	method?: string | null,
+	username?: string | null,
+	secret?: string | null,
+	keyPath?: string | null,
+	passphrase?: string | null,
+	clearPassphrase?: boolean,
+	apiToken?: string | null,
+	clearApiToken?: boolean,
+	kind?: string | null,
+};
+
+/**  Данные формы входа. Секреты не попадают в `Debug`. */
+export type LoginInput_Serialize = {
+	method: string | null,
+	username: string | null,
+	secret: string | null,
+	keyPath: string | null,
+	passphrase: string | null,
+	clearPassphrase: boolean,
+	apiToken: string | null,
+	clearApiToken: boolean,
+	kind: string | null,
 };
 
 /**  Почему вход не подходит. */
@@ -2813,6 +3143,35 @@ export type MovedChanges_Serialize = {
 /**  Действие без параметров. Лишние поля игнорируются. */
 export type NoParams = Record<string, never>;
 
+/**  У репозитория нет remote: окно входа предложит указать адрес. */
+export type NoRemoteTarget = NoRemoteTarget_Serialize | NoRemoteTarget_Deserialize;
+
+/**  У репозитория нет remote: окно входа предложит указать адрес. */
+export type NoRemoteTarget_Deserialize = {
+	noRemote: boolean,
+	remote?: string | null,
+	url?: string | null,
+	protocol: RemoteProtocol,
+	host?: string | null,
+	hostname?: string | null,
+	saved?: SavedLogin_Deserialize | null,
+	kind?: ServerKind | null,
+	cloud: boolean,
+};
+
+/**  У репозитория нет remote: окно входа предложит указать адрес. */
+export type NoRemoteTarget_Serialize = {
+	noRemote: boolean,
+	remote: string | null,
+	url: string | null,
+	protocol: RemoteProtocol,
+	host: string | null,
+	hostname: string | null,
+	saved: SavedLogin_Serialize | null,
+	kind: ServerKind | null,
+	cloud: boolean,
+};
+
 /**  Результат `abortOperation` и `continueOperation`. */
 export type OperationResult = OperationResult_Serialize | OperationResult_Deserialize;
 
@@ -2944,6 +3303,12 @@ export type ProbeRemote_Deserialize = {
 export type ProbeRemote_Serialize = {
 	url: string | null,
 	branch: string | null,
+};
+
+/**  Ответ `creds:copy-public-key`. */
+export type PublicKeyCopied = {
+	publicKey: string,
+	copied: boolean,
 };
 
 /**  Параметры `pull`. */
@@ -3274,6 +3639,23 @@ export type RemoteBranch_Serialize = {
 	date: string | null,
 };
 
+/**  Как изменился remote. */
+export type RemoteChange = RemoteChange_Serialize | RemoteChange_Deserialize;
+
+/**  Как изменился remote. */
+export type RemoteChange_Deserialize = {
+	remote: string,
+	from?: string | null,
+	to: string,
+};
+
+/**  Как изменился remote. */
+export type RemoteChange_Serialize = {
+	remote: string,
+	from: string | null,
+	to: string,
+};
+
 /**  Расхождение с сервером. */
 export type RemoteChanges = {
 	updated: string[],
@@ -3289,6 +3671,25 @@ export type RemoteCommit = {
 	date: string,
 	hash: string,
 };
+
+/**  Адрес, к которому нужен доступ, и сохранённый для него вход. */
+export type RemoteCredTarget = RemoteCredTarget_Serialize | RemoteCredTarget_Deserialize;
+
+/**  Адрес, к которому нужен доступ, и сохранённый для него вход. */
+export type RemoteCredTarget_Deserialize = {
+	remote?: string | null,
+	noRemote: boolean,
+	defaultTokenUser: string,
+	api?: ApiState_Deserialize | null,
+} & TargetInfo_Deserialize;
+
+/**  Адрес, к которому нужен доступ, и сохранённый для него вход. */
+export type RemoteCredTarget_Serialize = {
+	remote: string | null,
+	noRemote: boolean,
+	defaultTokenUser: string,
+	api: ApiState_Serialize | null,
+} & TargetInfo_Serialize;
 
 /**  Ветка на сервере. */
 export type RemoteHead = {
@@ -3344,6 +3745,9 @@ export type RemoteProbe_Serialize = {
 	remoteHasGitignore: boolean,
 } & RemoteHeads_Serialize;
 
+/**  Способ доступа к remote. */
+export type RemoteProtocol = "https" | "ssh" | "local";
+
 /**  Удалённый репозиторий. */
 export type Remote_Deserialize = {
 	name: string,
@@ -3387,11 +3791,70 @@ export type RepoChanged = {
 	worktree: boolean,
 };
 
+/**  CI/CD от авторизации репозитория. */
+export type RepoCi = RepoCi_Serialize | RepoCi_Deserialize;
+
+/**  CI/CD от авторизации репозитория. */
+export type RepoCi_Deserialize = {
+	source?: string | null,
+	state?: string | null,
+	reason?: string | null,
+	user?: LegacyCiUser_Deserialize | null,
+	scopes?: string[] | null,
+	viaApiToken?: boolean | null,
+	readable?: boolean | null,
+	legacy?: LegacyCiRef_Deserialize | null,
+};
+
+/**  CI/CD от авторизации репозитория. */
+export type RepoCi_Serialize = {
+	source: string | null,
+	state: string | null,
+	reason: string | null,
+	user: LegacyCiUser_Serialize | null,
+	scopes: string[] | null,
+	viaApiToken: boolean | null,
+	readable: boolean | null,
+	legacy: LegacyCiRef_Serialize | null,
+};
+
 /**  Событие `repo:index-synced`. */
 export type RepoIndexSynced = {
 	path: string,
 	synced: SyncedFile[],
 };
+
+/**  Вход репозитория в списке серверов. */
+export type RepoLogin = RepoLogin_Serialize | RepoLogin_Deserialize;
+
+/**  Вход репозитория в списке серверов. */
+export type RepoLogin_Deserialize = {
+	key: string,
+	url?: string | null,
+	path: string,
+	protocol: RemoteProtocol,
+} & LoginInfo_Deserialize;
+
+/**  Вход репозитория в списке серверов. */
+export type RepoLogin_Serialize = {
+	key: string,
+	url: string | null,
+	path: string,
+	protocol: RemoteProtocol,
+} & LoginInfo_Serialize;
+
+/**  Вход репозитория в списке серверов. */
+export type RepoWithCi = RepoWithCi_Serialize | RepoWithCi_Deserialize;
+
+/**  Вход репозитория в списке серверов. */
+export type RepoWithCi_Deserialize = {
+	ci?: RepoCi_Deserialize | null,
+} & RepoLogin_Deserialize;
+
+/**  Вход репозитория в списке серверов. */
+export type RepoWithCi_Serialize = {
+	ci: RepoCi_Serialize | null,
+} & RepoLogin_Serialize;
 
 /**  `loadRepository`. */
 export type Repository = Repository_Serialize | Repository_Deserialize;
@@ -3651,6 +4114,21 @@ export type SaveResolution_Serialize = {
 	content: string | null,
 };
 
+/**  Действующий вход для адреса. */
+export type SavedLogin = SavedLogin_Serialize | SavedLogin_Deserialize;
+
+/**  Действующий вход для адреса. */
+export type SavedLogin_Deserialize = {
+	/**  Вход общий для сервера: сохранён до привязки к репозиториям. */
+	shared: boolean,
+} & LoginInfo_Deserialize;
+
+/**  Действующий вход для адреса. */
+export type SavedLogin_Serialize = {
+	/**  Вход общий для сервера: сохранён до привязки к репозиториям. */
+	shared: boolean,
+} & LoginInfo_Serialize;
+
 /**  Параметры `searchChanges`. */
 export type SearchChanges = SearchChanges_Serialize | SearchChanges_Deserialize;
 
@@ -3694,6 +4172,70 @@ export type SearchHistory_Serialize = {
 /**  Тип сервера. */
 export type ServerKind = "github" | "gitlab" | "gitea" | "bitbucket" | "other";
 
+/**  Ответ `creds:set-kind`. */
+export type ServerKindSet = ServerKindSet_Serialize | ServerKindSet_Deserialize;
+
+/**  Ответ `creds:set-kind`. */
+export type ServerKindSet_Deserialize = {
+	kind?: ServerKind | null,
+};
+
+/**  Ответ `creds:set-kind`. */
+export type ServerKindSet_Serialize = {
+	kind: ServerKind | null,
+};
+
+/**  Строка репозитория сервера. Различаются по `ciOnly`. */
+export type ServerRepo = ServerRepo_Serialize | ServerRepo_Deserialize;
+
+/**  Строка репозитория сервера. Различаются по `ciOnly`. */
+export type ServerRepo_Deserialize = RepoWithCi_Deserialize | CiOnlyRepo_Deserialize;
+
+/**  Строка репозитория сервера. Различаются по `ciOnly`. */
+export type ServerRepo_Serialize = RepoWithCi_Serialize | CiOnlyRepo_Serialize;
+
+/**  Сервер в окне «Серверы и входы». */
+export type ServerWithCi = ServerWithCi_Serialize | ServerWithCi_Deserialize;
+
+/**  Сервер в окне «Серверы и входы». */
+export type ServerWithCi_Deserialize = {
+	hostname: string,
+	base: string,
+	repos: ServerRepo_Deserialize[],
+	shared: SharedLogin_Deserialize[],
+	kind?: ServerKind | null,
+	kindSaved: boolean,
+	cloud: boolean,
+	sharedCi?: GlTokenRow_Deserialize[] | null,
+};
+
+/**  Сервер в окне «Серверы и входы». */
+export type ServerWithCi_Serialize = {
+	hostname: string,
+	base: string,
+	repos: ServerRepo_Serialize[],
+	shared: SharedLogin_Serialize[],
+	kind: ServerKind | null,
+	kindSaved: boolean,
+	cloud: boolean,
+	sharedCi: GlTokenRow_Serialize[] | null,
+};
+
+/**  Общий вход сервера в списке серверов. */
+export type SharedLogin = SharedLogin_Serialize | SharedLogin_Deserialize;
+
+/**  Общий вход сервера в списке серверов. */
+export type SharedLogin_Deserialize = {
+	key: string,
+	protocol: RemoteProtocol,
+} & LoginInfo_Deserialize;
+
+/**  Общий вход сервера в списке серверов. */
+export type SharedLogin_Serialize = {
+	key: string,
+	protocol: RemoteProtocol,
+} & LoginInfo_Serialize;
+
 /**  Подпись стороны. */
 export type Side = {
 	title: string,
@@ -3718,6 +4260,44 @@ export type SideLabels_Serialize = {
 	ours: Side,
 	theirs: Side,
 	swapped: boolean | null,
+};
+
+/**  Приватный ключ в каталоге SSH. */
+export type SshKeyInfo = SshKeyInfo_Serialize | SshKeyInfo_Deserialize;
+
+/**  Приватный ключ в каталоге SSH. */
+export type SshKeyInfo_Deserialize = {
+	path: string,
+	name: string,
+	type?: string | null,
+	comment?: string | null,
+	hasPub: boolean,
+	mtime: number | null,
+};
+
+/**  Приватный ключ в каталоге SSH. */
+export type SshKeyInfo_Serialize = {
+	path: string,
+	name: string,
+	type: string | null,
+	comment: string | null,
+	hasPub: boolean,
+	mtime: number | null,
+};
+
+/**  Содержимое каталога SSH. */
+export type SshKeyList = SshKeyList_Serialize | SshKeyList_Deserialize;
+
+/**  Содержимое каталога SSH. */
+export type SshKeyList_Deserialize = {
+	dir: string,
+	keys: SshKeyInfo_Deserialize[],
+};
+
+/**  Содержимое каталога SSH. */
+export type SshKeyList_Serialize = {
+	dir: string,
+	keys: SshKeyInfo_Serialize[],
 };
 
 /**  Как прошёл запуск. */
@@ -3879,6 +4459,25 @@ export type StatusWithCi_Serialize = {
 	ci: CiSystem[],
 } & QuickStatus_Serialize;
 
+/**  Ответ `creds:switch-to-ssh`. */
+export type SwitchedToSsh = SwitchedToSsh_Serialize | SwitchedToSsh_Deserialize;
+
+/**  Ответ `creds:switch-to-ssh`. */
+export type SwitchedToSsh_Deserialize = {
+	remote: string,
+	from: string,
+	to: string,
+	target: CredTarget_Deserialize,
+};
+
+/**  Ответ `creds:switch-to-ssh`. */
+export type SwitchedToSsh_Serialize = {
+	remote: string,
+	from: string,
+	to: string,
+	target: CredTarget_Serialize,
+};
+
 /**  Что сделано с файлом. */
 export type SyncedFile = {
 	file: string,
@@ -3921,6 +4520,45 @@ export type TagInfo_Serialize = {
 	name: string,
 	hash: string,
 	message: string | null,
+};
+
+/**  Что известно об адресе. Секретов нет. */
+export type TargetInfo = TargetInfo_Serialize | TargetInfo_Deserialize;
+
+/**  Что известно об адресе. Секретов нет. */
+export type TargetInfo_Deserialize = {
+	protocol: RemoteProtocol,
+	scheme?: string | null,
+	host?: string | null,
+	hostname?: string | null,
+	user?: string | null,
+	url: string,
+	kind?: ServerKind | null,
+	kindSaved: boolean,
+	cloud: boolean,
+	/**  Адрес сайта: для HTTPS — как в remote, для SSH — сохранённый или `https://имя-хоста`. */
+	base?: string | null,
+	repoPath?: string | null,
+	repoKey?: string | null,
+	saved?: SavedLogin_Deserialize | null,
+};
+
+/**  Что известно об адресе. Секретов нет. */
+export type TargetInfo_Serialize = {
+	protocol: RemoteProtocol,
+	scheme: string | null,
+	host: string | null,
+	hostname: string | null,
+	user: string | null,
+	url: string,
+	kind: ServerKind | null,
+	kindSaved: boolean,
+	cloud: boolean,
+	/**  Адрес сайта: для HTTPS — как в remote, для SSH — сохранённый или `https://имя-хоста`. */
+	base: string | null,
+	repoPath: string | null,
+	repoKey: string | null,
+	saved: SavedLogin_Serialize | null,
 };
 
 /**  Результат diff в формате разбора `git diff`. */
@@ -3996,6 +4634,21 @@ export type TokenStatus_Serialize = {
 	repoKey: string | null,
 };
 
+/**  Вход годится для API, но ещё не проверялся (`state: null`), или есть, но не годится (`state: 'none'`). */
+export type UncheckedApi = UncheckedApi_Serialize | UncheckedApi_Deserialize;
+
+/**  Вход годится для API, но ещё не проверялся (`state: null`), или есть, но не годится (`state: 'none'`). */
+export type UncheckedApi_Deserialize = {
+	state?: string | null,
+	method?: AuthMethod | null,
+};
+
+/**  Вход годится для API, но ещё не проверялся (`state: null`), или есть, но не годится (`state: 'none'`). */
+export type UncheckedApi_Serialize = {
+	state: string | null,
+	method: AuthMethod | null,
+};
+
 /**  Параметры `updateBranch`. */
 export type UpdateBranch = UpdateBranch_Serialize | UpdateBranch_Deserialize;
 
@@ -4007,6 +4660,11 @@ export type UpdateBranch_Deserialize = {
 /**  Параметры `updateBranch`. */
 export type UpdateBranch_Serialize = {
 	branch: string | null,
+};
+
+/**  Ответ `creds:check-url`. */
+export type UrlChecked = {
+	ok: boolean,
 };
 
 /**  Параметры `repo:watch`. */

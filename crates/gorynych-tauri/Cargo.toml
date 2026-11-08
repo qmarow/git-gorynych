@@ -23,12 +23,14 @@ gorynych-watcher.workspace = true
 gorynych-ci-linter.workspace = true
 gorynych-cicd.workspace = true
 async-trait.workspace = true
+tokio.workspace = true
 indexmap.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 specta.workspace = true
 specta-typescript.workspace = true
 tauri.workspace = true
+tauri-plugin-clipboard-manager.workspace = true
 tauri-specta.workspace = true
 
 [target.'cfg(windows)'.dependencies]
@@ -39,4 +41,3 @@ tauri-build.workspace = true
 
 [dev-dependencies]
 tempfile.workspace = true
-tokio.workspace = true

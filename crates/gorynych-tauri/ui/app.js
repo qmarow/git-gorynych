@@ -56,7 +56,9 @@ async function smoke(dir) {
   const badCompare = await rejected(invoke('repo_compare', { dir, params: { a: 'не хэш', b: null } }));
   const cancelled = await invoke('repo_clone_cancel', { id: 'нет' });
   const unwatched = await invoke('repo_watch', { dir: null, opts: null });
+  const creds = await credsSmoke(dir);
   return {
+    creds,
     loaded: { name: loaded.name, commits: loaded.commits.length, currentBranch: loaded.currentBranch, history: loaded.history, ci: loaded.ci, forge: loaded.forge },
     watching,
     staged,
@@ -73,6 +75,51 @@ async function smoke(dir) {
     badCompare,
     cancelled,
     unwatched,
+  };
+}
+
+// Вход на сервер: у репозитория нет remote, окно входа добавляет его вместе со входом. Секрет уходит в Keyring
+// (сервис `.dev`), поэтому вход в конце удаляется. Ключ SSH и «буфер обмена» — в папке теста
+async function credsSmoke(dir) {
+  const remoteUrl = 'https://gitlab.example.invalid/group/project.git';
+  const noRemote = await invoke('creds_describe', { dir, url: null });
+  const badRemote = await rejected(invoke('creds_save', { dir, url: null, data: { remoteUrl: 'не адрес', method: 'token', secret: 'glpat-x' } }));
+  const saved = await invoke('creds_save', { dir, url: null, data: { remoteUrl, method: 'token', secret: 'glpat-проверка' } });
+  const described = await invoke('creds_describe', { dir, url: null });
+  const servers = await invoke('creds_servers');
+  const server = servers.find((s) => s.hostname === 'gitlab.example.invalid');
+  const cleared = await invoke('creds_clear', { dir, url: null });
+  const afterClear = await invoke('creds_describe', { dir, url: null });
+  const switched = await invoke('creds_switch_to_ssh', { dir });
+  const switchedAgain = await rejected(invoke('creds_switch_to_ssh', { dir }));
+  const kind = await invoke('creds_set_kind', { hostname: 'git.example.invalid', kind: 'gitea' });
+  const badKind = await rejected(invoke('creds_set_kind', { hostname: 'git.example.invalid', kind: 'нет' }));
+  const forgotServer = await invoke('creds_forget_server', { hostname: 'git.example.invalid' });
+  const defaults = await invoke('creds_key_defaults', { dir, url: null, keyType: 'ed25519' });
+  const generated = await invoke('creds_generate_key', { options: { type: 'ed25519', comment: defaults.comment, name: defaults.name } });
+  const keys = await invoke('creds_ssh_keys');
+  const copied = await invoke('creds_copy_public_key', { keyPath: generated.path });
+  const noPub = await rejected(invoke('creds_copy_public_key', { keyPath: `${generated.path}.нет` }));
+  const badUrl = await rejected(invoke('creds_check_url', { url: 'не адрес' }));
+  return {
+    noRemote,
+    badRemote,
+    saved: { remoteChange: saved.remoteChange, method: saved.saved && saved.saved.method, kind: saved.kind, api: saved.api },
+    described: { remote: described.remote, url: described.url, kind: described.kind, defaultTokenUser: described.defaultTokenUser, method: described.saved && described.saved.method, readable: described.saved && described.saved.readable, api: described.api },
+    server: server && { kind: server.kind, repos: server.repos.map((r) => ({ path: r.path, method: r.method, ciSource: r.ci && r.ci.source })) },
+    cleared,
+    afterClear: afterClear.saved,
+    switched: { remote: switched.remote, from: switched.from, to: switched.to, protocol: switched.target.protocol },
+    switchedAgain,
+    kind,
+    badKind,
+    forgotServer,
+    defaults,
+    generated: { name: generated.name, type: generated.type, copied: generated.copied, publicKey: generated.publicKey },
+    keys: keys.keys.map((k) => k.name),
+    copied,
+    noPub,
+    badUrl,
   };
 }
 

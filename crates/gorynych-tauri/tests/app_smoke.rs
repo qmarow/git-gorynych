@@ -172,4 +172,42 @@ fn git_commands_work_through_the_page() {
     assert_eq!(report["cancelled"], json!(false));
     assert_eq!(report["unwatched"], json!(false));
     assert_eq!(git(&repo, &["rev-list", "--count", "HEAD"]).trim(), "1", "коммит отменён в самом git");
+
+    // Вход на сервер (`creds:*`), см. `credsSmoke` в `ui/app.js`
+    let creds = &report["creds"];
+    assert_eq!(creds["noRemote"]["noRemote"], json!(true), "{creds}");
+    assert_eq!(creds["badRemote"]["code"], json!("BAD_ARGS"), "{creds}");
+    assert!(creds["badRemote"]["hint"].as_str().is_some_and(|hint| hint.contains("project.git")), "{creds}");
+    let url = "https://gitlab.example.invalid/group/project.git";
+    assert_eq!(creds["saved"]["remoteChange"], json!({ "remote": "origin", "from": null, "to": url }), "сначала вход, потом remote: {creds}");
+    assert_eq!(creds["saved"]["method"], json!("token"));
+    assert_eq!(creds["saved"]["kind"], json!("gitlab"), "тип по имени хоста");
+    assert!(matches!(creds["saved"]["api"]["state"].as_str(), Some("unknown" | "bad")), "сервера нет — проверка API не удалась: {creds}");
+    assert_eq!(creds["described"]["remote"], json!("origin"));
+    assert_eq!(creds["described"]["url"], json!(url));
+    assert_eq!(creds["described"]["defaultTokenUser"], json!("oauth2"));
+    assert_eq!(creds["described"]["readable"], json!(true), "секрет читается из Keyring: {creds}");
+    assert_eq!(creds["server"]["repos"], json!([{ "path": "group/project", "method": "token", "ciSource": "login" }]), "{creds}");
+    assert_eq!(creds["cleared"], json!({ "removed": true, "shared": false }), "вход удалён вместе с записью Keyring");
+    assert_eq!(creds["afterClear"], Value::Null);
+    assert_eq!(creds["switched"]["to"], json!("git@gitlab.example.invalid:group/project.git"), "{creds}");
+    assert_eq!(creds["switched"]["protocol"], json!("ssh"));
+    assert_eq!(git(&repo, &["remote", "get-url", "origin"]).trim(), "git@gitlab.example.invalid:group/project.git");
+    assert_eq!(creds["switchedAgain"]["code"], json!("BAD_ARGS"));
+    assert_eq!(creds["kind"], json!({ "kind": "gitea" }));
+    assert_eq!(creds["badKind"]["code"], json!("BAD_ARGS"));
+    assert_eq!(creds["forgotServer"], json!({ "removed": true }));
+    assert_eq!(creds["defaults"]["comment"], json!("t@example.com"), "email из git config репозитория");
+    let ssh_dir = dir.path().join(".ssh");
+    assert_eq!(creds["defaults"]["dir"], json!(ssh_dir.to_str().unwrap()), "ключи — в папке теста, не в ~/.ssh");
+    assert_eq!(creds["generated"]["type"], json!("ed25519"));
+    assert_eq!(creds["generated"]["copied"], json!(true));
+    let public_key = creds["generated"]["publicKey"].as_str().unwrap();
+    assert!(public_key.starts_with("ssh-ed25519 ") && public_key.ends_with(" t@example.com"), "{creds}");
+    assert!(ssh_dir.join(creds["generated"]["name"].as_str().unwrap()).exists());
+    assert_eq!(creds["keys"], json!([creds["generated"]["name"]]));
+    assert_eq!(creds["copied"]["publicKey"], json!(public_key));
+    assert_eq!(fs::read_to_string(dir.path().join("clipboard.txt")).unwrap(), public_key, "открытый ключ в буфере обмена");
+    assert_eq!(creds["noPub"]["code"], json!("NOT_FOUND"));
+    assert_eq!(creds["badUrl"]["code"], json!("BAD_ARGS"));
 }
