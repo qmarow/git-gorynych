@@ -1,4 +1,7 @@
 //! Команды каркаса. Семантика — как у одноимённых обработчиков `ipcMain` в `electron/main.cjs`; см. шапку `lib.rs`.
+//! Команды git — в [`repo`].
+
+pub mod repo;
 
 use std::fs;
 use std::path::Path;
@@ -54,19 +57,21 @@ pub fn startup_status(state: State<'_, AppState>) -> StartupStatus {
 /// Страница отрисована: как `ready-to-show`, окно показывается только теперь.
 // Обычный комментарий: `specta` встраивает doc-комментарии команд в бинарь и в типы для интерфейса.
 // В debug-сборке с GORYNYCH_DEV_READY_FILE вместо показа записывает состояние в файл и завершает приложение: это
-// проверка, что настоящий WebView2 загрузил страницу, она прошла CSP и все команды отработали.
+// проверка, что настоящий WebView2 загрузил страницу, она прошла CSP и все команды отработали. `report` — JSON от страницы
+// (сквозная проверка команд), попадает в тот же файл полем `report`. В релизе не используется.
 #[tauri::command]
 #[specta::specta]
-pub fn frontend_ready(window: WebviewWindow, state: State<'_, AppState>) {
+pub fn frontend_ready(window: WebviewWindow, state: State<'_, AppState>, report: Option<String>) {
     #[cfg(debug_assertions)]
     if let Some(file) = std::env::var_os("GORYNYCH_DEV_READY_FILE") {
         use tauri::Manager;
-        let status = serde_json::to_string(&status_of(&state)).unwrap_or_default();
-        let _ = fs::write(file, status);
+        let mut status = serde_json::to_value(status_of(&state)).unwrap_or_default();
+        status["report"] = report.and_then(|text| serde_json::from_str(&text).ok()).unwrap_or_default();
+        let _ = fs::write(file, status.to_string());
         window.app_handle().exit(0);
         return;
     }
-    let _ = &state;
+    let _ = (&state, report);
     let _ = window.show();
 }
 

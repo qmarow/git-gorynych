@@ -8,5 +8,8 @@ fn main() {
     if let Some(code) = gorynych_storage::askpass::run_helper() {
         std::process::exit(code);
     }
+    if let Some(code) = gorynych_git::rebase::run_editor_helper() {
+        std::process::exit(code);
+    }
     gorynych_tauri_lib::run();
 }

@@ -17,6 +17,8 @@ fn launch(root: &Path) -> (ExitStatus, Value) {
     let mut child = Command::new(APP)
         .env("GORYNYCH_DEV_ROOT", root)
         .env("GORYNYCH_DEV_READY_FILE", &ready)
+        .env("GIT_CONFIG_GLOBAL", root.join("нет-такого"))
+        .env("GIT_CONFIG_NOSYSTEM", "1")
         .spawn()
         .unwrap();
     let started = Instant::now();
@@ -31,7 +33,16 @@ fn launch(root: &Path) -> (ExitStatus, Value) {
         std::thread::sleep(Duration::from_millis(50));
     };
     let text = fs::read_to_string(&ready).unwrap_or_else(|error| panic!("нет файла готовности ({error}), код {status:?}"));
-    (status, serde_json::from_str(&text).unwrap())
+    let ready: Value = serde_json::from_str(&text).unwrap();
+    assert_eq!(ready["report"]["error"], Value::Null, "страница не прошла команды: {ready}");
+    (status, ready)
+}
+
+/// git теста: без глобальных и системных настроек пользователя.
+fn git(dir: &Path, args: &[&str]) -> String {
+    let output = Command::new("git").current_dir(dir).args(args).env("GIT_CONFIG_GLOBAL", dir.join("нет-такого")).env("GIT_CONFIG_NOSYSTEM", "1").output().unwrap();
+    assert!(output.status.success(), "git {args:?}: {}", String::from_utf8_lossy(&output.stderr));
+    String::from_utf8_lossy(&output.stdout).into_owned()
 }
 
 /// Типы для интерфейса лежат в репозитории и не должны отставать от команд.
@@ -104,4 +115,61 @@ fn broken_storage_does_not_stop_the_window() {
     assert!(status.success(), "сбой хранилища не должен ронять приложение");
     assert_eq!(ready["storageError"]["code"], json!("NO_STORAGE"), "{ready}");
     assert_eq!(ready["migrationError"]["code"], json!("NO_STORAGE"), "{ready}");
+}
+
+/// Команды git через настоящий WebView: страница-заглушка проходит их на последнем репозитории (см. `ui/app.js`).
+/// Репозиторий попадает в «последний» через перенос профиля 1.x, как у пользователя после обновления.
+#[test]
+fn git_commands_work_through_the_page() {
+    let dir = tempfile::tempdir().unwrap();
+    let repo = dir.path().join("Репозиторий с пробелом");
+    fs::create_dir(&repo).unwrap();
+    git(&repo, &["init", "-q", "-b", "main"]);
+    git(&repo, &["config", "user.name", "Тест"]);
+    git(&repo, &["config", "user.email", "t@example.com"]);
+    git(&repo, &["config", "gitflow.branch.develop", "develop"]);
+    fs::write(repo.join(".gitlab-ci.yml"), "build:
+  stage: build
+  script: [echo 1]
+").unwrap();
+    git(&repo, &["add", "-A"]);
+    git(&repo, &["commit", "-q", "-m", "Начало"]);
+    fs::write(repo.join("gorynych-smoke.txt"), "строка
+секрет-123
+").unwrap();
+
+    let profile = dir.path().join("git-Gorynych");
+    fs::create_dir_all(&profile).unwrap();
+    let path = repo.to_str().unwrap();
+    fs::write(profile.join("settings.json"), json!({ "lastRepo": path }).to_string()).unwrap();
+
+    let (status, ready) = launch(dir.path());
+    assert!(status.success(), "{status:?}");
+    let report = &ready["report"]["repo"];
+    assert!(report.is_object(), "страница не дошла до команд git: {ready}");
+    assert_eq!(report["loaded"]["name"], json!("Репозиторий с пробелом"), "{report}");
+    assert_eq!(report["loaded"]["commits"], json!(1));
+    assert_eq!(report["loaded"]["currentBranch"], json!("main"));
+    assert_eq!(report["loaded"]["ci"][0]["id"], json!("gitlab"), "{report}");
+    assert_eq!(report["loaded"]["forge"], Value::Null, "remote нет");
+    assert_eq!(ready["report"]["recent"][0]["path"], json!(path), "repo:load запомнил недавний: {ready}");
+    assert_eq!(report["watching"], json!(true));
+    assert_eq!(report["change"]["git"], json!(true), "stage меняет .git/index: {report}");
+    assert_eq!(report["guard"]["blocked"], json!(true), "{report}");
+    assert_eq!(report["guard"]["findings"][0]["line"], json!(2), "{report}");
+    assert!(!report["guard"]["findings"][0]["text"].as_str().unwrap().contains("123"), "секрет замаскирован: {report}");
+    assert!(report["committed"]["hash"].is_string(), "{report}");
+    assert!(report["undone"]["label"].is_string(), "{report}");
+    assert_eq!(report["after"], json!([["gorynych-smoke.txt", true]]), "отмена коммита вернула файл в индекс: {report}");
+    assert_eq!(report["ci"]["current"], json!("gitlab"));
+    assert_eq!(report["ci"]["jobs"], json!(1));
+    assert_eq!(report["remote"], json!({ "status": "ok", "remotes": [], "fetched": false }), "remote нет — проверять нечего: {report}");
+    assert_eq!(report["gitflow"]["develop"], json!("develop"));
+    assert_eq!(report["gitflow"]["configured"], json!(true));
+    assert_eq!(report["fileDiff"]["additions"], json!(2), "{report}");
+    assert!(report["unknownAction"].as_str().is_some_and(|text| text.contains("unknown variant")), "неизвестное действие отклоняет сам Tauri: {report}");
+    assert_eq!(report["badCompare"]["code"], json!("BAD_ARGS"), "{report}");
+    assert_eq!(report["cancelled"], json!(false));
+    assert_eq!(report["unwatched"], json!(false));
+    assert_eq!(git(&repo, &["rev-list", "--count", "HEAD"]).trim(), "1", "коммит отменён в самом git");
 }

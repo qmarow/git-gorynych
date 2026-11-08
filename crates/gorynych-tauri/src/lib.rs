@@ -20,20 +20,27 @@
 //! настоящего профиля. `GORYNYCH_DEV_READY_FILE`: проверка окна, см. [`commands::frontend_ready`].
 //! `GORYNYCH_DEV_EXPORT_BINDINGS`: экспорт типов для интерфейса. В релизе этого кода нет, это проверено по содержимому exe.
 
+mod bridge;
 pub mod commands;
 
 use std::path::PathBuf;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use std::sync::atomic::{AtomicBool, Ordering};
 
 use gorynych_core::error::{GorynychError, Result};
+use gorynych_cicd::runner_setup::Docker;
+use gorynych_cicd::service::CicdService;
 use gorynych_core::i18n;
+use gorynych_git::actions::RepoEngine;
+use gorynych_git::network::Network;
 use gorynych_storage::Db;
 use gorynych_storage::askpass::AuthBroker;
 use gorynych_storage::credentials::Credentials;
 use gorynych_storage::migrator::{MigrationPaths, MigrationReport, migrate_from_1x};
 use gorynych_storage::preferences::Appearance;
 use gorynych_storage::secrets::KeyringStore;
+use gorynych_watcher::index_sync::IndexSync;
+use gorynych_watcher::remote_watch::RemoteRepoWatcher;
 use serde::Serialize;
 use tauri::webview::Color;
 use tauri::{App, Manager, Runtime, Theme, WebviewUrl, WebviewWindow, WebviewWindowBuilder, WindowEvent};
@@ -57,8 +64,13 @@ pub struct WindowFocused;
 /// Рабочие объекты приложения.
 pub struct Services {
     pub db: Arc<Db>,
-    pub credentials: Credentials,
-    pub broker: AuthBroker,
+    pub credentials: Arc<Credentials>,
+    pub broker: Arc<AuthBroker>,
+    /// Действия с репозиториями. Один на приложение: в нём занятость и незавершённые операции.
+    pub engine: Arc<RepoEngine>,
+    pub cicd: CicdService,
+    pub index_sync: Arc<IndexSync>,
+    pub remote_watch: RemoteRepoWatcher,
     pub data_dir: PathBuf,
 }
 
@@ -68,6 +80,8 @@ pub struct AppState {
     pub migration: std::result::Result<MigrationReport, GorynychError>,
     pub data_dir: PathBuf,
     maximized: AtomicBool,
+    /// Слежение за активным репозиторием (`repo:watch`): в 1.x одно на окно, окно здесь одно.
+    pub(crate) watch: Mutex<Option<commands::repo::ActiveWatch>>,
 }
 
 impl AppState {
@@ -100,10 +114,16 @@ fn resolve_paths<R: Runtime>(app: &App<R>) -> std::result::Result<Paths, tauri::
 
 fn open_services(paths: &Paths) -> Result<Services> {
     let db = Arc::new(Db::open(&paths.data_dir.join(DB_FILE))?);
-    let credentials = Credentials::new(Arc::clone(&db), Arc::new(KeyringStore::default()));
+    let credentials = Arc::new(Credentials::new(Arc::clone(&db), Arc::new(KeyringStore::default())));
+    // Этот же exe — помощник входа для git и ssh и редактор для `git rebase -i`: см. `main.rs`
     let helper = std::env::current_exe().map_err(GorynychError::unknown)?;
-    let broker = AuthBroker::start(helper)?;
-    Ok(Services { db, credentials, broker, data_dir: paths.data_dir.clone() })
+    let broker = Arc::new(AuthBroker::start(helper.clone())?);
+    let network = Network::new(Arc::clone(&credentials), Arc::clone(&broker));
+    let engine = Arc::new(RepoEngine::new(Arc::clone(&db), network, helper));
+    let cicd = CicdService::new(Arc::clone(&db), Arc::clone(&credentials), Arc::new(bridge::GitForCicd), Docker::default());
+    let index_sync = Arc::new(IndexSync::new(Arc::clone(&engine)));
+    let remote_watch = RemoteRepoWatcher::new(Arc::clone(&engine), Some(Arc::new(bridge::GitlabHeads(cicd.clone()))));
+    Ok(Services { db, credentials, broker, engine, cicd, index_sync, remote_watch, data_dir: paths.data_dir.clone() })
 }
 
 /// Запускает перенос и применяет сохранённый язык. Перенос может отложиться, но запуску не мешает.
@@ -229,6 +249,7 @@ fn watch_window<R: Runtime>(window: &WebviewWindow<R>) {
                 let _ = WindowMaximizedChanged(maximized).emit(&watched);
             }
         }
+        WindowEvent::Destroyed => commands::repo::stop_watch(watched.app_handle()),
         _ => {}
     });
 }
@@ -253,8 +274,40 @@ pub fn specta_builder() -> Builder<tauri::Wry> {
             commands::repo_get_last,
             commands::appearance_get,
             commands::appearance_set,
+            commands::repo::repo_load,
+            commands::repo::repo_inspect,
+            commands::repo::repo_status,
+            commands::repo::repo_stash_details,
+            commands::repo::repo_commit_files,
+            commands::repo::repo_file_diff,
+            commands::repo::repo_compare,
+            commands::repo::repo_compare_search,
+            commands::repo::repo_search_history,
+            commands::repo::repo_file_history,
+            commands::repo::repo_blame,
+            commands::repo::repo_commit_info,
+            commands::repo::repo_gitflow_config,
+            commands::repo::repo_rebase_preview,
+            commands::repo::repo_branch_log,
+            commands::repo::repo_commit_template,
+            commands::repo::repo_guard_scan,
+            commands::repo::repo_remote_check,
+            commands::repo::repo_init,
+            commands::repo::repo_probe_remote,
+            commands::repo::repo_connect,
+            commands::repo::repo_ci,
+            commands::repo::repo_ci_preview,
+            commands::repo::repo_ci_diff,
+            commands::repo::repo_ci_save,
+            commands::repo::repo_ci_create,
+            commands::repo::repo_ci_edit,
+            commands::repo::repo_clone_probe,
+            commands::repo::repo_clone,
+            commands::repo::repo_clone_cancel,
+            commands::repo::repo_action,
+            commands::repo::repo_watch,
         ])
-        .events(collect_events![WindowMaximizedChanged, WindowFocused])
+        .events(collect_events![WindowMaximizedChanged, WindowFocused, commands::repo::RepoChanged, commands::repo::RepoIndexSynced, commands::repo::CloneProgressEvent])
 }
 
 /// Запускает приложение.
@@ -280,7 +333,7 @@ pub fn run() {
                 Err(error) => Err(error.clone()),
             };
             let appearance = services.as_ref().ok().and_then(|s| s.db.appearance().ok().flatten()).unwrap_or_default();
-            app.manage(AppState { services, migration, data_dir: paths.data_dir.clone(), maximized: AtomicBool::new(false) });
+            app.manage(AppState { services, migration, data_dir: paths.data_dir.clone(), maximized: AtomicBool::new(false), watch: Mutex::new(None) });
             let window = create_window(app, &paths, &appearance)?;
             watch_window(&window);
             Ok(())

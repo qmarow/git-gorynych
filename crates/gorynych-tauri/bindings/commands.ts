@@ -7,7 +7,7 @@ import * as __TAURI_EVENT from "@tauri-apps/api/event";
 export const commands = {
 	startupStatus: () => __TAURI_INVOKE<StartupStatus_Serialize>("startup_status"),
 	/**  Страница отрисована: как `ready-to-show`, окно показывается только теперь. */
-	frontendReady: () => __TAURI_INVOKE<void>("frontend_ready"),
+	frontendReady: (report: string | null) => __TAURI_INVOKE<void>("frontend_ready", { report }),
 	windowShow: () => __TAURI_INVOKE<void>("window_show"),
 	windowMinimize: () => __TAURI_INVOKE<void>("window_minimize"),
 	windowToggleMaximize: () => __TAURI_INVOKE<void>("window_toggle_maximize"),
@@ -24,15 +24,101 @@ export const commands = {
 	appearanceGet: () => typedError<AppearanceInfo_Serialize, GorynychError_Serialize>(__TAURI_INVOKE("appearance_get")),
 	/**  Сохраняет оформление и применяет к окну. Возвращает, включён ли системный материал. */
 	appearanceSet: (value: Appearance_Deserialize) => typedError<boolean, GorynychError_Serialize>(__TAURI_INVOKE("appearance_set", { value })),
+	repoLoad: (dir: string) => typedError<LoadedRepository_Serialize, GorynychError_Serialize>(__TAURI_INVOKE("repo_load", { dir })),
+	repoInspect: (dir: string | null) => typedError<FolderInfo_Serialize, GorynychError_Serialize>(__TAURI_INVOKE("repo_inspect", { dir })),
+	repoStatus: (dir: string) => typedError<StatusWithCi_Serialize, GorynychError_Serialize>(__TAURI_INVOKE("repo_status", { dir })),
+	repoStashDetails: (dir: string, hash: string) => typedError<StashDetails_Serialize, GorynychError_Serialize>(__TAURI_INVOKE("repo_stash_details", { dir, hash })),
+	repoCommitFiles: (dir: string, hash: string, parent: string | null) => typedError<CommitFile_Serialize[], GorynychError_Serialize>(__TAURI_INVOKE("repo_commit_files", { dir, hash, parent })),
+	repoFileDiff: (dir: string, params: FileDiffRequest_Deserialize) => typedError<FileDiff_Serialize, GorynychError_Serialize>(__TAURI_INVOKE("repo_file_diff", { dir, params })),
+	repoCompare: (dir: string, params: CompareRequest_Deserialize) => typedError<Comparison_Serialize, GorynychError_Serialize>(__TAURI_INVOKE("repo_compare", { dir, params })),
+	repoCompareSearch: (dir: string, params: SearchChanges_Deserialize) => typedError<ChangeSearch_Serialize, GorynychError_Serialize>(__TAURI_INVOKE("repo_compare_search", { dir, params })),
+	repoSearchHistory: (dir: string, params: SearchHistory_Deserialize | null) => typedError<HistorySearch_Serialize, GorynychError_Serialize>(__TAURI_INVOKE("repo_search_history", { dir, params })),
+	repoFileHistory: (dir: string, params: FileHistoryRequest_Deserialize | null) => typedError<FileHistory_Serialize, GorynychError_Serialize>(__TAURI_INVOKE("repo_file_history", { dir, params })),
+	repoBlame: (dir: string, params: BlameRequest_Deserialize | null) => typedError<Blame_Serialize, GorynychError_Serialize>(__TAURI_INVOKE("repo_blame", { dir, params })),
+	repoCommitInfo: (dir: string, params: CommitInfoRequest_Deserialize | null) => typedError<CommitInfo_Serialize, GorynychError_Serialize>(__TAURI_INVOKE("repo_commit_info", { dir, params })),
+	repoGitflowConfig: (dir: string) => typedError<GitflowConfig_Serialize, GorynychError_Serialize>(__TAURI_INVOKE("repo_gitflow_config", { dir })),
+	repoRebasePreview: (dir: string, params: RebaseRequest_Deserialize) => typedError<RebasePreview_Serialize, GorynychError_Serialize>(__TAURI_INVOKE("repo_rebase_preview", { dir, params })),
+	repoBranchLog: (dir: string, params: BranchLogRequest_Deserialize | null) => typedError<BranchLog, GorynychError_Serialize>(__TAURI_INVOKE("repo_branch_log", { dir, params })),
+	repoCommitTemplate: (dir: string) => typedError<CommitTemplate_Serialize | null, GorynychError_Serialize>(__TAURI_INVOKE("repo_commit_template", { dir })),
+	/**  `rules` — правила Pre-commit Guard: правила по умолчанию живут в интерфейсе. */
+	repoGuardScan: (dir: string, params: GuardParams_Deserialize | null) => typedError<GuardScan_Serialize, GorynychError_Serialize>(__TAURI_INVOKE("repo_guard_scan", { dir, params })),
+	repoRemoteCheck: (dir: string) => typedError<LightCheck_Serialize, GorynychError_Serialize>(__TAURI_INVOKE("repo_remote_check", { dir })),
+	repoInit: (dir: string | null, options: InitOptions_Deserialize | null) => typedError<InitResult_Serialize, GorynychError_Serialize>(__TAURI_INVOKE("repo_init", { dir, options })),
+	repoProbeRemote: (dir: string | null, options: ProbeRemote_Deserialize | null) => typedError<RemoteProbe_Serialize, GorynychError_Serialize>(__TAURI_INVOKE("repo_probe_remote", { dir, options })),
+	repoConnect: (dir: string | null, options: ConnectOptions_Deserialize | null) => typedError<ConnectResult_Serialize, GorynychError_Serialize>(__TAURI_INVOKE("repo_connect", { dir, options })),
+	repoCi: (dir: string, file: string | null) => typedError<CiLoad_Serialize, GorynychError_Serialize>(__TAURI_INVOKE("repo_ci", { dir, file })),
+	/**  `drafts`: путь → текст. Разбор черновиков без сохранения. */
+	repoCiPreview: (dir: string, file: string | null, drafts: { [key in string]: string } | null) => typedError<CiLoad_Serialize, GorynychError_Serialize>(__TAURI_INVOKE("repo_ci_preview", { dir, file, drafts })),
+	repoCiDiff: (dir: string, draft: CiDraft_Deserialize | null) => typedError<CiDraftDiff_Serialize, GorynychError_Serialize>(__TAURI_INVOKE("repo_ci_diff", { dir, draft })),
+	repoCiSave: (dir: string, draft: CiSaveRequest_Deserialize) => typedError<CiSaved, GorynychError_Serialize>(__TAURI_INVOKE("repo_ci_save", { dir, draft })),
+	repoCiCreate: (dir: string, opts: CiCreate_Deserialize | null) => typedError<CiSaved, GorynychError_Serialize>(__TAURI_INVOKE("repo_ci_create", { dir, opts })),
+	repoCiEdit: (content: string, op: CiEditOp_Deserialize) => typedError<CiEditResult, GorynychError_Serialize>(__TAURI_INVOKE("repo_ci_edit", { content, op })),
+	repoCloneProbe: (url: string | null) => typedError<CloneProbe_Serialize, GorynychError_Serialize>(__TAURI_INVOKE("repo_clone_probe", { url })),
+	repoClone: (options: CloneRequest_Deserialize) => typedError<Cloned, GorynychError_Serialize>(__TAURI_INVOKE("repo_clone", { options })),
+	repoCloneCancel: (id: string) => __TAURI_INVOKE<boolean>("repo_clone_cancel", { id }),
+	/**  Все изменяющие и сетевые операции. См. `gorynych_git::actions`. */
+	repoAction: (dir: string, action: RepoAction_Deserialize) => typedError<ActionOutput_Serialize, GorynychError_Serialize>(__TAURI_INVOKE("repo_action", { dir, action })),
+	repoWatch: (dir: string | null, opts: WatchOptions_Deserialize | null) => typedError<boolean, GorynychError_Serialize>(__TAURI_INVOKE("repo_watch", { dir, opts })),
 };
 
 /** Events */
 export const events = {
+	cloneProgressEvent: makeEvent<CloneProgressEvent_Serialize, CloneProgressEvent_Deserialize>("clone-progress-event"),
+	repoChanged: makeEvent<RepoChanged, RepoChanged>("repo-changed"),
+	repoIndexSynced: makeEvent<RepoIndexSynced, RepoIndexSynced>("repo-index-synced"),
 	windowFocused: makeEvent<WindowFocused, WindowFocused>("window-focused"),
 	windowMaximizedChanged: makeEvent<WindowMaximizedChanged, WindowMaximizedChanged>("window-maximized-changed"),
 };
 
 /* Types */
+/**  Результат `checkAccess`. */
+export type AccessInfo = AccessInfo_Serialize | AccessInfo_Deserialize;
+
+/**  Результат `checkAccess`. */
+export type AccessInfo_Deserialize = {
+	remote: string,
+	protocol: string,
+	host?: string | null,
+	url: string,
+	branch?: string | null,
+	targetRef?: string | null,
+	hasUpstream: boolean,
+	canRead: boolean,
+	canWrite?: boolean | null,
+	branchExists?: boolean | null,
+	diverged: boolean,
+	error?: GorynychError_Deserialize | null,
+	writeError?: GorynychError_Deserialize | null,
+	checkedAt: string,
+};
+
+/**  Результат `checkAccess`. */
+export type AccessInfo_Serialize = {
+	remote: string,
+	protocol: string,
+	host: string | null,
+	url: string,
+	branch: string | null,
+	targetRef: string | null,
+	hasUpstream: boolean,
+	canRead: boolean,
+	canWrite: boolean | null,
+	branchExists: boolean | null,
+	diverged: boolean,
+	error: GorynychError_Serialize | null,
+	writeError: GorynychError_Serialize | null,
+	checkedAt: string,
+};
+
+/**  Результат действия. На проводе — сама структура, как в 1.x. */
+export type ActionOutput = ActionOutput_Serialize | ActionOutput_Deserialize;
+
+/**  Результат действия. На проводе — сама структура, как в 1.x. */
+export type ActionOutput_Deserialize = AccessInfo_Deserialize | FetchResult | PullResult_Deserialize | PushResult_Deserialize | HistoryLabel | OperationResult_Deserialize | string | CommitResult_Deserialize | Checkout_Deserialize | CheckoutPreview_Deserialize | BranchCreated_Deserialize | StashPushed | StashRef | StashPopped | RevertPreview_Deserialize | ConflictInfo_Deserialize | ResolveResult_Deserialize | RevertedTo_Deserialize | TagInfo_Deserialize | RemoteBranchDeleted | BranchRenamed | BranchDeleted | HeadMoved_Deserialize | ResetResult_Deserialize | RefMoved_Deserialize | RebaseDone_Deserialize | FileRestored | StashFilesRestored | HunksApplied | BranchUpdated_Deserialize | FastForwarded | GitRawResult | Discarded;
+
+/**  Результат действия. На проводе — сама структура, как в 1.x. */
+export type ActionOutput_Serialize = AccessInfo_Serialize | FetchResult | PullResult_Serialize | PushResult_Serialize | HistoryLabel | OperationResult_Serialize | string | CommitResult_Serialize | Checkout_Serialize | CheckoutPreview_Serialize | BranchCreated_Serialize | StashPushed | StashRef | StashPopped | RevertPreview_Serialize | ConflictInfo_Serialize | ResolveResult_Serialize | RevertedTo_Serialize | TagInfo_Serialize | RemoteBranchDeleted | BranchRenamed | BranchDeleted | HeadMoved_Serialize | ResetResult_Serialize | RefMoved_Serialize | RebaseDone_Serialize | FileRestored | StashFilesRestored | HunksApplied | BranchUpdated_Serialize | FastForwarded | GitRawResult | Discarded;
+
 /**  Оформление (`DEFAULT_APPEARANCE` + `base`, `scheme` из `nativeAppearance`). */
 export type Appearance = Appearance_Serialize | Appearance_Deserialize;
 
@@ -83,6 +169,1625 @@ export type Appearance_Serialize = {
 	scheme?: string,
 };
 
+/**  Параметры `applyHunks`. */
+export type ApplyHunks = ApplyHunks_Serialize | ApplyHunks_Deserialize;
+
+/**  Параметры `applyHunks`. */
+export type ApplyHunks_Deserialize = {
+	op?: string | null,
+	mode?: string | null,
+	hash?: string | null,
+	path?: string | null,
+	oldPath?: string | null,
+	hunks?: string[] | null,
+};
+
+/**  Параметры `applyHunks`. */
+export type ApplyHunks_Serialize = {
+	op: string | null,
+	mode: string | null,
+	hash: string | null,
+	path: string | null,
+	oldPath: string | null,
+	hunks: string[] | null,
+};
+
+/**  Способ входа. */
+export type AuthMethod = "password" | "token" | "ssh";
+
+/**  Изменения, спрятанные под именем ветки. */
+export type AutoStash = {
+	branch: string,
+	hash: string,
+	files: number | null,
+};
+
+/**  `blame`. */
+export type Blame = Blame_Serialize | Blame_Deserialize;
+
+/**  Коммит авторства. */
+export type BlameCommit = BlameCommit_Serialize | BlameCommit_Deserialize;
+
+/**  Коммит авторства. */
+export type BlameCommit_Deserialize = {
+	uncommitted: boolean,
+	author?: string | null,
+	email?: string | null,
+	time?: number | null,
+	summary?: string | null,
+	filename?: string | null,
+	boundary?: boolean | null,
+	previous?: BlamePrevious | null,
+};
+
+/**  Коммит авторства. */
+export type BlameCommit_Serialize = {
+	uncommitted: boolean,
+	author: string | null,
+	email: string | null,
+	time: number | null,
+	summary: string | null,
+	filename: string | null,
+	boundary: boolean | null,
+	previous: BlamePrevious | null,
+};
+
+/**  Строка авторства. */
+export type BlameLine = {
+	text: string,
+	sha: string,
+	origLine: number | null,
+};
+
+/**  Откуда пришла строка. */
+export type BlamePrevious = {
+	sha: string,
+	path: string,
+};
+
+/**  Параметры `blame`: `rev` нет — `HEAD`, `null` — рабочая папка. */
+export type BlameRequest = BlameRequest_Serialize | BlameRequest_Deserialize;
+
+/**  Параметры `blame`: `rev` нет — `HEAD`, `null` — рабочая папка. */
+export type BlameRequest_Deserialize = {
+	path?: string | null,
+	rev?: string | null,
+	ignoreWhitespace?: boolean,
+};
+
+/**  Параметры `blame`: `rev` нет — `HEAD`, `null` — рабочая папка. */
+export type BlameRequest_Serialize = {
+	path: string | null,
+	rev: string | null,
+	ignoreWhitespace: boolean,
+};
+
+/**  `blame`. */
+export type Blame_Deserialize = {
+	path: string,
+	rev?: string | null,
+	ignoreWhitespace: boolean,
+	lines: BlameLine[],
+	commits: { [key in string]: BlameCommit_Deserialize },
+	truncated: boolean,
+};
+
+/**  `blame`. */
+export type Blame_Serialize = {
+	path: string,
+	rev: string | null,
+	ignoreWhitespace: boolean,
+	lines: BlameLine[],
+	commits: { [key in string]: BlameCommit_Serialize },
+	truncated: boolean,
+};
+
+/**  Коммит в журнале ветки. */
+export type BranchCommit = {
+	hash: string,
+	short: string,
+	author: string,
+	date: string,
+	subject: string,
+};
+
+/**  Результат `createBranch`. */
+export type BranchCreated = BranchCreated_Serialize | BranchCreated_Deserialize;
+
+/**  Результат `createBranch`. */
+export type BranchCreated_Deserialize = {
+	name: string,
+	hash: string,
+	checkedOut: boolean,
+	previous: Position_Deserialize,
+};
+
+/**  Результат `createBranch`. */
+export type BranchCreated_Serialize = {
+	name: string,
+	hash: string,
+	checkedOut: boolean,
+	previous: Position_Serialize,
+};
+
+/**  Результат `deleteBranch`. */
+export type BranchDeleted = {
+	name: string,
+	hash: string,
+};
+
+/**  `branchLog`. */
+export type BranchLog = {
+	commits: BranchCommit[],
+	total: number | null,
+	upstream: string,
+};
+
+/**  Параметры `branchLog`. */
+export type BranchLogRequest = BranchLogRequest_Serialize | BranchLogRequest_Deserialize;
+
+/**  Параметры `branchLog`. */
+export type BranchLogRequest_Deserialize = {
+	branch?: string | null,
+	direction?: string | null,
+	limit?: number | null,
+};
+
+/**  Параметры `branchLog`. */
+export type BranchLogRequest_Serialize = {
+	branch: string | null,
+	direction: string | null,
+	limit: number | null,
+};
+
+/**  Результат `renameBranch`. */
+export type BranchRenamed = {
+	from: string,
+	to: string,
+};
+
+/**  Результат `updateBranch`. */
+export type BranchUpdated = BranchUpdated_Serialize | BranchUpdated_Deserialize;
+
+/**  Результат `updateBranch`. */
+export type BranchUpdated_Deserialize = {
+	branch: string,
+	from: string,
+	to?: string | null,
+	current: boolean,
+	count: number | null,
+	upstream?: string | null,
+};
+
+/**  Результат `updateBranch`. */
+export type BranchUpdated_Serialize = {
+	branch: string,
+	from: string,
+	to: string | null,
+	current: boolean,
+	count: number | null,
+	upstream: string | null,
+};
+
+/**  Возможности провайдера: что интерфейс показывает, а что прячет или выключает с подсказкой. */
+export type Capabilities = Capabilities_Serialize | Capabilities_Deserialize;
+
+/**  Возможности провайдера: что интерфейс показывает, а что прячет или выключает с подсказкой. */
+export type Capabilities_Deserialize = {
+	canListPipelines: boolean,
+	canRunPipeline: boolean,
+	canRunWithInputs: boolean,
+	canRunWithVariables: boolean,
+	canCancel: boolean,
+	canRetry: boolean,
+	canRetryFailed: boolean,
+	canRerunSingleJob: boolean,
+	canCancelJob: boolean,
+	canPlayManualJob: boolean,
+	canDownloadArtifacts: boolean,
+	canListRunners: boolean,
+	canEditRunnerLabels: boolean,
+	canPauseRunner: boolean,
+	canEditRunnerSettings: boolean,
+	canDeleteRunner: boolean,
+	canCreateRunnerToken: boolean,
+	canManageSecrets: boolean,
+	canManageVariables: boolean,
+	hasSchedules: boolean,
+	hasStages: boolean,
+	localRunner: boolean,
+	/**  Почему функции нет: ключ — имя флага. */
+	why?: { [key in string]: string } | null,
+};
+
+/**  Возможности провайдера: что интерфейс показывает, а что прячет или выключает с подсказкой. */
+export type Capabilities_Serialize = {
+	canListPipelines: boolean,
+	canRunPipeline: boolean,
+	canRunWithInputs: boolean,
+	canRunWithVariables: boolean,
+	canCancel: boolean,
+	canRetry: boolean,
+	canRetryFailed: boolean,
+	canRerunSingleJob: boolean,
+	canCancelJob: boolean,
+	canPlayManualJob: boolean,
+	canDownloadArtifacts: boolean,
+	canListRunners: boolean,
+	canEditRunnerLabels: boolean,
+	canPauseRunner: boolean,
+	canEditRunnerSettings: boolean,
+	canDeleteRunner: boolean,
+	canCreateRunnerToken: boolean,
+	canManageSecrets: boolean,
+	canManageVariables: boolean,
+	hasSchedules: boolean,
+	hasStages: boolean,
+	localRunner: boolean,
+	/**  Почему функции нет: ключ — имя флага. */
+	why: { [key in string]: string } | null,
+};
+
+/**  `searchChanges`. */
+export type ChangeSearch = ChangeSearch_Serialize | ChangeSearch_Deserialize;
+
+/**  `searchChanges`. */
+export type ChangeSearch_Deserialize = {
+	files: MatchFile_Deserialize[],
+	total: number | null,
+	truncated: boolean,
+};
+
+/**  `searchChanges`. */
+export type ChangeSearch_Serialize = {
+	files: MatchFile_Serialize[],
+	total: number | null,
+	truncated: boolean,
+};
+
+/**  Параметры `checkAccess`. */
+export type CheckAccess = CheckAccess_Serialize | CheckAccess_Deserialize;
+
+/**  Параметры `checkAccess`. */
+export type CheckAccess_Deserialize = {
+	write?: boolean | null,
+};
+
+/**  Параметры `checkAccess`. */
+export type CheckAccess_Serialize = {
+	write: boolean | null,
+};
+
+/**  Результат переключения. */
+export type Checkout = Checkout_Serialize | Checkout_Deserialize;
+
+/**  Результат `checkoutPreview`. */
+export type CheckoutPreview = CheckoutPreview_Serialize | CheckoutPreview_Deserialize;
+
+/**  Результат `checkoutPreview`. */
+export type CheckoutPreview_Deserialize = {
+	wip?: WipConflict_Deserialize | null,
+};
+
+/**  Результат `checkoutPreview`. */
+export type CheckoutPreview_Serialize = {
+	wip: WipConflict_Serialize | null,
+};
+
+/**  Параметры действий `checkout` и `checkoutPreview`. */
+export type CheckoutRequest = CheckoutRequest_Serialize | CheckoutRequest_Deserialize;
+
+/**  Параметры действий `checkout` и `checkoutPreview`. */
+export type CheckoutRequest_Deserialize = {
+	branch?: string | null,
+	remoteBranch?: RemoteBranchRef_Deserialize | null,
+	strategy?: string | null,
+	smart?: boolean | null,
+};
+
+/**  Параметры действий `checkout` и `checkoutPreview`. */
+export type CheckoutRequest_Serialize = {
+	branch: string | null,
+	remoteBranch: RemoteBranchRef_Serialize | null,
+	strategy: string | null,
+	smart: boolean | null,
+};
+
+/**  Результат переключения. */
+export type Checkout_Deserialize = {
+	previous: Position_Deserialize,
+	to: Position_Deserialize,
+	created?: CreatedBranch | null,
+	autoStash?: AutoStash | null,
+	restored?: RestoredStash_Deserialize | null,
+	moved?: MovedChanges_Deserialize | null,
+	discarded?: DiscardedChanges | null,
+	strategy?: string | null,
+	head?: string | null,
+};
+
+/**  Результат переключения. */
+export type Checkout_Serialize = {
+	previous: Position_Serialize,
+	to: Position_Serialize,
+	created: CreatedBranch | null,
+	autoStash: AutoStash | null,
+	restored: RestoredStash_Serialize | null,
+	moved: MovedChanges_Serialize | null,
+	discarded: DiscardedChanges | null,
+	strategy: string | null,
+	head: string | null,
+};
+
+/**  Параметры `cherryPickInto`. */
+export type CherryPickInto = CherryPickInto_Serialize | CherryPickInto_Deserialize;
+
+/**  Параметры `cherryPickInto`. */
+export type CherryPickInto_Deserialize = {
+	target?: string | null,
+	hash?: string | null,
+	smart?: boolean | null,
+};
+
+/**  Параметры `cherryPickInto`. */
+export type CherryPickInto_Serialize = {
+	target: string | null,
+	hash: string | null,
+	smart: boolean | null,
+};
+
+export type CiArtifacts = CiArtifacts_Serialize | CiArtifacts_Deserialize;
+
+export type CiArtifacts_Deserialize = {
+	paths: string[],
+	expire?: YamlValue_Deserialize | null,
+	reports: string[],
+	when?: YamlValue_Deserialize | null,
+};
+
+export type CiArtifacts_Serialize = {
+	paths: string[],
+	expire?: YamlValue_Serialize,
+	reports: string[],
+	when?: YamlValue_Serialize,
+};
+
+/**  Результат `checkCi`. */
+export type CiCheck = CiCheck_Serialize | CiCheck_Deserialize;
+
+/**  Счётчики по серьёзности. */
+export type CiCheckStats = {
+	error: number,
+	warning: number,
+	info: number,
+};
+
+/**  Результат `checkCi`. */
+export type CiCheck_Deserialize = {
+	issues: CiIssue_Deserialize[],
+	scenarios: CiScenario_Deserialize[],
+	stats: CiCheckStats,
+	defaultBranch?: string | null,
+	ms: number,
+};
+
+/**  Результат `checkCi`. */
+export type CiCheck_Serialize = {
+	issues: CiIssue_Serialize[],
+	scenarios: CiScenario_Serialize[],
+	stats: CiCheckStats,
+	defaultBranch: string | null,
+	ms: number,
+};
+
+/**  Коммит в истории файлов CI. */
+export type CiCommit = {
+	hash: string,
+	message: string,
+	author: string,
+	date: string,
+};
+
+/**  Результат загрузчика. */
+export type CiConfig = CiConfig_Serialize | CiConfig_Deserialize;
+
+/**  Результат загрузчика. */
+export type CiConfig_Deserialize = {
+	files: CiFile_Deserialize[],
+	errors: CiFileError_Deserialize[],
+	warnings: string[],
+	includes: CiInclude_Deserialize[],
+	info: CiInfo_Deserialize[],
+	triggers: CiRule_Deserialize[],
+	triggersTitle?: string | null,
+	variables: CiVariable_Deserialize[],
+	pipelines: CiPipeline_Deserialize[],
+	templates: CiTemplate_Deserialize[],
+	schemeUnsupported?: boolean | null,
+};
+
+/**  Результат загрузчика. */
+export type CiConfig_Serialize = {
+	files: CiFile_Serialize[],
+	errors: CiFileError_Serialize[],
+	warnings: string[],
+	includes: CiInclude_Serialize[],
+	info: CiInfo_Serialize[],
+	triggers: CiRule_Serialize[],
+	triggersTitle?: string,
+	variables: CiVariable_Serialize[],
+	pipelines: CiPipeline_Serialize[],
+	templates: CiTemplate_Serialize[],
+	schemeUnsupported?: boolean,
+};
+
+/**  Параметры `repo:ci-create`. */
+export type CiCreate = CiCreate_Serialize | CiCreate_Deserialize;
+
+/**  Параметры `repo:ci-create`. */
+export type CiCreate_Deserialize = {
+	system?: string,
+};
+
+/**  Параметры `repo:ci-create`. */
+export type CiCreate_Serialize = {
+	system: string,
+};
+
+export type CiCurrent = CiCurrent_Serialize | CiCurrent_Deserialize;
+
+export type CiCurrent_Deserialize = {
+	system: string,
+	title: string,
+	file: string,
+	jobCount: number,
+	history: CiCommit[],
+	dirty: CiDirtyFile[],
+	check: CiCheck_Deserialize,
+} & CiConfig_Deserialize;
+
+export type CiCurrent_Serialize = {
+	system: string,
+	title: string,
+	file: string,
+	jobCount: number,
+	history: CiCommit[],
+	dirty: CiDirtyFile[],
+	check: CiCheck_Serialize,
+} & CiConfig_Serialize;
+
+/**  Файл CI с незакоммиченными изменениями. */
+export type CiDirtyFile = {
+	path: string,
+	status: string,
+};
+
+/**  Черновик для `repo:ci-diff`. */
+export type CiDraft = CiDraft_Serialize | CiDraft_Deserialize;
+
+/**  Результат `diffDraft`. */
+export type CiDraftDiff = CiDraftDiff_Serialize | CiDraftDiff_Deserialize;
+
+/**  Результат `diffDraft`. */
+export type CiDraftDiff_Deserialize = {
+	path: string,
+} & TextDiff_Deserialize;
+
+/**  Результат `diffDraft`. */
+export type CiDraftDiff_Serialize = {
+	path: string,
+} & TextDiff_Serialize;
+
+/**  Черновик для `repo:ci-diff`. */
+export type CiDraft_Deserialize = {
+	path?: string,
+	/**  `String(content ?? '')`. */
+	content?: string | null,
+};
+
+/**  Черновик для `repo:ci-diff`. */
+export type CiDraft_Serialize = {
+	path: string,
+	/**  `String(content ?? '')`. */
+	content: string | null,
+};
+
+/**  Правка: `op` у `repo:ci-edit`. */
+export type CiEditOp = CiEditOp_Serialize | CiEditOp_Deserialize;
+
+/**  Правка: `op` у `repo:ci-edit`. */
+export type CiEditOp_Deserialize = { type: "addJob"; name?: string | null; stage?: string | null; image?: string | null; 
+/**  Строка или список строк. */
+script?: YamlValue_Deserialize | null } | { type: "deleteJob"; name: string } | { type: "renameJob"; from: string; to: string } | { type: "setJob"; name: string; fields?: JsMap_Deserialize } | { type: "addStage"; name: string; index?: number | null } | { type: "renameStage"; from: string; to: string } | { type: "deleteStage"; name: string } | { type: "moveStage"; name: string; dir: number | null } | { type: Exclude<string, "addJob" | "addStage" | "deleteJob" | "deleteStage" | "moveStage" | "renameJob" | "renameStage" | "setJob"> };
+
+/**  Правка: `op` у `repo:ci-edit`. */
+export type CiEditOp_Serialize = { type: "addJob"; name: string | null; stage: string | null; image: string | null; 
+/**  Строка или список строк. */
+script: YamlValue_Serialize | null } | { type: "deleteJob"; name: string } | { type: "renameJob"; from: string; to: string } | { type: "setJob"; name: string; fields: JsMap_Serialize } | { type: "addStage"; name: string; index: number | null } | { type: "renameStage"; from: string; to: string } | { type: "deleteStage"; name: string } | { type: "moveStage"; name: string; dir: number | null } | { type: "unknown" };
+
+/**  Результат `applyEdit`. */
+export type CiEditResult = {
+	content: string,
+	notes: string[],
+};
+
+export type CiEnvironment = CiEnvironment_Serialize | CiEnvironment_Deserialize;
+
+export type CiEnvironment_Deserialize = {
+	name?: YamlValue_Deserialize | null,
+	url?: YamlValue_Deserialize | null,
+	action?: YamlValue_Deserialize | null,
+};
+
+export type CiEnvironment_Serialize = {
+	name?: YamlValue_Serialize,
+	url?: YamlValue_Serialize,
+	action?: YamlValue_Serialize,
+};
+
+export type CiFile = CiFile_Serialize | CiFile_Deserialize;
+
+export type CiFileError = CiFileError_Serialize | CiFileError_Deserialize;
+
+export type CiFileError_Deserialize = {
+	file: string,
+	message: string,
+	line?: number | null,
+	severity: CiSeverity,
+};
+
+export type CiFileError_Serialize = {
+	file: string,
+	message: string,
+	line?: number,
+	severity: CiSeverity,
+};
+
+export type CiFile_Deserialize = {
+	path: string,
+	text: string,
+	/**  sha1 файла на диске; `None`, если файла нет. */
+	hash?: string | null,
+	draft: boolean,
+};
+
+export type CiFile_Serialize = {
+	path: string,
+	text: string,
+	/**  sha1 файла на диске; `None`, если файла нет. */
+	hash?: string,
+	draft: boolean,
+};
+
+export type CiInclude = CiInclude_Serialize | CiInclude_Deserialize;
+
+export type CiInclude_Deserialize = {
+	type: string,
+	value: YamlValue_Deserialize,
+	rules?: YamlValue_Deserialize | null,
+	from?: string | null,
+	resolved: boolean,
+	files?: string[] | null,
+	error?: string | null,
+};
+
+export type CiInclude_Serialize = {
+	type: string,
+	value: YamlValue_Serialize,
+	rules?: YamlValue_Serialize,
+	from?: string,
+	resolved: boolean,
+	files?: string[],
+	error?: string,
+};
+
+export type CiInfo = CiInfo_Serialize | CiInfo_Deserialize;
+
+export type CiInfo_Deserialize = {
+	label: string,
+	value: YamlValue_Deserialize,
+};
+
+export type CiInfo_Serialize = {
+	label: string,
+	value: YamlValue_Serialize,
+};
+
+/**  Проблема. */
+export type CiIssue = CiIssue_Serialize | CiIssue_Deserialize;
+
+/**  Проблема. */
+export type CiIssue_Deserialize = {
+	id: string,
+	severity: CiSeverity,
+	title: string,
+	when: string,
+	how: string,
+	why: string,
+	fix: string,
+	file?: string | null,
+	line?: number | null,
+	job?: string | null,
+	scenario?: string | null,
+};
+
+/**  Проблема. */
+export type CiIssue_Serialize = {
+	id: string,
+	severity: CiSeverity,
+	title: string,
+	when: string,
+	how: string,
+	why: string,
+	fix: string,
+	file: string | null,
+	line: number | null,
+	job: string | null,
+	scenario: string | null,
+};
+
+/**  Задание любой системы: набор заполненных полей зависит от загрузчика. */
+export type CiJob = CiJob_Serialize | CiJob_Deserialize;
+
+export type CiJobKind = "job" | "trigger";
+
+/**  Задание любой системы: набор заполненных полей зависит от загрузчика. */
+export type CiJob_Deserialize = {
+	id: string,
+	name: string,
+	source: string,
+	line?: number | null,
+	kind: CiJobKind,
+	manual: boolean,
+	rules: CiRule_Deserialize[],
+	variables: CiVariable_Deserialize[],
+	extends: string[],
+	raw: string,
+	needs?: CiNeed_Deserialize[] | null,
+	image?: YamlValue_Deserialize | null,
+	imageInherited?: string | null,
+	trigger?: YamlValue_Deserialize | null,
+	when?: YamlValue_Deserialize | null,
+	script?: CiScript_Deserialize | null,
+	afterScript?: CiScript_Deserialize | null,
+	environment?: CiEnvironment_Deserialize | null,
+	services?: YamlValue_Deserialize[] | null,
+	artifacts?: CiArtifacts_Deserialize | null,
+	cache?: string | null,
+	parallel?: string | null,
+	timeout?: YamlValue_Deserialize | null,
+	runsOnLabels?: string[] | null,
+	allowFailure?: boolean | null,
+	condition?: YamlValue_Deserialize | null,
+	steps?: CiStep_Deserialize[] | null,
+	stage?: string | null,
+	startIn?: YamlValue_Deserialize | null,
+	tags?: string[] | null,
+	beforeScript?: CiScript_Deserialize | null,
+	only?: string | null,
+	except?: string | null,
+	dependencies?: string[] | null,
+	retry?: string | null,
+	interruptible?: YamlValue_Deserialize | null,
+	resourceGroup?: YamlValue_Deserialize | null,
+	coverage?: YamlValue_Deserialize | null,
+	own?: string[] | null,
+	rulesEditable?: boolean | null,
+	rulesRaw?: CiRuleRaw_Deserialize[] | null,
+	scriptRaw?: string[] | null,
+	needsRaw?: YamlValue_Deserialize[] | null,
+	jobId?: string | null,
+	runsOn?: string | null,
+	runsOnGroup?: string | null,
+	permissions?: string | null,
+	outputs?: string[] | null,
+};
+
+/**  Задание любой системы: набор заполненных полей зависит от загрузчика. */
+export type CiJob_Serialize = {
+	id: string,
+	name: string,
+	source: string,
+	line?: number,
+	kind: CiJobKind,
+	manual: boolean,
+	rules: CiRule_Serialize[],
+	variables: CiVariable_Serialize[],
+	extends: string[],
+	raw: string,
+	needs?: CiNeed_Serialize[],
+	image?: YamlValue_Serialize,
+	imageInherited?: string,
+	trigger?: YamlValue_Serialize,
+	when?: YamlValue_Serialize,
+	script?: CiScript_Serialize,
+	afterScript?: CiScript_Serialize,
+	environment?: CiEnvironment_Serialize,
+	services?: YamlValue_Serialize[],
+	artifacts?: CiArtifacts_Serialize,
+	cache?: string,
+	parallel?: string,
+	timeout?: YamlValue_Serialize,
+	runsOnLabels?: string[],
+	allowFailure?: boolean,
+	condition?: YamlValue_Serialize,
+	steps?: CiStep_Serialize[],
+	stage?: string,
+	startIn?: YamlValue_Serialize,
+	tags?: string[],
+	beforeScript?: CiScript_Serialize,
+	only?: string,
+	except?: string,
+	dependencies?: string[],
+	retry?: string,
+	interruptible?: YamlValue_Serialize,
+	resourceGroup?: YamlValue_Serialize,
+	coverage?: YamlValue_Serialize,
+	own?: string[],
+	rulesEditable?: boolean,
+	rulesRaw?: CiRuleRaw_Serialize[],
+	scriptRaw?: string[],
+	needsRaw?: YamlValue_Serialize[],
+	jobId?: string,
+	runsOn?: string,
+	runsOnGroup?: string,
+	permissions?: string,
+	outputs?: string[],
+};
+
+/**  Результат `loadCi`. */
+export type CiLoad = CiLoad_Serialize | CiLoad_Deserialize;
+
+/**  Результат `loadCi`. */
+export type CiLoad_Deserialize = {
+	systems: CiSystem[],
+	current?: CiCurrent_Deserialize | null,
+};
+
+/**  Результат `loadCi`. */
+export type CiLoad_Serialize = {
+	systems: CiSystem[],
+	current?: CiCurrent_Serialize,
+};
+
+export type CiNeed = CiNeed_Serialize | CiNeed_Deserialize;
+
+export type CiNeed_Deserialize = {
+	job: YamlValue_Deserialize,
+	optional?: boolean | null,
+	artifacts?: YamlValue_Deserialize | null,
+	external?: boolean | null,
+};
+
+export type CiNeed_Serialize = {
+	job: YamlValue_Serialize,
+	optional?: boolean,
+	artifacts?: YamlValue_Serialize,
+	external?: boolean,
+};
+
+export type CiPipeline = CiPipeline_Serialize | CiPipeline_Deserialize;
+
+export type CiPipeline_Deserialize = {
+	id: string,
+	title: string,
+	stages: CiStage_Deserialize[],
+};
+
+export type CiPipeline_Serialize = {
+	id: string,
+	title: string,
+	stages: CiStage_Serialize[],
+};
+
+/**  Провайдер CI/CD. */
+export type CiProvider = "gitlab" | "github" | "gitea" | "bitbucket";
+
+/**  Правило или строка в списке триггеров: у триггера заполнен только `text`. */
+export type CiRule = CiRule_Serialize | CiRule_Deserialize;
+
+export type CiRuleRaw = CiRuleRaw_Serialize | CiRuleRaw_Deserialize;
+
+export type CiRuleRaw_Deserialize = {
+	if: YamlValue_Deserialize,
+	when: YamlValue_Deserialize,
+	allow_failure: boolean,
+};
+
+export type CiRuleRaw_Serialize = {
+	if: YamlValue_Serialize,
+	when: YamlValue_Serialize,
+	allow_failure: boolean,
+};
+
+/**  Правило или строка в списке триггеров: у триггера заполнен только `text`. */
+export type CiRule_Deserialize = {
+	text: string,
+	when?: YamlValue_Deserialize | null,
+	allowFailure?: YamlValue_Deserialize | null,
+	variables?: string[] | null,
+};
+
+/**  Правило или строка в списке триггеров: у триггера заполнен только `text`. */
+export type CiRule_Serialize = {
+	text: string,
+	when?: YamlValue_Serialize,
+	allowFailure?: YamlValue_Serialize,
+	variables?: string[],
+};
+
+/**  Что сохранить: `draft` у `repo:ci-save`. */
+export type CiSaveRequest = CiSaveRequest_Serialize | CiSaveRequest_Deserialize;
+
+/**  Что сохранить: `draft` у `repo:ci-save`. */
+export type CiSaveRequest_Deserialize = {
+	path: string,
+	content: string,
+	/**  Нет поля — не проверять, `null` — файла быть не должно, строка — ожидаемый отпечаток. */
+	baseHash?: string | null,
+};
+
+/**  Что сохранить: `draft` у `repo:ci-save`. */
+export type CiSaveRequest_Serialize = {
+	path: string,
+	content: string,
+	/**  Нет поля — не проверять, `null` — файла быть не должно, строка — ожидаемый отпечаток. */
+	baseHash: string | null,
+};
+
+/**  Результат `saveFile`. */
+export type CiSaved = {
+	path: string,
+	hash: string,
+	created: boolean,
+};
+
+/**  Результат прогона сценария. */
+export type CiScenario = CiScenario_Serialize | CiScenario_Deserialize;
+
+export type CiScenarioExcluded = CiScenarioExcluded_Serialize | CiScenarioExcluded_Deserialize;
+
+export type CiScenarioExcluded_Deserialize = {
+	name: string,
+	why: string,
+	uncertain?: string | null,
+};
+
+export type CiScenarioExcluded_Serialize = {
+	name: string,
+	why: string,
+	uncertain: string | null,
+};
+
+export type CiScenarioJob = CiScenarioJob_Serialize | CiScenarioJob_Deserialize;
+
+export type CiScenarioJob_Deserialize = {
+	name: string,
+	stage: string,
+	when: YamlValue_Deserialize,
+	allowFailure: YamlValue_Deserialize,
+	why: string,
+	uncertain?: string | null,
+};
+
+export type CiScenarioJob_Serialize = {
+	name: string,
+	stage: string,
+	when: YamlValue_Serialize,
+	allowFailure: YamlValue_Serialize,
+	why: string,
+	uncertain: string | null,
+};
+
+export type CiScenarioRef = {
+	type: string,
+	name: string,
+};
+
+/**  Результат прогона сценария. */
+export type CiScenario_Deserialize = {
+	id: string,
+	title: string,
+	ref: CiScenarioRef,
+	vars: { [key in string]: string },
+	created: boolean,
+	reason: string,
+	uncertain?: string | null,
+	jobs: CiScenarioJob_Deserialize[],
+	excluded: CiScenarioExcluded_Deserialize[],
+	problems: string[],
+	workflowBlocked?: boolean | null,
+	workflowRule?: number | null,
+	defaultOnly?: string[] | null,
+};
+
+/**  Результат прогона сценария. */
+export type CiScenario_Serialize = {
+	id: string,
+	title: string,
+	ref: CiScenarioRef,
+	vars: { [key in string]: string },
+	created: boolean,
+	reason: string,
+	uncertain: string | null,
+	jobs: CiScenarioJob_Serialize[],
+	excluded: CiScenarioExcluded_Serialize[],
+	problems: string[],
+	workflowBlocked?: boolean,
+	workflowRule?: number,
+	defaultOnly?: string[],
+};
+
+export type CiScript = CiScript_Serialize | CiScript_Deserialize;
+
+export type CiScript_Deserialize = {
+	lines: string[],
+	/**  Откуда унаследовано: `default` или переведённое «глобально». */
+	inherited?: string | null,
+};
+
+export type CiScript_Serialize = {
+	lines: string[],
+	/**  Откуда унаследовано: `default` или переведённое «глобально». */
+	inherited?: string,
+};
+
+export type CiSeverity = "error" | "warning" | "info";
+
+export type CiStage = CiStage_Serialize | CiStage_Deserialize;
+
+export type CiStage_Deserialize = {
+	name: YamlValue_Deserialize,
+	jobs: CiJob_Deserialize[],
+	undeclared?: boolean | null,
+};
+
+export type CiStage_Serialize = {
+	name: YamlValue_Serialize,
+	jobs: CiJob_Serialize[],
+	undeclared?: boolean,
+};
+
+export type CiStep = CiStep_Serialize | CiStep_Deserialize;
+
+export type CiStep_Deserialize = {
+	name: YamlValue_Deserialize,
+	uses?: YamlValue_Deserialize | null,
+	run?: YamlValue_Deserialize | null,
+	condition?: string | null,
+	with?: string[] | null,
+};
+
+export type CiStep_Serialize = {
+	name: YamlValue_Serialize,
+	uses?: YamlValue_Serialize,
+	run?: YamlValue_Serialize,
+	condition?: string,
+	with?: string[],
+};
+
+/**  Найденная система CI. */
+export type CiSystem = {
+	id: string,
+	title: string,
+	files: string[],
+};
+
+export type CiTemplate = CiTemplate_Serialize | CiTemplate_Deserialize;
+
+export type CiTemplate_Deserialize = {
+	id: string,
+	name: string,
+	line?: number | null,
+	source: string,
+	raw: string,
+	usedBy: string[],
+};
+
+export type CiTemplate_Serialize = {
+	id: string,
+	name: string,
+	line?: number,
+	source: string,
+	raw: string,
+	usedBy: string[],
+};
+
+export type CiVariable = CiVariable_Serialize | CiVariable_Deserialize;
+
+export type CiVariable_Deserialize = {
+	name: string,
+	value: string,
+	description?: YamlValue_Deserialize | null,
+	options?: YamlValue_Deserialize | null,
+};
+
+export type CiVariable_Serialize = {
+	name: string,
+	value: string,
+	description?: YamlValue_Serialize,
+	options?: YamlValue_Serialize,
+};
+
+/**  Результат `probeClone`. */
+export type CloneProbe = CloneProbe_Serialize | CloneProbe_Deserialize;
+
+/**  Результат `probeClone`. */
+export type CloneProbe_Deserialize = {
+	url: string,
+	host?: string | null,
+	name: string,
+} & RemoteHeads_Deserialize;
+
+/**  Результат `probeClone`. */
+export type CloneProbe_Serialize = {
+	url: string,
+	host: string | null,
+	name: string,
+} & RemoteHeads_Serialize;
+
+/**  Прогресс клонирования. */
+export type CloneProgress = CloneProgress_Serialize | CloneProgress_Deserialize;
+
+/**  Событие `clone:progress`. */
+export type CloneProgressEvent = CloneProgressEvent_Serialize | CloneProgressEvent_Deserialize;
+
+/**  Событие `clone:progress`. */
+export type CloneProgressEvent_Deserialize = {
+	id?: string | null,
+} & CloneProgress_Deserialize;
+
+/**  Событие `clone:progress`. */
+export type CloneProgressEvent_Serialize = {
+	id: string | null,
+} & CloneProgress_Serialize;
+
+/**  Прогресс клонирования. */
+export type CloneProgress_Deserialize = {
+	phase: string,
+	percent: number | null,
+	phasePercent: number | null,
+	speed?: string | null,
+	size?: string | null,
+};
+
+/**  Прогресс клонирования. */
+export type CloneProgress_Serialize = {
+	phase: string,
+	percent: number | null,
+	phasePercent: number | null,
+	speed: string | null,
+	size: string | null,
+};
+
+/**  Параметры `cloneRepository`. */
+export type CloneRequest = CloneRequest_Serialize | CloneRequest_Deserialize;
+
+/**  Параметры `cloneRepository`. */
+export type CloneRequest_Deserialize = {
+	id?: string | null,
+	url?: string | null,
+	parent?: string | null,
+	name?: string | null,
+	branch?: string | null,
+	depth?: number | null,
+};
+
+/**  Параметры `cloneRepository`. */
+export type CloneRequest_Serialize = {
+	id: string | null,
+	url: string | null,
+	parent: string | null,
+	name: string | null,
+	branch: string | null,
+	depth: number | null,
+};
+
+/**  Результат `cloneRepository`. */
+export type Cloned = {
+	path: string,
+	name: string,
+};
+
+/**  Коммит. */
+export type Commit = Commit_Serialize | Commit_Deserialize;
+
+/**  Автор коммита. */
+export type CommitAuthor = {
+	name: string,
+	email: string,
+};
+
+/**  Кратко о коммите. */
+export type CommitBrief = {
+	hash: string,
+	subject: string,
+	author: string,
+	date: string,
+};
+
+/**  Файл коммита. */
+export type CommitFile = CommitFile_Serialize | CommitFile_Deserialize;
+
+/**  Файл коммита. */
+export type CommitFile_Deserialize = {
+	path: string,
+	oldPath?: string | null,
+	status: string,
+	similarity?: number | null,
+	additions?: number | null,
+	deletions?: number | null,
+	moved?: boolean | null,
+	untracked?: boolean | null,
+	diffHash?: string | null,
+	diffParent?: string | null,
+};
+
+/**  Файл коммита. */
+export type CommitFile_Serialize = {
+	path: string,
+	oldPath: string | null,
+	status: string,
+	similarity: number | null,
+	additions: number | null,
+	deletions: number | null,
+	moved: boolean | null,
+	untracked: boolean | null,
+	diffHash: string | null,
+	diffParent: string | null,
+};
+
+/**  `commitInfo`. */
+export type CommitInfo = CommitInfo_Serialize | CommitInfo_Deserialize;
+
+/**  Параметры `commitInfo`. */
+export type CommitInfoRequest = CommitInfoRequest_Serialize | CommitInfoRequest_Deserialize;
+
+/**  Параметры `commitInfo`. */
+export type CommitInfoRequest_Deserialize = {
+	hash?: string | null,
+	path?: string | null,
+};
+
+/**  Параметры `commitInfo`. */
+export type CommitInfoRequest_Serialize = {
+	hash: string | null,
+	path: string | null,
+};
+
+/**  `commitInfo`. */
+export type CommitInfo_Deserialize = {
+	hash: string,
+	parents: string[],
+	author: string,
+	email: string,
+	date: string,
+	committer: string,
+	subject: string,
+	body: string,
+	files: number | null,
+	additions: number | null,
+	deletions: number | null,
+	fileStat?: FileStat | null,
+};
+
+/**  `commitInfo`. */
+export type CommitInfo_Serialize = {
+	hash: string,
+	parents: string[],
+	author: string,
+	email: string,
+	date: string,
+	committer: string,
+	subject: string,
+	body: string,
+	files: number | null,
+	additions: number | null,
+	deletions: number | null,
+	fileStat: FileStat | null,
+};
+
+/**  Первый коммит в запросе. */
+export type CommitOption = CommitOption_Serialize | CommitOption_Deserialize;
+
+/**  Первый коммит в запросе. */
+export type CommitOption_Deserialize = {
+	message?: string | null,
+};
+
+/**  Первый коммит в запросе. */
+export type CommitOption_Serialize = {
+	message: string | null,
+};
+
+/**  Ссылка на коммите. */
+export type CommitRef = CommitRef_Serialize | CommitRef_Deserialize;
+
+/**  Ссылка на коммите. */
+export type CommitRef_Deserialize = {
+	type: RefKind,
+	name: string,
+	head?: boolean | null,
+};
+
+/**  Ссылка на коммите. */
+export type CommitRef_Serialize = {
+	type: RefKind,
+	name: string,
+	head: boolean | null,
+};
+
+/**  Параметры `commit`. */
+export type CommitRequest = CommitRequest_Serialize | CommitRequest_Deserialize;
+
+/**  Параметры `commit`. */
+export type CommitRequest_Deserialize = {
+	summary?: string | null,
+	description?: string | null,
+};
+
+/**  Параметры `commit`. */
+export type CommitRequest_Serialize = {
+	summary: string | null,
+	description: string | null,
+};
+
+/**  Новый коммит. */
+export type CommitResult = CommitResult_Serialize | CommitResult_Deserialize;
+
+/**  Новый коммит. */
+export type CommitResult_Deserialize = {
+	hash: string,
+	parent?: string | null,
+	summary: string,
+};
+
+/**  Новый коммит. */
+export type CommitResult_Serialize = {
+	hash: string,
+	parent: string | null,
+	summary: string,
+};
+
+/**  Шаблон сообщения. */
+export type CommitTemplate = CommitTemplate_Serialize | CommitTemplate_Deserialize;
+
+/**  Шаблон сообщения. */
+export type CommitTemplate_Deserialize = {
+	path: string,
+	body: string,
+	hint: string,
+	error?: string | null,
+};
+
+/**  Шаблон сообщения. */
+export type CommitTemplate_Serialize = {
+	path: string,
+	body: string,
+	hint: string,
+	error: string | null,
+};
+
+/**  Коммит. */
+export type Commit_Deserialize = {
+	hash: string,
+	parents: string[],
+	author: CommitAuthor,
+	date: string,
+	message: string,
+	description: string,
+	refs: CommitRef_Deserialize[],
+	isHead: boolean,
+};
+
+/**  Коммит. */
+export type Commit_Serialize = {
+	hash: string,
+	parents: string[],
+	author: CommitAuthor,
+	date: string,
+	message: string,
+	description: string,
+	refs: CommitRef_Serialize[],
+	isHead: boolean,
+};
+
+/**  Параметры `repo:compare`. Поле не строкой считается отсутствующим, как `a ?? ''` в 1.x. */
+export type CompareRequest = CompareRequest_Serialize | CompareRequest_Deserialize;
+
+/**  Параметры `repo:compare`. Поле не строкой считается отсутствующим, как `a ?? ''` в 1.x. */
+export type CompareRequest_Deserialize = {
+	a?: string | null,
+	b?: string | null,
+};
+
+/**  Параметры `repo:compare`. Поле не строкой считается отсутствующим, как `a ?? ''` в 1.x. */
+export type CompareRequest_Serialize = {
+	a: string | null,
+	b: string | null,
+};
+
+/**  `compareCommits`. */
+export type Comparison = Comparison_Serialize | Comparison_Deserialize;
+
+/**  `compareCommits`. */
+export type Comparison_Deserialize = {
+	a: CommitBrief,
+	b: CommitBrief,
+	mergeBase?: string | null,
+	relation: string,
+	onlyA: number | null,
+	onlyB: number | null,
+	commitsA: CommitBrief[],
+	commitsB: CommitBrief[],
+	files: CommitFile_Deserialize[],
+	additions: number | null,
+	deletions: number | null,
+};
+
+/**  `compareCommits`. */
+export type Comparison_Serialize = {
+	a: CommitBrief,
+	b: CommitBrief,
+	mergeBase: string | null,
+	relation: string,
+	onlyA: number | null,
+	onlyB: number | null,
+	commitsA: CommitBrief[],
+	commitsB: CommitBrief[],
+	files: CommitFile_Serialize[],
+	additions: number | null,
+	deletions: number | null,
+};
+
+/**  `getConflict`. */
+export type ConflictInfo = ConflictInfo_Serialize | ConflictInfo_Deserialize;
+
+/**  `getConflict`. */
+export type ConflictInfo_Deserialize = {
+	path: string,
+	labels: SideLabels_Deserialize,
+	stages: string[],
+	kind: string,
+	deletedSide?: string | null,
+	keepSide?: string | null,
+	exists?: boolean | null,
+} & ParsedConflict_Deserialize | {
+	path: string,
+	labels: SideLabels_Deserialize,
+	stages: string[],
+	kind: string,
+	deletedSide?: string | null,
+	keepSide?: string | null,
+	exists?: boolean | null,
+};
+
+/**  `getConflict`. */
+export type ConflictInfo_Serialize = {
+	path: string,
+	labels: SideLabels_Serialize,
+	stages: string[],
+	kind: string,
+	deletedSide: string | null,
+	keepSide: string | null,
+	exists: boolean | null,
+} & ParsedConflict_Serialize | {
+	path: string,
+	labels: SideLabels_Serialize,
+	stages: string[],
+	kind: string,
+	deletedSide: string | null,
+	keepSide: string | null,
+	exists: boolean | null,
+};
+
+/**  Параметры `getConflict`. */
+export type ConflictRequest = ConflictRequest_Serialize | ConflictRequest_Deserialize;
+
+/**  Параметры `getConflict`. */
+export type ConflictRequest_Deserialize = {
+	path?: string | null,
+};
+
+/**  Параметры `getConflict`. */
+export type ConflictRequest_Serialize = {
+	path: string | null,
+};
+
+/**  Участок файла. */
+export type ConflictSegment = ConflictSegment_Serialize | ConflictSegment_Deserialize;
+
+/**  Участок файла. */
+export type ConflictSegment_Deserialize = { type: "common"; lines: string[] } | { type: "conflict"; ours: string[]; base?: string[] | null; theirs: string[]; oursLabel: string; theirsLabel: string; baseLabel: string; startLine: number | null; endLine: number | null };
+
+/**  Участок файла. */
+export type ConflictSegment_Serialize = { type: "common"; lines: string[] } | { type: "conflict"; ours: string[]; base: string[] | null; theirs: string[]; oursLabel: string; theirsLabel: string; baseLabel: string; startLine: number | null; endLine: number | null };
+
+/**  Параметры `connectRepository`. */
+export type ConnectOptions = ConnectOptions_Serialize | ConnectOptions_Deserialize;
+
+/**  Параметры `connectRepository`. */
+export type ConnectOptions_Deserialize = {
+	url?: string | null,
+	branch?: string | null,
+	identity?: IdentityOption_Deserialize | null,
+	gitignore?: string | null,
+	commit?: CommitOption_Deserialize | null,
+	push?: boolean | null,
+};
+
+/**  Параметры `connectRepository`. */
+export type ConnectOptions_Serialize = {
+	url: string | null,
+	branch: string | null,
+	identity: IdentityOption_Serialize | null,
+	gitignore: string | null,
+	commit: CommitOption_Serialize | null,
+	push: boolean | null,
+};
+
+/**  Результат `connectRepository`. */
+export type ConnectResult = ConnectResult_Serialize | ConnectResult_Deserialize;
+
+/**  Результат `connectRepository`. */
+export type ConnectResult_Deserialize = {
+	path: string,
+	name: string,
+	branch: string,
+	url: string,
+	remoteWasEmpty: boolean,
+	restored: number | null,
+	commit?: InitCommit_Deserialize | null,
+	pushed: boolean,
+	pushError?: GorynychError_Deserialize | null,
+	steps: InitStep[],
+};
+
+/**  Результат `connectRepository`. */
+export type ConnectResult_Serialize = {
+	path: string,
+	name: string,
+	branch: string,
+	url: string,
+	remoteWasEmpty: boolean,
+	restored: number | null,
+	commit: InitCommit_Serialize | null,
+	pushed: boolean,
+	pushError: GorynychError_Serialize | null,
+	steps: InitStep[],
+};
+
+/**  Параметры `createBranch`. */
+export type CreateBranch = CreateBranch_Serialize | CreateBranch_Deserialize;
+
+/**  Параметры `createBranch`. */
+export type CreateBranch_Deserialize = {
+	name?: string | null,
+	start?: string | null,
+	checkout?: boolean | null,
+};
+
+/**  Параметры `createBranch`. */
+export type CreateBranch_Serialize = {
+	name: string | null,
+	start: string | null,
+	checkout: boolean | null,
+};
+
+/**  Параметры `createTag`. */
+export type CreateTag = CreateTag_Serialize | CreateTag_Deserialize;
+
+/**  Параметры `createTag`. */
+export type CreateTag_Deserialize = {
+	name?: string | null,
+	hash?: string | null,
+	message?: string | null,
+};
+
+/**  Параметры `createTag`. */
+export type CreateTag_Serialize = {
+	name: string | null,
+	hash: string | null,
+	message: string | null,
+};
+
+/**  Созданная при переключении локальная ветка. */
+export type CreatedBranch = {
+	name: string,
+	hash: string,
+	track: string,
+};
+
+/**  Параметры `deleteBranch`. */
+export type DeleteBranch = DeleteBranch_Serialize | DeleteBranch_Deserialize;
+
+/**  Параметры `deleteBranch`. */
+export type DeleteBranch_Deserialize = {
+	name?: string | null,
+	force?: boolean | null,
+};
+
+/**  Параметры `deleteBranch`. */
+export type DeleteBranch_Serialize = {
+	name: string | null,
+	force: boolean | null,
+};
+
+/**  Параметры `deleteRemoteBranch`. */
+export type DeleteRemoteBranch = DeleteRemoteBranch_Serialize | DeleteRemoteBranch_Deserialize;
+
+/**  Параметры `deleteRemoteBranch`. */
+export type DeleteRemoteBranch_Deserialize = {
+	remote?: string | null,
+	branch?: string | null,
+};
+
+/**  Параметры `deleteRemoteBranch`. */
+export type DeleteRemoteBranch_Serialize = {
+	remote: string | null,
+	branch: string | null,
+};
+
+/**  Параметры `deleteTag`. */
+export type DeleteTag = DeleteTag_Serialize | DeleteTag_Deserialize;
+
+/**  Параметры `deleteTag`. */
+export type DeleteTag_Deserialize = {
+	name?: string | null,
+};
+
+/**  Параметры `deleteTag`. */
+export type DeleteTag_Serialize = {
+	name: string | null,
+};
+
+/**  Фрагмент diff. */
+export type DiffHunk = DiffHunk_Serialize | DiffHunk_Deserialize;
+
+/**  Фрагмент diff. */
+export type DiffHunk_Deserialize = {
+	header: string,
+	section: string,
+	lines: DiffLine_Deserialize[],
+};
+
+/**  Фрагмент diff. */
+export type DiffHunk_Serialize = {
+	header: string,
+	section: string,
+	lines: DiffLine_Serialize[],
+};
+
+/**  Строка diff: `t` — `+`, `-`, пробел или `\`. */
+export type DiffLine = DiffLine_Serialize | DiffLine_Deserialize;
+
+/**  Строка diff: `t` — `+`, `-`, пробел или `\`. */
+export type DiffLine_Deserialize = {
+	t: string,
+	o?: number | null,
+	n?: number | null,
+	text: string,
+};
+
+/**  Строка diff: `t` — `+`, `-`, пробел или `\`. */
+export type DiffLine_Serialize = {
+	t: string,
+	o: number | null,
+	n: number | null,
+	text: string,
+};
+
+/**  Результат `discardAll`. */
+export type Discarded = {
+	files: number | null,
+};
+
+/**  Выброшенные изменения. */
+export type DiscardedChanges = {
+	files: number | null,
+	backup: string,
+};
+
 /**  Код ошибки на проводе — ровно те же строки, что в 1.x: UI сравнивает `error.code === '…'`. */
 export type ErrorCode = "ALREADY_IN_BRANCH" | "ALREADY_REPO" | "API_ERROR" | "AUTH" | "BAD_ARGS" | "BAD_EMAIL" | "BAD_PLAN" | "BAD_REMOTE" | "BINARY" | "BRANCH_EXISTS" | "BRANCH_IN_USE" | "CANCELLED" | "CHANGED_ON_DISK" | "CONFLICT" | "CURRENT_BRANCH" | "DEFAULT_BRANCH" | "DETACHED" | "DIRTY" | "DIVERGED" | "DOCKER" | "EMPTY_MESSAGE" | "EXISTS" | "FORBIDDEN" | "GIT" | "GITLAB_ERROR" | "GIT_MISSING" | "GIT_TOO_OLD" | "HISTORY_EMPTY" | "HISTORY_PUSHED" | "HISTORY_ROOT" | "HISTORY_STALE" | "HOOK_DECLINED" | "HOST_KEY" | "HUNK_STALE" | "INVALID_NAME" | "JOB_EXISTS" | "KEYGEN_FAILED" | "LOCAL_CHANGES" | "MARKERS_LEFT" | "NETWORK" | "NOTHING_TO_DISCARD" | "NOTHING_TO_STASH" | "NOT_A_DIR" | "NOT_A_REPO" | "NOT_FAST_FORWARD" | "NOT_FOUND" | "NOT_FOUND_PATH" | "NOT_FOUND_REF" | "NOT_GITLAB" | "NOT_MERGED" | "NO_COMMITS" | "NO_DOCKER" | "NO_ENCRYPTION" | "NO_IDENTITY" | "NO_OPERATION" | "NO_PROVIDER" | "NO_REMOTE" | "NO_SSH_KEYGEN" | "NO_STASH" | "NO_STORAGE" | "NO_TERMINAL" | "NO_TOKEN" | "NO_UPSTREAM" | "OPEN_FAILED" | "OPERATION_IN_PROGRESS" | "PATCH_FAILED" | "PLAN_STALE" | "PROTECTED" | "RATE_LIMIT" | "REJECTED_NON_FF" | "ROOT_COMMIT" | "STAGE_EXISTS" | "STAGE_NOT_EMPTY" | "TAG_EXISTS" | "TARGET_EXISTS" | "TIMEOUT" | "TOO_LARGE" | "TOO_MANY" | "UNKNOWN" | "UNSUPPORTED" | "UPSTREAM_GONE" | "UP_TO_DATE" | "VALIDATION" | "WIP_CONFLICT" | "YAML_ERROR";
 
@@ -94,6 +1799,292 @@ export type ErrorData_Deserialize = WipConflict_Deserialize;
 
 /**  Структурированные подробности ошибки. На проводе — сама структура, без обёртки. */
 export type ErrorData_Serialize = WipConflict_Serialize;
+
+/**  Параметры `fastForward`. */
+export type FastForward = FastForward_Serialize | FastForward_Deserialize;
+
+/**  Параметры `fastForward`. */
+export type FastForward_Deserialize = {
+	branch?: string | null,
+	to?: string | null,
+};
+
+/**  Параметры `fastForward`. */
+export type FastForward_Serialize = {
+	branch: string | null,
+	to: string | null,
+};
+
+/**  Результат `fastForward`. */
+export type FastForwarded = {
+	branch: string,
+	from: string,
+	to: string,
+	current: boolean,
+};
+
+/**  Результат `fetchAll`. */
+export type FetchResult = {
+	remotes: string[],
+};
+
+/**  Diff файла. */
+export type FileDiff = FileDiff_Serialize | FileDiff_Deserialize;
+
+/**  Параметры `getFileDiff`. */
+export type FileDiffRequest = FileDiffRequest_Serialize | FileDiffRequest_Deserialize;
+
+/**  Параметры `getFileDiff`. */
+export type FileDiffRequest_Deserialize = {
+	mode?: string | null,
+	hash?: string | null,
+	parent?: string | null,
+	path?: string | null,
+	oldPath?: string | null,
+	ignoreWhitespace?: boolean,
+	conflicted?: boolean,
+};
+
+/**  Параметры `getFileDiff`. */
+export type FileDiffRequest_Serialize = {
+	mode: string | null,
+	hash: string | null,
+	parent: string | null,
+	path: string | null,
+	oldPath: string | null,
+	ignoreWhitespace: boolean,
+	conflicted: boolean,
+};
+
+/**  Diff файла. */
+export type FileDiff_Deserialize = {
+	path: string,
+	oldPath?: string | null,
+	hunks: DiffHunk_Deserialize[],
+	binary: boolean,
+	truncated?: boolean | null,
+	additions: number | null,
+	deletions: number | null,
+	eolOnly?: boolean | null,
+	tooLarge?: boolean | null,
+	size?: number | null,
+};
+
+/**  Diff файла. */
+export type FileDiff_Serialize = {
+	path: string,
+	oldPath: string | null,
+	hunks: DiffHunk_Serialize[],
+	binary: boolean,
+	truncated: boolean | null,
+	additions: number | null,
+	deletions: number | null,
+	eolOnly: boolean | null,
+	tooLarge: boolean | null,
+	size: number | null,
+};
+
+/**  `fileHistory`. */
+export type FileHistory = FileHistory_Serialize | FileHistory_Deserialize;
+
+/**  Параметры `fileHistory`. */
+export type FileHistoryRequest = FileHistoryRequest_Serialize | FileHistoryRequest_Deserialize;
+
+/**  Параметры `fileHistory`. */
+export type FileHistoryRequest_Deserialize = {
+	path?: string | null,
+	rev?: string | null,
+	limit?: number | null,
+};
+
+/**  Параметры `fileHistory`. */
+export type FileHistoryRequest_Serialize = {
+	path: string | null,
+	rev: string | null,
+	limit: number | null,
+};
+
+/**  `fileHistory`. */
+export type FileHistory_Deserialize = {
+	path: string,
+	commits: HistoryCommit_Deserialize[],
+	renamed: boolean,
+	truncated: boolean,
+};
+
+/**  `fileHistory`. */
+export type FileHistory_Serialize = {
+	path: string,
+	commits: HistoryCommit_Serialize[],
+	renamed: boolean,
+	truncated: boolean,
+};
+
+/**  Результат `restoreFile`. */
+export type FileRestored = {
+	path: string,
+	deleted: boolean,
+	side: string,
+	undoable: boolean,
+};
+
+/**  Статистика файла в коммите. */
+export type FileStat = {
+	additions: number | null,
+	deletions: number | null,
+};
+
+/**  Автор из настроек git. */
+export type FolderIdentity = {
+	name: string,
+	email: string,
+	defaultBranch: string,
+};
+
+/**  `inspectFolder`. */
+export type FolderInfo = FolderInfo_Serialize | FolderInfo_Deserialize;
+
+/**  `inspectFolder`. */
+export type FolderInfo_Deserialize = {
+	path: string,
+	name: string,
+	isRepoRoot: boolean,
+	parentRepo?: string | null,
+	empty: boolean,
+	types: string[],
+	typeLabels: string[],
+	hasGitignore: boolean,
+	hasReadme: boolean,
+	gitignorePreview: string,
+	templates: { [key in string]: GitignoreTemplate },
+	identity: FolderIdentity,
+	files: number | null,
+	dirs: number | null,
+	bytes: number | null,
+	truncated: boolean,
+	heavy: { [key in string]: number | null },
+};
+
+/**  `inspectFolder`. */
+export type FolderInfo_Serialize = {
+	path: string,
+	name: string,
+	isRepoRoot: boolean,
+	parentRepo: string | null,
+	empty: boolean,
+	types: string[],
+	typeLabels: string[],
+	hasGitignore: boolean,
+	hasReadme: boolean,
+	gitignorePreview: string,
+	templates: { [key in string]: GitignoreTemplate },
+	identity: FolderIdentity,
+	files: number | null,
+	dirs: number | null,
+	bytes: number | null,
+	truncated: boolean,
+	heavy: { [key in string]: number | null },
+};
+
+/**  Настройки CI/CD репозитория в статусе. */
+export type ForgeSettings = ForgeSettings_Serialize | ForgeSettings_Deserialize;
+
+/**  Настройки CI/CD репозитория в статусе. */
+export type ForgeSettings_Deserialize = {
+	provider?: CiProvider | null,
+	apiBase?: string | null,
+};
+
+/**  Настройки CI/CD репозитория в статусе. */
+export type ForgeSettings_Serialize = {
+	provider: CiProvider | null,
+	apiBase: string | null,
+};
+
+/**  Провайдер CI/CD репозитория и состояние авторизации. */
+export type ForgeStatus = ForgeStatus_Serialize | ForgeStatus_Deserialize;
+
+/**  Провайдер CI/CD репозитория и состояние авторизации. */
+export type ForgeStatus_Deserialize = {
+	kind?: CiProvider | null,
+	provider?: CiProvider | null,
+	label?: string | null,
+	remote: string,
+	url: string,
+	protocol: string,
+	host: string,
+	base: string,
+	path: string,
+	webUrl?: string | null,
+	apiBase?: string | null,
+	token: TokenStatus_Deserialize,
+	capabilities: Capabilities_Deserialize,
+	settings?: ForgeSettings_Deserialize | null,
+	detectedKind?: ServerKind | null,
+};
+
+/**  Провайдер CI/CD репозитория и состояние авторизации. */
+export type ForgeStatus_Serialize = {
+	kind: CiProvider | null,
+	provider: CiProvider | null,
+	label: string | null,
+	remote: string,
+	url: string,
+	protocol: string,
+	host: string,
+	base: string,
+	path: string,
+	webUrl: string | null,
+	apiBase: string | null,
+	token: TokenStatus_Serialize,
+	capabilities: Capabilities_Serialize,
+	settings: ForgeSettings_Serialize | null,
+	detectedKind: ServerKind | null,
+};
+
+/**  Параметры `gitRaw`. */
+export type GitRaw = GitRaw_Serialize | GitRaw_Deserialize;
+
+/**  Результат `gitRaw`. */
+export type GitRawResult = {
+	command: string,
+	output: string,
+};
+
+/**  Параметры `gitRaw`. */
+export type GitRaw_Deserialize = {
+	command?: string | null,
+};
+
+/**  Параметры `gitRaw`. */
+export type GitRaw_Serialize = {
+	command: string | null,
+};
+
+/**  Результат `repo:gitflow-config`. */
+export type GitflowConfig = GitflowConfig_Serialize | GitflowConfig_Deserialize;
+
+/**  Результат `repo:gitflow-config`. */
+export type GitflowConfig_Deserialize = {
+	prefixes: { [key in string]: string },
+	develop?: string | null,
+	master?: string | null,
+	configured: boolean,
+};
+
+/**  Результат `repo:gitflow-config`. */
+export type GitflowConfig_Serialize = {
+	prefixes: { [key in string]: string },
+	develop: string | null,
+	master: string | null,
+	configured: boolean,
+};
+
+/**  Шаблон `.gitignore`. */
+export type GitignoreTemplate = {
+	label: string,
+	lines: string[],
+};
 
 /**  Ошибка, пересекающая IPC. JSON совпадает с `GitError.toJSON()` из 1.x. */
 export type GorynychError = GorynychError_Serialize | GorynychError_Deserialize;
@@ -118,8 +2109,639 @@ export type GorynychError_Serialize = {
 	data?: ErrorData_Serialize,
 };
 
+/**  Находка в строке. `start` и `end` — позиции в `text` в единицах UTF-16: интерфейс передаёт их в `String.slice`. */
+export type GuardFinding = GuardFinding_Serialize | GuardFinding_Deserialize;
+
+/**  Находка в строке. `start` и `end` — позиции в `text` в единицах UTF-16: интерфейс передаёт их в `String.slice`. */
+export type GuardFinding_Deserialize = {
+	file: string,
+	line: number,
+	rule?: string | null,
+	label?: string | null,
+	category: string,
+	level: GuardLevel,
+	text: string,
+	start: number,
+	end: number,
+};
+
+/**  Находка в строке. `start` и `end` — позиции в `text` в единицах UTF-16: интерфейс передаёт их в `String.slice`. */
+export type GuardFinding_Serialize = {
+	file: string,
+	line: number,
+	rule?: string,
+	label?: string,
+	category: string,
+	level: GuardLevel,
+	text: string,
+	start: number,
+	end: number,
+};
+
+export type GuardLevel = "warn" | "block";
+
+/**  Параметры `repo:guard-scan`. */
+export type GuardParams = GuardParams_Serialize | GuardParams_Deserialize;
+
+/**  Параметры `repo:guard-scan`. */
+export type GuardParams_Deserialize = {
+	rules?: GuardRule_Deserialize[],
+	/**  Glob-шаблоны файлов, которые не проверяются. */
+	exclude?: string[],
+};
+
+/**  Параметры `repo:guard-scan`. */
+export type GuardParams_Serialize = {
+	rules: GuardRule_Serialize[],
+	/**  Glob-шаблоны файлов, которые не проверяются. */
+	exclude: string[],
+};
+
+/**  Правило проверки. Лишние поля из интерфейса игнорируются. */
+export type GuardRule = GuardRule_Serialize | GuardRule_Deserialize;
+
+/**  Правило проверки. Лишние поля из интерфейса игнорируются. */
+export type GuardRule_Deserialize = {
+	id?: string | null,
+	label?: string | null,
+	pattern?: string,
+	flags?: string | null,
+	/**  Расширения через запятую или пробел; пусто = все файлы. */
+	files?: string | null,
+	/**  `block`; любое другое значение считается `warn`. */
+	level?: string | null,
+	category?: string | null,
+};
+
+/**  Правило проверки. Лишние поля из интерфейса игнорируются. */
+export type GuardRule_Serialize = {
+	id: string | null,
+	label: string | null,
+	pattern: string,
+	flags: string | null,
+	/**  Расширения через запятую или пробел; пусто = все файлы. */
+	files: string | null,
+	/**  `block`; любое другое значение считается `warn`. */
+	level: string | null,
+	category: string | null,
+};
+
+/**  Результат проверки. */
+export type GuardScan = GuardScan_Serialize | GuardScan_Deserialize;
+
+/**  Результат проверки. */
+export type GuardScan_Deserialize = {
+	findings: GuardFinding_Deserialize[],
+	invalid: InvalidRule_Deserialize[],
+	files: number,
+	addedLines: number,
+	truncated: boolean,
+	skippedFiles: number,
+	blocked: boolean,
+	/**  Время чтения и проверки; у [`scan_diff`] всегда 0. */
+	ms: number,
+};
+
+/**  Результат проверки. */
+export type GuardScan_Serialize = {
+	findings: GuardFinding_Serialize[],
+	invalid: InvalidRule_Serialize[],
+	files: number,
+	addedLines: number,
+	truncated: boolean,
+	skippedFiles: number,
+	blocked: boolean,
+	/**  Время чтения и проверки; у [`scan_diff`] всегда 0. */
+	ms: number,
+};
+
+/**  Параметры действий над коммитом. */
+export type HashRequest = HashRequest_Serialize | HashRequest_Deserialize;
+
+/**  Параметры действий над коммитом. */
+export type HashRequest_Deserialize = {
+	hash?: string | null,
+};
+
+/**  Параметры действий над коммитом. */
+export type HashRequest_Serialize = {
+	hash: string | null,
+};
+
+/**  Результат `cherryPick` и `revert`. */
+export type HeadMoved = HeadMoved_Serialize | HeadMoved_Deserialize;
+
+/**  Результат `cherryPick` и `revert`. */
+export type HeadMoved_Deserialize = {
+	hash: string,
+	from?: string | null,
+	to?: string | null,
+};
+
+/**  Результат `cherryPick` и `revert`. */
+export type HeadMoved_Serialize = {
+	hash: string,
+	from: string | null,
+	to: string | null,
+};
+
+/**  Коммит в истории файла. */
+export type HistoryCommit = HistoryCommit_Serialize | HistoryCommit_Deserialize;
+
+/**  Коммит в истории файла. */
+export type HistoryCommit_Deserialize = {
+	hash: string,
+	parents: string[],
+	author: string,
+	email: string,
+	date: string,
+	subject: string,
+	body: string,
+	path: string,
+	oldPath?: string | null,
+	status: string,
+	additions?: number | null,
+	deletions?: number | null,
+	binary: boolean,
+	diff?: HistoryDiff_Deserialize | null,
+};
+
+/**  Коммит в истории файла. */
+export type HistoryCommit_Serialize = {
+	hash: string,
+	parents: string[],
+	author: string,
+	email: string,
+	date: string,
+	subject: string,
+	body: string,
+	path: string,
+	oldPath: string | null,
+	status: string,
+	additions: number | null,
+	deletions: number | null,
+	binary: boolean,
+	diff: HistoryDiff_Serialize | null,
+};
+
+/**  Diff коммита в истории файла. */
+export type HistoryDiff = HistoryDiff_Serialize | HistoryDiff_Deserialize;
+
+/**  Diff коммита в истории файла. */
+export type HistoryDiff_Deserialize = {
+	path: string,
+	oldPath?: string | null,
+} & ParsedDiff_Deserialize;
+
+/**  Diff коммита в истории файла. */
+export type HistoryDiff_Serialize = {
+	path: string,
+	oldPath: string | null,
+} & ParsedDiff_Serialize;
+
+/**  Файл в поиске по истории. */
+export type HistoryFile = HistoryFile_Serialize | HistoryFile_Deserialize;
+
+/**  Файл в поиске по истории. */
+export type HistoryFile_Deserialize = {
+	path?: string | null,
+	oldPath?: string | null,
+	status: string,
+	count: number | null,
+	lines: HistoryLine_Deserialize[],
+};
+
+/**  Файл в поиске по истории. */
+export type HistoryFile_Serialize = {
+	path: string | null,
+	oldPath: string | null,
+	status: string,
+	count: number | null,
+	lines: HistoryLine_Serialize[],
+};
+
+/**  Коммит в поиске по истории. */
+export type HistoryHit = HistoryHit_Serialize | HistoryHit_Deserialize;
+
+/**  Коммит в поиске по истории. */
+export type HistoryHit_Deserialize = {
+	hash: string,
+	files: HistoryFile_Deserialize[],
+	moreFiles: number | null,
+	count: number | null,
+};
+
+/**  Коммит в поиске по истории. */
+export type HistoryHit_Serialize = {
+	hash: string,
+	files: HistoryFile_Serialize[],
+	moreFiles: number | null,
+	count: number | null,
+};
+
+/**  Результат `undo` и `redo`. */
+export type HistoryLabel = {
+	label: string,
+};
+
+/**  Строка в поиске по истории. */
+export type HistoryLine = HistoryLine_Serialize | HistoryLine_Deserialize;
+
+/**  Строка в поиске по истории. */
+export type HistoryLine_Deserialize = {
+	t: string,
+	o?: number | null,
+	n?: number | null,
+	text: string,
+	cut: boolean,
+	ranges: ([(number | null), (number | null)])[],
+};
+
+/**  Строка в поиске по истории. */
+export type HistoryLine_Serialize = {
+	t: string,
+	o: number | null,
+	n: number | null,
+	text: string,
+	cut: boolean,
+	ranges: ([(number | null), (number | null)])[],
+};
+
+/**  `searchHistory`. */
+export type HistorySearch = HistorySearch_Serialize | HistorySearch_Deserialize;
+
+/**  `searchHistory`. */
+export type HistorySearch_Deserialize = {
+	commits: HistoryHit_Deserialize[],
+	total: number | null,
+	truncated: boolean,
+	scanned?: number | null,
+	partial?: boolean | null,
+};
+
+/**  `searchHistory`. */
+export type HistorySearch_Serialize = {
+	commits: HistoryHit_Serialize[],
+	total: number | null,
+	truncated: boolean,
+	scanned: number | null,
+	partial: boolean | null,
+};
+
+/**  Подписи верхних записей стеков. */
+export type HistorySummary = HistorySummary_Serialize | HistorySummary_Deserialize;
+
+/**  Подписи верхних записей стеков. */
+export type HistorySummary_Deserialize = {
+	undo?: string | null,
+	redo?: string | null,
+};
+
+/**  Подписи верхних записей стеков. */
+export type HistorySummary_Serialize = {
+	undo: string | null,
+	redo: string | null,
+};
+
+/**  Фрагмент diff. */
+export type Hunk = Hunk_Serialize | Hunk_Deserialize;
+
+/**  Строка фрагмента. Имена полей — как в UI 1.x. */
+export type HunkLine = HunkLine_Serialize | HunkLine_Deserialize;
+
+/**  Строка фрагмента. Имена полей — как в UI 1.x. */
+export type HunkLine_Deserialize = {
+	t: LineKind,
+	/**  Номер в старом тексте, с единицы. */
+	o?: number | null,
+	/**  Номер в новом тексте, с единицы. */
+	n?: number | null,
+	text: string,
+};
+
+/**  Строка фрагмента. Имена полей — как в UI 1.x. */
+export type HunkLine_Serialize = {
+	t: LineKind,
+	/**  Номер в старом тексте, с единицы. */
+	o: number | null,
+	/**  Номер в новом тексте, с единицы. */
+	n: number | null,
+	text: string,
+};
+
+/**  Фрагмент diff. */
+export type Hunk_Deserialize = {
+	header: string,
+	section: string,
+	lines: HunkLine_Deserialize[],
+};
+
+/**  Фрагмент diff. */
+export type Hunk_Serialize = {
+	header: string,
+	section: string,
+	lines: HunkLine_Serialize[],
+};
+
+/**  Результат `applyHunks`. */
+export type HunksApplied = {
+	op: string,
+	path: string,
+	hunks: number | null,
+	total: number | null,
+	undoable: boolean,
+};
+
+/**  Автор в запросе. */
+export type IdentityOption = IdentityOption_Serialize | IdentityOption_Deserialize;
+
+/**  Автор в запросе. */
+export type IdentityOption_Deserialize = {
+	name?: string | null,
+	email?: string | null,
+	global?: boolean | null,
+};
+
+/**  Автор в запросе. */
+export type IdentityOption_Serialize = {
+	name: string | null,
+	email: string | null,
+	global: boolean | null,
+};
+
+/**  Созданный коммит. */
+export type InitCommit = InitCommit_Serialize | InitCommit_Deserialize;
+
+/**  Созданный коммит. */
+export type InitCommit_Deserialize = {
+	files: number | null,
+	hash?: string | null,
+};
+
+/**  Созданный коммит. */
+export type InitCommit_Serialize = {
+	files: number | null,
+	hash: string | null,
+};
+
+/**  Параметры `initRepository`. */
+export type InitOptions = InitOptions_Serialize | InitOptions_Deserialize;
+
+/**  Параметры `initRepository`. */
+export type InitOptions_Deserialize = {
+	branch?: string | null,
+	identity?: IdentityOption_Deserialize | null,
+	gitignore?: string | null,
+	readme?: boolean | null,
+	commit?: CommitOption_Deserialize | null,
+	remote?: string | null,
+};
+
+/**  Параметры `initRepository`. */
+export type InitOptions_Serialize = {
+	branch: string | null,
+	identity: IdentityOption_Serialize | null,
+	gitignore: string | null,
+	readme: boolean | null,
+	commit: CommitOption_Serialize | null,
+	remote: string | null,
+};
+
+/**  Результат `initRepository`. */
+export type InitResult = InitResult_Serialize | InitResult_Deserialize;
+
+/**  Результат `initRepository`. */
+export type InitResult_Deserialize = {
+	path: string,
+	name: string,
+	branch: string,
+	commit?: InitCommit_Deserialize | null,
+	remote?: string | null,
+	steps: InitStep[],
+};
+
+/**  Результат `initRepository`. */
+export type InitResult_Serialize = {
+	path: string,
+	name: string,
+	branch: string,
+	commit: InitCommit_Serialize | null,
+	remote: string | null,
+	steps: InitStep[],
+};
+
+/**  Шаг операции. */
+export type InitStep = {
+	label: string,
+	ok: boolean,
+};
+
+/**  Правило с ошибкой в шаблоне или флагах. */
+export type InvalidRule = InvalidRule_Serialize | InvalidRule_Deserialize;
+
+/**  Правило с ошибкой в шаблоне или флагах. */
+export type InvalidRule_Deserialize = {
+	id?: string | null,
+	label?: string | null,
+	error: string,
+};
+
+/**  Правило с ошибкой в шаблоне или флагах. */
+export type InvalidRule_Serialize = {
+	id?: string,
+	label?: string,
+	error: string,
+};
+
+/**  Словарь с порядком ключей объекта JS: целые индексы по возрастанию, затем остальные в порядке появления. */
+export type JsMap = JsMap_Serialize | JsMap_Deserialize;
+
+/**  Словарь с порядком ключей объекта JS: целые индексы по возрастанию, затем остальные в порядке появления. */
+export type JsMap_Deserialize = { [key in string]: YamlValue_Deserialize };
+
+/**  Словарь с порядком ключей объекта JS: целые индексы по возрастанию, затем остальные в порядке появления. */
+export type JsMap_Serialize = { [key in string]: YamlValue_Serialize };
+
 /**  Язык интерфейса и сообщений. */
 export type Language = "ru" | "en";
+
+/**  Пользователь старого токена CI/CD. */
+export type LegacyCiUser = LegacyCiUser_Serialize | LegacyCiUser_Deserialize;
+
+/**  Пользователь старого токена CI/CD. */
+export type LegacyCiUser_Deserialize = {
+	username?: string | null,
+	name?: string | null,
+	avatarUrl?: string | null,
+};
+
+/**  Пользователь старого токена CI/CD. */
+export type LegacyCiUser_Serialize = {
+	username: string | null,
+	name: string | null,
+	avatarUrl: string | null,
+};
+
+/**  Результат тика. */
+export type LightCheck = LightCheck_Serialize | LightCheck_Deserialize;
+
+/**  Результат тика. */
+export type LightCheck_Deserialize = {
+	status: string,
+	reason?: string | null,
+	fetched?: boolean | null,
+	via?: string | null,
+	remotes?: string[] | null,
+	changes?: RemoteChanges | null,
+	error?: LightError | null,
+	retryAfter?: number | null,
+	ms: number | null,
+};
+
+/**  Результат тика. */
+export type LightCheck_Serialize = {
+	status: string,
+	reason: string | null,
+	fetched: boolean | null,
+	via: string | null,
+	remotes: string[] | null,
+	changes: RemoteChanges | null,
+	error: LightError | null,
+	retryAfter: number | null,
+	ms: number | null,
+};
+
+/**  Ошибка тика. */
+export type LightError = {
+	code: ErrorCode,
+	message: string,
+};
+
+/**  Вид строки во фрагменте. */
+export type LineKind = " " | "-" | "+";
+
+/**  Ответ `repo:load`. */
+export type LoadedRepository = LoadedRepository_Serialize | LoadedRepository_Deserialize;
+
+/**  Ответ `repo:load`. */
+export type LoadedRepository_Deserialize = {
+	history: HistorySummary_Deserialize,
+	ci: CiSystem[],
+	forge?: ForgeStatus_Deserialize | null,
+} & Repository_Deserialize;
+
+/**  Ответ `repo:load`. */
+export type LoadedRepository_Serialize = {
+	history: HistorySummary_Serialize,
+	ci: CiSystem[],
+	forge: ForgeStatus_Serialize | null,
+} & Repository_Serialize;
+
+/**  Локальная ветка. */
+export type LocalBranch = LocalBranch_Serialize | LocalBranch_Deserialize;
+
+/**  Локальная ветка. */
+export type LocalBranch_Deserialize = {
+	name: string,
+	hash: string,
+	upstream?: string | null,
+	upstreamRemote?: string | null,
+	/**  Например `refs/heads/main`. */
+	upstreamRef?: string | null,
+	gone: boolean,
+	ahead: number | null,
+	behind: number | null,
+	date?: string | null,
+};
+
+/**  Локальная ветка. */
+export type LocalBranch_Serialize = {
+	name: string,
+	hash: string,
+	upstream: string | null,
+	upstreamRemote: string | null,
+	/**  Например `refs/heads/main`. */
+	upstreamRef: string | null,
+	gone: boolean,
+	ahead: number | null,
+	behind: number | null,
+	date: string | null,
+};
+
+/**  Почему вход не подходит. */
+export type LoginProblem = LoginProblem_Serialize | LoginProblem_Deserialize;
+
+/**  Почему вход не подходит. */
+export type LoginProblem_Deserialize = {
+	method?: AuthMethod | null,
+	reason?: string | null,
+};
+
+/**  Почему вход не подходит. */
+export type LoginProblem_Serialize = {
+	method: AuthMethod | null,
+	reason: string | null,
+};
+
+/**  Параметры `markResolved`. */
+export type MarkResolved = MarkResolved_Serialize | MarkResolved_Deserialize;
+
+/**  Параметры `markResolved`. */
+export type MarkResolved_Deserialize = {
+	path?: string | null,
+	force?: boolean,
+};
+
+/**  Параметры `markResolved`. */
+export type MarkResolved_Serialize = {
+	path: string | null,
+	force: boolean,
+};
+
+/**  Файл с совпадениями. */
+export type MatchFile = MatchFile_Serialize | MatchFile_Deserialize;
+
+/**  Файл с совпадениями. */
+export type MatchFile_Deserialize = {
+	path?: string | null,
+	oldPath?: string | null,
+	count: number | null,
+	lines: MatchLine[],
+};
+
+/**  Файл с совпадениями. */
+export type MatchFile_Serialize = {
+	path: string | null,
+	oldPath: string | null,
+	count: number | null,
+	lines: MatchLine[],
+};
+
+/**  Строка с совпадениями. */
+export type MatchLine = {
+	t: string,
+	line: number | null,
+	text: string,
+	cut: boolean,
+	ranges: ([(number | null), (number | null)])[],
+};
+
+/**  Параметры `mergeInto`. */
+export type MergeInto = MergeInto_Serialize | MergeInto_Deserialize;
+
+/**  Параметры `mergeInto`. */
+export type MergeInto_Deserialize = {
+	target?: string | null,
+	ref?: string | null,
+	smart?: boolean | null,
+};
+
+/**  Параметры `mergeInto`. */
+export type MergeInto_Serialize = {
+	target: string | null,
+	ref: string | null,
+	smart: boolean | null,
+};
 
 /**  Что осталось не перенесённым полностью. */
 export type MigrationIssue = 
@@ -169,6 +2791,392 @@ export type MigrationReport_Serialize = {
 	issues: MigrationIssue[],
 };
 
+/**  Изменения, перенесённые в новую ветку. */
+export type MovedChanges = MovedChanges_Serialize | MovedChanges_Deserialize;
+
+/**  Изменения, перенесённые в новую ветку. */
+export type MovedChanges_Deserialize = {
+	files: number | null,
+	conflict: boolean,
+	stash?: string | null,
+	message?: string | null,
+};
+
+/**  Изменения, перенесённые в новую ветку. */
+export type MovedChanges_Serialize = {
+	files: number | null,
+	conflict: boolean,
+	stash: string | null,
+	message: string | null,
+};
+
+/**  Действие без параметров. Лишние поля игнорируются. */
+export type NoParams = Record<string, never>;
+
+/**  Результат `abortOperation` и `continueOperation`. */
+export type OperationResult = OperationResult_Serialize | OperationResult_Deserialize;
+
+/**  Результат `abortOperation` и `continueOperation`. */
+export type OperationResult_Deserialize = {
+	operation: string,
+	finished?: boolean | null,
+};
+
+/**  Результат `abortOperation` и `continueOperation`. */
+export type OperationResult_Serialize = {
+	operation: string,
+	finished: boolean | null,
+};
+
+/**  `parseConflictText`. */
+export type ParsedConflict = ParsedConflict_Serialize | ParsedConflict_Deserialize;
+
+/**  `parseConflictText`. */
+export type ParsedConflict_Deserialize = {
+	segments: ConflictSegment_Deserialize[],
+	eol: string,
+	finalNewline: boolean,
+	conflicts: number | null,
+};
+
+/**  `parseConflictText`. */
+export type ParsedConflict_Serialize = {
+	segments: ConflictSegment_Serialize[],
+	eol: string,
+	finalNewline: boolean,
+	conflicts: number | null,
+};
+
+/**  `parseUnifiedDiff`. */
+export type ParsedDiff = ParsedDiff_Serialize | ParsedDiff_Deserialize;
+
+/**  `parseUnifiedDiff`. */
+export type ParsedDiff_Deserialize = {
+	hunks: DiffHunk_Deserialize[],
+	binary: boolean,
+	truncated: boolean,
+	additions: number | null,
+	deletions: number | null,
+};
+
+/**  `parseUnifiedDiff`. */
+export type ParsedDiff_Serialize = {
+	hunks: DiffHunk_Serialize[],
+	binary: boolean,
+	truncated: boolean,
+	additions: number | null,
+	deletions: number | null,
+};
+
+/**  Какие файлы: все, список или неверный аргумент (ошибка появится при вызове, как в 1.x). */
+export type PathsArg = "All" | { List: string[] } | "Invalid";
+
+/**  Параметры `stage` и `unstage`. */
+export type PathsRequest = PathsRequest_Serialize | PathsRequest_Deserialize;
+
+/**  Параметры `stage` и `unstage`. */
+export type PathsRequest_Deserialize = {
+	paths?: PathsArg | null,
+};
+
+/**  Параметры `stage` и `unstage`. */
+export type PathsRequest_Serialize = {
+	paths: PathsArg | null,
+};
+
+/**  Строка плана. */
+export type PlanItem = PlanItem_Serialize | PlanItem_Deserialize;
+
+/**  Строка плана. */
+export type PlanItem_Deserialize = {
+	hash?: string | null,
+	action?: string | null,
+	message?: string | null,
+};
+
+/**  Строка плана. */
+export type PlanItem_Serialize = {
+	hash: string | null,
+	action: string | null,
+	message?: string,
+};
+
+/**  Где находится HEAD: ветка или отдельный коммит. */
+export type Position = Position_Serialize | Position_Deserialize;
+
+/**  Где находится HEAD: ветка или отдельный коммит. */
+export type Position_Deserialize = {
+	branch?: string | null,
+	detached?: string | null,
+};
+
+/**  Где находится HEAD: ветка или отдельный коммит. */
+export type Position_Serialize = {
+	branch: string | null,
+	detached: string | null,
+};
+
+/**  Коммит в предпросмотре возврата. */
+export type PreviewCommit = {
+	hash: string,
+	message: string,
+	author: string,
+	date: string,
+};
+
+/**  Коммит, к которому возвращаемся. */
+export type PreviewTarget = {
+	message: string,
+	author: string,
+	date: string,
+};
+
+/**  Параметры `probeRemote`. */
+export type ProbeRemote = ProbeRemote_Serialize | ProbeRemote_Deserialize;
+
+/**  Параметры `probeRemote`. */
+export type ProbeRemote_Deserialize = {
+	url?: string | null,
+	branch?: string | null,
+};
+
+/**  Параметры `probeRemote`. */
+export type ProbeRemote_Serialize = {
+	url: string | null,
+	branch: string | null,
+};
+
+/**  Параметры `pull`. */
+export type PullRequest = PullRequest_Serialize | PullRequest_Deserialize;
+
+/**  Параметры `pull`. */
+export type PullRequest_Deserialize = {
+	mode?: string | null,
+};
+
+/**  Параметры `pull`. */
+export type PullRequest_Serialize = {
+	mode: string | null,
+};
+
+/**  Результат `pull`. */
+export type PullResult = PullResult_Serialize | PullResult_Deserialize;
+
+/**  Результат `pull`. */
+export type PullResult_Deserialize = {
+	branch?: string | null,
+	upstream?: string | null,
+	updated: boolean,
+	mode: string,
+};
+
+/**  Результат `pull`. */
+export type PullResult_Serialize = {
+	branch: string | null,
+	upstream: string | null,
+	updated: boolean,
+	mode: string,
+};
+
+/**  Параметры `push`. */
+export type PushRequest = PushRequest_Serialize | PushRequest_Deserialize;
+
+/**  Параметры `push`. */
+export type PushRequest_Deserialize = {
+	force?: boolean | null,
+};
+
+/**  Параметры `push`. */
+export type PushRequest_Serialize = {
+	force: boolean | null,
+};
+
+/**  Результат `push`. */
+export type PushResult = PushResult_Serialize | PushResult_Deserialize;
+
+/**  Результат `push`. */
+export type PushResult_Deserialize = {
+	branch?: string | null,
+	remote: string,
+	setUpstream: boolean,
+	forced: boolean,
+};
+
+/**  Результат `push`. */
+export type PushResult_Serialize = {
+	branch: string | null,
+	remote: string,
+	setUpstream: boolean,
+	forced: boolean,
+};
+
+/**  `quickStatus`. */
+export type QuickStatus = QuickStatus_Serialize | QuickStatus_Deserialize;
+
+/**  `quickStatus`. */
+export type QuickStatus_Deserialize = {
+	path: string,
+	wipFiles: WipEntry_Deserialize[],
+	operation?: string | null,
+};
+
+/**  `quickStatus`. */
+export type QuickStatus_Serialize = {
+	path: string,
+	wipFiles: WipEntry_Serialize[],
+	operation: string | null,
+};
+
+/**  Коммит-результат. */
+export type RebaseAfter = {
+	hash: string,
+	subject: string,
+	message: string,
+	author: RebaseAuthor,
+	action: string,
+	origs: string[],
+	reused: boolean,
+};
+
+/**  Параметры `apply`. */
+export type RebaseApply = RebaseApply_Serialize | RebaseApply_Deserialize;
+
+/**  Параметры `apply`. */
+export type RebaseApply_Deserialize = {
+	oldHead?: string | null,
+	newHead?: string | null,
+	branch?: string | null,
+	onto?: string | null,
+};
+
+/**  Параметры `apply`. */
+export type RebaseApply_Serialize = {
+	oldHead: string | null,
+	newHead: string | null,
+	branch: string | null,
+	onto: string | null,
+};
+
+/**  Автор коммита. */
+export type RebaseAuthor = {
+	name: string,
+	email: string,
+	date: string,
+};
+
+/**  Коммит в ответе. */
+export type RebaseCommit = {
+	hash: string,
+	subject: string,
+	message: string,
+	author: RebaseAuthor,
+};
+
+/**  Конфликт в симуляции. */
+export type RebaseConflict = RebaseConflict_Serialize | RebaseConflict_Deserialize;
+
+/**  Конфликт в симуляции. */
+export type RebaseConflict_Deserialize = {
+	action?: string | null,
+	files: string[],
+	messages: string[],
+	index: number | null,
+} & RebaseCommit;
+
+/**  Конфликт в симуляции. */
+export type RebaseConflict_Serialize = {
+	action: string | null,
+	files: string[],
+	messages: string[],
+	index: number | null,
+} & RebaseCommit;
+
+/**  Результат `apply` и `start`. */
+export type RebaseDone = RebaseDone_Serialize | RebaseDone_Deserialize;
+
+/**  Результат `apply` и `start`. */
+export type RebaseDone_Deserialize = {
+	branch: string,
+	from: string,
+	to?: string | null,
+};
+
+/**  Результат `apply` и `start`. */
+export type RebaseDone_Serialize = {
+	branch: string,
+	from: string,
+	to: string | null,
+};
+
+/**  Результат `simulate`. */
+export type RebasePreview = RebasePreview_Serialize | RebasePreview_Deserialize;
+
+/**  Результат `simulate`. */
+export type RebasePreview_Deserialize = {
+	branch: string,
+	oldHead: string,
+	upstream: RebaseCommit,
+	onto: RebaseCommit,
+	interactiveFromAncestor: boolean,
+	merges: number | null,
+	before: RebaseCommit[],
+	plan: PlanItem_Deserialize[],
+	ok: boolean,
+	conflict?: RebaseConflict_Deserialize | null,
+	after: RebaseAfter[],
+	skipped: RebaseSkipped[],
+	newHead?: string | null,
+	unchanged: boolean,
+	diff?: CommitFile_Deserialize[] | null,
+	identicalFiles?: boolean | null,
+	pushed: number | null,
+	dirty: number | null,
+};
+
+/**  Результат `simulate`. */
+export type RebasePreview_Serialize = {
+	branch: string,
+	oldHead: string,
+	upstream: RebaseCommit,
+	onto: RebaseCommit,
+	interactiveFromAncestor: boolean,
+	merges: number | null,
+	before: RebaseCommit[],
+	plan: PlanItem_Serialize[],
+	ok: boolean,
+	conflict: RebaseConflict_Serialize | null,
+	after: RebaseAfter[],
+	skipped: RebaseSkipped[],
+	newHead: string | null,
+	unchanged: boolean,
+	diff: CommitFile_Serialize[] | null,
+	identicalFiles: boolean | null,
+	pushed: number | null,
+	dirty: number | null,
+};
+
+/**  Параметры `simulate` и `start`. */
+export type RebaseRequest = RebaseRequest_Serialize | RebaseRequest_Deserialize;
+
+/**  Параметры `simulate` и `start`. */
+export type RebaseRequest_Deserialize = {
+	upstream?: string | null,
+	onto?: string | null,
+	plan?: PlanItem_Deserialize[] | null,
+};
+
+/**  Параметры `simulate` и `start`. */
+export type RebaseRequest_Serialize = {
+	upstream: string | null,
+	onto: string | null,
+	plan: PlanItem_Serialize[] | null,
+};
+
+/**  Пропущенный коммит. */
+export type RebaseSkipped = {
+	reason: string,
+} & RebaseCommit;
+
 /**  Недавний репозиторий. */
 export type RecentRepo = RecentRepo_Serialize | RecentRepo_Deserialize;
 
@@ -184,6 +3192,532 @@ export type RecentRepo_Serialize = {
 	path: string,
 	name: string,
 	openedAt: string | null,
+};
+
+/**  Вид ссылки. */
+export type RefKind = "local" | "remote" | "tag";
+
+/**  Результат `merge` и `rebase`. */
+export type RefMoved = RefMoved_Serialize | RefMoved_Deserialize;
+
+/**  Результат `merge` и `rebase`. */
+export type RefMoved_Deserialize = {
+	ref: string,
+	branch?: string | null,
+	from?: string | null,
+	to?: string | null,
+};
+
+/**  Результат `merge` и `rebase`. */
+export type RefMoved_Serialize = {
+	ref: string,
+	branch: string | null,
+	from: string | null,
+	to: string | null,
+};
+
+/**  Параметры `merge` и `rebase`. */
+export type RefRequest = RefRequest_Serialize | RefRequest_Deserialize;
+
+/**  Параметры `merge` и `rebase`. */
+export type RefRequest_Deserialize = {
+	ref?: string | null,
+};
+
+/**  Параметры `merge` и `rebase`. */
+export type RefRequest_Serialize = {
+	ref: string | null,
+};
+
+/**  Удалённый репозиторий. */
+export type Remote = Remote_Serialize | Remote_Deserialize;
+
+/**  Ветка удалённого репозитория. */
+export type RemoteBranch = RemoteBranch_Serialize | RemoteBranch_Deserialize;
+
+/**  Результат `deleteRemoteBranch`. */
+export type RemoteBranchDeleted = {
+	remote: string,
+	branch: string,
+	hash: string,
+	tracking: string[],
+};
+
+/**  Ветка удалённого репозитория в запросе. */
+export type RemoteBranchRef = RemoteBranchRef_Serialize | RemoteBranchRef_Deserialize;
+
+/**  Ветка удалённого репозитория в запросе. */
+export type RemoteBranchRef_Deserialize = {
+	name?: string | null,
+	fullName?: string | null,
+};
+
+/**  Ветка удалённого репозитория в запросе. */
+export type RemoteBranchRef_Serialize = {
+	name: string | null,
+	fullName: string | null,
+};
+
+/**  Ветка удалённого репозитория. */
+export type RemoteBranch_Deserialize = {
+	name: string,
+	fullName: string,
+	hash: string,
+	date?: string | null,
+};
+
+/**  Ветка удалённого репозитория. */
+export type RemoteBranch_Serialize = {
+	name: string,
+	fullName: string,
+	hash: string,
+	date: string | null,
+};
+
+/**  Расхождение с сервером. */
+export type RemoteChanges = {
+	updated: string[],
+	added: string[],
+	removed: string[],
+	tags: string[],
+};
+
+/**  Последний коммит на сервере. */
+export type RemoteCommit = {
+	message: string,
+	author: string,
+	date: string,
+	hash: string,
+};
+
+/**  Ветка на сервере. */
+export type RemoteHead = {
+	name: string,
+	hash: string,
+};
+
+/**  `remoteHeads`. */
+export type RemoteHeads = RemoteHeads_Serialize | RemoteHeads_Deserialize;
+
+/**  `remoteHeads`. */
+export type RemoteHeads_Deserialize = {
+	empty: boolean,
+	branches: RemoteHead[],
+	defaultBranch?: string | null,
+	headBranch?: string | null,
+};
+
+/**  `remoteHeads`. */
+export type RemoteHeads_Serialize = {
+	empty: boolean,
+	branches: RemoteHead[],
+	defaultBranch: string | null,
+	headBranch: string | null,
+};
+
+/**  Результат `probeRemote`. */
+export type RemoteProbe = RemoteProbe_Serialize | RemoteProbe_Deserialize;
+
+/**  Результат `probeRemote`. */
+export type RemoteProbe_Deserialize = {
+	url: string,
+	host?: string | null,
+	branch?: string | null,
+	lastCommit?: RemoteCommit | null,
+	remoteFiles: number | null,
+	same: string[],
+	differ: string[],
+	remoteOnly: string[],
+	remoteHasGitignore: boolean,
+} & RemoteHeads_Deserialize;
+
+/**  Результат `probeRemote`. */
+export type RemoteProbe_Serialize = {
+	url: string,
+	host: string | null,
+	branch: string | null,
+	lastCommit: RemoteCommit | null,
+	remoteFiles: number | null,
+	same: string[],
+	differ: string[],
+	remoteOnly: string[],
+	remoteHasGitignore: boolean,
+} & RemoteHeads_Serialize;
+
+/**  Удалённый репозиторий. */
+export type Remote_Deserialize = {
+	name: string,
+	branches: RemoteBranch_Deserialize[],
+};
+
+/**  Удалённый репозиторий. */
+export type Remote_Serialize = {
+	name: string,
+	branches: RemoteBranch_Serialize[],
+};
+
+/**  Параметры `renameBranch`. */
+export type RenameBranch = RenameBranch_Serialize | RenameBranch_Deserialize;
+
+/**  Параметры `renameBranch`. */
+export type RenameBranch_Deserialize = {
+	from?: string | null,
+	to?: string | null,
+};
+
+/**  Параметры `renameBranch`. */
+export type RenameBranch_Serialize = {
+	from: string | null,
+	to: string | null,
+};
+
+/**  Действие с репозиторием. На проводе — `{ name, payload }`, имена как в 1.x. */
+export type RepoAction = RepoAction_Serialize | RepoAction_Deserialize;
+
+/**  Действие с репозиторием. На проводе — `{ name, payload }`, имена как в 1.x. */
+export type RepoAction_Deserialize = { name: "checkAccess"; payload: CheckAccess_Deserialize } | { name: "fetch"; payload: NoParams } | { name: "pull"; payload: PullRequest_Deserialize } | { name: "push"; payload: PushRequest_Deserialize } | { name: "undo"; payload: NoParams } | { name: "redo"; payload: NoParams } | { name: "continueOperation"; payload: NoParams } | { name: "abortOperation"; payload: NoParams } | { name: "stage"; payload: PathsRequest_Deserialize } | { name: "unstage"; payload: PathsRequest_Deserialize } | { name: "commit"; payload: CommitRequest_Deserialize } | { name: "checkout"; payload: CheckoutRequest_Deserialize } | { name: "checkoutPreview"; payload: CheckoutRequest_Deserialize } | { name: "createBranch"; payload: CreateBranch_Deserialize } | { name: "stash"; payload: StashPush_Deserialize } | { name: "stashApplyAt"; payload: StashAt_Deserialize } | { name: "stashPopAt"; payload: StashAt_Deserialize } | { name: "stashDrop"; payload: StashAt_Deserialize } | { name: "revertToPreview"; payload: HashRequest_Deserialize } | { name: "getConflict"; payload: ConflictRequest_Deserialize } | { name: "saveResolution"; payload: SaveResolution_Deserialize } | { name: "resolveWhole"; payload: ResolveWhole_Deserialize } | { name: "markResolved"; payload: MarkResolved_Deserialize } | { name: "revertTo"; payload: RevertTo_Deserialize } | { name: "checkoutCommit"; payload: HashRequest_Deserialize } | { name: "createTag"; payload: CreateTag_Deserialize } | { name: "deleteTag"; payload: DeleteTag_Deserialize } | { name: "deleteRemoteBranch"; payload: DeleteRemoteBranch_Deserialize } | { name: "renameBranch"; payload: RenameBranch_Deserialize } | { name: "deleteBranch"; payload: DeleteBranch_Deserialize } | { name: "cherryPick"; payload: HashRequest_Deserialize } | { name: "revert"; payload: HashRequest_Deserialize } | { name: "reset"; payload: ResetRequest_Deserialize } | { name: "merge"; payload: RefRequest_Deserialize } | { name: "rebase"; payload: RefRequest_Deserialize } | { name: "rebaseApply"; payload: RebaseApply_Deserialize } | { name: "rebaseStart"; payload: RebaseRequest_Deserialize } | { name: "restoreFile"; payload: RestoreFile_Deserialize } | { name: "restoreFromStash"; payload: RestoreFromStash_Deserialize } | { name: "applyHunks"; payload: ApplyHunks_Deserialize } | { name: "mergeInto"; payload: MergeInto_Deserialize } | { name: "cherryPickInto"; payload: CherryPickInto_Deserialize } | { name: "updateBranch"; payload: UpdateBranch_Deserialize } | { name: "fastForward"; payload: FastForward_Deserialize } | { name: "gitRaw"; payload: GitRaw_Deserialize } | { name: "discardAll"; payload: NoParams } | { name: "stashPop"; payload: NoParams };
+
+/**  Действие с репозиторием. На проводе — `{ name, payload }`, имена как в 1.x. */
+export type RepoAction_Serialize = { name: "checkAccess"; payload: CheckAccess_Serialize } | { name: "fetch"; payload: NoParams } | { name: "pull"; payload: PullRequest_Serialize } | { name: "push"; payload: PushRequest_Serialize } | { name: "undo"; payload: NoParams } | { name: "redo"; payload: NoParams } | { name: "continueOperation"; payload: NoParams } | { name: "abortOperation"; payload: NoParams } | { name: "stage"; payload: PathsRequest_Serialize } | { name: "unstage"; payload: PathsRequest_Serialize } | { name: "commit"; payload: CommitRequest_Serialize } | { name: "checkout"; payload: CheckoutRequest_Serialize } | { name: "checkoutPreview"; payload: CheckoutRequest_Serialize } | { name: "createBranch"; payload: CreateBranch_Serialize } | { name: "stash"; payload: StashPush_Serialize } | { name: "stashApplyAt"; payload: StashAt_Serialize } | { name: "stashPopAt"; payload: StashAt_Serialize } | { name: "stashDrop"; payload: StashAt_Serialize } | { name: "revertToPreview"; payload: HashRequest_Serialize } | { name: "getConflict"; payload: ConflictRequest_Serialize } | { name: "saveResolution"; payload: SaveResolution_Serialize } | { name: "resolveWhole"; payload: ResolveWhole_Serialize } | { name: "markResolved"; payload: MarkResolved_Serialize } | { name: "revertTo"; payload: RevertTo_Serialize } | { name: "checkoutCommit"; payload: HashRequest_Serialize } | { name: "createTag"; payload: CreateTag_Serialize } | { name: "deleteTag"; payload: DeleteTag_Serialize } | { name: "deleteRemoteBranch"; payload: DeleteRemoteBranch_Serialize } | { name: "renameBranch"; payload: RenameBranch_Serialize } | { name: "deleteBranch"; payload: DeleteBranch_Serialize } | { name: "cherryPick"; payload: HashRequest_Serialize } | { name: "revert"; payload: HashRequest_Serialize } | { name: "reset"; payload: ResetRequest_Serialize } | { name: "merge"; payload: RefRequest_Serialize } | { name: "rebase"; payload: RefRequest_Serialize } | { name: "rebaseApply"; payload: RebaseApply_Serialize } | { name: "rebaseStart"; payload: RebaseRequest_Serialize } | { name: "restoreFile"; payload: RestoreFile_Serialize } | { name: "restoreFromStash"; payload: RestoreFromStash_Serialize } | { name: "applyHunks"; payload: ApplyHunks_Serialize } | { name: "mergeInto"; payload: MergeInto_Serialize } | { name: "cherryPickInto"; payload: CherryPickInto_Serialize } | { name: "updateBranch"; payload: UpdateBranch_Serialize } | { name: "fastForward"; payload: FastForward_Serialize } | { name: "gitRaw"; payload: GitRaw_Serialize } | { name: "discardAll"; payload: NoParams } | { name: "stashPop"; payload: NoParams };
+
+/**  Событие `repo:changed`. */
+export type RepoChanged = {
+	path: string,
+	git: boolean,
+	worktree: boolean,
+};
+
+/**  Событие `repo:index-synced`. */
+export type RepoIndexSynced = {
+	path: string,
+	synced: SyncedFile[],
+};
+
+/**  `loadRepository`. */
+export type Repository = Repository_Serialize | Repository_Deserialize;
+
+/**  `loadRepository`. */
+export type Repository_Deserialize = {
+	path: string,
+	name: string,
+	currentBranch?: string | null,
+	detached: boolean,
+	operation?: string | null,
+	headHash?: string | null,
+	localBranches: LocalBranch_Deserialize[],
+	remotes: Remote_Deserialize[],
+	tags: Tag[],
+	stashes: Stash_Deserialize[],
+	commits: Commit_Deserialize[],
+	truncated: boolean,
+	wipFiles: WipEntry_Deserialize[],
+};
+
+/**  `loadRepository`. */
+export type Repository_Serialize = {
+	path: string,
+	name: string,
+	currentBranch: string | null,
+	detached: boolean,
+	operation: string | null,
+	headHash: string | null,
+	localBranches: LocalBranch_Serialize[],
+	remotes: Remote_Serialize[],
+	tags: Tag[],
+	stashes: Stash_Serialize[],
+	commits: Commit_Serialize[],
+	truncated: boolean,
+	wipFiles: WipEntry_Serialize[],
+};
+
+/**  Параметры `reset`. */
+export type ResetRequest = ResetRequest_Serialize | ResetRequest_Deserialize;
+
+/**  Параметры `reset`. */
+export type ResetRequest_Deserialize = {
+	hash?: string | null,
+	mode?: string | null,
+};
+
+/**  Параметры `reset`. */
+export type ResetRequest_Serialize = {
+	hash: string | null,
+	mode: string | null,
+};
+
+/**  Результат `reset`. */
+export type ResetResult = ResetResult_Serialize | ResetResult_Deserialize;
+
+/**  Результат `reset`. */
+export type ResetResult_Deserialize = {
+	hash: string,
+	mode: string,
+	branch?: string | null,
+	from?: string | null,
+	to?: string | null,
+};
+
+/**  Результат `reset`. */
+export type ResetResult_Serialize = {
+	hash: string,
+	mode: string,
+	branch: string | null,
+	from: string | null,
+	to: string | null,
+};
+
+/**  Результат действия с файлом конфликта. */
+export type ResolveResult = ResolveResult_Serialize | ResolveResult_Deserialize;
+
+/**  Результат действия с файлом конфликта. */
+export type ResolveResult_Deserialize = {
+	path: string,
+	side?: string | null,
+	deleted?: boolean | null,
+};
+
+/**  Результат действия с файлом конфликта. */
+export type ResolveResult_Serialize = {
+	path: string,
+	side: string | null,
+	deleted: boolean | null,
+};
+
+/**  Параметры `resolveWhole`. */
+export type ResolveWhole = ResolveWhole_Serialize | ResolveWhole_Deserialize;
+
+/**  Параметры `resolveWhole`. */
+export type ResolveWhole_Deserialize = {
+	path?: string | null,
+	side?: string | null,
+};
+
+/**  Параметры `resolveWhole`. */
+export type ResolveWhole_Serialize = {
+	path: string | null,
+	side: string | null,
+};
+
+/**  Параметры `restoreFile`. */
+export type RestoreFile = RestoreFile_Serialize | RestoreFile_Deserialize;
+
+/**  Параметры `restoreFile`. */
+export type RestoreFile_Deserialize = {
+	hash?: string | null,
+	path?: string | null,
+	side?: string | null,
+	sourcePath?: string | null,
+};
+
+/**  Параметры `restoreFile`. */
+export type RestoreFile_Serialize = {
+	hash: string | null,
+	path: string | null,
+	side: string | null,
+	sourcePath: string | null,
+};
+
+/**  Параметры `restoreFromStash`. */
+export type RestoreFromStash = RestoreFromStash_Serialize | RestoreFromStash_Deserialize;
+
+/**  Параметры `restoreFromStash`. */
+export type RestoreFromStash_Deserialize = {
+	hash?: string | null,
+	files?: (StashFile_Deserialize | null)[] | null,
+	/**  Только для подписи в истории. */
+	id?: string | null,
+};
+
+/**  Параметры `restoreFromStash`. */
+export type RestoreFromStash_Serialize = {
+	hash: string | null,
+	files: (StashFile_Serialize | null)[] | null,
+	/**  Только для подписи в истории. */
+	id: string | null,
+};
+
+/**  Изменения, вернувшиеся из stash ветки. */
+export type RestoredStash = RestoredStash_Serialize | RestoredStash_Deserialize;
+
+/**  Изменения, вернувшиеся из stash ветки. */
+export type RestoredStash_Deserialize = {
+	branch: string,
+	hash: string,
+	conflict: boolean,
+	more: number | null,
+	message?: string | null,
+};
+
+/**  Изменения, вернувшиеся из stash ветки. */
+export type RestoredStash_Serialize = {
+	branch: string,
+	hash: string,
+	conflict: boolean,
+	more: number | null,
+	message: string | null,
+};
+
+/**  Результат `revertToPreview`. */
+export type RevertPreview = RevertPreview_Serialize | RevertPreview_Deserialize;
+
+/**  Результат `revertToPreview`. */
+export type RevertPreview_Deserialize = {
+	hash: string,
+	target: PreviewTarget,
+	branch?: string | null,
+	ancestor: boolean,
+	count: number | null,
+	commits: PreviewCommit[],
+	filesChanged: number | null,
+	insertions: number | null,
+	deletions: number | null,
+	identical: boolean,
+	dirtyCount: number | null,
+	collisions: string[],
+	pushedCount: number | null,
+	hasUpstream: boolean,
+};
+
+/**  Результат `revertToPreview`. */
+export type RevertPreview_Serialize = {
+	hash: string,
+	target: PreviewTarget,
+	branch: string | null,
+	ancestor: boolean,
+	count: number | null,
+	commits: PreviewCommit[],
+	filesChanged: number | null,
+	insertions: number | null,
+	deletions: number | null,
+	identical: boolean,
+	dirtyCount: number | null,
+	collisions: string[],
+	pushedCount: number | null,
+	hasUpstream: boolean,
+};
+
+/**  Параметры `revertTo`. */
+export type RevertTo = RevertTo_Serialize | RevertTo_Deserialize;
+
+/**  Параметры `revertTo`. */
+export type RevertTo_Deserialize = {
+	hash?: string | null,
+	message?: string | null,
+};
+
+/**  Параметры `revertTo`. */
+export type RevertTo_Serialize = {
+	hash: string | null,
+	message: string | null,
+};
+
+/**  Результат `revertTo`. */
+export type RevertedTo = RevertedTo_Serialize | RevertedTo_Deserialize;
+
+/**  Результат `revertTo`. */
+export type RevertedTo_Deserialize = {
+	hash: string,
+	from: string,
+	to: string,
+	subject: string,
+	count: number | null,
+	filesChanged: number | null,
+	branch?: string | null,
+};
+
+/**  Результат `revertTo`. */
+export type RevertedTo_Serialize = {
+	hash: string,
+	from: string,
+	to: string,
+	subject: string,
+	count: number | null,
+	filesChanged: number | null,
+	branch: string | null,
+};
+
+/**  Параметры `saveResolution`. */
+export type SaveResolution = SaveResolution_Serialize | SaveResolution_Deserialize;
+
+/**  Параметры `saveResolution`. */
+export type SaveResolution_Deserialize = {
+	path?: string | null,
+	content?: string | null,
+};
+
+/**  Параметры `saveResolution`. */
+export type SaveResolution_Serialize = {
+	path: string | null,
+	content: string | null,
+};
+
+/**  Параметры `searchChanges`. */
+export type SearchChanges = SearchChanges_Serialize | SearchChanges_Deserialize;
+
+/**  Параметры `searchChanges`. */
+export type SearchChanges_Deserialize = {
+	a?: string | null,
+	b?: string | null,
+	query?: string | null,
+	regex?: boolean,
+	caseSensitive?: boolean,
+};
+
+/**  Параметры `searchChanges`. */
+export type SearchChanges_Serialize = {
+	a: string | null,
+	b: string | null,
+	query: string | null,
+	regex: boolean,
+	caseSensitive: boolean,
+};
+
+/**  Параметры `searchHistory`. */
+export type SearchHistory = SearchHistory_Serialize | SearchHistory_Deserialize;
+
+/**  Параметры `searchHistory`. */
+export type SearchHistory_Deserialize = {
+	hashes?: string[] | null,
+	query?: string | null,
+	regex?: boolean,
+	caseSensitive?: boolean,
+};
+
+/**  Параметры `searchHistory`. */
+export type SearchHistory_Serialize = {
+	hashes: string[] | null,
+	query: string | null,
+	regex: boolean,
+	caseSensitive: boolean,
+};
+
+/**  Тип сервера. */
+export type ServerKind = "github" | "gitlab" | "gitea" | "bitbucket" | "other";
+
+/**  Подпись стороны. */
+export type Side = {
+	title: string,
+	sub: string,
+	hint: string,
+};
+
+/**  Кто есть «моё» и «их». */
+export type SideLabels = SideLabels_Serialize | SideLabels_Deserialize;
+
+/**  Кто есть «моё» и «их». */
+export type SideLabels_Deserialize = {
+	operation?: string | null,
+	ours: Side,
+	theirs: Side,
+	swapped?: boolean | null,
+};
+
+/**  Кто есть «моё» и «их». */
+export type SideLabels_Serialize = {
+	operation: string | null,
+	ours: Side,
+	theirs: Side,
+	swapped: boolean | null,
 };
 
 /**  Как прошёл запуск. */
@@ -211,6 +3745,146 @@ export type StartupStatus_Serialize = {
 	migrationError: GorynychError_Serialize | null,
 };
 
+/**  Запись stash. */
+export type Stash = Stash_Serialize | Stash_Deserialize;
+
+/**  Параметры `stashApplyAt`, `stashPopAt`, `stashDrop`. */
+export type StashAt = StashAt_Serialize | StashAt_Deserialize;
+
+/**  Параметры `stashApplyAt`, `stashPopAt`, `stashDrop`. */
+export type StashAt_Deserialize = {
+	id?: string | null,
+	hash?: string | null,
+};
+
+/**  Параметры `stashApplyAt`, `stashPopAt`, `stashDrop`. */
+export type StashAt_Serialize = {
+	id: string | null,
+	hash: string | null,
+};
+
+/**  `getStashDetails`. */
+export type StashDetails = StashDetails_Serialize | StashDetails_Deserialize;
+
+/**  `getStashDetails`. */
+export type StashDetails_Deserialize = {
+	hash: string,
+	base?: string | null,
+	untracked?: string | null,
+	files: CommitFile_Deserialize[],
+	date?: string | null,
+	author?: string | null,
+	subject: string,
+};
+
+/**  `getStashDetails`. */
+export type StashDetails_Serialize = {
+	hash: string,
+	base: string | null,
+	untracked: string | null,
+	files: CommitFile_Serialize[],
+	date: string | null,
+	author: string | null,
+	subject: string,
+};
+
+/**  Файл из списка файлов stash. */
+export type StashFile = StashFile_Serialize | StashFile_Deserialize;
+
+/**  Файл из списка файлов stash. */
+export type StashFile_Deserialize = {
+	path?: string | null,
+	oldPath?: string | null,
+	status?: string | null,
+	untracked?: boolean | null,
+};
+
+/**  Файл из списка файлов stash. */
+export type StashFile_Serialize = {
+	path: string | null,
+	oldPath: string | null,
+	status: string | null,
+	untracked: boolean | null,
+};
+
+/**  Результат `restoreFromStash`. */
+export type StashFilesRestored = {
+	files: number | null,
+	changed: number | null,
+	undoable: boolean,
+};
+
+/**  Результат `stashPop`. */
+export type StashPopped = {
+	hash: string,
+};
+
+/**  Параметры `stash`. */
+export type StashPush = StashPush_Serialize | StashPush_Deserialize;
+
+/**  Параметры `stash`. */
+export type StashPush_Deserialize = {
+	message?: string | null,
+};
+
+/**  Параметры `stash`. */
+export type StashPush_Serialize = {
+	message: string | null,
+};
+
+/**  Результат `stash`. */
+export type StashPushed = {
+	hash: string,
+	files: number | null,
+	duplicates: number | null,
+};
+
+/**  Найденный stash. */
+export type StashRef = {
+	id: string,
+	hash: string,
+	message: string,
+};
+
+/**  Запись stash. */
+export type Stash_Deserialize = {
+	id: string,
+	hash: string,
+	message: string,
+	date: string,
+	base?: string | null,
+	untracked?: string | null,
+};
+
+/**  Запись stash. */
+export type Stash_Serialize = {
+	id: string,
+	hash: string,
+	message: string,
+	date: string,
+	base: string | null,
+	untracked: string | null,
+};
+
+/**  Ответ `repo:status`. */
+export type StatusWithCi = StatusWithCi_Serialize | StatusWithCi_Deserialize;
+
+/**  Ответ `repo:status`. */
+export type StatusWithCi_Deserialize = {
+	ci: CiSystem[],
+} & QuickStatus_Deserialize;
+
+/**  Ответ `repo:status`. */
+export type StatusWithCi_Serialize = {
+	ci: CiSystem[],
+} & QuickStatus_Serialize;
+
+/**  Что сделано с файлом. */
+export type SyncedFile = {
+	file: string,
+	action: string,
+};
+
 /**  Открытые вкладки. */
 export type TabsState = TabsState_Serialize | TabsState_Deserialize;
 
@@ -224,6 +3898,128 @@ export type TabsState_Deserialize = {
 export type TabsState_Serialize = {
 	tabs: string[],
 	active: string | null,
+};
+
+/**  Тег. */
+export type Tag = {
+	name: string,
+	hash: string,
+};
+
+/**  Результат `createTag` и `deleteTag`. */
+export type TagInfo = TagInfo_Serialize | TagInfo_Deserialize;
+
+/**  Результат `createTag` и `deleteTag`. */
+export type TagInfo_Deserialize = {
+	name: string,
+	hash: string,
+	message?: string | null,
+};
+
+/**  Результат `createTag` и `deleteTag`. */
+export type TagInfo_Serialize = {
+	name: string,
+	hash: string,
+	message: string | null,
+};
+
+/**  Результат diff в формате разбора `git diff`. */
+export type TextDiff = TextDiff_Serialize | TextDiff_Deserialize;
+
+/**  Результат diff в формате разбора `git diff`. */
+export type TextDiff_Deserialize = {
+	hunks: Hunk_Deserialize[],
+	additions: number,
+	deletions: number,
+	binary: boolean,
+	truncated: boolean,
+};
+
+/**  Результат diff в формате разбора `git diff`. */
+export type TextDiff_Serialize = {
+	hunks: Hunk_Serialize[],
+	additions: number,
+	deletions: number,
+	binary: boolean,
+	truncated: boolean,
+};
+
+/**  Вход репозитория в статусе токена. */
+export type TokenLogin = TokenLogin_Serialize | TokenLogin_Deserialize;
+
+/**  Вход репозитория в статусе токена. */
+export type TokenLogin_Deserialize = {
+	method: AuthMethod,
+	username?: string | null,
+	shared: boolean,
+	viaApiToken: boolean,
+};
+
+/**  Вход репозитория в статусе токена. */
+export type TokenLogin_Serialize = {
+	method: AuthMethod,
+	username: string | null,
+	shared: boolean,
+	viaApiToken: boolean,
+};
+
+/**  Чем авторизован API: без секретов. */
+export type TokenStatus = TokenStatus_Serialize | TokenStatus_Deserialize;
+
+/**  Чем авторизован API: без секретов. */
+export type TokenStatus_Deserialize = {
+	configured: boolean,
+	source?: string | null,
+	pending?: boolean | null,
+	user?: LegacyCiUser_Deserialize | null,
+	scopes?: string[] | null,
+	expiresAt?: string | null,
+	savedAt?: string | null,
+	login?: TokenLogin_Deserialize | null,
+	repoLogin?: LoginProblem_Deserialize | null,
+	unreadable?: boolean | null,
+	repoKey?: string | null,
+};
+
+/**  Чем авторизован API: без секретов. */
+export type TokenStatus_Serialize = {
+	configured: boolean,
+	source: string | null,
+	pending: boolean | null,
+	user: LegacyCiUser_Serialize | null,
+	scopes: string[] | null,
+	expiresAt: string | null,
+	savedAt: string | null,
+	login: TokenLogin_Serialize | null,
+	repoLogin: LoginProblem_Serialize | null,
+	unreadable: boolean | null,
+	repoKey: string | null,
+};
+
+/**  Параметры `updateBranch`. */
+export type UpdateBranch = UpdateBranch_Serialize | UpdateBranch_Deserialize;
+
+/**  Параметры `updateBranch`. */
+export type UpdateBranch_Deserialize = {
+	branch?: string | null,
+};
+
+/**  Параметры `updateBranch`. */
+export type UpdateBranch_Serialize = {
+	branch: string | null,
+};
+
+/**  Параметры `repo:watch`. */
+export type WatchOptions = WatchOptions_Serialize | WatchOptions_Deserialize;
+
+/**  Параметры `repo:watch`. */
+export type WatchOptions_Deserialize = {
+	syncIndex?: boolean,
+};
+
+/**  Параметры `repo:watch`. */
+export type WatchOptions_Serialize = {
+	syncIndex: boolean,
 };
 
 /**  Окно получило фокус. */
@@ -265,6 +4061,33 @@ export type WipConflict_Serialize = {
 	detached: boolean,
 };
 
+/**  Файл рабочей копии. */
+export type WipEntry = WipEntry_Serialize | WipEntry_Deserialize;
+
+/**  Файл рабочей копии. */
+export type WipEntry_Deserialize = {
+	path: string,
+	status: string,
+	staged: boolean,
+	untracked?: boolean | null,
+	oldPath?: string | null,
+	additions?: number | null,
+	deletions?: number | null,
+	moved?: boolean | null,
+};
+
+/**  Файл рабочей копии. */
+export type WipEntry_Serialize = {
+	path: string,
+	status: string,
+	staged: boolean,
+	untracked: boolean | null,
+	oldPath: string | null,
+	additions: number | null,
+	deletions: number | null,
+	moved: boolean | null,
+};
+
 /**  Файл из подробностей `WIP_CONFLICT`. */
 export type WipFile = {
 	path: string,
@@ -272,6 +4095,15 @@ export type WipFile = {
 	untracked: boolean,
 	staged: boolean,
 };
+
+/**  Значение, как результат `doc.toJS()`. */
+export type YamlValue = YamlValue_Serialize | YamlValue_Deserialize;
+
+/**  Значение, как результат `doc.toJS()`. */
+export type YamlValue_Deserialize = null | boolean | number | null | string | YamlValue_Deserialize[] | JsMap_Deserialize;
+
+/**  Значение, как результат `doc.toJS()`. */
+export type YamlValue_Serialize = null | boolean | number | null | string | YamlValue_Serialize[] | JsMap_Serialize;
 
 /* Tauri Specta runtime */
 async function typedError<T, E>(result: Promise<T>): Promise<{ status: "ok"; data: T } | { status: "error"; error: E }> {
