@@ -108,6 +108,9 @@ const MIGRATIONS: &[&str] = &[r#"
         saved_at TEXT,
         PRIMARY KEY (scope, key)
     ) WITHOUT ROWID;
+"#, r#"
+    -- Сведения о старом токене без секрета (JSON): пользователь и права нужны API и окну авторизации.
+    ALTER TABLE legacy_ci_tokens ADD COLUMN meta TEXT;
 "#];
 
 /// Ошибка хранилища для UI.

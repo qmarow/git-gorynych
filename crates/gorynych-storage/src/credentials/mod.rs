@@ -95,7 +95,8 @@ impl ServerKind {
         }
     }
 
-    fn as_str(self) -> &'static str {
+    /// Имя типа.
+    pub fn as_str(self) -> &'static str {
         match self {
             Self::Github => "github",
             Self::Gitlab => "gitlab",
@@ -348,6 +349,37 @@ impl fmt::Debug for LegacySecret {
 pub struct LegacyCiToken {
     pub value: Option<String>,
     pub saved_at: Option<String>,
+    pub meta: LegacyCiMeta,
+}
+
+/// Пользователь старого токена CI/CD.
+#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize, specta::Type)]
+#[serde(default, rename_all = "camelCase")]
+pub struct LegacyCiUser {
+    pub username: Option<String>,
+    pub name: Option<String>,
+    pub avatar_url: Option<String>,
+}
+
+/// Сведения о старом токене CI/CD без секрета: поля записи `gitlab-tokens.json`.
+#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(default, rename_all = "camelCase")]
+pub struct LegacyCiMeta {
+    pub url: Option<String>,
+    pub base: Option<String>,
+    pub path: Option<String>,
+    pub user: Option<LegacyCiUser>,
+    pub scopes: Option<Vec<String>>,
+    pub expires_at: Option<String>,
+    pub token_name: Option<String>,
+}
+
+/// Запись списка старых токенов CI/CD.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct LegacyCiEntry {
+    pub scope: LoginScope,
+    pub key: String,
+    pub token: LegacyCiToken,
 }
 
 impl fmt::Debug for LegacyCiToken {
@@ -1254,7 +1286,7 @@ impl Credentials {
     }
 
     /// Переносит старый токен CI/CD из `gitlab-tokens.json`. Существующий не перезаписывается. Возвращает, добавлен ли он.
-    pub fn import_legacy_ci_token(&self, scope: LoginScope, key: &str, token: &LegacySecret, saved_at: Option<&str>) -> Result<bool> {
+    pub fn import_legacy_ci_token(&self, scope: LoginScope, key: &str, token: &LegacySecret, saved_at: Option<&str>, meta: &LegacyCiMeta) -> Result<bool> {
         let _guard = self.lock();
         let exists: bool = self.db.with(|conn| {
             conn.query_row(
@@ -1274,8 +1306,8 @@ impl Credentials {
         };
         let inserted = self.db.with(|conn| {
             conn.execute(
-                "INSERT INTO legacy_ci_tokens (scope, key, account, saved_at) VALUES (?1, ?2, ?3, ?4)",
-                params![scope.as_str(), key, account, saved_at],
+                "INSERT INTO legacy_ci_tokens (scope, key, account, saved_at, meta) VALUES (?1, ?2, ?3, ?4, ?5)",
+                params![scope.as_str(), key, account, saved_at, serde_json::to_string(meta).unwrap_or_default()],
             )
         });
         if let Err(error) = inserted {
@@ -1287,15 +1319,41 @@ impl Credentials {
 
     /// Старый токен CI/CD. `value: None` — запись есть, но прочитать её нельзя (`unreadable` в `authOptions`).
     pub fn legacy_ci_token(&self, scope: LoginScope, key: &str) -> Result<Option<LegacyCiToken>> {
-        let row: Option<(String, Option<String>)> = self.db.with(|conn| {
+        let row: Option<(String, Option<String>, Option<String>)> = self.db.with(|conn| {
             conn.query_row(
-                "SELECT account, saved_at FROM legacy_ci_tokens WHERE scope = ?1 AND key = ?2",
+                "SELECT account, saved_at, meta FROM legacy_ci_tokens WHERE scope = ?1 AND key = ?2",
                 params![scope.as_str(), key],
-                |row| Ok((row.get(0)?, row.get(1)?)),
+                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
             )
             .optional()
         })?;
-        Ok(row.map(|(account, saved_at)| LegacyCiToken { value: self.secrets.get(&account), saved_at }))
+        Ok(row.map(|(account, saved_at, meta)| self.legacy_ci_row(&account, saved_at, meta)))
+    }
+
+    fn legacy_ci_row(&self, account: &str, saved_at: Option<String>, meta: Option<String>) -> LegacyCiToken {
+        LegacyCiToken {
+            value: self.secrets.get(account),
+            saved_at,
+            meta: meta.and_then(|text| serde_json::from_str(&text).ok()).unwrap_or_default(),
+        }
+    }
+
+    /// Все старые токены CI/CD, в порядке ключей.
+    pub fn list_legacy_ci_tokens(&self) -> Result<Vec<LegacyCiEntry>> {
+        type Row = (String, String, String, Option<String>, Option<String>);
+        let rows: Vec<Row> = self.db.with(|conn| {
+            conn.prepare_cached("SELECT scope, key, account, saved_at, meta FROM legacy_ci_tokens ORDER BY scope, key")?
+                .query_map([], |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?, row.get(4)?)))?
+                .collect()
+        })?;
+        Ok(rows
+            .into_iter()
+            .map(|(scope, key, account, saved_at, meta)| LegacyCiEntry {
+                scope: if scope == LoginScope::Host.as_str() { LoginScope::Host } else { LoginScope::Repo },
+                key,
+                token: self.legacy_ci_row(&account, saved_at, meta),
+            })
+            .collect())
     }
 
     /// Удаляет старый токен CI/CD: `migrateLegacy` перенёс его во вход репозитория.

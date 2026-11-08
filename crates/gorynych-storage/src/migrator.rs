@@ -31,7 +31,7 @@ use gorynych_core::i18n::Language;
 use serde::Serialize;
 use serde_json::Value;
 
-use crate::credentials::{AuthMethod, Credentials, LegacyLogin, LegacySecret, LoginScope, ServerKind};
+use crate::credentials::{AuthMethod, Credentials, LegacyCiMeta, LegacyLogin, LegacySecret, LoginScope, ServerKind};
 use crate::custom_actions::CustomAction;
 use crate::db::{Db, storage_error};
 use crate::legacy_crypto::LegacyDecryptor;
@@ -340,10 +340,11 @@ impl Migration<'_> {
             for (key, entry) in object(&data, section) {
                 let mut secret = self.secret_of(entry);
                 let saved_at = text(entry, "savedAt");
-                let added = match self.creds.import_legacy_ci_token(scope, key, &secret, saved_at) {
+                let meta: LegacyCiMeta = serde_json::from_value(entry.clone()).unwrap_or_default();
+                let added = match self.creds.import_legacy_ci_token(scope, key, &secret, saved_at, &meta) {
                     Err(error) if error.code == ErrorCode::NoEncryption => {
                         secret = LegacySecret::Unreadable;
-                        self.creds.import_legacy_ci_token(scope, key, &secret, saved_at)?
+                        self.creds.import_legacy_ci_token(scope, key, &secret, saved_at, &meta)?
                     }
                     other => other?,
                 };
