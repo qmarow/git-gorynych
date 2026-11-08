@@ -33,6 +33,14 @@ fn run(dir: &Path, args: &[&str]) {
 struct RealRepo<'a>(&'a Path);
 
 impl RealRepo<'_> {
+    fn plain(&self, args: &[&str]) -> Result<String> {
+        let output = git(self.0, args);
+        if output.status.success() {
+            return Ok(String::from_utf8_lossy(&output.stdout).into_owned());
+        }
+        Err(GorynychError::new(ErrorCode::Git, "git"))
+    }
+
     fn with_paths(&self, base: &[&str], paths: &[String]) -> Result<String> {
         let mut args: Vec<&str> = base.to_vec();
         args.push("--");
@@ -57,6 +65,22 @@ impl RepoView for RealRepo<'_> {
     fn ci_status(&self, paths: &[String]) -> Result<String> {
         let args: Vec<&str> = CI_STATUS_ARGS.iter().copied().chain([CI_STATUS_UNTRACKED]).collect();
         self.with_paths(&args, paths)
+    }
+
+    fn ls_files(&self) -> Result<String> {
+        self.plain(&gorynych_ci_linter::load::LS_FILES_ARGS)
+    }
+
+    fn refs(&self) -> Result<String> {
+        self.plain(&gorynych_ci_linter::load::REFS_ARGS)
+    }
+
+    fn origin_head(&self) -> Result<String> {
+        self.plain(&gorynych_ci_linter::load::ORIGIN_HEAD_ARGS)
+    }
+
+    fn verify_branch(&self, branch: &str) -> Result<String> {
+        self.plain(&["rev-parse", "--verify", "--quiet", &format!("refs/heads/{branch}")])
     }
 }
 
@@ -137,6 +161,18 @@ fn git_failure_does_not_break_loading() {
         fn ci_status(&self, _paths: &[String]) -> Result<String> {
             Err(GorynychError::new(ErrorCode::Git, "git"))
         }
+        fn ls_files(&self) -> Result<String> {
+            Err(GorynychError::new(ErrorCode::Git, "git"))
+        }
+        fn refs(&self) -> Result<String> {
+            Err(GorynychError::new(ErrorCode::Git, "git"))
+        }
+        fn origin_head(&self) -> Result<String> {
+            Err(GorynychError::new(ErrorCode::Git, "git"))
+        }
+        fn verify_branch(&self, _branch: &str) -> Result<String> {
+            Err(GorynychError::new(ErrorCode::Git, "git"))
+        }
     }
     let temp = tempfile::tempdir().unwrap();
     fs::write(temp.path().join(".drone.yml"), "a: 1\n").unwrap();
@@ -166,6 +202,18 @@ impl RepoView for Broken2 {
         Ok(String::new())
     }
     fn ci_status(&self, _paths: &[String]) -> Result<String> {
+        Ok(String::new())
+    }
+    fn ls_files(&self) -> Result<String> {
+        Ok(String::new())
+    }
+    fn refs(&self) -> Result<String> {
+        Ok(String::new())
+    }
+    fn origin_head(&self) -> Result<String> {
+        Ok(String::new())
+    }
+    fn verify_branch(&self, _branch: &str) -> Result<String> {
         Ok(String::new())
     }
 }

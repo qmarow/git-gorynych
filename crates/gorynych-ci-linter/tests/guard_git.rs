@@ -46,6 +46,22 @@ impl RepoView for RealRepo<'_> {
     fn ci_status(&self, _paths: &[String]) -> Result<String> {
         unreachable!("Guard это не вызывает")
     }
+
+    fn ls_files(&self) -> Result<String> {
+        Ok(String::new())
+    }
+
+    fn refs(&self) -> Result<String> {
+        Ok(String::new())
+    }
+
+    fn origin_head(&self) -> Result<String> {
+        Ok(String::new())
+    }
+
+    fn verify_branch(&self, _branch: &str) -> Result<String> {
+        Ok(String::new())
+    }
 }
 
 struct FailingRepo(&'static str);
@@ -61,6 +77,22 @@ impl RepoView for FailingRepo {
 
     fn ci_status(&self, _paths: &[String]) -> Result<String> {
         unreachable!("Guard это не вызывает")
+    }
+
+    fn ls_files(&self) -> Result<String> {
+        Ok(String::new())
+    }
+
+    fn refs(&self) -> Result<String> {
+        Ok(String::new())
+    }
+
+    fn origin_head(&self) -> Result<String> {
+        Ok(String::new())
+    }
+
+    fn verify_branch(&self, _branch: &str) -> Result<String> {
+        Ok(String::new())
     }
 }
 

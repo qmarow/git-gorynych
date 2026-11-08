@@ -109,9 +109,64 @@ pub fn locale_cmp(a: &str, b: &str) -> Ordering {
     })
 }
 
+/// Сравнение как `a.localeCompare(b, undefined, { numeric: true })`: цепочки цифр сравниваются как числа.
+pub fn locale_cmp_numeric(a: &str, b: &str) -> Ordering {
+    fn digits(chars: &[char], start: usize) -> usize {
+        chars[start..].iter().take_while(|c| c.is_ascii_digit()).count()
+    }
+    let (left, right): (Vec<char>, Vec<char>) = (a.chars().collect(), b.chars().collect());
+    let (mut i, mut j) = (0, 0);
+    while i < left.len() && j < right.len() {
+        let (run_a, run_b) = (digits(&left, i), digits(&right, j));
+        if run_a > 0 && run_b > 0 {
+            let strip = |run: &[char]| run.iter().skip_while(|c| **c == '0').copied().collect::<Vec<char>>();
+            let (x, y) = (strip(&left[i..i + run_a]), strip(&right[j..j + run_b]));
+            let by_value = x.len().cmp(&y.len()).then_with(|| x.cmp(&y));
+            if by_value != Ordering::Equal {
+                return by_value;
+            }
+            i += run_a;
+            j += run_b;
+            continue;
+        }
+        let by_rank = primary_rank(left[i]).cmp(&primary_rank(right[j]));
+        if by_rank != Ordering::Equal {
+            return by_rank;
+        }
+        i += 1;
+        j += 1;
+    }
+    (left.len() - i).cmp(&(right.len() - j)).then_with(|| locale_cmp(a, b))
+}
+
+/// Аналог `encodeURIComponent`.
+pub fn encode_uri_component(text: &str) -> String {
+    let mut out = String::with_capacity(text.len());
+    for byte in text.bytes() {
+        if byte.is_ascii_alphanumeric() || b"-_.!~*'()".contains(&byte) {
+            out.push(byte as char);
+        } else {
+            out.push_str(&format!("%{byte:02X}"));
+        }
+    }
+    out
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn numeric_compare_orders_numbers_by_value() {
+        let mut names = vec!["job 10", "job 9", "Job 2", "job", "a01", "a1b", "a2"];
+        names.sort_by(|a, b| locale_cmp_numeric(a, b));
+        assert_eq!(names, ["a01", "a1b", "a2", "job", "Job 2", "job 9", "job 10"]);
+    }
+
+    #[test]
+    fn encode_uri_component_matches_js() {
+        assert_eq!(encode_uri_component("group/проект a+b!~*'()-_."), "group%2F%D0%BF%D1%80%D0%BE%D0%B5%D0%BA%D1%82%20a%2Bb!~*'()-_.");
+    }
 
     #[test]
     fn json_quote_matches_json_stringify() {

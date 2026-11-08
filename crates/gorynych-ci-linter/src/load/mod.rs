@@ -7,13 +7,17 @@
 //!   диске, `draft` — есть ли черновик. Включения ищутся на диске, поэтому черновик файла, которого там нет, через `include` не подключится.
 //! - История: `git log -n 50` по файлам всех систем и загруженным файлам; ошибка git — пустой список. `dirty`: `status --porcelain -z`, записи короче
 //!   4 единиц пропускаются, статус пустой — `M`.
-//! - Проверка конфигурации (`check`) переносится отдельно: [`CiLoaded::gitlab`] — то, что ей нужно от загрузчика GitLab.
+//! - Проверка конфигурации: [`crate::check`]. Предпросмотр тоже её выполняет, поэтому [`RepoView`] нужен и ему. История и `dirty` при этом не запрашиваются.
 
 mod actions;
-mod common;
+pub(crate) mod common;
 pub mod gitlab;
 mod jenkins;
 pub mod model;
+/// Работа с текстом по единицам UTF-16, общая с проверкой Jenkins.
+pub(crate) mod jenkins_text {
+    pub(crate) use super::jenkins::{index_of, text_of, units};
+}
 mod pipelines;
 
 use std::collections::HashMap;
@@ -33,6 +37,12 @@ const FIELD_SEPARATOR: char = '\u{1f}';
 pub const CI_LOG_ARGS: [&str; 4] = ["log", "-n", "50", "--format=%H\u{1f}%s\u{1f}%an\u{1f}%aI"];
 /// Аргументы `git status` для [`RepoView::ci_status`].
 pub const CI_STATUS_ARGS: [&str; 3] = ["status", "--porcelain", "-z"];
+/// Файлы индекса с режимами.
+pub const LS_FILES_ARGS: [&str; 3] = ["ls-files", "-s", "-z"];
+/// Локальные и удалённые ветки.
+pub const REFS_ARGS: [&str; 4] = ["for-each-ref", "--format=%(refname)", "refs/heads", "refs/remotes"];
+/// Ветка по умолчанию на сервере.
+pub const ORIGIN_HEAD_ARGS: [&str; 4] = ["symbolic-ref", "--quiet", "--short", "refs/remotes/origin/HEAD"];
 /// Третий аргумент `git status`: все неотслеживаемые файлы.
 pub const CI_STATUS_UNTRACKED: &str = "--untracked-files=all";
 
@@ -83,7 +93,7 @@ fn parse_dirty(output: &str) -> Vec<CiDirtyFile> {
         .collect()
 }
 
-fn load(root: &Path, requested: &str, language: Language, drafts: Option<&HashMap<String, String>>, repo: Option<&dyn RepoView>) -> CiLoaded {
+fn load(root: &Path, requested: &str, language: Language, drafts: Option<&HashMap<String, String>>, repo: &dyn RepoView, with_history: bool) -> CiLoaded {
     let systems = detect_ci(root);
     let Some(system) = systems.iter().find(|system| system.files.iter().any(|file| file == requested)).or(systems.first()) else {
         return CiLoaded { load: CiLoad { systems, current: None }, gitlab: None };
@@ -96,38 +106,38 @@ fn load(root: &Path, requested: &str, language: Language, drafts: Option<&HashMa
         (CiConfig { errors: vec![error], ..CiConfig::default() }, None)
     });
 
-    let (history, dirty) = match repo {
-        None => (Vec::new(), Vec::new()),
-        Some(repo) => {
-            let mut tracked: Vec<String> = Vec::new();
-            for path in systems.iter().flat_map(|system| system.files.iter()).chain(config.files.iter().map(|file| &file.path)) {
-                if !tracked.contains(path) {
-                    tracked.push(path.clone());
-                }
-            }
-            if tracked.is_empty() {
-                (Vec::new(), Vec::new())
-            } else {
-                (parse_history(&repo.ci_log(&tracked).unwrap_or_default()), parse_dirty(&repo.ci_status(&tracked).unwrap_or_default()))
+    let (history, dirty) = if with_history {
+        let mut tracked: Vec<String> = Vec::new();
+        for path in systems.iter().flat_map(|system| system.files.iter()).chain(config.files.iter().map(|file| &file.path)) {
+            if !tracked.contains(path) {
+                tracked.push(path.clone());
             }
         }
+        if tracked.is_empty() {
+            (Vec::new(), Vec::new())
+        } else {
+            (parse_history(&repo.ci_log(&tracked).unwrap_or_default()), parse_dirty(&repo.ci_status(&tracked).unwrap_or_default()))
+        }
+    } else {
+        (Vec::new(), Vec::new())
     };
     for item in &mut config.files {
         item.hash = crate::edit::file::read_file(root, &item.path, language).ok().and_then(|file| file.hash);
         item.draft = drafts.is_some_and(|drafts| drafts.contains_key(&norm_rel(&item.path)));
     }
+    let check = crate::check::check_ci(root, &system.id, &config, gitlab.as_ref(), repo, language);
     let job_count = config.pipelines.iter().flat_map(|pipeline| &pipeline.stages).map(|stage| stage.jobs.len()).sum::<usize>() as u32;
-    let current = CiCurrent { system: system.id, title: system.title, file, job_count, config, history, dirty };
+    let current = CiCurrent { system: system.id, title: system.title, file, job_count, config, history, dirty, check };
     CiLoaded { load: CiLoad { systems, current: Some(current) }, gitlab }
 }
 
 /// `loadCi`: разбор файла CI и подключённых к нему локальных файлов.
 pub fn load_ci(root: &Path, requested: &str, language: Language, repo: &dyn RepoView) -> CiLoaded {
-    load(root, requested, language, None, Some(repo))
+    load(root, requested, language, None, repo, true)
 }
 
 /// `previewCi`: разбор с черновиками вместо файлов на диске, для живого предпросмотра.
-pub fn preview_ci(root: &Path, requested: &str, language: Language, drafts: &HashMap<String, String>) -> CiLoaded {
+pub fn preview_ci(root: &Path, requested: &str, language: Language, drafts: &HashMap<String, String>, repo: &dyn RepoView) -> CiLoaded {
     let normalized: HashMap<String, String> = drafts.iter().map(|(path, text)| (norm_rel(path), text.clone())).collect();
-    load(root, requested, language, Some(&normalized), None)
+    load(root, requested, language, Some(&normalized), repo, false)
 }

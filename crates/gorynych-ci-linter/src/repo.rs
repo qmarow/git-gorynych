@@ -13,4 +13,16 @@ pub trait RepoView {
 
     /// Вывод `git` с аргументами [`crate::load::CI_STATUS_ARGS`] и [`crate::load::CI_STATUS_UNTRACKED`], затем `--` и `paths`.
     fn ci_status(&self, paths: &[String]) -> Result<String>;
+
+    /// Вывод `git` с аргументами [`crate::load::LS_FILES_ARGS`].
+    fn ls_files(&self) -> Result<String>;
+
+    /// Вывод `git` с аргументами [`crate::load::REFS_ARGS`].
+    fn refs(&self) -> Result<String>;
+
+    /// Вывод `git` с аргументами [`crate::load::ORIGIN_HEAD_ARGS`].
+    fn origin_head(&self) -> Result<String>;
+
+    /// Вывод `git rev-parse --verify --quiet refs/heads/<branch>`.
+    fn verify_branch(&self, branch: &str) -> Result<String>;
 }

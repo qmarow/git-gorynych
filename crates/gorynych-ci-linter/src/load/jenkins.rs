@@ -32,15 +32,15 @@ static DECLARATIVE: LazyLock<JsRegex> = LazyLock::new(|| regex(r"^\s*pipeline\s*
 static SCRIPTED: LazyLock<JsRegex> = LazyLock::new(|| regex(r"\bnode\s*[({]", ""));
 static LIBRARY: LazyLock<JsRegex> = LazyLock::new(|| regex(r#"@Library\(\s*['"]([^'"]+)['"]"#, ""));
 
-fn units(text: &str) -> Vec<u16> {
+pub(crate) fn units(text: &str) -> Vec<u16> {
     text.encode_utf16().collect()
 }
 
-fn text_of(units: &[u16]) -> String {
+pub(crate) fn text_of(units: &[u16]) -> String {
     String::from_utf16_lossy(units)
 }
 
-fn index_of(haystack: &[u16], needle: &[u16], from: usize) -> Option<usize> {
+pub(crate) fn index_of(haystack: &[u16], needle: &[u16], from: usize) -> Option<usize> {
     if from > haystack.len() {
         return None;
     }

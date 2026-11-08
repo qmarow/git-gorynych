@@ -189,7 +189,7 @@ impl GitlabModel {
 }
 
 /// `target?.[key]` для значения любого типа.
-fn property(target: &Value, key: &str) -> Option<Value> {
+pub(crate) fn property(target: &Value, key: &str) -> Option<Value> {
     match target {
         Value::Map(map) => map.get(key).cloned(),
         Value::Seq(items) if key == "length" => Some(Value::Number(items.len() as f64)),

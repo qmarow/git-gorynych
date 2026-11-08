@@ -10,9 +10,11 @@ use std::path::Path;
 use std::sync::LazyLock;
 
 use gorynych_ci_linter::load::preview_ci;
+use gorynych_ci_linter::repo::RepoView;
 use gorynych_ci_linter::yaml::{JsMap, Value};
 use gorynych_ci_linter::yaml_write::to_yaml;
 use gorynych_core::Language;
+use gorynych_core::error::Result;
 use serde_json::{Value as Json, json};
 
 static FIXTURE: LazyLock<Json> =
@@ -116,6 +118,33 @@ fn decode_base64(text: &str) -> Vec<u8> {
     out
 }
 
+/// Папка не репозиторий: все команды git дают пустой вывод, как `.catch(() => '')` в 1.x.
+struct NoRepo;
+
+impl RepoView for NoRepo {
+    fn staged_diff(&self) -> Result<String> {
+        Ok(String::new())
+    }
+    fn ci_log(&self, _paths: &[String]) -> Result<String> {
+        Ok(String::new())
+    }
+    fn ci_status(&self, _paths: &[String]) -> Result<String> {
+        Ok(String::new())
+    }
+    fn ls_files(&self) -> Result<String> {
+        Ok(String::new())
+    }
+    fn refs(&self) -> Result<String> {
+        Ok(String::new())
+    }
+    fn origin_head(&self) -> Result<String> {
+        Ok(String::new())
+    }
+    fn verify_branch(&self, _branch: &str) -> Result<String> {
+        Ok(String::new())
+    }
+}
+
 fn run_case(case: &Json) -> Option<String> {
     let name = case["name"].as_str().unwrap();
     let temp = tempfile::tempdir().unwrap();
@@ -128,8 +157,12 @@ fn run_case(case: &Json) -> Option<String> {
         .and_then(Json::as_object)
         .map(|map| map.iter().map(|(key, value)| (key.clone(), value.as_str().unwrap().to_owned())).collect())
         .unwrap_or_default();
-    let loaded = preview_ci(&repo, case["request"].as_str().unwrap_or_default(), language, &drafts);
+    let loaded = preview_ci(&repo, case["request"].as_str().unwrap_or_default(), language, &drafts, &NoRepo);
     let mut actual = serde_json::to_value(&loaded.load).unwrap();
+    // Проверка сверяется в check_parity.rs
+    if let Some(current) = actual.get_mut("current").and_then(Json::as_object_mut) {
+        current.remove("check");
+    }
     if case["dropFileText"] == json!(true) {
         for file in actual["current"]["files"].as_array_mut().unwrap() {
             if file["text"].as_str().unwrap().len() > 1000 {

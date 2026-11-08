@@ -11,7 +11,7 @@ const path = require('node:path');
 const root = path.resolve(__dirname, '../../../..');
 const YAML = require(path.join(root, 'electron/vendor/yaml.cjs'));
 const checkPath = require.resolve(path.join(root, 'electron/ciCheck.cjs'));
-require.cache[checkPath] = { id: checkPath, filename: checkPath, loaded: true, exports: { checkCi: async () => ({}) } };
+if (!globalThis.__GORYNYCH_REAL_CHECK) require.cache[checkPath] = { id: checkPath, filename: checkPath, loaded: true, exports: { checkCi: async () => ({}) } };
 const { previewCi } = require(path.join(root, 'electron/ci.cjs'));
 const { setLanguage } = require(path.join(root, 'electron/i18n.cjs'));
 
@@ -677,7 +677,11 @@ async function main() {
   console.log(`случаев ${cases.length}, подмен ${mutated.length} из ${mutations.length}, stringify ${stringify.length}`);
 }
 
-main().catch((error) => {
-  console.error(error);
-  process.exit(1);
-});
+if (require.main === module) {
+  main().catch((error) => {
+    console.error(error);
+    process.exit(1);
+  });
+}
+
+module.exports = { CASES, BASES, ODD, mutationCases, writeFiles, previewCi, setLanguage, YAML, root };

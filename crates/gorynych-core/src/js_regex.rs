@@ -153,3 +153,42 @@ impl JsRegex {
         self.find(&text.encode_utf16().collect::<Vec<_>>()).is_some()
     }
 }
+
+/* ---------- Удобства в форме строковых методов JS ---------- */
+
+impl JsRegex {
+    /// Как `re.test(text)`.
+    pub fn test(&self, text: &str) -> bool {
+        self.is_match(text)
+    }
+
+    /// Как `re.exec(text)`: группы строками.
+    pub fn exec(&self, text: &str) -> Option<Vec<Option<String>>> {
+        let units: Vec<u16> = text.encode_utf16().collect();
+        self.captures(&units).map(|groups| groups_to_text(&units, &groups))
+    }
+
+    /// Как `text.matchAll(re)`: группы строками.
+    pub fn match_all(&self, text: &str) -> Vec<Vec<Option<String>>> {
+        let units: Vec<u16> = text.encode_utf16().collect();
+        self.captures_all(&units).iter().map(|groups| groups_to_text(&units, groups)).collect()
+    }
+
+    /// Как `text.replace(re_g, with)`: `with` без подстановок.
+    pub fn replace_all(&self, text: &str, with: &str) -> String {
+        let units: Vec<u16> = text.encode_utf16().collect();
+        let mut out = String::with_capacity(text.len());
+        let mut last = 0;
+        for range in self.find_all(&units) {
+            out.push_str(&String::from_utf16_lossy(&units[last..range.start]));
+            out.push_str(with);
+            last = range.end;
+        }
+        out.push_str(&String::from_utf16_lossy(&units[last..]));
+        out
+    }
+}
+
+fn groups_to_text(units: &[u16], groups: &[Option<std::ops::Range<usize>>]) -> Vec<Option<String>> {
+    groups.iter().map(|group| group.clone().map(|range| String::from_utf16_lossy(&units[range]))).collect()
+}

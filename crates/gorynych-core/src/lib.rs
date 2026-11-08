@@ -4,6 +4,7 @@
 pub mod error;
 pub mod i18n;
 pub mod js;
+pub mod js_regex;
 pub mod line_diff;
 pub mod paths;
 

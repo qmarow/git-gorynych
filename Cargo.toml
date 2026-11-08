@@ -17,23 +17,33 @@ gorynych-ci-linter = { path = "crates/gorynych-ci-linter" }
 gorynych-cicd = { path = "crates/gorynych-cicd" }
 
 aes-gcm = "0.11"
+async-trait = "0.1"
 base64 = "0.23"
+chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
+# Sealed box для секретов GitHub: совместим с libsodium.
+crypto_box = { version = "0.9", features = ["seal"] }
 fluent-bundle = "0.16"
+futures-util = { version = "0.3", default-features = false, features = ["alloc"] }
 getrandom = "0.4"
-indexmap = "2"
+indexmap = { version = "2", features = ["serde"] }
 interprocess = "2"
 keyring = "4"
+notify = "8"
 # Синтаксис и семантика регулярных выражений ECMAScript: правила пользователя написаны для JS.
 regress = { version = "0.12", default-features = false, features = ["std", "utf16"] }
 regex = "1"
+# rustls с провайдером ring: провайдер по умолчанию aws-lc требует для сборки cmake и nasm. Сертификаты — из хранилища ОС.
+reqwest = { version = "0.13", default-features = false, features = ["charset", "http2", "rustls-no-provider", "system-proxy"] }
+rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12"] }
 rusqlite = { version = "0.41", features = ["bundled"] }
 rusty-leveldb = "4"
 saphyr-parser = "0.3"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 sha1 = "0.11"
+sha2 = "0.11"
 # Точная версия: её требует tauri-specta 2.0.0-rc.26 (`specta = "=2.0.0-rc.26"`).
-specta = { version = "=2.0.0-rc.26", features = ["derive"] }
+specta = { version = "=2.0.0-rc.26", features = ["derive", "indexmap"] }
 # Те же версии, что у tauri-specta 2.0.0-rc.26.
 specta-serde = "=0.0.13"
 specta-typescript = "=0.0.13"
@@ -43,6 +53,7 @@ tauri-build = "2"
 tauri-specta = { version = "=2.0.0-rc.26", features = ["derive", "typescript"] }
 tempfile = "3"
 thiserror = "2"
+tokio = { version = "1", features = ["fs", "io-util", "macros", "process", "rt-multi-thread", "sync", "time"] }
 unic-langid = "0.9"
 url = "2"
 windows-sys = "0.61"

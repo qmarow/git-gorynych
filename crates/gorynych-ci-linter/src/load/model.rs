@@ -337,6 +337,7 @@ pub struct CiCurrent {
     pub config: CiConfig,
     pub history: Vec<CiCommit>,
     pub dirty: Vec<CiDirtyFile>,
+    pub check: crate::check::CiCheck,
 }
 
 /// Результат `loadCi`.

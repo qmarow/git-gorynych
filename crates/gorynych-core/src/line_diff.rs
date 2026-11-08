@@ -169,6 +169,8 @@ pub struct Hunk {
 
 /// Результат diff в формате разбора `git diff`.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, specta::Type)]
+// Имя в TypeScript: `FileDiff` занят diff файла из `gorynych-git`
+#[serde(rename = "TextDiff")]
 pub struct FileDiff {
     pub hunks: Vec<Hunk>,
     pub additions: u32,

@@ -59,7 +59,7 @@ pub enum Schema {
 
 /// Значение, как результат `doc.toJS()`.
 #[derive(Debug, Clone, PartialEq, Serialize, specta::Type)]
-#[serde(untagged)]
+#[serde(untagged, rename = "YamlValue")]
 pub enum Value {
     Null,
     Bool(bool),
@@ -371,6 +371,30 @@ pub struct YamlIssue {
 pub enum PathItem {
     Key(String),
     Index(usize),
+}
+
+impl From<&str> for PathItem {
+    fn from(key: &str) -> Self {
+        PathItem::Key(key.to_owned())
+    }
+}
+
+impl From<&String> for PathItem {
+    fn from(key: &String) -> Self {
+        PathItem::Key(key.clone())
+    }
+}
+
+impl From<String> for PathItem {
+    fn from(key: String) -> Self {
+        PathItem::Key(key)
+    }
+}
+
+impl From<usize> for PathItem {
+    fn from(index: usize) -> Self {
+        PathItem::Index(index)
+    }
 }
 
 /// Повторяющийся ключ.
