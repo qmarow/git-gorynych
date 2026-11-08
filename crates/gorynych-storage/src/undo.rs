@@ -26,6 +26,9 @@ use serde::{Deserialize, Serialize};
 use crate::db::{Db, NOW};
 
 const UNDO_LIMIT: i64 = 50;
+/// Предел снимков файлов на репозиторий. 1.x держал снимки в памяти до выхода, а здесь они остаются на диске: 50 записей по 40 МБ — это 2 ГБ.
+/// При превышении пропадают самые старые записи; самая новая остаётся, даже если одна больше предела, иначе операцию нельзя было бы отменить.
+const UNDO_BLOBS_LIMIT: i64 = 256 * 1024 * 1024;
 const STACK_UNDO: &str = "undo";
 const STACK_REDO: &str = "redo";
 
@@ -65,6 +68,26 @@ fn next_seq(conn: &Connection, repo: &str) -> rusqlite::Result<i64> {
 
 fn delete_redo(conn: &Connection, repo: &str) -> rusqlite::Result<()> {
     conn.execute("DELETE FROM undo_history WHERE repo_path = ?1 AND stack = ?2", params![repo, STACK_REDO])?;
+    Ok(())
+}
+
+/// Удаляет записи, не поместившиеся в [`UNDO_BLOBS_LIMIT`], считая от самой новой. Стек остаётся непрерывным: всё, что старше первой лишней, тоже удаляется.
+fn trim_blobs(conn: &Connection, repo: &str, limit: i64) -> rusqlite::Result<()> {
+    let sizes: Vec<(i64, i64)> = conn
+        .prepare_cached(
+            "SELECT h.seq, COALESCE(SUM(LENGTH(b.data)), 0) FROM undo_history h LEFT JOIN undo_blobs b ON b.entry_id = h.id
+             WHERE h.repo_path = ?1 AND h.stack = ?2 GROUP BY h.id ORDER BY h.seq DESC",
+        )?
+        .query_map(params![repo, STACK_UNDO], |row| Ok((row.get(0)?, row.get(1)?)))?
+        .collect::<rusqlite::Result<_>>()?;
+    let mut total = 0;
+    for (index, (seq, size)) in sizes.iter().enumerate() {
+        total += size;
+        if total > limit && index > 0 {
+            conn.execute("DELETE FROM undo_history WHERE repo_path = ?1 AND stack = ?2 AND seq <= ?3", params![repo, STACK_UNDO, seq])?;
+            break;
+        }
+    }
     Ok(())
 }
 
@@ -128,6 +151,9 @@ impl Db {
                 params![repo, STACK_UNDO, UNDO_LIMIT],
             )?;
             delete_redo(tx, repo)?;
+            if !entry.blobs.is_empty() {
+                trim_blobs(tx, repo, UNDO_BLOBS_LIMIT)?;
+            }
             Ok(id)
         })
     }
@@ -332,6 +358,29 @@ mod tests {
             db.record_undo(REPO, entry(&format!("e{i}"))).unwrap();
         }
         assert_eq!(blob_rows(&db), 0);
+    }
+
+    #[test]
+    fn blob_limit_drops_oldest_and_keeps_newest() {
+        let db = Db::open_in_memory();
+        let snap = |label| NewUndoEntry { kind: "fileSnapshot", label, payload: "{}", blobs: &[b"12345"] };
+        db.record_undo(REPO, snap("старая")).unwrap();
+        db.record_undo(REPO, entry("без снимка")).unwrap();
+        db.record_undo(REPO, snap("средняя")).unwrap();
+        db.record_undo(REPO, snap("новая")).unwrap();
+
+        db.with(|conn| trim_blobs(conn, REPO, 10)).unwrap();
+        let mut labels = Vec::new();
+        while let Some(top) = db.top_undo(REPO).unwrap() {
+            db.complete_undo(top.id, None).unwrap();
+            labels.push(top.label);
+        }
+        assert_eq!(labels, ["новая", "средняя", "без снимка"], "старше первой лишней не остаётся ничего");
+
+        let db = Db::open_in_memory();
+        db.record_undo(REPO, snap("новая")).unwrap();
+        db.with(|conn| trim_blobs(conn, REPO, 1)).unwrap();
+        assert_eq!(summary(&db).0.as_deref(), Some("новая"), "самая новая остаётся, даже если больше предела");
     }
 
     #[test]

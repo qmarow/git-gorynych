@@ -9,3 +9,24 @@ publish.workspace = true
 [dependencies]
 gorynych-core.workspace = true
 gorynych-storage.workspace = true
+chrono.workspace = true
+futures-util.workspace = true
+indexmap.workspace = true
+regex.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+sha1.workspace = true
+specta.workspace = true
+tempfile.workspace = true
+tokio.workspace = true
+url.workspace = true
+
+[dev-dependencies]
+regex.workspace = true
+specta-serde.workspace = true
+specta-typescript.workspace = true
+
+# Свой `main`: git запускает этот же файл как редактор rebase.
+[[test]]
+name = "actions_parity"
+harness = false
