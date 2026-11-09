@@ -34,7 +34,7 @@
 //! - `creds:key-defaults(dir, url, keyType)`: третий аргумент назван `keyType`, а не `type` (ключевое слово Rust).
 //! - `copied` в ответах `creds:generate-key` и `creds:copy-public-key` — удалась ли запись в буфер обмена (в 1.x всегда `true`, а у
 //!   `copy-public-key` поля не было).
-//! - Не перенесён `creds:pick-key`: нужен плагин диалогов, он появится вместе с `repo:open-dialog`.
+//! - `creds:pick-key` — в `commands::desktop`, вместе с остальными диалогами.
 //!
 //! База и Keyring — блокирующие вызовы: они идут через [`blocking`].
 

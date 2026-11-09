@@ -71,7 +71,7 @@
 | `git.cjs`, `conflicts.cjs`, `fileHistory.cjs`, `compare.cjs` | `gorynych-git::{run, read, diff, write, conflicts, history, compare}` | 3 | ✅ |
 | `actions.cjs`, `rebase.cjs`, `restore.cjs`, `init.cjs`, `clone.cjs` | `gorynych-git::{actions, network, rebase, restore, init, clone}` | 3 | ✅ |
 | `watch.cjs`, `indexSync.cjs`, `remoteWatch.cjs` | `gorynych-watcher::{watch, index_sync, remote_watch}` | 3 | ✅ |
-| `main.cjs`, `preload.cjs`, `system.cjs` | `gorynych-tauri` (`repo:*` и `clone:*` — `commands/repo.rs`; `creds:*` — `commands/creds.rs`; `cicd:*` и `gitlab:*` — `commands/cicd.rs`; мосты — `bridge.rs`) | 1 (каркас ✅) / 4 | 🔶 |
+| `main.cjs`, `preload.cjs`, `system.cjs` | `gorynych-tauri` (`repo:*` и `clone:*` — `commands/repo.rs`; `creds:*` — `commands/creds.rs`; `cicd:*` и `gitlab:*` — `commands/cicd.rs`; диалоги, открытие, терминал, картинка фона — `commands/desktop.rs`; мосты — `bridge.rs`) | 1 (каркас ✅) / 4 | 🔶 |
 
 ## Хранилище 2.0
 
@@ -401,3 +401,9 @@
      - профиль release: `lto = "fat"`, `codegen-units = 1`, `strip`.
      На ripgrep (2303 коммита): `quick_status` — 3 процесса и 142 мс → 1 и 55 мс (это каждое изменение файла); `load_repository` — 9 процессов и 304 мс → 6 и 171 мс; поиск корня — 48 мс → 0,1 мс.
   Не сделано и требует решения: (а) чтение через `gix`. Сэкономило бы оставшиеся процессы (`status` около 50 мс), но поведение `git status` (ignore, фильтры, autocrlf, fsmonitor, подмодули) воспроизводить самим рискованно. (б) `repo:load` отдаёт около 930 КБ JSON на каждое изменение в `.git`, а интерфейс 1.x перечитывает весь граф. Это вопрос Фазы 4: нужен ответ «граф не изменился» по отпечатку ссылок и обновление по частям в UI.
+- 2026-11-09 — Сессия 10, продолжение (gix по решению пользователя пока не трогаем). Подключены 10 команд `commands/desktop.rs`: `repo:open-dialog`, `repo:open-path`, `creds:pick-key`, `appearance:pick-image`, `appearance:image`, `cicd:artifact-download`, `cicd:show-file`, `shell:open-external`, `shell:open-folder`, `shell:open-terminal` (перенос `system.cjs`).
+  Плагины: `tauri-plugin-dialog` 2.8, а от `tauri-plugin-opener` 2.7 — только свободные функции, без самого плагина. Разрешений у страницы по-прежнему нет. Ветка 3.x этих плагинов — альфа под Tauri 3, не брать.
+  Отличия от 1.x (шапка `desktop.rs`): **`appearance:image` возвращает адрес протокола `gorynych-bg`, а не `data:`-URL**. Картинка до 25 МБ больше не идёт через IPC base64-строкой на 33 МБ. CSP: `img-src` дополнен `http://gorynych-bg.localhost gorynych-bg:`. Ошибки `appearance:pick-image` — `UNSUPPORTED` и `TOO_LARGE` вместо `{ok:false, error}`.
+  Подмена в debug с `GORYNYCH_DEV_ROOT`: диалоги отвечают построчно из `dialog-answers.txt`, а открытия и терминал пишутся в `desktop.log`. В релизе этих функций нет (`#[cfg(debug_assertions)]`).
+  Проверка: `desktopSmoke` + утверждения в `app_smoke.rs`, включая загрузку картинки фона в настоящем WebView2 сквозь CSP. Настоящие системные диалоги, Проводник, браузер и терминал вручную не открывались. macOS и Linux не собирались.
+  Следующий шаг: меню macOS (`menu:set`) и перехват `target=_blank`; затем UI Фазы 4.

@@ -10,16 +10,19 @@
 //! - Порядок запуска: база → перенос данных 1.x → язык → брокер входа → окно. Сбой не прячется: окно откроется, а команды
 //!   вернут `NO_STORAGE`, причина будет в `startup_status`. В подсистеме GUI иначе пользователь не увидел бы вообще ничего.
 //! - Ошибки команд приходят как отклонённый promise с `{code, message, hint, details}`, а не как `{ok, error}`.
-//! - Внешние ссылки: переход запрещён. Открытие в браузере (`setWindowOpenHandler`) появится вместе с интерфейсом.
+//! - Внешние ссылки: переход внутри окна запрещён. Открыть в браузере — команда `shell_open_external`; перехват
+//!   `target=_blank` (`setWindowOpenHandler`) появится вместе с интерфейсом.
+//! - Плагины (буфер обмена, диалоги) подключены только со стороны Rust: разрешений у страницы нет. Открытие файлов — свободные
+//!   функции `tauri_plugin_opener`, без самого плагина. Картинку фона отдаёт протокол `gorynych-bg` (см. `commands::desktop`).
 //!
 //! # Не перенесено в каркасе
-//! Меню macOS, выбор и показ картинки фона, автоперезапуск разработки, команды git и CI/CD: Фазы 2–4.
+//! Меню macOS (`menu:set`), автоперезапуск разработки.
 //!
 //! # Подмена путей
 //! Только в debug-сборке, `GORYNYCH_DEV_ROOT`: все данные и профиль WebView2 лежат во временной папке, чтобы тесты не касались
 //! настоящего профиля. Там же папка SSH-ключей (`<папка>/.ssh`) и «буфер обмена» (`<папка>/clipboard.txt`), а секреты идут в
 //! Keyring под сервисом `com.ironxenot.gitgorynych.dev`: это всё ещё настоящее системное хранилище, поэтому тест удаляет
-//! свои записи сам. `GORYNYCH_DEV_READY_FILE`: проверка окна, см. [`commands::frontend_ready`].
+//! свои записи сам. Диалоги отвечают из `<папка>/dialog-answers.txt`, а открытия и терминал пишутся в `<папка>/desktop.log`. `GORYNYCH_DEV_READY_FILE`: проверка окна, см. [`commands::frontend_ready`].
 //! `GORYNYCH_DEV_EXPORT_BINDINGS`: экспорт типов для интерфейса. В релизе этого кода нет, это проверено по содержимому exe.
 
 mod bridge;
@@ -79,6 +82,9 @@ pub struct Services {
     pub ssh_dir: PathBuf,
     /// Файл вместо буфера обмена: только при подмене путей.
     pub clipboard_file: Option<PathBuf>,
+    /// Папка подмены путей: диалоги отвечают из файла, открытие файлов и запуск терминала пишутся в журнал
+    /// (см. `commands::desktop`). Только в debug с `GORYNYCH_DEV_ROOT`.
+    pub dev_root: Option<PathBuf>,
 }
 
 /// Состояние приложения. `services` — ошибка, если хранилище не открылось.
@@ -106,6 +112,7 @@ struct Paths {
     ssh_dir: PathBuf,
     keyring_service: String,
     clipboard_file: Option<PathBuf>,
+    dev_root: Option<PathBuf>,
 }
 
 fn resolve_paths<R: Runtime>(app: &App<R>) -> std::result::Result<Paths, tauri::Error> {
@@ -117,12 +124,13 @@ fn resolve_paths<R: Runtime>(app: &App<R>) -> std::result::Result<Paths, tauri::
             ssh_dir: root.join(".ssh"),
             keyring_service: format!("{SERVICE}.dev"),
             clipboard_file: Some(root.join("clipboard.txt")),
+            dev_root: Some(root.clone()),
             app_data: root,
         });
     }
     let data_dir = app.path().app_data_dir()?;
     let app_data = data_dir.parent().map(PathBuf::from).unwrap_or_else(|| data_dir.clone());
-    Ok(Paths { app_data, data_dir, webview_dir: None, ssh_dir: default_ssh_dir(), keyring_service: SERVICE.to_owned(), clipboard_file: None })
+    Ok(Paths { app_data, data_dir, webview_dir: None, ssh_dir: default_ssh_dir(), keyring_service: SERVICE.to_owned(), clipboard_file: None, dev_root: None })
 }
 
 fn open_services(paths: &Paths) -> Result<Services> {
@@ -147,6 +155,7 @@ fn open_services(paths: &Paths) -> Result<Services> {
         data_dir: paths.data_dir.clone(),
         ssh_dir: paths.ssh_dir.clone(),
         clipboard_file: paths.clipboard_file.clone(),
+        dev_root: paths.dev_root.clone(),
     })
 }
 
@@ -382,6 +391,16 @@ pub fn specta_builder() -> Builder<tauri::Wry> {
             commands::cicd::gitlab_schedule_save,
             commands::cicd::gitlab_schedule_action,
             commands::cicd::gitlab_create_mr,
+            commands::desktop::repo_open_dialog,
+            commands::desktop::repo_open_path,
+            commands::desktop::creds_pick_key,
+            commands::desktop::appearance_pick_image,
+            commands::desktop::appearance_image,
+            commands::desktop::cicd_artifact_download,
+            commands::desktop::cicd_show_file,
+            commands::desktop::shell_open_external,
+            commands::desktop::shell_open_folder,
+            commands::desktop::shell_open_terminal,
         ])
         .events(collect_events![WindowMaximizedChanged, WindowFocused, commands::repo::RepoChanged, commands::repo::RepoIndexSynced, commands::repo::CloneProgressEvent])
 }
@@ -400,6 +419,9 @@ pub fn run() {
     }
     tauri::Builder::default()
         .plugin(tauri_plugin_clipboard_manager::init())
+        .plugin(tauri_plugin_dialog::init())
+        // Картинка фона отдаётся протоколом, а не строкой base64 через IPC: см. `commands::desktop`
+        .register_asynchronous_uri_scheme_protocol(commands::desktop::BACKGROUND_SCHEME, commands::desktop::serve_background)
         .invoke_handler(builder.invoke_handler())
         .setup(move |app| {
             builder.mount_events(app);

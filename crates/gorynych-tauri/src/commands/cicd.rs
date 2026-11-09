@@ -16,8 +16,7 @@
 //! - Ошибка — отклонённый promise, а не `{ok:false, error}` (см. шапку `lib.rs`); форму аргументов проверяет Tauri.
 //! - Не перенесены `gitlab:set-token` и `gitlab:clear-token`: в `src/` их не вызывают, функций нет и в `gorynych-cicd`
 //!   (шапка `gitlab/mod.rs`).
-//! - Не перенесены `cicd:artifact-download` и `cicd:show-file`: нужны плагины диалогов и открытия файлов, они появятся вместе с
-//!   `repo:open-dialog`. Скачивание само по себе готово: `CicdService::artifact_download`.
+//! - `cicd:artifact-download` и `cicd:show-file` — в `commands::desktop`: им нужны диалог сохранения и Проводник.
 
 use std::path::{Path, PathBuf};
 

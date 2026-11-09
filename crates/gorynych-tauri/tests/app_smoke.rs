@@ -143,6 +143,15 @@ fn git_commands_work_through_the_page() {
     let path = repo.to_str().unwrap();
     fs::write(profile.join("settings.json"), json!({ "lastRepo": path }).to_string()).unwrap();
 
+    // Ответы диалогов для `desktopSmoke` по порядку: папка, отмена, ключ, картинка, не картинка, отмена сохранения артефакта
+    let images = dir.path().join("картинки");
+    fs::create_dir_all(&images).unwrap();
+    fs::write(images.join("Фон.PNG"), PNG_1X1).unwrap();
+    fs::write(images.join("не картинка.txt"), "x").unwrap();
+    let key = dir.path().join("ключ");
+    let answers = [path.to_owned(), String::new(), key.display().to_string(), images.join("Фон.PNG").display().to_string(), images.join("не картинка.txt").display().to_string(), String::new()];
+    fs::write(dir.path().join("dialog-answers.txt"), answers.join("\n")).unwrap();
+
     let (status, ready) = launch(dir.path());
     assert!(status.success(), "{status:?}");
     let report = &ready["report"]["repo"];
@@ -236,4 +245,45 @@ fn git_commands_work_through_the_page() {
     assert_eq!(cicd["badSecret"]["code"], json!("INVALID_NAME"));
     assert_eq!(cicd["badRunner"]["code"], json!("BAD_ARGS"), "чужой контейнер не трогаем: {cicd}");
     assert_eq!(cicd["notRepo"]["code"], json!("NOT_A_REPO"));
+
+    // Диалоги, открытие, терминал (`desktopSmoke` в `ui/app.js`)
+    let desktop = &report["desktop"];
+    assert_eq!(desktop["picked"], json!(path), "{desktop}");
+    assert_eq!(desktop["canceled"], Value::Null, "отмена — null");
+    assert_eq!(desktop["key"], json!(key.display().to_string()));
+    assert_eq!(desktop["image"], json!({ "canceled": false, "name": "Фон.PNG" }), "{desktop}");
+    assert!(desktop["imageUrl"].as_str().is_some_and(|url| url.starts_with("http://gorynych-bg.localhost/current?v=")), "{desktop}");
+    assert_eq!(desktop["width"], json!(1), "картинка фона загружается протоколом сквозь CSP: {desktop}");
+    assert_eq!(desktop["hasImage"], json!(true));
+    assert!(dir.path().join("com.ironxenot.gitgorynych").join("backgrounds").join("current.png").exists(), "копия с расширением в нижнем регистре");
+    assert_eq!(desktop["badImage"]["code"], json!("UNSUPPORTED"), "{desktop}");
+    assert_eq!(desktop["artifact"]["canceled"], json!(true), "{desktop}");
+    let opened = repo.join("gorynych-smoke.txt").display().to_string();
+    assert_eq!(desktop["opened"]["path"], json!(opened));
+    assert_eq!(desktop["outside"]["code"], json!("BAD_ARGS"), "путь вне репозитория не открывается: {desktop}");
+    assert_eq!(desktop["folder"]["path"], json!(path));
+    assert_eq!(desktop["noFolder"]["code"], json!("NOT_FOUND"));
+    assert_eq!(desktop["terminal"]["terminal"], json!("Windows Terminal"));
+    assert_eq!(desktop["external"], json!(true));
+    assert_eq!(desktop["notWeb"], json!(false), "только http(s)");
+    let log = fs::read_to_string(dir.path().join("desktop.log")).unwrap();
+    let lines: Vec<&str> = log.lines().collect();
+    let ssh_dir = dir.path().join(".ssh").display().to_string();
+    let expected = [
+        "dialog folder | Открыть Git-репозиторий |  | ".to_owned(),
+        "dialog folder | Свой заголовок |  | ".to_owned(),
+        format!("dialog file | Приватный SSH-ключ | {ssh_dir} | "),
+        "dialog file | Картинка для фона |  | ".to_owned(),
+        "dialog file | Картинка для фона |  | ".to_owned(),
+    ];
+    assert_eq!(lines[..5], expected, "{log}");
+    assert!(lines[5].starts_with("dialog save | Сохранить артефакт | ") && lines[5].ends_with(" | build_x.zip"), "в «Загрузки», имя без двоеточия: {log}");
+    assert_eq!(lines[6..], [format!("open {opened}"), format!("open {path}"), format!("terminal Windows Terminal | {path}"), "url https://example.com/%D0%BF%D1%83%D1%82%D1%8C".to_owned(), format!("reveal {opened}")], "{log}");
 }
+
+/// Картинка 1×1: страница проверяет, что протокол фона отдаёт её сквозь CSP.
+const PNG_1X1: &[u8] = &[
+    0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00, 0x00, 0x00, 0x0d, 0x49, 0x48, 0x44, 0x52, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x01, 0x08, 0x06, 0x00, 0x00, 0x00, 0x1f, 0x15, 0xc4,
+    0x89, 0x00, 0x00, 0x00, 0x0d, 0x49, 0x44, 0x41, 0x54, 0x78, 0xda, 0x63, 0x64, 0xf8, 0xcf, 0x50, 0x0f, 0x00, 0x03, 0x86, 0x01, 0x80, 0x5a, 0x34, 0x7d, 0x6b, 0x00, 0x00, 0x00, 0x00, 0x49, 0x45,
+    0x4e, 0x44, 0xae, 0x42, 0x60, 0x82,
+];

@@ -1,8 +1,10 @@
 //! Команды каркаса. Семантика — как у одноимённых обработчиков `ipcMain` в `electron/main.cjs`; см. шапку `lib.rs`.
-//! Команды git — в [`repo`], авторизация на серверах — в [`creds`].
+//! Команды git — в [`repo`], авторизация на серверах — в [`creds`], CI/CD — в [`cicd`], диалоги, открытие файлов и
+//! терминал — в [`desktop`].
 
 pub mod cicd;
 pub mod creds;
+pub mod desktop;
 pub mod repo;
 
 use std::fs;
@@ -160,9 +162,7 @@ pub fn repo_get_last(state: State<'_, AppState>) -> Result<Option<String>> {
 
 /// `storedImage`: есть ли файл `current.*` в папке фонов.
 fn has_stored_image(data_dir: &Path) -> bool {
-    fs::read_dir(data_dir.join("backgrounds"))
-        .map(|entries| entries.flatten().any(|entry| entry.file_name().to_string_lossy().starts_with("current.")))
-        .unwrap_or(false)
+    desktop::stored_image(data_dir).is_some()
 }
 
 #[tauri::command]

@@ -58,9 +58,11 @@ async function smoke(dir) {
   const unwatched = await invoke('repo_watch', { dir: null, opts: null });
   const creds = await credsSmoke(dir);
   const cicd = await cicdSmoke(dir);
+  const desktop = await desktopSmoke(dir);
   return {
     creds,
     cicd,
+    desktop,
     loaded: { name: loaded.name, commits: loaded.commits.length, currentBranch: loaded.currentBranch, history: loaded.history, ci: loaded.ci, forge: loaded.forge },
     watching,
     staged,
@@ -158,6 +160,39 @@ async function cicdSmoke(dir) {
     badRunner,
     notRepo,
   };
+}
+
+// Ширина загруженной картинки, -1 — не загрузилась (протокол или CSP)
+function imageWidth(src) {
+  return new Promise((resolve) => {
+    const image = new Image();
+    image.onload = () => resolve(image.naturalWidth);
+    image.onerror = () => resolve(-1);
+    image.src = src;
+  });
+}
+
+// Диалоги, открытие и терминал. В отладке с подменой путей диалоги отвечают из `dialog-answers.txt` (порядок задаёт тест),
+// а открытия только пишутся в `desktop.log`: окна на машине не появляются
+async function desktopSmoke(dir) {
+  const picked = await invoke('repo_open_dialog', { title: null });
+  const canceled = await invoke('repo_open_dialog', { title: 'Свой заголовок' });
+  const key = await invoke('creds_pick_key');
+  const image = await invoke('appearance_pick_image');
+  const imageUrl = await invoke('appearance_image');
+  const width = imageUrl ? await imageWidth(imageUrl) : null;
+  const appearance = await invoke('appearance_get');
+  const badImage = await rejected(invoke('appearance_pick_image'));
+  const artifact = await invoke('cicd_artifact_download', { dir, artifact: { jobId: 7, name: 'build:x' }, opts: null });
+  const opened = await invoke('repo_open_path', { dir, rel: SMOKE_FILE });
+  const outside = await rejected(invoke('repo_open_path', { dir, rel: '../вне' }));
+  const folder = await invoke('shell_open_folder', { dir });
+  const noFolder = await rejected(invoke('shell_open_folder', { dir: `${dir}\\нет-такой` }));
+  const terminal = await invoke('shell_open_terminal', { dir });
+  const external = await invoke('shell_open_external', { url: 'https://example.com/путь' });
+  const notWeb = await invoke('shell_open_external', { url: 'file:///C:/Windows' });
+  const shown = await invoke('cicd_show_file', { file: `${dir}\\${SMOKE_FILE}` });
+  return { picked, canceled, key, image, imageUrl, width, hasImage: appearance.hasImage, badImage, artifact, opened, outside, folder, noFolder, terminal, external, notWeb, shown };
 }
 
 async function main() {

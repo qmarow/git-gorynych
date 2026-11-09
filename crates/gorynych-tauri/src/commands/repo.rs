@@ -21,7 +21,7 @@
 //!   параметров по-прежнему снисходительны (`lenient`), как `typeof` в 1.x. То же для остальных команд: форму аргументов
 //!   гарантируют типы `bindings/commands.ts`.
 //! - События называются по имени структуры (`repo-changed`, `repo-index-synced`, `clone-progress-event`) — так их называет `tauri-specta`.
-//! - Не перенесены: `repo:open-dialog`, `repo:open-path` (нужны плагины диалогов и открытия файлов — вместе с `shell:*`).
+//! - `repo:open-dialog` и `repo:open-path` — в `commands::desktop`, вместе с остальными диалогами и `shell:*`.
 //!
 //! Линтер CI синхронный и запускает `git` сам: он идёт в `spawn_blocking`, чтобы не занимать рабочий поток tokio.
 

@@ -51,6 +51,9 @@ tauri = "2"
 tauri-build = "2"
 # Буфер обмена только со стороны Rust: разрешений для страницы нет.
 tauri-plugin-clipboard-manager = "2.5"
+# Диалоги и открытие файлов — тоже только со стороны Rust. Ветка 3.x — альфа под Tauri 3.
+tauri-plugin-dialog = "2.8"
+tauri-plugin-opener = "2.7"
 # Точная версия: как и specta, находится в rc.
 tauri-specta = { version = "=2.0.0-rc.26", features = ["derive", "typescript"] }
 tempfile = "3"

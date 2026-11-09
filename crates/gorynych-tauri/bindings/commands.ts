@@ -116,6 +116,23 @@ export const commands = {
 	gitlabScheduleSave: (dir: string, schedule: GlScheduleInput_Deserialize | null, opts: RemoteOptions_Deserialize | null) => typedError<GlSchedule_Serialize, GorynychError_Serialize>(__TAURI_INVOKE("gitlab_schedule_save", { dir, schedule, opts })),
 	gitlabScheduleAction: (dir: string, action: GlScheduleAction_Deserialize | null, opts: RemoteOptions_Deserialize | null) => typedError<GlScheduleActionResult, GorynychError_Serialize>(__TAURI_INVOKE("gitlab_schedule_action", { dir, action, opts })),
 	gitlabCreateMr: (dir: string, mr: GlMergeRequestInput_Deserialize | null, opts: RemoteOptions_Deserialize | null) => typedError<GlMergeRequest_Serialize, GorynychError_Serialize>(__TAURI_INVOKE("gitlab_create_mr", { dir, mr, opts })),
+	repoOpenDialog: (title: string | null) => typedError<string | null, GorynychError_Serialize>(__TAURI_INVOKE("repo_open_dialog", { title })),
+	/**  Открыть файл репозитория в программе по умолчанию (например, VS Code). */
+	repoOpenPath: (dir: string, rel: string) => typedError<OpenedPath, GorynychError_Serialize>(__TAURI_INVOKE("repo_open_path", { dir, rel })),
+	credsPickKey: () => typedError<string | null, GorynychError_Serialize>(__TAURI_INVOKE("creds_pick_key")),
+	appearancePickImage: () => typedError<PickedImage_Serialize, GorynychError_Serialize>(__TAURI_INVOKE("appearance_pick_image")),
+	/**  Адрес картинки фона или `None`. В адресе — время изменения и размер файла: новая картинка не возьмётся из кэша. */
+	appearanceImage: () => typedError<string | null, GorynychError_Serialize>(__TAURI_INVOKE("appearance_image")),
+	/**  Спросить, куда сохранить, и скачать потоком. */
+	cicdArtifactDownload: (dir: string, artifact: ArtifactDownload_Deserialize | null, opts: RemoteOptions_Deserialize | null) => typedError<ArtifactSaved_Serialize, GorynychError_Serialize>(__TAURI_INVOKE("cicd_artifact_download", { dir, artifact, opts })),
+	/**  Показать скачанный файл в папке. */
+	cicdShowFile: (file: string) => typedError<null, GorynychError_Serialize>(__TAURI_INVOKE("cicd_show_file", { file })),
+	/**  Ссылка (пайплайн, задание) в браузере: только `http:` и `https:`. */
+	shellOpenExternal: (url: string) => __TAURI_INVOKE<boolean>("shell_open_external", { url }),
+	/**  Папка в Проводнике / Finder. */
+	shellOpenFolder: (dir: string | null) => typedError<OpenedPath, GorynychError_Serialize>(__TAURI_INVOKE("shell_open_folder", { dir })),
+	/**  Папка репозитория в терминале. */
+	shellOpenTerminal: (dir: string | null) => typedError<OpenedTerminal, GorynychError_Serialize>(__TAURI_INVOKE("shell_open_terminal", { dir })),
 };
 
 /** Events */
@@ -292,6 +309,55 @@ export type ApplyHunks_Serialize = {
 	path: string | null,
 	oldPath: string | null,
 	hunks: string[] | null,
+};
+
+/**  Артефакт для `cicd:artifact-download`: имя файла нужно диалогу. */
+export type ArtifactDownload = ArtifactDownload_Serialize | ArtifactDownload_Deserialize;
+
+/**  Артефакт для `cicd:artifact-download`: имя файла нужно диалогу. */
+export type ArtifactDownload_Deserialize = {
+	fileName?: string | null,
+	name?: string | null,
+} & ArtifactRef_Deserialize;
+
+/**  Артефакт для `cicd:artifact-download`: имя файла нужно диалогу. */
+export type ArtifactDownload_Serialize = {
+	fileName: string | null,
+	name: string | null,
+} & ArtifactRef_Serialize;
+
+/**  Артефакт для скачивания. */
+export type ArtifactRef = ArtifactRef_Serialize | ArtifactRef_Deserialize;
+
+/**  Артефакт для скачивания. */
+export type ArtifactRef_Deserialize = {
+	id?: CiId | null,
+	jobId?: CiId | null,
+};
+
+/**  Артефакт для скачивания. */
+export type ArtifactRef_Serialize = {
+	id: CiId | null,
+	jobId: CiId | null,
+};
+
+/**  Ответ `cicd:artifact-download`. */
+export type ArtifactSaved = ArtifactSaved_Serialize | ArtifactSaved_Deserialize;
+
+/**  Ответ `cicd:artifact-download`. */
+export type ArtifactSaved_Deserialize = {
+	canceled: boolean,
+	path?: string | null,
+	size?: number | null,
+	name?: string | null,
+};
+
+/**  Ответ `cicd:artifact-download`. */
+export type ArtifactSaved_Serialize = {
+	canceled: boolean,
+	path: string | null,
+	size: number | null,
+	name: string | null,
 };
 
 /**  Способ входа. */
@@ -4388,6 +4454,16 @@ export type NoRemoteTarget_Serialize = {
 	cloud: boolean,
 };
 
+/**  Открытый путь: `repo:open-path`, `shell:open-folder`. */
+export type OpenedPath = {
+	path: string,
+};
+
+/**  Ответ `shell:open-terminal`. */
+export type OpenedTerminal = {
+	terminal: string,
+};
+
 /**  Результат `abortOperation` и `continueOperation`. */
 export type OperationResult = OperationResult_Serialize | OperationResult_Deserialize;
 
@@ -4457,6 +4533,23 @@ export type PathsRequest_Deserialize = {
 /**  Параметры `stage` и `unstage`. */
 export type PathsRequest_Serialize = {
 	paths: PathsArg | null,
+};
+
+/**  Ответ `appearance:pick-image`. */
+export type PickedImage = PickedImage_Serialize | PickedImage_Deserialize;
+
+/**  Ответ `appearance:pick-image`. */
+export type PickedImage_Deserialize = {
+	canceled: boolean,
+	/**  Имя исходного файла. */
+	name?: string | null,
+};
+
+/**  Ответ `appearance:pick-image`. */
+export type PickedImage_Serialize = {
+	canceled: boolean,
+	/**  Имя исходного файла. */
+	name: string | null,
 };
 
 /**  Подробности запуска. */
