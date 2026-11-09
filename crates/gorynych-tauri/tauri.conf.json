@@ -3,13 +3,13 @@
   "productName": "git-Горыныч",
   "identifier": "com.ironxenot.gitgorynych",
   "build": {
-    "frontendDist": "ui"
+    "frontendDist": "../../dist"
   },
   "app": {
     "withGlobalTauri": true,
     "windows": [],
     "security": {
-      "csp": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: http://gorynych-bg.localhost gorynych-bg:; font-src 'self'; connect-src ipc: http://ipc.localhost; object-src 'none'; base-uri 'none'; frame-ancestors 'none'"
+      "csp": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: http://gorynych-bg.localhost gorynych-bg: https://gravatar.com https://*.gravatar.com https://avatars.githubusercontent.com https://github.com; font-src 'self'; connect-src ipc: http://ipc.localhost; object-src 'none'; base-uri 'none'; frame-ancestors 'none'"
     }
   },
   "bundle": {

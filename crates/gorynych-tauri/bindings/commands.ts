@@ -135,6 +135,10 @@ export const commands = {
 	shellOpenTerminal: (dir: string | null) => typedError<OpenedTerminal, GorynychError_Serialize>(__TAURI_INVOKE("shell_open_terminal", { dir })),
 	/**  Модель от интерфейса. Ответа нет, как у `ipcRenderer.send` в 1.x. */
 	menuSet: (model: { [key in string]: MenuEntry_Deserialize[] } | null) => __TAURI_INVOKE<void>("menu_set", { model }),
+	/**  Значения для `localStorage`. */
+	prefsSnapshot: () => typedError<{ [key in string]: string }, GorynychError_Serialize>(__TAURI_INVOKE("prefs_snapshot")),
+	/**  Изменения `localStorage` пачкой, одной транзакцией. */
+	prefsWrite: (changes: PrefChange_Deserialize[]) => typedError<null, GorynychError_Serialize>(__TAURI_INVOKE("prefs_write", { changes })),
 };
 
 /** Events */
@@ -4842,6 +4846,21 @@ export type Position_Deserialize = {
 export type Position_Serialize = {
 	branch: string | null,
 	detached: string | null,
+};
+
+/**  Изменение `localStorage`: `value: null` — ключ удалён. */
+export type PrefChange = PrefChange_Serialize | PrefChange_Deserialize;
+
+/**  Изменение `localStorage`: `value: null` — ключ удалён. */
+export type PrefChange_Deserialize = {
+	key: string,
+	value?: string | null,
+};
+
+/**  Изменение `localStorage`: `value: null` — ключ удалён. */
+export type PrefChange_Serialize = {
+	key: string,
+	value: string | null,
 };
 
 /**  Коммит в предпросмотре возврата. */

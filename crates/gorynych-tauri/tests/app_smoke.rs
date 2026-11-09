@@ -11,16 +11,32 @@ use serde_json::{Value, json};
 const APP: &str = env!("CARGO_BIN_EXE_gorynych-tauri");
 const LAUNCH_TIMEOUT: Duration = Duration::from_secs(90);
 
-/// Запускает приложение и ждёт, пока страница отработает. Зависшее приложение завершается.
+/// Запускает приложение со сценарием проверки (`tests/smoke-page.js`) вместо интерфейса и ждёт, пока он отработает.
 fn launch(root: &Path) -> (ExitStatus, Value) {
+    launch_page(root, Page::Smoke)
+}
+
+/// Что открыть в окне.
+#[derive(Clone, Copy)]
+enum Page {
+    /// Сценарий `tests/smoke-page.js` вместо интерфейса.
+    Smoke,
+    /// Настоящий интерфейс из `dist` (его собирает `npm run build`) и зонд `tests/ui-probe.js`.
+    Interface,
+}
+
+/// Запускает приложение и ждёт отчёта страницы. Зависшее приложение завершается.
+fn launch_page(root: &Path, page: Page) -> (ExitStatus, Value) {
     let ready = root.join("ready.json");
-    let mut child = Command::new(APP)
-        .env("GORYNYCH_DEV_ROOT", root)
-        .env("GORYNYCH_DEV_READY_FILE", &ready)
-        .env("GIT_CONFIG_GLOBAL", root.join("нет-такого"))
-        .env("GIT_CONFIG_NOSYSTEM", "1")
-        .spawn()
-        .unwrap();
+    let _ = fs::remove_file(&ready);
+    let tests = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests");
+    let mut command = Command::new(APP);
+    command.env("GORYNYCH_DEV_ROOT", root).env("GORYNYCH_DEV_READY_FILE", &ready).env("GIT_CONFIG_GLOBAL", root.join("нет-такого")).env("GIT_CONFIG_NOSYSTEM", "1");
+    match page {
+        Page::Smoke => command.env("GORYNYCH_DEV_SMOKE_SCRIPT", tests.join("smoke-page.js")),
+        Page::Interface => command.env("GORYNYCH_DEV_UI_PROBE", tests.join("ui-probe.js")),
+    };
+    let mut child = command.spawn().unwrap();
     let started = Instant::now();
     let status = loop {
         if let Some(status) = child.try_wait().unwrap() {
@@ -103,6 +119,46 @@ fn profile_1x_is_migrated_on_first_start_and_language_applied() {
     assert_eq!(ready["migration"]["tabs"], json!(1), "{ready}");
     assert!(ready["migration"]["preferences"].as_u64().unwrap() >= 2, "{ready}");
     assert_eq!(fs::read_to_string(profile.join("language.json")).unwrap(), r#"{"language":"en"}"#, "старый файл не менялся");
+}
+
+/// Настоящий интерфейс 1.x на слое совместимости (`src/platform/tauri.ts`): загружается под CSP окна, открывает последний
+/// репозиторий через `window.api` и рисует граф без ошибок. Настройки `localStorage` уходят в SQLite и возвращаются из неё,
+/// когда профиль WebView новый.
+#[test]
+fn real_interface_opens_repository_on_the_compatibility_layer() {
+    let dir = tempfile::tempdir().unwrap();
+    let repo = dir.path().join("Репозиторий");
+    fs::create_dir(&repo).unwrap();
+    git(&repo, &["init", "-q", "-b", "main"]);
+    git(&repo, &["config", "user.name", "Тест"]);
+    git(&repo, &["config", "user.email", "t@example.com"]);
+    fs::write(repo.join("файл.txt"), "1\n").unwrap();
+    git(&repo, &["add", "-A"]);
+    git(&repo, &["commit", "-q", "-m", "Начало"]);
+    let profile = dir.path().join("git-Gorynych");
+    fs::create_dir_all(&profile).unwrap();
+    fs::write(profile.join("settings.json"), json!({ "lastRepo": repo.to_str().unwrap(), "tabs": [repo.to_str().unwrap()] }).to_string()).unwrap();
+
+    let (status, ready) = launch_page(dir.path(), Page::Interface);
+    assert!(status.success(), "{status:?}");
+    let report = &ready["report"];
+    assert_eq!(report["ui"], json!("mounted"), "интерфейс не дошёл до отрисовки: {ready}");
+    assert_eq!(report["graph"], json!(true), "граф коммитов не появился: {report}");
+    assert_eq!(report["errors"], json!([]), "ошибки интерфейса: {report}");
+    assert_eq!(report["seeded"], Value::Null, "настройки ещё нет");
+
+    // Новый профиль WebView: `localStorage` пуст и заполняется из базы
+    // Процессы WebView2 отпускают профиль не сразу после выхода приложения
+    let webview = dir.path().join("webview");
+    let started = Instant::now();
+    while let Err(error) = fs::remove_dir_all(&webview) {
+        assert!(started.elapsed() < Duration::from_secs(20), "профиль WebView занят: {error}");
+        std::thread::sleep(Duration::from_millis(200));
+    }
+    let (status, again) = launch_page(dir.path(), Page::Interface);
+    assert!(status.success(), "{status:?}");
+    assert_eq!(again["report"]["seeded"], json!("сохранено"), "настройка вернулась из SQLite: {again}");
+    assert_eq!(again["report"]["errors"], json!([]), "{again}");
 }
 
 #[test]

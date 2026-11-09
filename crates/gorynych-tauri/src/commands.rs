@@ -7,6 +7,7 @@ pub mod creds;
 pub mod desktop;
 pub mod menu;
 pub mod repo;
+pub mod storage;
 
 use std::fs;
 use std::path::Path;

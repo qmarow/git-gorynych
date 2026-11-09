@@ -1,8 +1,11 @@
-// Страница-заглушка: проходит все команды каркаса. Любая ошибка оставляет окно скрытым от проверки и видна в #status.
+// Сквозная проверка команд в настоящем окне (tests/app_smoke.rs). Подставляется только в отладочной сборке скриптом
+// инициализации (`GORYNYCH_DEV_SMOKE_SCRIPT`) вместо интерфейса и выполняется после разбора страницы. Любая ошибка
+// попадает в отчёт `frontend_ready`.
 const { invoke } = window.__TAURI__.core;
 const { listen } = window.__TAURI__.event;
 
-const status = document.getElementById('status');
+const status = document.createElement('pre');
+document.body.append(status);
 
 // Метка сквозной проверки команд git (tests/app_smoke.rs). Без неё в последнем репозитории ничего не меняется:
 // заглушку можно открыть и на настоящем профиле
@@ -231,14 +234,6 @@ async function main() {
   const repo = last ? await smoke(last) : null;
   status.textContent = JSON.stringify({ startup, language, tabs, recent, last, appearance, maximized, repo }, null, 2);
   return repo && { repo, recent };
-}
-
-for (const [id, command] of [
-  ['minimize', 'window_minimize'],
-  ['maximize', 'window_toggle_maximize'],
-  ['close', 'window_close'],
-]) {
-  document.getElementById(id).addEventListener('click', () => invoke(command));
 }
 
 main()

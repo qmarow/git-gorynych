@@ -11,12 +11,15 @@
     "dev": "vite",
     "electron:dev": "concurrently -k -n VITE,ELECTRON -c cyan,green \"vite\" \"wait-on tcp:127.0.0.1:5173 && cross-env VITE_DEV_SERVER_URL=http://127.0.0.1:5173 electron .\"",
     "build": "vite build",
+    "ui:watch": "vite build --watch",
+    "typecheck": "tsc -p tsconfig.json",
     "electron:preview": "vite build && electron .",
     "electron:build": "vite build && electron-builder --win --x64",
     "electron:build:portable": "vite build && electron-builder --win portable --x64"
   },
   "devDependencies": {
     "@tailwindcss/vite": "^4.1.11",
+    "@tauri-apps/api": "^2.12.4",
     "@vitejs/plugin-react": "^4.7.0",
     "concurrently": "^9.2.0",
     "cross-env": "^7.0.3",
@@ -26,6 +29,7 @@
     "react": "^19.1.0",
     "react-dom": "^19.1.0",
     "tailwindcss": "^4.1.11",
+    "typescript": "^5.9.3",
     "vite": "^7.0.4",
     "wait-on": "^8.0.3"
   },

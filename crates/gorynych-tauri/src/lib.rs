@@ -274,6 +274,16 @@ fn create_window<R: Runtime>(app: &App<R>, paths: &Paths, appearance: &Appearanc
     if let Some(dir) = &paths.webview_dir {
         builder = builder.data_directory(dir.clone());
     }
+    // Сквозная проверка окна (`tests/app_smoke.rs`): сценарий из файла выполняется вместо интерфейса. Только в отладке
+    #[cfg(debug_assertions)]
+    if let Some(script) = std::env::var_os("GORYNYCH_DEV_SMOKE_SCRIPT").and_then(|path| std::fs::read_to_string(path).ok()) {
+        builder = builder.initialization_script(format!("window.__GORYNYCH_SMOKE__ = true;\ndocument.addEventListener('DOMContentLoaded', () => {{\n{script}\n}});"));
+    }
+    // Зонд настоящего интерфейса (`tests/ui-probe.js`): интерфейс работает, а зонд решает, когда сообщить о готовности
+    #[cfg(debug_assertions)]
+    if let Some(script) = std::env::var_os("GORYNYCH_DEV_UI_PROBE").and_then(|path| std::fs::read_to_string(path).ok()) {
+        builder = builder.initialization_script(script);
+    }
     let window = builder.build()?;
     apply_appearance(&window, appearance);
     Ok(window)
@@ -412,6 +422,8 @@ pub fn specta_builder() -> Builder<tauri::Wry> {
             commands::desktop::shell_open_folder,
             commands::desktop::shell_open_terminal,
             commands::menu::menu_set,
+            commands::storage::prefs_snapshot,
+            commands::storage::prefs_write,
         ])
         .events(collect_events![
             WindowMaximizedChanged,

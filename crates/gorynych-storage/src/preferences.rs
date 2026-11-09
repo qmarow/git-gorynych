@@ -104,6 +104,29 @@ impl Db {
         self.with(|conn| remove_pref(conn, key))
     }
 
+    /// Все настройки одним запросом: ключ и значение JSON-текстом, по ключу.
+    pub fn preferences_raw(&self) -> Result<Vec<(String, String)>> {
+        self.with(|conn| {
+            let mut query = conn.prepare_cached("SELECT key, value FROM app_preferences ORDER BY key")?;
+            let rows = query.query_map([], |row| Ok((row.get(0)?, row.get(1)?)))?;
+            rows.collect()
+        })
+    }
+
+    /// Несколько изменений в одной транзакции: `None` — удалить. Интерфейс присылает их пачкой, а не по одному.
+    pub fn apply_preferences(&self, changes: &[(String, Option<String>)]) -> Result<()> {
+        self.with(|conn| {
+            let tx = conn.unchecked_transaction()?;
+            for (key, value) in changes {
+                match value {
+                    Some(value) => write_pref(&tx, key, value)?,
+                    None => remove_pref(&tx, key)?,
+                }
+            }
+            tx.commit()
+        })
+    }
+
     /// Сохранённый язык. Значение по умолчанию выбирает `gorynych_core::i18n`.
     pub fn language(&self) -> Result<Option<Language>> {
         self.preference(keys::LANGUAGE)
@@ -135,6 +158,15 @@ mod tests {
         assert_eq!(db.preference::<String>("pullMode").unwrap().as_deref(), Some("merge"));
         db.remove_preference("pullMode").unwrap();
         assert_eq!(db.preference::<String>("pullMode").unwrap(), None);
+    }
+
+    #[test]
+    fn batch_changes_and_raw_listing() {
+        let db = Db::open_in_memory();
+        db.set_preference("b", "старое").unwrap();
+        db.set_preference("c", "удалить").unwrap();
+        db.apply_preferences(&[("a".to_owned(), Some("1".to_owned())), ("b".to_owned(), Some("новое".to_owned())), ("c".to_owned(), None)]).unwrap();
+        assert_eq!(db.preferences_raw().unwrap(), [("a".to_owned(), "\"1\"".to_owned()), ("b".to_owned(), "\"новое\"".to_owned())]);
     }
 
     #[test]
