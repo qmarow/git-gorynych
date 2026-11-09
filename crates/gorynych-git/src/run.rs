@@ -41,6 +41,18 @@ struct Located {
 
 static LOCATED: LazyLock<Mutex<Located>> = LazyLock::new(Mutex::default);
 
+/// Сколько процессов git запущено: запуск на Windows стоит десятки миллисекунд, поэтому их число — главная мера нагрузки.
+static SPAWNED: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+
+/// Число запущенных процессов git с начала работы.
+pub fn spawned() -> u64 {
+    SPAWNED.load(std::sync::atomic::Ordering::Relaxed)
+}
+
+fn count_spawn() {
+    SPAWNED.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+}
+
 fn expand_vars(text: &str) -> String {
     let mut out = String::new();
     let mut rest = text;
@@ -199,6 +211,7 @@ pub async fn git_bytes<S: AsRef<OsStr>>(cwd: &Path, args: &[S], options: GitOpti
         let message = error.to_string();
         from_process_error(ProcessFailure::Exited { message: &message }, "", "", i18n::language())
     };
+    count_spawn();
     let mut child = command.spawn().map_err(failed)?;
     if let Some(input) = options.input
         && let Some(mut stdin) = child.stdin.take()
@@ -243,6 +256,7 @@ pub fn git_blocking<S: AsRef<OsStr>>(cwd: &Path, args: &[S]) -> Result<String> {
         use std::os::windows::process::CommandExt;
         command.creation_flags(CREATE_NO_WINDOW);
     }
+    count_spawn();
     let output = command.output().map_err(|error| {
         if error.kind() == std::io::ErrorKind::NotFound && cwd.exists() {
             return not_found();

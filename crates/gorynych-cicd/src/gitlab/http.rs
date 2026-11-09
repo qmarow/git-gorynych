@@ -10,7 +10,7 @@ use regex::{NoExpand, Regex};
 use serde_json::Value;
 use url::Url;
 
-use crate::http::{LogChunk, Opts, build_url, host_of, log_tail};
+use crate::http::{LogChunk, Opts, build_url, host_of, log_tail, send_following};
 use crate::json::js_string;
 
 pub(crate) const REQUEST_TIMEOUT: Duration = Duration::from_secs(20);
@@ -111,15 +111,13 @@ pub(crate) fn masked_hint() -> String {
 
 async fn send(client: &reqwest::Client, base: &str, token: &GlToken, method: reqwest::Method, api_path: &str, opts: &Opts, text: bool) -> Result<reqwest::Response> {
     let url = build_url(&format!("{base}/api/v4{api_path}"), &opts.query)?;
-    let (name, value) = token.header();
-    let mut request = client.request(method, url).header(name, value).header("Accept", if text { "text/plain" } else { "application/json" });
-    if let Some(body) = &opts.body {
-        request = request.header("Content-Type", "application/json").body(body.to_string());
-    }
+    let auth = [token.header()];
+    let headers = [("Accept", if text { "text/plain" } else { "application/json" })];
+    let body = opts.body.as_ref().map(Value::to_string);
     let network = |message: String, details: String| {
         GorynychError::new(ErrorCode::Network, message).with_hint(t("Проверьте интернет, VPN и адрес сервера GitLab", &[])).with_details(details)
     };
-    let response = match tokio::time::timeout(REQUEST_TIMEOUT, request.send()).await {
+    let response = match tokio::time::timeout(REQUEST_TIMEOUT, send_following(client, method, url, &auth, &headers, body)).await {
         Err(_) => return Err(network(t("GitLab не ответил за {0} с", &[&REQUEST_TIMEOUT.as_secs()]), "This operation was aborted".to_owned())),
         Ok(Err(error)) => {
             let host = Url::parse(base).map(|url| host_of(&url)).unwrap_or_default();

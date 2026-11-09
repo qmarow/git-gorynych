@@ -71,7 +71,7 @@
 | `git.cjs`, `conflicts.cjs`, `fileHistory.cjs`, `compare.cjs` | `gorynych-git::{run, read, diff, write, conflicts, history, compare}` | 3 | ✅ |
 | `actions.cjs`, `rebase.cjs`, `restore.cjs`, `init.cjs`, `clone.cjs` | `gorynych-git::{actions, network, rebase, restore, init, clone}` | 3 | ✅ |
 | `watch.cjs`, `indexSync.cjs`, `remoteWatch.cjs` | `gorynych-watcher::{watch, index_sync, remote_watch}` | 3 | ✅ |
-| `main.cjs`, `preload.cjs`, `system.cjs` | `gorynych-tauri` (`repo:*` и `clone:*` — `commands/repo.rs`; `creds:*` — `commands/creds.rs`; мосты — `bridge.rs`) | 1 (каркас ✅) / 4 | 🔶 |
+| `main.cjs`, `preload.cjs`, `system.cjs` | `gorynych-tauri` (`repo:*` и `clone:*` — `commands/repo.rs`; `creds:*` — `commands/creds.rs`; `cicd:*` и `gitlab:*` — `commands/cicd.rs`; мосты — `bridge.rs`) | 1 (каркас ✅) / 4 | 🔶 |
 
 ## Хранилище 2.0
 
@@ -384,3 +384,20 @@
   Проверка: `app_smoke.rs::git_commands_work_through_the_page` (вход с новым адресом → remote добавлен, описание, серверы, удаление входа, переход на SSH, ключ ed25519 через настоящий `ssh-keygen`, ошибки) и модульный тест `serversWithCi` со старыми токенами CI/CD. Сервер `gitlab.example.invalid` в этой сети не отвечает быстро: проверка API ждёт свои 8 с, тест стал на столько же длиннее.
   Не перенесён `creds:pick-key` (плагин диалогов). `creds:detect-server` и `creds:check-url` через окно не запускались: нужна сеть, их логика проверена эталоном `gorynych-cicd` и `gorynych-git`.
   Следующий шаг: команды `cicd:*` и `gitlab:*`; затем плагины диалогов и открытия (`repo:open-dialog`, `repo:open-path`, `creds:pick-key`, `appearance:pick-image`, `cicd:artifact-download`, `shell:*`).
+- 2026-11-09 — Сессия 10: подключены 23 команды `cicd:*` и 15 `gitlab:*` (`commands/cicd.rs`): это тонкая обёртка над `CicdService`, своей логики в ней нет. `opts` типизирован тремя структурами: `RemoteOptions {remote}`, `PipelinesOptions {remote, ref}`, `JobLogOptions {remote, pipelineId}`. Тела `runner-update`, `runner-delete`, `runners-prune` и `local-runner-start` — свои структуры той же формы, что в 1.x. Номер, которого нет, уходит как `CiId::Text("undefined")` (так это делает эталон `cicd_parity`).
+  Не перенесены: `gitlab:set-token` и `gitlab:clear-token` (вызовов в `src/` нет), `cicd:artifact-download` и `cicd:show-file` (нужны плагины диалогов и открытия файлов).
+  Проверка: `cicdSmoke` в `ui/app.js` + утверждения в `app_smoke.rs`. После `credsSmoke` remote уже SSH, а входа нет, поэтому ни одна команда не идёт в сеть: состояние провайдера, сохранение и сброс настроек, форма запуска, локальные раннеры, `NO_TOKEN`, ошибки аргументов. Запросы к серверам через окно не проверялись: их логика сверена эталоном `gorynych-cicd`.
+  Следующий шаг: плагины диалогов и открытия (`repo:open-dialog`, `repo:open-path`, `creds:pick-key`, `appearance:pick-image`, `cicd:artifact-download`, `cicd:show-file`, `shell:*`).
+- 2026-11-09 — Сессия 10, продолжение. **Решения пользователя** («всё исправь и сделай правильно, не забывай про оптимизацию»):
+  1. Токен при редиректе исправлен: общий клиент `reqwest` без автоматических редиректов, переходы — `gorynych_cicd::http::send_following`. При смене источника (схема, хост, порт) снимаются все заголовки провайдера: `PRIVATE-TOKEN`, `Authorization`, `X-GitHub-Api-Version`. 303 и 301/302 после POST превращаются в GET без тела, как в `fetch`; предел — 10 переходов. В эталоне `cicd_parity` это учтено функцией `without_auth_on_other_host`, а `redirect_to_other_host_is_covered` следит, что сценарий на месте.
+  2. `Gl::yaml_vars_ready` убран: `yaml_vars` вычисляются до `workflow:rules`. В `check_parity` случаи, где 1.x падал (`hits_yaml_vars_bug`), обязаны пройти без `check-failed`; добавлен тест `workflow_rules_see_file_variables`.
+  3. Нагрузка. Мера — число процессов git: на этой машине запуск стоит 35–50 мс, даже у `git --version`. Счётчик — `gorynych_git::run::spawned()`, замер — `cargo run --release -p gorynych-git --example bench -- <репозиторий>`. Обёртка `Git\cmd\git.exe` даёт только 18% (42 → 34 мс), её не трогали: она готовит `PATH` для хуков и ssh. Сделано, результат прежний:
+     - кэш корня и папки git (`read::locate_repo`) с проверкой по файловой системе при каждом обращении;
+     - `detect_operation` по файлам, без `rev-parse --git-path`;
+     - HEAD из `.git/HEAD`, `git log` параллельно с чтением веток;
+     - `core.sshCommand` и адреса remote одним вызовом `git config` (`network::NetConfig`);
+     - в тике `remote_watch` запрос к серверу и локальные ссылки параллельно;
+     - `git remote -v` один раз на `detect` и `context` в `CicdService` (было два для GitLab);
+     - профиль release: `lto = "fat"`, `codegen-units = 1`, `strip`.
+     На ripgrep (2303 коммита): `quick_status` — 3 процесса и 142 мс → 1 и 55 мс (это каждое изменение файла); `load_repository` — 9 процессов и 304 мс → 6 и 171 мс; поиск корня — 48 мс → 0,1 мс.
+  Не сделано и требует решения: (а) чтение через `gix`. Сэкономило бы оставшиеся процессы (`status` около 50 мс), но поведение `git status` (ignore, фильтры, autocrlf, fsmonitor, подмодули) воспроизводить самим рискованно. (б) `repo:load` отдаёт около 930 КБ JSON на каждое изменение в `.git`, а интерфейс 1.x перечитывает весь граф. Это вопрос Фазы 4: нужен ответ «граф не изменился» по отпечатку ссылок и обновление по частям в UI.

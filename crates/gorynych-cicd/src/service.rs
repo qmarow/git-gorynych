@@ -423,7 +423,13 @@ impl CicdService {
     /// `resolveRemote`.
     pub async fn resolve_remote(&self, root: &Path, preferred: Option<&str>) -> Option<ResolvedRemote> {
         let output = self.remote_verbose(root).await;
-        let remotes = parse_remotes(&output);
+        self.resolve_remote_from(root, preferred, &output)
+    }
+
+    /// `resolveRemote` по готовому выводу `git remote -v`: [`Self::detect`] и [`Self::context`] нужен он же и для GitLab, а
+    /// процесс git на Windows стоит десятки миллисекунд.
+    fn resolve_remote_from(&self, root: &Path, preferred: Option<&str>, output: &str) -> Option<ResolvedRemote> {
+        let remotes = parse_remotes(output);
         let (name, url) = pick_remote(&remotes, preferred)?;
         let parsed = parse_remote_url(url)?;
         let is_http = is_http_url(url);
@@ -510,14 +516,15 @@ impl CicdService {
 
     /// `detect`: провайдер и состояние авторизации, без ожидания сети.
     pub async fn detect(&self, root: &Path, preferred: Option<&str>) -> Result<Option<ForgeStatus>> {
-        let Some(r) = self.resolve_remote(root, preferred).await else {
+        let output = self.remote_verbose(root).await;
+        let Some(r) = self.resolve_remote_from(root, preferred, &output) else {
             return Ok(None);
         };
         let settings = r.conf.as_ref().map(|conf| ForgeSettings { provider: conf.provider, api_base: conf.api_base.clone() });
         let detected_kind = self.inner.creds.server_kind(&r.host);
         let kind = r.kind.filter(|kind| *kind != CiProvider::Gitlab);
         let Some(kind) = kind else {
-            let Some(g) = self.gitlab_detect_remote(root, preferred).await? else {
+            let Some(g) = self.gitlab_detect_from(preferred, &output)? else {
                 return Ok(None);
             };
             let is_gitlab = g.kind == Some(CiProvider::Gitlab);
@@ -595,11 +602,12 @@ impl CicdService {
 
     /// `context`.
     async fn context(&self, root: &Path, preferred: Option<&str>) -> Result<(&'static dyn CiCdProvider, Ctx)> {
-        let Some(r) = self.resolve_remote(root, preferred).await else {
+        let output = self.remote_verbose(root).await;
+        let Some(r) = self.resolve_remote_from(root, preferred, &output) else {
             return Err(GorynychError::new(ErrorCode::NoRemote, t("У репозитория нет remote", &[])));
         };
         let Some(kind) = r.kind.filter(|kind| *kind != CiProvider::Gitlab) else {
-            let glc = self.gitlab_context(root, preferred).await.map_err(|error| {
+            let glc = self.gitlab_context_from(preferred, &output).await.map_err(|error| {
                 if error.code == ErrorCode::NotGitlab {
                     GorynychError::new(ErrorCode::NoProvider, t("Не удалось определить сервис CI/CD", &[])).with_hint(t("Укажите провайдера (GitLab, GitHub, Gitea, Bitbucket) и адрес API в настройках CI/CD репозитория", &[]))
                 } else {

@@ -7,9 +7,11 @@
 //! - [`Gl::check_workflow`], [`Gl::check_includes`], [`Gl::check_redefined`], [`Gl::check_extends`]: см. `extends.rs`.
 //! - `jobs.rs`: ключи заданий; `rules.rs`: `rules`, `only`; `values.rs`: переменные, образы, артефакты, кэш, окружения; `simulate.rs`: сценарии.
 //!
-//! ## Ошибка 1.x, воспроизведена намеренно
-//! `workflow:rules` проверяются раньше, чем инициализирован `const yamlVars`: непредопределённая переменная в условии (`if: $MY_VAR`) даёт `ReferenceError`, и проверка прерывается с `check-failed`,
-//! без заданий и сценариев. Исправление — убрать `Gl::yaml_vars_ready` и вычислять `yaml_vars` до `workflow`; решение за пользователем.
+//! ## Отличия от 1.x
+//! **Исправлено по решению пользователя:** в 1.x `workflow:rules` проверялись раньше, чем инициализирован `const yamlVars`, и непредопределённая
+//! переменная в условии (`if: $MY_VAR`) давала `ReferenceError`: проверка прерывалась с `check-failed`, без заданий и сценариев (2 из 40 настоящих
+//! файлов). Теперь `yaml_vars` вычисляются до `workflow`, и такая переменная проверяется как в заданиях. Сравнение с эталоном — `FIXED_IN_2X` в
+//! `tests/check_parity.rs`.
 
 mod catalog;
 mod extends;
@@ -78,8 +80,6 @@ pub(super) struct Gl<'a, 'b> {
     pub tag_sets: indexmap::IndexMap<String, (Vec<String>, String, Option<u32>)>,
     pub dind_at: Option<(String, Option<u32>, String)>,
     pub yaml_vars: HashSet<String>,
-    /// См. [`Gl::check_var_name`].
-    pub yaml_vars_ready: bool,
 }
 
 impl Gl<'_, '_> {
@@ -370,17 +370,9 @@ pub(super) fn check_gitlab(config: &CiConfig, raw: &GitlabModel, cx: &mut CheckC
         tag_sets: indexmap::IndexMap::new(),
         dind_at: None,
         yaml_vars: HashSet::new(),
-        yaml_vars_ready: false,
     };
     gl.visible = gl.top_level();
-    gl.workflow = gl.check_workflow_part();
-    if let Some(rules) = gl.workflow.clone().as_ref().and_then(|workflow| workflow.get("rules").cloned()) {
-        gl.check_rules(&rules, rules::RuleOwner::Workflow)?;
-    }
-    gl.check_includes();
-    gl.check_redefined();
-    gl.check_extends();
-
+    // Переменные из файла нужны уже условиям `workflow:rules` (см. «Отличия от 1.x»). Разрешение заданий проблем не создаёт
     for name in raw.jobs.keys() {
         let config = raw.resolve_job(name).map_or_else(|| raw.jobs[name].config.clone(), |job| job.config.clone());
         gl.resolved.insert(name.clone(), raw.resolve_references(&config));
@@ -388,12 +380,19 @@ pub(super) fn check_gitlab(config: &CiConfig, raw: &GitlabModel, cx: &mut CheckC
     if let Some(Value::Map(map)) = gl.globals.get("variables") {
         gl.yaml_vars.extend(map.keys().cloned());
     }
-    for name in gl.visible.clone() {
-        if let Some(Value::Map(map)) = gl.resolved.get(&name).and_then(|cfg| cfg.get("variables")) {
+    for name in &gl.visible {
+        if let Some(Value::Map(map)) = gl.resolved.get(name).and_then(|cfg| cfg.get("variables")) {
             gl.yaml_vars.extend(map.keys().cloned());
         }
     }
-    gl.yaml_vars_ready = true;
+
+    gl.workflow = gl.check_workflow_part();
+    if let Some(rules) = gl.workflow.clone().as_ref().and_then(|workflow| workflow.get("rules").cloned()) {
+        gl.check_rules(&rules, rules::RuleOwner::Workflow)?;
+    }
+    gl.check_includes();
+    gl.check_redefined();
+    gl.check_extends();
 
     for name in gl.visible.clone() {
         gl.check_job(&name)?;

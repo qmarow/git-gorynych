@@ -37,8 +37,11 @@ enum Failure {
 }
 
 async fn http_get(client: &reqwest::Client, url: String) -> std::result::Result<(u16, Option<Value>), Failure> {
+    let Ok(url) = url::Url::parse(&url) else {
+        return Err(Failure::Other);
+    };
     let work = async {
-        let response = client.get(url).header("Accept", "application/json").send().await?;
+        let response = crate::http::send_following(client, reqwest::Method::GET, url, &[], &[("Accept", "application/json")], None).await?;
         let status = response.status().as_u16();
         let body = response.text().await?;
         Ok::<_, reqwest::Error>((status, serde_json::from_str(&body).ok()))

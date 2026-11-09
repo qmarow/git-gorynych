@@ -9,6 +9,14 @@
 //! - `getStashDetails`: отслеживаемые файлы относительно базы и неотслеживаемые из третьего родителя.
 //!
 //! Ошибка `Некорректный хэш коммита` в 1.x без кода, поэтому здесь `UNKNOWN`.
+//!
+//! ## Нагрузка (отличия от 1.x, результат тот же)
+//! Запуск процесса git на Windows стоит 35–50 мс, поэтому их число — главная мера (`run::spawned`, `examples/bench.rs`).
+//! - Корень и папка git запоминаются ([`locate_repo`]) и при каждом обращении сверяются с файловой системой: `resolveRepoRoot`
+//!   больше не запускает git. Ошибка не запоминается.
+//! - `detectOperation` проверяет файлы в папке git сам, без `rev-parse --git-path`.
+//! - `loadRepository`: хэш HEAD — из `.git/HEAD` и уже прочитанных веток (в неясных случаях — как в 1.x, через git); `git log`
+//!   идёт одновременно с чтением веток. На ripgrep (2300 коммитов): 9 процессов и 304 мс → 6 и 171 мс; `quickStatus` 3 → 1.
 
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
@@ -44,13 +52,65 @@ pub(crate) fn normalize_root(text: &str) -> PathBuf {
     if cfg!(windows) { PathBuf::from(text.replace('/', "\\")) } else { PathBuf::from(text) }
 }
 
+/// Где лежит репозиторий: корень рабочей копии и его папка git (у дополнительного worktree — своя).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RepoLocation {
+    pub root: PathBuf,
+    pub git_dir: PathBuf,
+}
+
+/// Сколько папок помнить. Интерфейс обращается к нескольким репозиториям (вкладки), каждый — по своему корню.
+const MAX_LOCATIONS: usize = 64;
+
+static LOCATIONS: LazyLock<std::sync::Mutex<HashMap<PathBuf, RepoLocation>>> = LazyLock::new(Default::default);
+
+/// Запомненное расположение ещё верно: папка git на месте, корень всё ещё репозиторий, и между `dir` и корнем не появилось
+/// своего `.git` (вложенного репозитория). Это несколько обращений к файловой системе вместо процесса git (десятки
+/// миллисекунд на Windows). Если `dir` не лежит внутри корня буквально (другой регистр, ссылка), кэш не используется.
+fn still_valid(dir: &Path, location: &RepoLocation) -> bool {
+    if !location.git_dir.is_dir() || std::fs::symlink_metadata(location.root.join(".git")).is_err() {
+        return false;
+    }
+    let mut current = Some(dir);
+    while let Some(path) = current {
+        if path == location.root {
+            return true;
+        }
+        if std::fs::symlink_metadata(path.join(".git")).is_ok() {
+            return false;
+        }
+        current = path.parent();
+    }
+    false
+}
+
+/// Корень и папка git для `dir`. Успешный ответ запоминается, ошибка — нет.
+pub async fn locate_repo(dir: &Path) -> Result<RepoLocation> {
+    let cached = LOCATIONS.lock().expect("расположения репозиториев").get(dir).cloned();
+    if let Some(location) = cached.filter(|location| still_valid(dir, location)) {
+        return Ok(location);
+    }
+    let location = match git(dir, &["rev-parse", "--show-toplevel", "--absolute-git-dir"]).await {
+        Ok(out) => {
+            let mut lines = out.lines().map(gorynych_core::js::trim);
+            let root = normalize_root(lines.next().unwrap_or_default());
+            let git_dir = normalize_root(lines.next().unwrap_or_default());
+            RepoLocation { root, git_dir }
+        }
+        Err(error) if error.code == ErrorCode::GitMissing => return Err(error),
+        Err(_) => return Err(GorynychError::new(ErrorCode::NotARepo, t("Папка не является Git-репозиторием: {0}", &[&dir.display()]))),
+    };
+    let mut cache = LOCATIONS.lock().expect("расположения репозиториев");
+    if cache.len() >= MAX_LOCATIONS {
+        cache.clear();
+    }
+    cache.insert(dir.to_path_buf(), location.clone());
+    Ok(location)
+}
+
 /// `resolveRepoRoot`.
 pub async fn resolve_repo_root(dir: &Path) -> Result<PathBuf> {
-    match git(dir, &["rev-parse", "--show-toplevel"]).await {
-        Ok(out) => Ok(normalize_root(gorynych_core::js::trim(&out))),
-        Err(error) if error.code == ErrorCode::GitMissing => Err(error),
-        Err(_) => Err(GorynychError::new(ErrorCode::NotARepo, t("Папка не является Git-репозиторием: {0}", &[&dir.display()]))),
-    }
+    Ok(locate_repo(dir).await?.root)
 }
 
 /// `hasHead`.
@@ -297,10 +357,19 @@ fn short_decoration(part: &str) -> String {
 
 /// `readCommits`.
 pub async fn read_commits(cwd: &Path, refs: &RefsInfo, limit: u32) -> Result<Vec<Commit>> {
+    parse_commits(cwd, refs, log_commits(cwd, limit).await).await
+}
+
+/// Вывод `git log` для графа: он не зависит от веток, поэтому `load_repository` запускает его одновременно с [`read_refs`].
+async fn log_commits(cwd: &Path, limit: u32) -> Result<String> {
     let max_count = format!("--max-count={limit}");
     let format = format!("--format={}%x1e", ["%H", "%P", "%an", "%ae", "%aI", "%s", "%b", "%D"].join("%x1f"));
     let args = ["log", "--branches", "--remotes", "--tags", "HEAD", "--date-order", &max_count, &format, "--decorate=full", "--decorate-refs-exclude=refs/stash"];
-    let out = match git(cwd, &args).await {
+    git(cwd, &args).await
+}
+
+async fn parse_commits(cwd: &Path, refs: &RefsInfo, log: Result<String>) -> Result<Vec<Commit>> {
+    let out = match log {
         Ok(out) => out,
         Err(error) => {
             // Пустой репозиторий без коммитов
@@ -513,21 +582,35 @@ pub async fn read_status(cwd: &Path, stats: bool) -> Result<Vec<WipEntry>> {
 }
 
 /// Незавершённая операция: `rebase`, `merge`, `cherry-pick`, `revert` или `None`.
+///
+/// В 1.x пути давал `rev-parse --git-path`; все пять файлов свои у каждого worktree, то есть лежат прямо в его папке git.
+/// Сама проверка — по файловой системе при каждом вызове, запоминается только расположение папки.
 pub async fn detect_operation(cwd: &Path) -> Option<&'static str> {
-    let out = git(cwd, &["rev-parse", "--git-path", "rebase-merge", "--git-path", "rebase-apply", "--git-path", "MERGE_HEAD", "--git-path", "CHERRY_PICK_HEAD", "--git-path", "REVERT_HEAD"]).await.unwrap_or_default();
-    let paths: Vec<PathBuf> = out.split('\n').map(gorynych_core::js::trim).filter(|item| !item.is_empty()).map(|item| cwd.join(item)).collect();
-    let exists = |index: usize| paths.get(index).is_some_and(|path| path.exists());
-    if exists(0) || exists(1) {
+    let git_dir = locate_repo(cwd).await.ok()?.git_dir;
+    let exists = |name: &str| git_dir.join(name).exists();
+    if exists("rebase-merge") || exists("rebase-apply") {
         Some("rebase")
-    } else if exists(2) {
+    } else if exists("MERGE_HEAD") {
         Some("merge")
-    } else if exists(3) {
+    } else if exists("CHERRY_PICK_HEAD") {
         Some("cherry-pick")
-    } else if exists(4) {
+    } else if exists("REVERT_HEAD") {
         Some("revert")
     } else {
         None
     }
+}
+
+/// Хэш HEAD без процесса git: `.git/HEAD` указывает на ветку из уже прочитанного списка или содержит сам хэш. Всё прочее
+/// (нерождённая ветка, ссылка не на ветку, необычное содержимое) — `None`, и вызывающий спрашивает git.
+fn head_from_files(git_dir: &Path, branches: &[LocalBranch]) -> Option<String> {
+    let text = std::fs::read_to_string(git_dir.join("HEAD")).ok()?;
+    let text = gorynych_core::js::trim(&text);
+    if let Some(target) = text.strip_prefix("ref:") {
+        let name = gorynych_core::js::trim(target).strip_prefix("refs/heads/")?;
+        return branches.iter().find(|branch| branch.name == name).map(|branch| branch.hash.clone()).filter(|hash| !hash.is_empty());
+    }
+    (matches!(text.len(), 40 | 64) && text.bytes().all(|byte| byte.is_ascii_hexdigit())).then(|| text.to_ascii_lowercase())
 }
 
 /// `quickStatus`.
@@ -568,12 +651,17 @@ pub struct Repository {
 /// `loadRepository`; `limit: None` — 2000 коммитов.
 pub async fn load_repository(dir: &Path, limit: Option<u32>) -> Result<Repository> {
     let limit = limit.unwrap_or(DEFAULT_LIMIT);
-    let root = resolve_repo_root(dir).await?;
-    let refs = read_refs(&root).await?;
-    let (commits, wip, head, operation) = tokio::join!(read_commits(&root, &refs, limit), read_status(&root, true), git(&root, &["rev-parse", "--verify", "--quiet", "HEAD"]), detect_operation(&root));
-    let commits = commits?;
+    let location = locate_repo(dir).await?;
+    let root = location.root.clone();
+    // Все процессы git — одновременно: каждый запуск на Windows стоит десятки миллисекунд, и ждать друг друга им незачем
+    let (refs, log, wip, operation) = tokio::join!(read_refs(&root), log_commits(&root, limit), read_status(&root, true), detect_operation(&root));
+    let refs = refs?;
+    let head_hash = match head_from_files(&location.git_dir, &refs.local_branches) {
+        Some(hash) => Some(hash),
+        None => git(&root, &["rev-parse", "--verify", "--quiet", "HEAD"]).await.ok().map(|out| gorynych_core::js::trim(&out).to_owned()),
+    };
+    let commits = parse_commits(&root, &refs, log).await?;
     let wip_files = wip?;
-    let head_hash = head.ok().map(|out| gorynych_core::js::trim(&out).to_owned());
     Ok(Repository {
         path: root.display().to_string(),
         name: root.file_name().map_or_else(String::new, |name| name.to_string_lossy().into_owned()),

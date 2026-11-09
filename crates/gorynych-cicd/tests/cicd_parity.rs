@@ -578,7 +578,8 @@ async fn run_case(case: &Value) -> Vec<String> {
         if a != b {
             failures.push(format!("{name} [{}] шаг {index} {}\n  rust: {a}\n  1.x:  {b}", case["language"], step));
         }
-        let (a, b) = (sorted_requests(got["requests"].as_array().unwrap()), sorted_requests(want["requests"].as_array().unwrap()));
+        let want_requests = without_auth_on_other_host(want["requests"].as_array().unwrap());
+        let (a, b) = (sorted_requests(got["requests"].as_array().unwrap()), sorted_requests(&want_requests));
         if a != b {
             failures.push(format!("{name} [{}] шаг {index} {} — запросы\n  rust: {}\n  1.x:  {}", case["language"], step, json!(a), json!(b)));
         }
@@ -587,6 +588,36 @@ async fn run_case(case: &Value) -> Vec<String> {
         }
     }
     failures
+}
+
+/// Исправлено в 2.x по решению пользователя: 1.x после редиректа на другой сервер (`{{OTHER_HOST}}`) отправлял туда
+/// `PRIVATE-TOKEN` — `fetch` снимает при смене хоста только `Authorization`. 2.x не отправляет на чужой сервер никакую
+/// авторизацию, поэтому в ожидаемых запросах к нему её нет. Заголовки провайдера (`X-GitHub-Api-Version`) идут вместе с
+/// авторизацией только своему серверу: хранилищу подписанных ссылок они не нужны.
+fn without_auth_on_other_host(requests: &[Value]) -> Vec<Value> {
+    requests
+        .iter()
+        .map(|request| {
+            let mut request = request.clone();
+            if request["host"] == json!("{{OTHER_HOST}}")
+                && let Some(headers) = request.get_mut("headers").and_then(Value::as_object_mut)
+            {
+                headers.remove("private-token");
+                headers.remove("authorization");
+                headers.remove("x-github-api-version");
+            }
+            request
+        })
+        .collect()
+}
+
+/// Сценарий редиректа на месте: без него исправление выше ничего бы не проверяло.
+#[test]
+fn redirect_to_other_host_is_covered() {
+    let data = fixture();
+    let case = data["cases"].as_array().unwrap().iter().find(|case| case["name"] == json!("gitlab: артефакт редиректом на другой сервер")).expect("сценарий есть");
+    let leaked = case["expected"][0]["requests"].as_array().unwrap().iter().any(|request| request["host"] == json!("{{OTHER_HOST}}") && request["headers"].get("private-token").is_some());
+    assert!(leaked, "в 1.x токен уходил на другой сервер: {case}");
 }
 
 /// Подмены значений: падение 1.x с `TypeError` не обязано совпасть, это ошибка в данных сервера. Rust при этом не должен падать.

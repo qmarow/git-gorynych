@@ -9,6 +9,7 @@ use gorynych_core::js;
 use gorynych_storage::repo_providers::CiProvider;
 use indexmap::IndexMap;
 
+use crate::http::send_following;
 use crate::json::text;
 use crate::service::CicdService;
 
@@ -46,13 +47,17 @@ impl CicdService {
         for _ in 0..LIGHT_MAX_PAGES {
             let url = format!("{}/api/v4/projects/{}/repository/branches?per_page=100&page={}", remote.base, js::encode_uri_component(&remote.path), js::number_to_string(page));
             let cached = self.inner.etag_cache.lock().expect("кэш ETag").get(&url).cloned();
-            let (name, value) = token.header();
-            let mut request = self.inner.client.get(&url).header(name, value).header("Accept", "application/json");
+            let auth = [token.header()];
+            let mut headers = vec![("Accept", "application/json")];
             if let Some(etag) = cached.as_ref().and_then(|entry| entry.etag.as_deref()) {
-                request = request.header("If-None-Match", etag);
+                headers.push(("If-None-Match", etag));
             }
             let network = |details: String| GorynychError::new(ErrorCode::Network, t("Нет связи с {0}", &[&remote.host])).with_details(details);
-            let response = match tokio::time::timeout(LIGHT_TIMEOUT, request.send()).await {
+            let Ok(parsed) = url::Url::parse(&url) else {
+                return Err(network("Invalid URL".to_owned()));
+            };
+            let request = send_following(&self.inner.client, reqwest::Method::GET, parsed, &auth, &headers, None);
+            let response = match tokio::time::timeout(LIGHT_TIMEOUT, request).await {
                 Err(_) => return Err(network("This operation was aborted".to_owned())),
                 Ok(Err(error)) => return Err(network(error.to_string())),
                 Ok(Ok(response)) => response,

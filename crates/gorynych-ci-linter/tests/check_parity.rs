@@ -131,6 +131,12 @@ fn hits_alias_limit(check: &Json) -> bool {
     check["issues"].as_array().is_some_and(|issues| issues.iter().any(|issue| issue["id"] == "check-failed" && issue["why"].as_str().is_some_and(|why| why.contains("Excessive alias count"))))
 }
 
+/// Исправлено в 2.x по решению пользователя, см. шапку `check/gitlab/mod.rs`: 1.x прерывал проверку GitLab на переменной из файла в
+/// `workflow:rules` (`ReferenceError` про `yamlVars`). Сравнивать в таких случаях не с чем: 2.0 обязан пройти проверку до конца.
+fn hits_yaml_vars_bug(check: &Json) -> bool {
+    check["issues"].as_array().is_some_and(|issues| issues.iter().any(|issue| issue["id"] == "check-failed" && issue["why"].as_str().is_some_and(|why| why.contains("yamlVars"))))
+}
+
 fn first_difference(path: &str, expected: &Json, actual: &Json) -> Option<String> {
     match (expected, actual) {
         (Json::Object(a), Json::Object(b)) => {
@@ -197,6 +203,10 @@ fn run_case(case: &Json) -> Option<String> {
     };
     let mut actual = serde_json::to_value(&current.check).unwrap();
     actual.as_object_mut().unwrap().remove("ms");
+    if hits_yaml_vars_bug(&case["check"]) {
+        let failed = actual["issues"].as_array().unwrap().iter().any(|issue| issue["id"] == "check-failed");
+        return failed.then(|| format!("{name}: проверка прервалась, а в 2.x ошибка 1.x исправлена: {actual}"));
+    }
     if case["loose"] == json!(true) {
         // Текст ошибки YAML другой, а данные только до неё: см. шапку `yaml.rs`
         let has_yaml = |json: &Json| json["issues"].as_array().unwrap().iter().any(|issue| issue["id"] == "yaml-syntax");
@@ -210,6 +220,22 @@ fn run_all(cases: &[Json]) -> usize {
     let shown: Vec<String> = failures.iter().take(30).cloned().collect();
     assert!(failures.is_empty(), "расхождений {} из {}:\n{}", failures.len(), cases.len(), shown.join("\n"));
     cases.len()
+}
+
+/// Исправленная ошибка 1.x: переменная из файла в `workflow:rules` больше не прерывает проверку, а неизвестная разбирается как в заданиях.
+#[test]
+fn workflow_rules_see_file_variables() {
+    let temp = tempfile::tempdir().unwrap();
+    let text = "variables:\n  DEPLOY: \"1\"\nworkflow:\n  rules:\n    - if: $DEPLOY == \"1\"\n    - if: $CI_COMMIT_BRANH\nbuild:\n  script: [make]\n";
+    fs::write(temp.path().join(".gitlab-ci.yml"), text).unwrap();
+    let loaded = preview_ci(temp.path(), "", Language::Ru, &HashMap::new(), &NoRepo);
+    let check = serde_json::to_value(&loaded.load.current.unwrap().check).unwrap();
+    let ids: Vec<&str> = check["issues"].as_array().unwrap().iter().map(|issue| issue["id"].as_str().unwrap()).collect();
+    assert!(!ids.contains(&"check-failed"), "{check}");
+    let unknown: Vec<&Json> = check["issues"].as_array().unwrap().iter().filter(|issue| issue["id"] == "var-unknown-predefined").collect();
+    assert_eq!(unknown.len(), 1, "$DEPLOY объявлена в файле, $CI_COMMIT_BRANH — опечатка: {check}");
+    assert!(unknown[0]["title"].as_str().unwrap().contains("CI_COMMIT_BRANH"), "{check}");
+    assert!(check["scenarios"].as_array().is_some_and(|list| !list.is_empty()), "сценарии посчитаны: {check}");
 }
 
 #[test]

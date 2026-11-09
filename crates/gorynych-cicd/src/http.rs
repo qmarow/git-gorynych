@@ -10,6 +10,8 @@
 //! - Текст: хвост не больше `MAX_LOG` и исходный `size`. JSON: пустое тело — `null`; при 202 и 204 нечитаемое тело — тоже `null`.
 //!
 //! ## Отличия от 1.x
+//! - По редиректам клиент идёт сам ([`send_following`]): заголовки провайдера, включая авторизацию, не уходят на другой источник
+//!   (схема, хост, порт). `fetch` в 1.x снимал только `Authorization`, а `PRIVATE-TOKEN` и `X-GitHub-Api-Version` отправлял дальше.
 //! - Нечитаемый JSON в успешном ответе остаётся кодом `UNKNOWN`, но текст ошибки другой: в 1.x это сообщение `SyntaxError` из V8.
 //! - `details` у `NETWORK` — текст ошибки `reqwest`, а не `fetch`.
 
@@ -30,14 +32,83 @@ pub const DOWNLOAD_TIMEOUT: Duration = Duration::from_secs(600);
 /// 1,5 МБ.
 pub const MAX_LOG: usize = 1_572_864;
 
-/// HTTP-клиент для всего приложения: один на процесс, потому что сборка читает корневые сертификаты ОС.
+/// Сколько переходов по редиректам допускается: как у `reqwest` по умолчанию.
+const MAX_REDIRECTS: usize = 10;
+
+/// HTTP-клиент для всего приложения: один на процесс, потому что сборка читает корневые сертификаты ОС, а соединения
+/// переиспользуются между запросами. По редиректам он сам не ходит: это делает [`send_following`].
 pub fn client() -> reqwest::Client {
     static CLIENT: LazyLock<reqwest::Client> = LazyLock::new(|| {
         // Ошибка значит, что провайдер уже выбран: это тоже подходит.
         let _ = rustls::crypto::ring::default_provider().install_default();
-        reqwest::Client::builder().build().expect("настройки клиента корректны")
+        reqwest::Client::builder()
+            .redirect(reqwest::redirect::Policy::none())
+            .pool_idle_timeout(Duration::from_secs(60))
+            .pool_max_idle_per_host(4)
+            .build()
+            .expect("настройки клиента корректны")
     });
     CLIENT.clone()
+}
+
+/// Схема, хост и порт: авторизация действует только в пределах одного источника.
+fn same_origin(a: &Url, b: &Url) -> bool {
+    a.scheme() == b.scheme() && a.host_str() == b.host_str() && a.port_or_known_default() == b.port_or_known_default()
+}
+
+/// Запрос с переходами по редиректам вручную. `auth` уходит только на исходный источник: при первом же переходе на другой
+/// сервер (или с `https` на `http`) авторизация снимается насовсем. Так ведут себя браузеры с `Authorization`; `reqwest` же
+/// снимает только `Authorization`, `Cookie` и `Proxy-Authorization`, а `PRIVATE-TOKEN` GitLab ушёл бы, например, в
+/// объектное хранилище, куда GitLab отправляет за артефактом.
+///
+/// Метод меняется, как в `fetch`: 303 (кроме `HEAD`) и 301/302 после `POST` — `GET` без тела; 307 и 308 сохраняют метод и тело.
+pub(crate) async fn send_following(
+    client: &reqwest::Client,
+    mut method: reqwest::Method,
+    mut url: Url,
+    auth: &[(String, String)],
+    headers: &[(&str, &str)],
+    mut body: Option<String>,
+) -> reqwest::Result<reqwest::Response> {
+    let origin = url.clone();
+    let mut authorized = true;
+    let mut hops = 0;
+    loop {
+        let mut request = client.request(method.clone(), url.clone());
+        if authorized {
+            for (name, value) in auth {
+                request = request.header(name, value);
+            }
+        }
+        for (name, value) in headers {
+            request = request.header(*name, *value);
+        }
+        if let Some(body) = &body {
+            request = request.header("Content-Type", "application/json").body(body.clone());
+        }
+        let response = request.send().await?;
+        let status = response.status();
+        let next = status
+            .is_redirection()
+            .then(|| response.headers().get(reqwest::header::LOCATION))
+            .flatten()
+            .and_then(|location| location.to_str().ok())
+            .and_then(|location| url.join(location).ok());
+        let Some(next) = next.filter(|next| matches!(next.scheme(), "http" | "https")) else {
+            return Ok(response);
+        };
+        hops += 1;
+        if hops > MAX_REDIRECTS {
+            return Ok(response);
+        }
+        let code = status.as_u16();
+        if (code == 303 && method != reqwest::Method::HEAD) || (matches!(code, 301 | 302) && method == reqwest::Method::POST) {
+            method = reqwest::Method::GET;
+            body = None;
+        }
+        authorized = authorized && same_origin(&origin, &next);
+        url = next;
+    }
 }
 
 /// Кому и с какой авторизацией отправлять запросы.
@@ -151,22 +222,15 @@ async fn send(ctx: &HttpCtx, method: reqwest::Method, api_path: &str, opts: &Opt
     let timeout = opts.timeout.unwrap_or(TIMEOUT);
     let host = host_of(&url);
 
-    let mut request = ctx.client.request(method, url);
-    if same_host {
-        for (name, value) in &ctx.headers {
-            request = request.header(name, value);
-        }
-    }
+    let auth: &[(String, String)] = if same_host { &ctx.headers } else { &[] };
     let accept = opts.accept.as_deref().unwrap_or(if text { "text/plain, */*" } else { "application/json" });
-    request = request.header("Accept", accept).header("User-Agent", "git-Gorynych");
-    if let Some(body) = &opts.body {
-        request = request.header("Content-Type", "application/json").body(body.to_string());
-    }
+    let headers = [("Accept", accept), ("User-Agent", "git-Gorynych")];
+    let body = opts.body.as_ref().map(Value::to_string);
 
     let network = |message: String, details: String| {
         GorynychError::new(ErrorCode::Network, message).with_hint(t("Проверьте интернет, VPN и адрес API {0}", &[&ctx.label])).with_details(details)
     };
-    let response = match tokio::time::timeout(timeout, request.send()).await {
+    let response = match tokio::time::timeout(timeout, send_following(&ctx.client, method, url, auth, &headers, body)).await {
         Err(_) => return Err(network(t("{0} не ответил за {1} с", &[&ctx.label, &timeout.as_secs()]), "This operation was aborted".to_owned())),
         Ok(Err(error)) => return Err(network(t("Нет связи с {0}", &[&host]), error.to_string())),
         Ok(Ok(response)) => response,
@@ -297,6 +361,70 @@ mod tests {
         let head = server.join().unwrap();
         assert!(!head.contains("authorization"), "{head}");
         assert!(head.contains("user-agent: git-gorynych"), "{head}");
+    }
+
+    /// Сервер: ответы строятся по его порту и отдаются по порядку, по одному на соединение. Возвращает начало каждого запроса.
+    fn serve(answers: impl FnOnce(u16) -> Vec<String>) -> (u16, std::thread::JoinHandle<Vec<String>>) {
+        use std::io::{Read, Write};
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let answers = answers(port);
+        let server = std::thread::spawn(move || {
+            let mut heads = Vec::new();
+            for answer in answers {
+                let (mut stream, _) = listener.accept().unwrap();
+                let mut buffer = [0u8; 4096];
+                let read = stream.read(&mut buffer).unwrap();
+                heads.push(String::from_utf8_lossy(&buffer[..read]).to_lowercase());
+                stream.write_all(answer.as_bytes()).unwrap();
+            }
+            heads
+        });
+        (port, server)
+    }
+
+    fn redirect(status: &str, location: String) -> String {
+        format!("HTTP/1.1 {status}\r\nlocation: {location}\r\ncontent-length: 0\r\nconnection: close\r\n\r\n")
+    }
+
+    fn ok() -> String {
+        "HTTP/1.1 200 OK\r\ncontent-length: 2\r\nconnection: close\r\n\r\n{}".to_owned()
+    }
+
+    fn private(port: u16) -> HttpCtx {
+        HttpCtx { client: client(), api_base: format!("http://127.0.0.1:{port}"), headers: vec![("PRIVATE-TOKEN".to_owned(), "glpat-s".to_owned())], label: "GitLab".to_owned(), scope_hint: None }
+    }
+
+    #[tokio::test]
+    async fn redirect_to_other_origin_drops_every_auth_header() {
+        // Тот же сервер под другим именем — другой источник, как объектное хранилище для артефактов GitLab. Обратно на свой
+        // сервер авторизация тоже не возвращается: цепочку переходов задаёт чужой сервер
+        let (port, server) = serve(|port| {
+            vec![redirect("302 Found", format!("http://localhost:{port}/signed")), redirect("302 Found", format!("http://127.0.0.1:{port}/back")), ok()]
+        });
+        request(&private(port), reqwest::Method::GET, "/artifacts", Opts::default()).await.unwrap();
+        let heads = server.join().unwrap();
+        assert!(heads[0].starts_with("get /artifacts ") && heads[0].contains("private-token: glpat-s"), "{}", heads[0]);
+        assert!(heads[1].starts_with("get /signed ") && !heads[1].contains("private-token"), "{}", heads[1]);
+        assert!(heads[2].starts_with("get /back ") && !heads[2].contains("private-token"), "{}", heads[2]);
+    }
+
+    #[tokio::test]
+    async fn redirect_within_origin_keeps_auth_and_follows_fetch_methods() {
+        let (port, server) = serve(|port| vec![redirect("307 Temporary Redirect", format!("http://127.0.0.1:{port}/b")), redirect("303 See Other", "/c".to_owned()), ok()]);
+        let opts = Opts::body(json!({ "ref": "main" }));
+        request(&private(port), reqwest::Method::POST, "/a", opts).await.unwrap();
+        let heads = server.join().unwrap();
+        assert!(heads[1].starts_with("post /b ") && heads[1].contains("private-token: glpat-s") && heads[1].contains(r#"{"ref":"main"}"#), "307 сохраняет метод и тело: {}", heads[1]);
+        assert!(heads[2].starts_with("get /c ") && heads[2].contains("private-token: glpat-s") && !heads[2].contains("content-type"), "303 — GET без тела: {}", heads[2]);
+    }
+
+    #[tokio::test]
+    async fn redirect_loop_stops() {
+        let (port, server) = serve(|port| (0..=MAX_REDIRECTS).map(|_| redirect("302 Found", format!("http://127.0.0.1:{port}/loop"))).collect());
+        let error = request(&private(port), reqwest::Method::GET, "/loop", Opts::default()).await.unwrap_err();
+        assert_eq!(server.join().unwrap().len(), MAX_REDIRECTS + 1);
+        assert_eq!(error.code, ErrorCode::ApiError, "ответ 302 после предела — ошибка, а не зацикливание");
     }
 
     #[test]

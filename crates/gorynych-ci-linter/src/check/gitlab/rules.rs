@@ -30,15 +30,9 @@ fn capitalize(text: &str) -> String {
 }
 
 impl Gl<'_, '_> {
-    /// `checkVarName`. В 1.x `workflow:rules` проверялись до инициализации `yamlVars`: непредопределённая переменная прерывала всю проверку.
+    /// `checkVarName`.
     pub(super) fn check_var_name(&mut self, variable: &str, file: Option<String>, line: Option<u32>, job: Option<String>, in_script: bool) -> Result<(), String> {
-        if PREDEFINED.contains(variable) {
-            return Ok(());
-        }
-        if !self.yaml_vars_ready {
-            return Err("Cannot access 'yamlVars' before initialization".to_owned());
-        }
-        if self.yaml_vars.contains(variable) {
+        if PREDEFINED.contains(variable) || self.yaml_vars.contains(variable) {
             return Ok(());
         }
         let when = if in_script { tr!("При выполнении задания {0}", q(job.clone().unwrap_or_default())) } else { config_when() };

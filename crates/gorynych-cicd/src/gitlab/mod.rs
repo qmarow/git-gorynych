@@ -8,11 +8,10 @@
 //! - Проект кэшируется на 10 минут по `base|path|последние 6 символов токена`; `accessLevel` = max(project, group).
 //! - `branchHeads`: ветки через API с ETag (≤20 страниц, таймаут 8 с, кэш ≤300 адресов); `null` — токена нет, вызывающий идёт в `ls-remote`.
 //!
-//! ## Известная ошибка 1.x, сохранена до решения пользователя
-//! `PRIVATE-TOKEN` уходит на чужой сервер при редиректе: `fetch` и `reqwest` снимают при смене хоста только `Authorization`. Так бывает при скачивании артефакта из объектного хранилища.
-//! Сценарий «артефакт редиректом на другой сервер» в `tests/fixtures/cicd-cases.cjs` это фиксирует.
-//!
 //! ## Отличия от 1.x
+//! - **Исправлено по решению пользователя:** в 1.x `PRIVATE-TOKEN` уходил на чужой сервер при редиректе (`fetch` снимает при смене хоста только
+//!   `Authorization`), например в объектное хранилище за артефактом. Теперь переходы идут через [`crate::http::send_following`], и при смене
+//!   источника авторизация снимается. Сценарий «артефакт редиректом на другой сервер» сверяется с этой поправкой (`cicd_parity.rs`).
 //! - **`setToken` и `clearToken` не перенесены**: у каналов `gitlab:set-token` и `gitlab:clear-token` нет вызовов в `src/`, авторизация в приложении одна.
 //! - `listTokens` — в порядке ключей, а не добавления записей. Интерфейс сортирует репозитории сам.
 //! - Лишних запросов `git remote -v` нет: адаптер использует готовый контекст, а не собирает его заново для каждого вызова.
@@ -140,7 +139,12 @@ impl CicdService {
     /// `detectRemote`.
     pub async fn gitlab_detect_remote(&self, root: &Path, preferred: Option<&str>) -> Result<Option<GlRemoteStatus>> {
         let output = self.remote_verbose(root).await;
-        let remotes = parse_remotes(&output);
+        self.gitlab_detect_from(preferred, &output)
+    }
+
+    /// `detectRemote` по готовому выводу `git remote -v`.
+    pub(crate) fn gitlab_detect_from(&self, preferred: Option<&str>, output: &str) -> Result<Option<GlRemoteStatus>> {
+        let remotes = parse_remotes(output);
         let Some((name, url)) = pick_remote(&remotes, preferred) else {
             return Ok(None);
         };
@@ -182,7 +186,13 @@ impl CicdService {
 
     /// Контекст запросов: remote, авторизация и проект.
     pub async fn gitlab_context(&self, root: &Path, preferred: Option<&str>) -> Result<GlCtx> {
-        let Some(remote) = self.gitlab_detect_remote(root, preferred).await? else {
+        let output = self.remote_verbose(root).await;
+        self.gitlab_context_from(preferred, &output).await
+    }
+
+    /// Контекст по готовому выводу `git remote -v`.
+    pub(crate) async fn gitlab_context_from(&self, preferred: Option<&str>, output: &str) -> Result<GlCtx> {
+        let Some(remote) = self.gitlab_detect_from(preferred, output)? else {
             return Err(GorynychError::new(ErrorCode::NoRemote, t("У репозитория нет remote", &[])));
         };
         if remote.kind != Some(CiProvider::Gitlab) {

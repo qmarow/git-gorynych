@@ -240,8 +240,10 @@ impl RemoteRepoWatcher {
     }
 
     async fn check_remote(&self, root: &Path, remote: &str) -> Result<RemoteResult> {
-        let (server, via) = self.server_state(root, remote).await?;
-        let changes = diff(&server, &local_state(root, remote).await?);
+        // Сервер и локальные ссылки — одновременно: ответ сервера ждём, а процесс git для своих ссылок можно запустить сразу
+        let (server, local) = tokio::join!(self.server_state(root, remote), local_state(root, remote));
+        let (server, via) = server?;
+        let changes = diff(&server, &local?);
         let key = (root.to_path_buf(), remote.to_owned());
         let result = |changes: RemoteChanges, fetched: bool| RemoteResult { remote: remote.to_owned(), via, changes, fetched };
         if changes.is_empty() {
