@@ -5,6 +5,7 @@
 pub mod cicd;
 pub mod creds;
 pub mod desktop;
+pub mod menu;
 pub mod repo;
 
 use std::fs;

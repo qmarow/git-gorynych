@@ -133,11 +133,14 @@ export const commands = {
 	shellOpenFolder: (dir: string | null) => typedError<OpenedPath, GorynychError_Serialize>(__TAURI_INVOKE("shell_open_folder", { dir })),
 	/**  Папка репозитория в терминале. */
 	shellOpenTerminal: (dir: string | null) => typedError<OpenedTerminal, GorynychError_Serialize>(__TAURI_INVOKE("shell_open_terminal", { dir })),
+	/**  Модель от интерфейса. Ответа нет, как у `ipcRenderer.send` в 1.x. */
+	menuSet: (model: { [key in string]: MenuEntry_Deserialize[] } | null) => __TAURI_INVOKE<void>("menu_set", { model }),
 };
 
 /** Events */
 export const events = {
 	cloneProgressEvent: makeEvent<CloneProgressEvent_Serialize, CloneProgressEvent_Deserialize>("clone-progress-event"),
+	menuInvoke: makeEvent<MenuInvoke_Serialize, MenuInvoke_Deserialize>("menu-invoke"),
 	repoChanged: makeEvent<RepoChanged, RepoChanged>("repo-changed"),
 	repoIndexSynced: makeEvent<RepoIndexSynced, RepoIndexSynced>("repo-index-synced"),
 	windowFocused: makeEvent<WindowFocused, WindowFocused>("window-focused"),
@@ -4336,6 +4339,52 @@ export type MatchLine = {
 	text: string,
 	cut: boolean,
 	ranges: ([(number | null), (number | null)])[],
+};
+
+/**  Пункт модели. Поля разбираются как проверки в 1.x: `separator`, затем `header`, иначе обычный пункт. */
+export type MenuEntry = MenuEntry_Serialize | MenuEntry_Deserialize;
+
+/**  Пункт модели. Поля разбираются как проверки в 1.x: `separator`, затем `header`, иначе обычный пункт. */
+export type MenuEntry_Deserialize = {
+	separator?: boolean,
+	header?: string | null,
+	id?: string | null,
+	label?: string | null,
+	/**  Подсказка сочетания клавиш: в нативном меню не показывается, см. шапку. */
+	hint?: string | null,
+	disabled?: boolean,
+};
+
+/**  Пункт модели. Поля разбираются как проверки в 1.x: `separator`, затем `header`, иначе обычный пункт. */
+export type MenuEntry_Serialize = {
+	separator: boolean,
+	header: string | null,
+	id: string | null,
+	label: string | null,
+	/**  Подсказка сочетания клавиш: в нативном меню не показывается, см. шапку. */
+	hint: string | null,
+	disabled: boolean,
+};
+
+/**  Клик по пункту: `menu:invoke`. */
+export type MenuInvoke = MenuInvoke_Serialize | MenuInvoke_Deserialize;
+
+/**  Клик по пункту: `menu:invoke`. */
+export type MenuInvoke_Deserialize = {
+	/**  Имя меню модели; `None` — пункт меню приложения («О программе», «Настройки»). */
+	menu?: string | null,
+	/**  Номер пункта в меню модели, `-1` для меню приложения. */
+	index: number | null,
+	id?: string | null,
+};
+
+/**  Клик по пункту: `menu:invoke`. */
+export type MenuInvoke_Serialize = {
+	/**  Имя меню модели; `None` — пункт меню приложения («О программе», «Настройки»). */
+	menu: string | null,
+	/**  Номер пункта в меню модели, `-1` для меню приложения. */
+	index: number | null,
+	id: string | null,
 };
 
 /**  Параметры `mergeInto`. */

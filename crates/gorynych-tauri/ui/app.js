@@ -49,7 +49,14 @@ async function smoke(dir) {
   const undone = await invoke('repo_action', { dir, action: { name: 'undo', payload: {} } });
   const after = await invoke('repo_status', { dir });
   const ci = await invoke('repo_ci', { dir, file: null });
-  const remote = await invoke('repo_remote_check', { dir });
+  // `skipped` — временно (идёт действие, внешний git держит index.lock): интерфейс 1.x повторяет через 2 с, здесь так же
+  let remote = await invoke('repo_remote_check', { dir });
+  const skippedReasons = [];
+  for (let attempt = 0; remote.status === 'skipped' && attempt < 10; attempt += 1) {
+    skippedReasons.push(remote.reason);
+    await new Promise((resolve) => setTimeout(resolve, 500));
+    remote = await invoke('repo_remote_check', { dir });
+  }
   const gitflow = await invoke('repo_gitflow_config', { dir });
   const fileDiff = await invoke('repo_file_diff', { dir, params: { mode: 'staged', path: SMOKE_FILE } });
   const unknownAction = await rejected(invoke('repo_action', { dir, action: { name: 'нетТакого', payload: {} } }));
@@ -73,6 +80,7 @@ async function smoke(dir) {
     after: after.wipFiles.map((file) => [file.path, file.staged]),
     ci: { systems: ci.systems.map((system) => system.id), current: ci.current && ci.current.system, jobs: ci.current && ci.current.jobCount },
     remote: { status: remote.status, remotes: remote.remotes, fetched: remote.fetched },
+    skippedReasons,
     gitflow,
     fileDiff: { additions: fileDiff.additions },
     unknownAction,
@@ -192,6 +200,18 @@ async function desktopSmoke(dir) {
   const external = await invoke('shell_open_external', { url: 'https://example.com/путь' });
   const notWeb = await invoke('shell_open_external', { url: 'file:///C:/Windows' });
   const shown = await invoke('cicd_show_file', { file: `${dir}\\${SMOKE_FILE}` });
+  // Меню macOS: на Windows в отладке собирается без установки; та же модель второй раз не пересобирается
+  const model = { File: [{ id: 'open', label: 'Открыть…', hint: 'Ctrl+O' }, { separator: true }, { header: 'Недавние' }], Actions: [{ label: 'Push', disabled: true }] };
+  await invoke('menu_set', { model });
+  await invoke('menu_set', { model });
+  // `target=_blank`: окно не открывается, ссылка уходит в браузер
+  const link = document.createElement('a');
+  link.href = 'https://example.com/blank';
+  link.target = '_blank';
+  document.body.append(link);
+  link.click();
+  link.remove();
+  await new Promise((resolve) => setTimeout(resolve, 800));
   return { picked, canceled, key, image, imageUrl, width, hasImage: appearance.hasImage, badImage, artifact, opened, outside, folder, noFolder, terminal, external, notWeb, shown };
 }
 

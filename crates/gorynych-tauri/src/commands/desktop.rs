@@ -108,7 +108,7 @@ pub struct ArtifactSaved {
 
 /// В релизе подмены нет: `dev_root` там всегда `None`, а этих функций нет вовсе.
 #[cfg(not(debug_assertions))]
-fn dev_log(_services: &Services, _line: &str) -> bool {
+fn dev_log_at(_root: Option<&Path>, _line: &str) -> bool {
     false
 }
 
@@ -118,9 +118,13 @@ fn dev_answer(_root: &Path) -> Option<PathBuf> {
 }
 
 /// Строка в журнал подмены. `true` — подмена включена, настоящее действие выполнять не нужно.
-#[cfg(debug_assertions)]
 fn dev_log(services: &Services, line: &str) -> bool {
-    let Some(root) = &services.dev_root else {
+    dev_log_at(services.dev_root.as_deref(), line)
+}
+
+#[cfg(debug_assertions)]
+fn dev_log_at(root: Option<&Path>, line: &str) -> bool {
+    let Some(root) = root else {
         return false;
     };
     if let Ok(mut file) = fs::OpenOptions::new().create(true).append(true).open(root.join("desktop.log")) {
@@ -416,16 +420,20 @@ pub fn shell_open_external(state: State<'_, AppState>, url: String) -> bool {
     let Ok(parsed) = url::Url::parse(&url) else {
         return false;
     };
-    if !matches!(parsed.scheme(), "http" | "https") {
+    let dev_root = state.services().ok().and_then(|services| services.dev_root.clone());
+    open_link(&parsed, dev_root.as_deref())
+}
+
+/// Ссылка в браузере, только `http:` и `https:`. Это же делает окно для `target=_blank` и `window.open` (см. `lib.rs`):
+/// в 1.x `setWindowOpenHandler` отдавал оболочке любой адрес, включая `file:` и чужие протоколы, — здесь только веб.
+pub(crate) fn open_link(url: &url::Url, dev_root: Option<&Path>) -> bool {
+    if !matches!(url.scheme(), "http" | "https") {
         return false;
     }
-    let Ok(services) = state.services() else {
-        return false;
-    };
-    if dev_log(services, &format!("url {parsed}")) {
+    if dev_log_at(dev_root, &format!("url {url}")) {
         return true;
     }
-    tauri_plugin_opener::open_url(parsed.as_str(), None::<&str>).is_ok()
+    tauri_plugin_opener::open_url(url.as_str(), None::<&str>).is_ok()
 }
 
 /* ---------- Терминал ---------- */

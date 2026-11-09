@@ -95,6 +95,8 @@ pub struct AppState {
     maximized: AtomicBool,
     /// Слежение за активным репозиторием (`repo:watch`): в 1.x одно на окно, окно здесь одно.
     pub(crate) watch: Mutex<Option<commands::repo::ActiveWatch>>,
+    /// Последняя модель меню macOS (`menu:set`).
+    pub(crate) menu: commands::menu::MenuState,
 }
 
 impl AppState {
@@ -244,7 +246,15 @@ fn create_window<R: Runtime>(app: &App<R>, paths: &Paths, appearance: &Appearanc
         .inner_size(1200.0, 800.0)
         .min_inner_size(960.0, 600.0)
         .visible(false)
-        .on_navigation(|url| matches!(url.scheme(), "tauri") || url.host_str() == Some("tauri.localhost"));
+        .on_navigation(|url| matches!(url.scheme(), "tauri") || url.host_str() == Some("tauri.localhost"))
+        // `target=_blank` и `window.open`: новых окон нет, веб-ссылка открывается в браузере (`setWindowOpenHandler` в 1.x)
+        .on_new_window({
+            let dev_root = paths.dev_root.clone();
+            move |url, _features| {
+                commands::desktop::open_link(&url, dev_root.as_deref());
+                tauri::webview::NewWindowResponse::Deny
+            }
+        });
     #[cfg(target_os = "macos")]
     {
         builder = builder
@@ -401,8 +411,16 @@ pub fn specta_builder() -> Builder<tauri::Wry> {
             commands::desktop::shell_open_external,
             commands::desktop::shell_open_folder,
             commands::desktop::shell_open_terminal,
+            commands::menu::menu_set,
         ])
-        .events(collect_events![WindowMaximizedChanged, WindowFocused, commands::repo::RepoChanged, commands::repo::RepoIndexSynced, commands::repo::CloneProgressEvent])
+        .events(collect_events![
+            WindowMaximizedChanged,
+            WindowFocused,
+            commands::repo::RepoChanged,
+            commands::repo::RepoIndexSynced,
+            commands::repo::CloneProgressEvent,
+            commands::menu::MenuInvoke,
+        ])
 }
 
 /// Запускает приложение.
@@ -422,6 +440,7 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         // Картинка фона отдаётся протоколом, а не строкой base64 через IPC: см. `commands::desktop`
         .register_asynchronous_uri_scheme_protocol(commands::desktop::BACKGROUND_SCHEME, commands::desktop::serve_background)
+        .on_menu_event(commands::menu::on_menu_event)
         .invoke_handler(builder.invoke_handler())
         .setup(move |app| {
             builder.mount_events(app);
@@ -432,7 +451,7 @@ pub fn run() {
                 Err(error) => Err(error.clone()),
             };
             let appearance = services.as_ref().ok().and_then(|s| s.db.appearance().ok().flatten()).unwrap_or_default();
-            app.manage(AppState { services, migration, data_dir: paths.data_dir.clone(), maximized: AtomicBool::new(false), watch: Mutex::new(None) });
+            app.manage(AppState { services, migration, data_dir: paths.data_dir.clone(), maximized: AtomicBool::new(false), watch: Mutex::new(None), menu: Default::default() });
             let window = create_window(app, &paths, &appearance)?;
             watch_window(&window);
             Ok(())

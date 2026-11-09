@@ -407,3 +407,9 @@
   Подмена в debug с `GORYNYCH_DEV_ROOT`: диалоги отвечают построчно из `dialog-answers.txt`, а открытия и терминал пишутся в `desktop.log`. В релизе этих функций нет (`#[cfg(debug_assertions)]`).
   Проверка: `desktopSmoke` + утверждения в `app_smoke.rs`, включая загрузку картинки фона в настоящем WebView2 сквозь CSP. Настоящие системные диалоги, Проводник, браузер и терминал вручную не открывались. macOS и Linux не собирались.
   Следующий шаг: меню macOS (`menu:set`) и перехват `target=_blank`; затем UI Фазы 4.
+- 2026-11-09 — Сессия 10, продолжение: `menu:set` → `commands/menu.rs`, событие `menu-invoke` (`{menu, index, id}`, идентификатор пункта `gm|<меню>|<номер>|<id>`). Та же модель меню не пересобирается. На других системах меню не строится, кроме отладки с подменой путей: там оно собирается без установки и пишет `menu built N` в `desktop.log`.
+  **Отличие от 1.x: сочетания клавиш в меню macOS не показываются.** У `muda` нет подписи без перехвата (`registerAccelerator: false` в Electron). Перехват отдал бы, например, ⌘Z меню, а не полю ввода. Клавиши, как и прежде, обрабатывает интерфейс. Если подписи нужны, это решение пользователя.
+  `target=_blank` и `window.open`: `on_new_window` → `desktop::open_link` (только `http(s)`; 1.x отдавал оболочке любой адрес) → `Deny`.
+  В сквозном тесте `repo_remote_check` иногда давал `skipped`, когда синхронизация индекса после stage держала `index.lock`. Страница теперь повторяет запрос, как интерфейс 1.x; причины пишутся в `skippedReasons`.
+  Не проверено: код меню под `cfg(target_os = "macos")` (`set_as_windows_menu_for_nsapp` и `set_as_help_menu_for_nsapp`) не собирался, меню на macOS не запускалось.
+  Каркас `gorynych-tauri` перенесён полностью: все каналы `ipcMain` из `main.cjs` подключены, кроме `gitlab:set-token` и `gitlab:clear-token` (вызовов нет). Следующий шаг: UI Фазы 4 (TypeScript, Zustand, TanStack Query) поверх `bindings/commands.ts`.

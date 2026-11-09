@@ -278,7 +278,19 @@ fn git_commands_work_through_the_page() {
     ];
     assert_eq!(lines[..5], expected, "{log}");
     assert!(lines[5].starts_with("dialog save | Сохранить артефакт | ") && lines[5].ends_with(" | build_x.zip"), "в «Загрузки», имя без двоеточия: {log}");
-    assert_eq!(lines[6..], [format!("open {opened}"), format!("open {path}"), format!("terminal Windows Terminal | {path}"), "url https://example.com/%D0%BF%D1%83%D1%82%D1%8C".to_owned(), format!("reveal {opened}")], "{log}");
+    assert_eq!(
+        lines[6..],
+        [
+            format!("open {opened}"),
+            format!("open {path}"),
+            format!("terminal Windows Terminal | {path}"),
+            "url https://example.com/%D0%BF%D1%83%D1%82%D1%8C".to_owned(),
+            format!("reveal {opened}"),
+            "menu built 4".to_owned(),
+            "url https://example.com/blank".to_owned(),
+        ],
+        "меню собрано один раз (та же модель — без пересборки), target=_blank ушёл в браузер: {log}"
+    );
 }
 
 /// Картинка 1×1: страница проверяет, что протокол фона отдаёт её сквозь CSP.
