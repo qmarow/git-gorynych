@@ -210,4 +210,30 @@ fn git_commands_work_through_the_page() {
     assert_eq!(fs::read_to_string(dir.path().join("clipboard.txt")).unwrap(), public_key, "открытый ключ в буфере обмена");
     assert_eq!(creds["noPub"]["code"], json!("NOT_FOUND"));
     assert_eq!(creds["badUrl"]["code"], json!("BAD_ARGS"));
+
+    // CI/CD (`cicd:*`, `gitlab:*`), см. `cicdSmoke` в `ui/app.js`
+    let cicd = &report["cicd"];
+    let site = "https://gitlab.example.invalid";
+    assert_eq!(
+        cicd["status"],
+        json!({ "kind": "gitlab", "host": "gitlab.example.invalid", "path": "group/project", "protocol": "ssh", "base": site, "configured": false }),
+        "адрес сайта для SSH-remote: {cicd}"
+    );
+    assert_eq!(cicd["gitlab"], json!({ "kind": "gitlab", "remote": "origin", "path": "group/project", "configured": false }), "{cicd}");
+    assert_eq!(cicd["settings"]["effective"], json!("gitlab"), "{cicd}");
+    assert_eq!(cicd["settings"]["detected"], json!("gitlab"));
+    assert_eq!(cicd["savedSettings"]["provider"], json!("gitea"), "{cicd}");
+    assert_eq!(cicd["savedSettings"]["apiBase"], json!("https://gitea.example.invalid"), "хвостовая / срезана: {cicd}");
+    assert_eq!(cicd["savedSettings"]["effective"], json!("gitea"));
+    assert_eq!(cicd["savedSettings"]["defaultApiBase"], json!(format!("{site}/api/v1")));
+    assert_eq!(cicd["resetSettings"], cicd["settings"], "пустые provider и apiBase удаляют запись: {cicd}");
+    assert_eq!(cicd["runForm"], json!({ "kind": "gitlab", "workflows": [], "inputs": [], "variables": [], "allowCustomVariables": true }), "{cicd}");
+    assert_eq!(cicd["localRunners"]["runners"], json!([]), "{cicd}");
+    assert_eq!(cicd["noToken"]["code"], json!("NO_TOKEN"), "входа нет — API не вызывается: {cicd}");
+    assert_eq!(cicd["glNoToken"]["code"], json!("NO_TOKEN"), "{cicd}");
+    assert_eq!(cicd["badAction"]["code"], json!("BAD_ARGS"));
+    assert_eq!(cicd["badRun"]["code"], json!("BAD_ARGS"));
+    assert_eq!(cicd["badSecret"]["code"], json!("INVALID_NAME"));
+    assert_eq!(cicd["badRunner"]["code"], json!("BAD_ARGS"), "чужой контейнер не трогаем: {cicd}");
+    assert_eq!(cicd["notRepo"]["code"], json!("NOT_A_REPO"));
 }

@@ -77,6 +77,45 @@ export const commands = {
 	/**  Перевести remote с `https://` на SSH (`git@host:path.git`), чтобы входить по ключу. */
 	credsSwitchToSsh: (dir: string | null) => typedError<SwitchedToSsh_Serialize, GorynychError_Serialize>(__TAURI_INVOKE("creds_switch_to_ssh", { dir })),
 	credsCopyPublicKey: (keyPath: string | null) => typedError<PublicKeyCopied, GorynychError_Serialize>(__TAURI_INVOKE("creds_copy_public_key", { keyPath })),
+	cicdStatus: (dir: string, opts: RemoteOptions_Deserialize | null) => typedError<ForgeStatus_Serialize | null, GorynychError_Serialize>(__TAURI_INVOKE("cicd_status", { dir, opts })),
+	cicdInfo: (dir: string, opts: RemoteOptions_Deserialize | null) => typedError<WithCaps_Serialize<T>, GorynychError_Serialize>(__TAURI_INVOKE("cicd_info", { dir, opts })),
+	cicdSettings: (dir: string, opts: RemoteOptions_Deserialize | null) => typedError<CicdSettingsView_Serialize | null, GorynychError_Serialize>(__TAURI_INVOKE("cicd_settings", { dir, opts })),
+	cicdSettingsSave: (dir: string, data: SettingsInput_Deserialize | null, opts: RemoteOptions_Deserialize | null) => typedError<CicdSettingsView_Serialize | null, GorynychError_Serialize>(__TAURI_INVOKE("cicd_settings_save", { dir, data, opts })),
+	cicdPipelines: (dir: string, opts: PipelinesOptions_Deserialize | null) => typedError<WithCaps_Serialize<T>, GorynychError_Serialize>(__TAURI_INVOKE("cicd_pipelines", { dir, opts })),
+	cicdPipeline: (dir: string, id: CiId | null, opts: RemoteOptions_Deserialize | null) => typedError<WithCaps_Serialize<T>, GorynychError_Serialize>(__TAURI_INVOKE("cicd_pipeline", { dir, id, opts })),
+	cicdJobLog: (dir: string, id: CiId | null, opts: JobLogOptions_Deserialize | null) => typedError<WithCaps_Serialize<T>, GorynychError_Serialize>(__TAURI_INVOKE("cicd_job_log", { dir, id, opts })),
+	cicdAction: (dir: string, action: ActionRequest_Deserialize | null, opts: RemoteOptions_Deserialize | null) => typedError<ActionResult_Serialize, GorynychError_Serialize>(__TAURI_INVOKE("cicd_action", { dir, action, opts })),
+	cicdRun: (dir: string, params: RunParams_Deserialize | null, opts: RemoteOptions_Deserialize | null) => typedError<RunResult_Serialize, GorynychError_Serialize>(__TAURI_INVOKE("cicd_run", { dir, params, opts })),
+	cicdRunForm: (dir: string, opts: RemoteOptions_Deserialize | null) => typedError<RunForm_Serialize, GorynychError_Serialize>(__TAURI_INVOKE("cicd_run_form", { dir, opts })),
+	cicdRunners: (dir: string, opts: RemoteOptions_Deserialize | null) => typedError<WithCaps_Serialize<T>, GorynychError_Serialize>(__TAURI_INVOKE("cicd_runners", { dir, opts })),
+	cicdRunnerUpdate: (dir: string, data: RunnerUpdateRequest_Deserialize | null, opts: RemoteOptions_Deserialize | null) => typedError<RunnerResult_Serialize, GorynychError_Serialize>(__TAURI_INVOKE("cicd_runner_update", { dir, data, opts })),
+	cicdRunnerDelete: (dir: string, data: RunnerDeleteRequest_Deserialize | null, opts: RemoteOptions_Deserialize | null) => typedError<RunnerResult_Serialize, GorynychError_Serialize>(__TAURI_INVOKE("cicd_runner_delete", { dir, data, opts })),
+	cicdRunnersPrune: (dir: string, data: RunnersPruneRequest_Deserialize | null, opts: RemoteOptions_Deserialize | null) => typedError<PruneResult_Serialize, GorynychError_Serialize>(__TAURI_INVOKE("cicd_runners_prune", { dir, data, opts })),
+	cicdRunnerRegister: (dir: string, data: RunnerRegisterOptions_Deserialize | null, opts: RemoteOptions_Deserialize | null) => typedError<RunnerRegistration_Serialize, GorynychError_Serialize>(__TAURI_INVOKE("cicd_runner_register", { dir, data, opts })),
+	/**  Сверка тегов и меток из файла CI (с черновиками) с живыми раннерами. */
+	cicdRunnerTags: (dir: string, data: RunnerTagRequest_Deserialize | null, opts: RemoteOptions_Deserialize | null) => typedError<RunnerTagReport_Serialize, GorynychError_Serialize>(__TAURI_INVOKE("cicd_runner_tags", { dir, data, opts })),
+	cicdLocalRunners: (dir: string, opts: RemoteOptions_Deserialize | null) => typedError<LocalRunners_Serialize, GorynychError_Serialize>(__TAURI_INVOKE("cicd_local_runners", { dir, opts })),
+	cicdLocalRunnerStart: (dir: string, data: LocalRunnerStartRequest_Deserialize | null, opts: RemoteOptions_Deserialize | null) => typedError<LocalRunnerStarted, GorynychError_Serialize>(__TAURI_INVOKE("cicd_local_runner_start", { dir, data, opts })),
+	cicdLocalRunnerStop: (name: string) => typedError<LocalRunnerName, GorynychError_Serialize>(__TAURI_INVOKE("cicd_local_runner_stop", { name })),
+	cicdLocalRunnerResume: (name: string) => typedError<LocalRunnerName, GorynychError_Serialize>(__TAURI_INVOKE("cicd_local_runner_resume", { name })),
+	cicdSecrets: (dir: string, opts: RemoteOptions_Deserialize | null) => typedError<WithCaps_Serialize<T>, GorynychError_Serialize>(__TAURI_INVOKE("cicd_secrets", { dir, opts })),
+	cicdSecretSave: (dir: string, data: SecretSave_Deserialize | null, opts: RemoteOptions_Deserialize | null) => typedError<SecretResult_Serialize, GorynychError_Serialize>(__TAURI_INVOKE("cicd_secret_save", { dir, data, opts })),
+	cicdSecretDelete: (dir: string, data: SecretRef_Deserialize | null, opts: RemoteOptions_Deserialize | null) => typedError<SecretResult_Serialize, GorynychError_Serialize>(__TAURI_INVOKE("cicd_secret_delete", { dir, data, opts })),
+	gitlabStatus: (dir: string, opts: RemoteOptions_Deserialize | null) => typedError<GlRemoteStatus_Serialize | null, GorynychError_Serialize>(__TAURI_INVOKE("gitlab_status", { dir, opts })),
+	gitlabPipelines: (dir: string, opts: PipelinesOptions_Deserialize | null) => typedError<GlPipelineList_Serialize, GorynychError_Serialize>(__TAURI_INVOKE("gitlab_pipelines", { dir, opts })),
+	gitlabPipeline: (dir: string, id: CiId | null, opts: RemoteOptions_Deserialize | null) => typedError<GlPipelineDetail_Serialize, GorynychError_Serialize>(__TAURI_INVOKE("gitlab_pipeline", { dir, id, opts })),
+	gitlabJobLog: (dir: string, id: CiId | null, opts: RemoteOptions_Deserialize | null) => typedError<GlJobLog_Serialize, GorynychError_Serialize>(__TAURI_INVOKE("gitlab_job_log", { dir, id, opts })),
+	gitlabAction: (dir: string, action: ActionRequest_Deserialize | null, opts: RemoteOptions_Deserialize | null) => typedError<GlActionResult_Serialize, GorynychError_Serialize>(__TAURI_INVOKE("gitlab_action", { dir, action, opts })),
+	gitlabVariables: (dir: string, opts: RemoteOptions_Deserialize | null) => typedError<GlVariableList_Serialize, GorynychError_Serialize>(__TAURI_INVOKE("gitlab_variables", { dir, opts })),
+	gitlabVariableValue: (dir: string, variable: GlVariableRef_Deserialize | null, opts: RemoteOptions_Deserialize | null) => typedError<GlVariableValue_Serialize, GorynychError_Serialize>(__TAURI_INVOKE("gitlab_variable_value", { dir, variable, opts })),
+	gitlabRunners: (dir: string, opts: RemoteOptions_Deserialize | null) => typedError<GlRunnerList_Serialize, GorynychError_Serialize>(__TAURI_INVOKE("gitlab_runners", { dir, opts })),
+	gitlabLint: (dir: string, draft: GlLintRequest_Deserialize | null, opts: RemoteOptions_Deserialize | null) => typedError<GlLintResult_Serialize, GorynychError_Serialize>(__TAURI_INVOKE("gitlab_lint", { dir, draft, opts })),
+	gitlabVariableSave: (dir: string, data: GlVariableSave_Deserialize | null, opts: RemoteOptions_Deserialize | null) => typedError<GlVariableSaved_Serialize, GorynychError_Serialize>(__TAURI_INVOKE("gitlab_variable_save", { dir, data, opts })),
+	gitlabVariableDelete: (dir: string, variable: GlVariableRef_Deserialize | null, opts: RemoteOptions_Deserialize | null) => typedError<GlVariableSaved_Serialize, GorynychError_Serialize>(__TAURI_INVOKE("gitlab_variable_delete", { dir, variable, opts })),
+	gitlabSchedules: (dir: string, opts: RemoteOptions_Deserialize | null) => typedError<GlScheduleList_Serialize, GorynychError_Serialize>(__TAURI_INVOKE("gitlab_schedules", { dir, opts })),
+	gitlabScheduleSave: (dir: string, schedule: GlScheduleInput_Deserialize | null, opts: RemoteOptions_Deserialize | null) => typedError<GlSchedule_Serialize, GorynychError_Serialize>(__TAURI_INVOKE("gitlab_schedule_save", { dir, schedule, opts })),
+	gitlabScheduleAction: (dir: string, action: GlScheduleAction_Deserialize | null, opts: RemoteOptions_Deserialize | null) => typedError<GlScheduleActionResult, GorynychError_Serialize>(__TAURI_INVOKE("gitlab_schedule_action", { dir, action, opts })),
+	gitlabCreateMr: (dir: string, mr: GlMergeRequestInput_Deserialize | null, opts: RemoteOptions_Deserialize | null) => typedError<GlMergeRequest_Serialize, GorynychError_Serialize>(__TAURI_INVOKE("gitlab_create_mr", { dir, mr, opts })),
 };
 
 /** Events */
@@ -136,6 +175,42 @@ export type ActionOutput_Deserialize = AccessInfo_Deserialize | FetchResult | Pu
 
 /**  Результат действия. На проводе — сама структура, как в 1.x. */
 export type ActionOutput_Serialize = AccessInfo_Serialize | FetchResult | PullResult_Serialize | PushResult_Serialize | HistoryLabel | OperationResult_Serialize | string | CommitResult_Serialize | Checkout_Serialize | CheckoutPreview_Serialize | BranchCreated_Serialize | StashPushed | StashRef | StashPopped | RevertPreview_Serialize | ConflictInfo_Serialize | ResolveResult_Serialize | RevertedTo_Serialize | TagInfo_Serialize | RemoteBranchDeleted | BranchRenamed | BranchDeleted | HeadMoved_Serialize | ResetResult_Serialize | RefMoved_Serialize | RebaseDone_Serialize | FileRestored | StashFilesRestored | HunksApplied | BranchUpdated_Serialize | FastForwarded | GitRawResult | Discarded;
+
+/**  `{ type, id, ref }`. */
+export type ActionRequest = ActionRequest_Serialize | ActionRequest_Deserialize;
+
+/**  `{ type, id, ref }`. */
+export type ActionRequest_Deserialize = {
+	type?: string | null,
+	id?: CiId | null,
+	ref?: string | null,
+};
+
+/**  `{ type, id, ref }`. */
+export type ActionRequest_Serialize = {
+	type: string | null,
+	id: CiId | null,
+	ref: string | null,
+};
+
+/**  Результат действия. */
+export type ActionResult = ActionResult_Serialize | ActionResult_Deserialize;
+
+/**  Результат действия. */
+export type ActionResult_Deserialize = {
+	type: string,
+	id?: CiId | null,
+	status?: string | null,
+	webUrl?: string | null,
+};
+
+/**  Результат действия. */
+export type ActionResult_Serialize = {
+	type: string,
+	id: CiId | null,
+	status: string | null,
+	webUrl: string | null,
+};
 
 /**  Работают ли пайплайны от авторизации репозитория. */
 export type ApiState = ApiState_Serialize | ApiState_Deserialize;
@@ -563,6 +638,50 @@ export type CherryPickInto_Serialize = {
 	smart: boolean | null,
 };
 
+/**  Тот, кто запустил. */
+export type CiActor = CiActor_Serialize | CiActor_Deserialize;
+
+/**  Тот, кто запустил. */
+export type CiActor_Deserialize = {
+	name?: string | null,
+	username?: string | null,
+};
+
+/**  Тот, кто запустил. */
+export type CiActor_Serialize = {
+	name: string | null,
+	username: string | null,
+};
+
+/**  Артефакт. */
+export type CiArtifact = CiArtifact_Serialize | CiArtifact_Deserialize;
+
+/**  Артефакт. */
+export type CiArtifact_Deserialize = {
+	id?: CiId | null,
+	jobId?: CiId | null,
+	jobName?: string | null,
+	name?: string | null,
+	fileName?: string | null,
+	size?: number | null,
+	expired: boolean,
+	downloadUrl?: string | null,
+	createdAt?: string | null,
+};
+
+/**  Артефакт. */
+export type CiArtifact_Serialize = {
+	id: CiId | null,
+	jobId: CiId | null,
+	jobName: string | null,
+	name: string | null,
+	fileName: string | null,
+	size: number | null,
+	expired: boolean,
+	downloadUrl: string | null,
+	createdAt: string | null,
+};
+
 export type CiArtifacts = CiArtifacts_Serialize | CiArtifacts_Deserialize;
 
 export type CiArtifacts_Deserialize = {
@@ -785,6 +904,9 @@ export type CiFile_Serialize = {
 	hash?: string,
 	draft: boolean,
 };
+
+/**  Номер пайплайна, задания или раннера: у GitLab и GitHub число, у Bitbucket и виртуальных раннеров строка. */
+export type CiId = number | null | string;
 
 export type CiInclude = CiInclude_Serialize | CiInclude_Deserialize;
 
@@ -1068,6 +1190,96 @@ export type CiRule_Serialize = {
 	variables?: string[],
 };
 
+/**  Раннер. */
+export type CiRunner = CiRunner_Serialize | CiRunner_Deserialize;
+
+/**  Проблема сверки. */
+export type CiRunnerIssue = CiRunnerIssue_Serialize | CiRunnerIssue_Deserialize;
+
+/**  Проблема сверки. */
+export type CiRunnerIssue_Deserialize = {
+	id: string,
+	severity: CiSeverity,
+	title: string,
+	when: string,
+	how: string,
+	why: string,
+	fix: string,
+	file: string,
+	line?: number | null,
+	job: string,
+	source: string,
+	tags?: string[] | null,
+	missing?: string[] | null,
+};
+
+/**  Проблема сверки. */
+export type CiRunnerIssue_Serialize = {
+	id: string,
+	severity: CiSeverity,
+	title: string,
+	when: string,
+	how: string,
+	why: string,
+	fix: string,
+	file: string,
+	line: number | null,
+	job: string,
+	source: string,
+	tags?: string[],
+	missing?: string[],
+};
+
+/**  Раннер. */
+export type CiRunner_Deserialize = {
+	id?: CiId | null,
+	name: string,
+	description?: string | null,
+	status: string,
+	isShared: boolean,
+	os?: string | null,
+	architecture?: string | null,
+	labels: string[],
+	readOnlyLabels: string[],
+	version?: string | null,
+	ipAddress?: string | null,
+	currentJobId?: CiId | null,
+	currentJob?: RunnerJob_Deserialize | null,
+	type?: string | null,
+	virtual: boolean,
+	runUntagged?: boolean | null,
+	locked?: boolean | null,
+	maximumTimeout?: number | null,
+	contactedAt?: string | null,
+	stale: boolean,
+	editable: boolean,
+};
+
+/**  Раннер. */
+export type CiRunner_Serialize = {
+	id: CiId | null,
+	name: string,
+	description: string | null,
+	status: string,
+	isShared: boolean,
+	os: string | null,
+	architecture: string | null,
+	labels: string[],
+	readOnlyLabels: string[],
+	version: string | null,
+	ipAddress: string | null,
+	currentJobId: CiId | null,
+	currentJob: RunnerJob_Serialize | null,
+	type: string | null,
+	virtual: boolean,
+	runUntagged: boolean | null,
+	locked: boolean | null,
+	maximumTimeout: number | null,
+	contactedAt: string | null,
+	stale: boolean,
+	editable: boolean,
+};
+
 /**  Что сохранить: `draft` у `repo:ci-save`. */
 export type CiSaveRequest = CiSaveRequest_Serialize | CiSaveRequest_Deserialize;
 
@@ -1184,6 +1396,33 @@ export type CiScript_Serialize = {
 	inherited?: string,
 };
 
+/**  Секрет или переменная. */
+export type CiSecretVariable = CiSecretVariable_Serialize | CiSecretVariable_Deserialize;
+
+/**  Секрет или переменная. */
+export type CiSecretVariable_Deserialize = {
+	key?: string | null,
+	uuid?: string | null,
+	secret: boolean,
+	masked: boolean,
+	environmentScope?: string | null,
+	value?: string | null,
+	updatedAt?: string | null,
+	protected?: boolean | null,
+};
+
+/**  Секрет или переменная. */
+export type CiSecretVariable_Serialize = {
+	key: string | null,
+	uuid: string | null,
+	secret: boolean,
+	masked: boolean,
+	environmentScope: string | null,
+	value: string | null,
+	updatedAt: string | null,
+	protected: boolean | null,
+};
+
 export type CiSeverity = "error" | "warning" | "info";
 
 export type CiStage = CiStage_Serialize | CiStage_Deserialize;
@@ -1259,6 +1498,31 @@ export type CiVariable_Serialize = {
 	value: string,
 	description?: YamlValue_Serialize,
 	options?: YamlValue_Serialize,
+};
+
+/**  Настройки CI/CD для интерфейса. */
+export type CicdSettingsView = CicdSettingsView_Serialize | CicdSettingsView_Deserialize;
+
+/**  Настройки CI/CD для интерфейса. */
+export type CicdSettingsView_Deserialize = {
+	host: string,
+	path: string,
+	detected?: string | null,
+	provider?: CiProvider | null,
+	apiBase?: string | null,
+	effective?: CiProvider | null,
+	defaultApiBase?: string | null,
+};
+
+/**  Настройки CI/CD для интерфейса. */
+export type CicdSettingsView_Serialize = {
+	host: string,
+	path: string,
+	detected: string | null,
+	provider: CiProvider | null,
+	apiBase: string | null,
+	effective: CiProvider | null,
+	defaultApiBase: string | null,
 };
 
 /**  Итог `clear`. */
@@ -1912,6 +2176,46 @@ export type DiscardedChanges = {
 	backup: string,
 };
 
+/**  Доступность Docker. */
+export type DockerStatus = DockerStatus_Serialize | DockerStatus_Deserialize;
+
+/**  Доступность Docker. */
+export type DockerStatus_Deserialize = {
+	available: boolean,
+	version?: string | null,
+	reason?: string | null,
+	hint?: string | null,
+};
+
+/**  Доступность Docker. */
+export type DockerStatus_Serialize = {
+	available: boolean,
+	version: string | null,
+	reason: string | null,
+	hint: string | null,
+};
+
+/**  Дочерний пайплайн задания-триггера. */
+export type Downstream = Downstream_Serialize | Downstream_Deserialize;
+
+/**  Дочерний пайплайн задания-триггера. */
+export type Downstream_Deserialize = {
+	id?: CiId | null,
+	status?: string | null,
+	webUrl?: string | null,
+	projectId?: CiId | null,
+	url?: string | null,
+};
+
+/**  Дочерний пайплайн задания-триггера. */
+export type Downstream_Serialize = {
+	id: CiId | null,
+	status: string | null,
+	webUrl: string | null,
+	projectId: CiId | null,
+	url: string | null,
+};
+
 /**  Код ошибки на проводе — ровно те же строки, что в 1.x: UI сравнивает `error.code === '…'`. */
 export type ErrorCode = "ALREADY_IN_BRANCH" | "ALREADY_REPO" | "API_ERROR" | "AUTH" | "BAD_ARGS" | "BAD_EMAIL" | "BAD_PLAN" | "BAD_REMOTE" | "BINARY" | "BRANCH_EXISTS" | "BRANCH_IN_USE" | "CANCELLED" | "CHANGED_ON_DISK" | "CONFLICT" | "CURRENT_BRANCH" | "DEFAULT_BRANCH" | "DETACHED" | "DIRTY" | "DIVERGED" | "DOCKER" | "EMPTY_MESSAGE" | "EXISTS" | "FORBIDDEN" | "GIT" | "GITLAB_ERROR" | "GIT_MISSING" | "GIT_TOO_OLD" | "HISTORY_EMPTY" | "HISTORY_PUSHED" | "HISTORY_ROOT" | "HISTORY_STALE" | "HOOK_DECLINED" | "HOST_KEY" | "HUNK_STALE" | "INVALID_NAME" | "JOB_EXISTS" | "KEYGEN_FAILED" | "LOCAL_CHANGES" | "MARKERS_LEFT" | "NETWORK" | "NOTHING_TO_DISCARD" | "NOTHING_TO_STASH" | "NOT_A_DIR" | "NOT_A_REPO" | "NOT_FAST_FORWARD" | "NOT_FOUND" | "NOT_FOUND_PATH" | "NOT_FOUND_REF" | "NOT_GITLAB" | "NOT_MERGED" | "NO_COMMITS" | "NO_DOCKER" | "NO_ENCRYPTION" | "NO_IDENTITY" | "NO_OPERATION" | "NO_PROVIDER" | "NO_REMOTE" | "NO_SSH_KEYGEN" | "NO_STASH" | "NO_STORAGE" | "NO_TERMINAL" | "NO_TOKEN" | "NO_UPSTREAM" | "OPEN_FAILED" | "OPERATION_IN_PROGRESS" | "PATCH_FAILED" | "PLAN_STALE" | "PROTECTED" | "RATE_LIMIT" | "REJECTED_NON_FF" | "ROOT_COMMIT" | "STAGE_EXISTS" | "STAGE_NOT_EMPTY" | "TAG_EXISTS" | "TARGET_EXISTS" | "TIMEOUT" | "TOO_LARGE" | "TOO_MANY" | "UNKNOWN" | "UNSUPPORTED" | "UPSTREAM_GONE" | "UP_TO_DATE" | "VALIDATION" | "WIP_CONFLICT" | "YAML_ERROR";
 
@@ -2110,6 +2414,21 @@ export type FolderInfo_Serialize = {
 	heavy: { [key in string]: number | null },
 };
 
+/**  `info`. */
+export type ForgeInfo = ForgeInfo_Serialize | ForgeInfo_Deserialize;
+
+/**  `info`. */
+export type ForgeInfo_Deserialize = {
+	webUrl?: string | null,
+	defaultBranch?: string | null,
+};
+
+/**  `info`. */
+export type ForgeInfo_Serialize = {
+	webUrl: string | null,
+	defaultBranch: string | null,
+};
+
 /**  Настройки CI/CD репозитория в статусе. */
 export type ForgeSettings = ForgeSettings_Serialize | ForgeSettings_Deserialize;
 
@@ -2270,6 +2589,586 @@ export type GitignoreTemplate = {
 	lines: string[],
 };
 
+/**  Результат действия. */
+export type GlActionResult = GlActionResult_Serialize | GlActionResult_Deserialize;
+
+/**  Результат действия. */
+export type GlActionResult_Deserialize = {
+	type?: string | null,
+	id?: CiId | null,
+	status?: string | null,
+	webUrl?: string | null,
+};
+
+/**  Результат действия. */
+export type GlActionResult_Serialize = {
+	type: string | null,
+	id: CiId | null,
+	status: string | null,
+	webUrl: string | null,
+};
+
+/**  Дочерний пайплайн. */
+export type GlDownstream = GlDownstream_Serialize | GlDownstream_Deserialize;
+
+/**  Дочерний пайплайн. */
+export type GlDownstream_Deserialize = {
+	id?: CiId | null,
+	status?: string | null,
+	webUrl?: string | null,
+	projectId?: CiId | null,
+};
+
+/**  Дочерний пайплайн. */
+export type GlDownstream_Serialize = {
+	id: CiId | null,
+	status: string | null,
+	webUrl: string | null,
+	projectId: CiId | null,
+};
+
+/**  Задание. */
+export type GlJob = GlJob_Serialize | GlJob_Deserialize;
+
+/**  `jobLog`. */
+export type GlJobLog = GlJobLog_Serialize | GlJobLog_Deserialize;
+
+/**  `jobLog`. */
+export type GlJobLog_Deserialize = {
+	job: GlJob_Deserialize,
+	text: string,
+	size: number | null,
+	truncated: boolean,
+};
+
+/**  `jobLog`. */
+export type GlJobLog_Serialize = {
+	job: GlJob_Serialize,
+	text: string,
+	size: number | null,
+	truncated: boolean,
+};
+
+/**  Раннер задания. */
+export type GlJobRunner = GlJobRunner_Serialize | GlJobRunner_Deserialize;
+
+/**  Раннер задания. */
+export type GlJobRunner_Deserialize = {
+	id?: CiId | null,
+	description?: string | null,
+	shared?: boolean | null,
+};
+
+/**  Раннер задания. */
+export type GlJobRunner_Serialize = {
+	id: CiId | null,
+	description: string | null,
+	shared: boolean | null,
+};
+
+/**  Задание. */
+export type GlJob_Deserialize = {
+	id?: CiId | null,
+	kind: string,
+	name?: string | null,
+	stage?: string | null,
+	status?: string | null,
+	allowFailure: boolean,
+	when?: string | null,
+	duration?: number | null,
+	queuedDuration?: number | null,
+	createdAt?: string | null,
+	startedAt?: string | null,
+	finishedAt?: string | null,
+	webUrl?: string | null,
+	failureReason?: string | null,
+	coverage?: YamlValue_Deserialize | null,
+	tags: string[],
+	runner?: GlJobRunner_Deserialize | null,
+	user?: CiActor_Deserialize | null,
+	artifacts: JobArtifactFile_Deserialize[],
+	downstream?: GlDownstream_Deserialize | null,
+};
+
+/**  Задание. */
+export type GlJob_Serialize = {
+	id: CiId | null,
+	kind: string,
+	name: string | null,
+	stage: string | null,
+	status: string | null,
+	allowFailure: boolean,
+	when: string | null,
+	duration: number | null,
+	queuedDuration: number | null,
+	createdAt: string | null,
+	startedAt: string | null,
+	finishedAt: string | null,
+	webUrl: string | null,
+	failureReason: string | null,
+	coverage: YamlValue_Serialize | null,
+	tags: string[],
+	runner: GlJobRunner_Serialize | null,
+	user: CiActor_Serialize | null,
+	artifacts: JobArtifactFile_Serialize[],
+	downstream: GlDownstream_Serialize | null,
+};
+
+/**  Последний запуск расписания. */
+export type GlLastPipeline = GlLastPipeline_Serialize | GlLastPipeline_Deserialize;
+
+/**  Последний запуск расписания. */
+export type GlLastPipeline_Deserialize = {
+	id?: CiId | null,
+	status?: string | null,
+	webUrl?: string | null,
+};
+
+/**  Последний запуск расписания. */
+export type GlLastPipeline_Serialize = {
+	id: CiId | null,
+	status: string | null,
+	webUrl: string | null,
+};
+
+/**  Подключённый файл в ответе CI Lint. */
+export type GlLintInclude = GlLintInclude_Serialize | GlLintInclude_Deserialize;
+
+/**  Подключённый файл в ответе CI Lint. */
+export type GlLintInclude_Deserialize = {
+	type?: string | null,
+	location?: string | null,
+	blob?: string | null,
+};
+
+/**  Подключённый файл в ответе CI Lint. */
+export type GlLintInclude_Serialize = {
+	type: string | null,
+	location: string | null,
+	blob: string | null,
+};
+
+/**  Задание в ответе CI Lint. */
+export type GlLintJob = GlLintJob_Serialize | GlLintJob_Deserialize;
+
+/**  Задание в ответе CI Lint. */
+export type GlLintJob_Deserialize = {
+	name?: string | null,
+	stage?: string | null,
+	when: string,
+	allowFailure: boolean,
+	tags: string[],
+	environment?: YamlValue_Deserialize | null,
+};
+
+/**  Задание в ответе CI Lint. */
+export type GlLintJob_Serialize = {
+	name: string | null,
+	stage: string | null,
+	when: string,
+	allowFailure: boolean,
+	tags: string[],
+	environment: YamlValue_Serialize | null,
+};
+
+/**  Запрос CI Lint. */
+export type GlLintRequest = GlLintRequest_Serialize | GlLintRequest_Deserialize;
+
+/**  Запрос CI Lint. */
+export type GlLintRequest_Deserialize = {
+	content?: YamlValue_Deserialize | null,
+	ref?: string | null,
+};
+
+/**  Запрос CI Lint. */
+export type GlLintRequest_Serialize = {
+	content: YamlValue_Serialize | null,
+	ref: string | null,
+};
+
+/**  `lintCi`. */
+export type GlLintResult = GlLintResult_Serialize | GlLintResult_Deserialize;
+
+/**  `lintCi`. */
+export type GlLintResult_Deserialize = {
+	valid: boolean,
+	errors: string[],
+	warnings: string[],
+	jobs: GlLintJob_Deserialize[],
+	includes: GlLintInclude_Deserialize[],
+	ref?: string | null,
+};
+
+/**  `lintCi`. */
+export type GlLintResult_Serialize = {
+	valid: boolean,
+	errors: string[],
+	warnings: string[],
+	jobs: GlLintJob_Serialize[],
+	includes: GlLintInclude_Serialize[],
+	ref: string | null,
+};
+
+/**  Созданный или уже существующий merge request. */
+export type GlMergeRequest = GlMergeRequest_Serialize | GlMergeRequest_Deserialize;
+
+/**  Форма merge request. */
+export type GlMergeRequestInput = GlMergeRequestInput_Serialize | GlMergeRequestInput_Deserialize;
+
+/**  Форма merge request. */
+export type GlMergeRequestInput_Deserialize = {
+	source?: string | null,
+	target?: string | null,
+	title?: string | null,
+	description?: string | null,
+	draft?: boolean,
+	removeSource?: boolean,
+};
+
+/**  Форма merge request. */
+export type GlMergeRequestInput_Serialize = {
+	source: string | null,
+	target: string | null,
+	title: string | null,
+	description: string | null,
+	draft: boolean,
+	removeSource: boolean,
+};
+
+/**  Созданный или уже существующий merge request. */
+export type GlMergeRequest_Deserialize = {
+	iid?: CiId | null,
+	webUrl?: string | null,
+	created: boolean,
+	title?: string | null,
+};
+
+/**  Созданный или уже существующий merge request. */
+export type GlMergeRequest_Serialize = {
+	iid: CiId | null,
+	webUrl: string | null,
+	created: boolean,
+	title: string | null,
+};
+
+/**  `pipelineDetail`. */
+export type GlPipelineDetail = GlPipelineDetail_Serialize | GlPipelineDetail_Deserialize;
+
+/**  `pipelineDetail`. */
+export type GlPipelineDetail_Deserialize = {
+	project: GlProject_Deserialize,
+	canWrite: boolean,
+	pipeline: GlPipelineFull_Deserialize,
+	stages: GlStage_Deserialize[],
+};
+
+/**  `pipelineDetail`. */
+export type GlPipelineDetail_Serialize = {
+	project: GlProject_Serialize,
+	canWrite: boolean,
+	pipeline: GlPipelineFull_Serialize,
+	stages: GlStage_Serialize[],
+};
+
+/**  Подробности пайплайна. */
+export type GlPipelineFull = GlPipelineFull_Serialize | GlPipelineFull_Deserialize;
+
+/**  Подробности пайплайна. */
+export type GlPipelineFull_Deserialize = {
+	user?: GlUser_Deserialize | null,
+	duration?: number | null,
+	queuedDuration?: number | null,
+	startedAt?: string | null,
+	finishedAt?: string | null,
+	coverage?: YamlValue_Deserialize | null,
+	yamlErrors?: YamlValue_Deserialize | null,
+	detailedStatus?: string | null,
+	beforeSha?: string | null,
+} & GlPipelineSummary_Deserialize;
+
+/**  Подробности пайплайна. */
+export type GlPipelineFull_Serialize = {
+	user: GlUser_Serialize | null,
+	duration: number | null,
+	queuedDuration: number | null,
+	startedAt: string | null,
+	finishedAt: string | null,
+	coverage: YamlValue_Serialize | null,
+	yamlErrors: YamlValue_Serialize | null,
+	detailedStatus: string | null,
+	beforeSha: string | null,
+} & GlPipelineSummary_Serialize;
+
+/**  `listPipelines`. */
+export type GlPipelineList = GlPipelineList_Serialize | GlPipelineList_Deserialize;
+
+/**  `listPipelines`. */
+export type GlPipelineList_Deserialize = {
+	project: GlProject_Deserialize,
+	canWrite: boolean,
+	pipelines: GlPipelineSummary_Deserialize[],
+	bySha: { [key in string]: GlShaBadge_Deserialize },
+};
+
+/**  `listPipelines`. */
+export type GlPipelineList_Serialize = {
+	project: GlProject_Serialize,
+	canWrite: boolean,
+	pipelines: GlPipelineSummary_Serialize[],
+	bySha: { [key in string]: GlShaBadge_Serialize },
+};
+
+/**  Пайплайн в списке. */
+export type GlPipelineSummary = GlPipelineSummary_Serialize | GlPipelineSummary_Deserialize;
+
+/**  Пайплайн в списке. */
+export type GlPipelineSummary_Deserialize = {
+	id?: CiId | null,
+	iid?: CiId | null,
+	sha?: string | null,
+	ref?: string | null,
+	status?: string | null,
+	source?: string | null,
+	name?: string | null,
+	createdAt?: string | null,
+	updatedAt?: string | null,
+	webUrl?: string | null,
+};
+
+/**  Пайплайн в списке. */
+export type GlPipelineSummary_Serialize = {
+	id: CiId | null,
+	iid: CiId | null,
+	sha: string | null,
+	ref: string | null,
+	status: string | null,
+	source: string | null,
+	name: string | null,
+	createdAt: string | null,
+	updatedAt: string | null,
+	webUrl: string | null,
+};
+
+/**  Проект GitLab. */
+export type GlProject = GlProject_Serialize | GlProject_Deserialize;
+
+/**  Проект GitLab. */
+export type GlProject_Deserialize = {
+	id?: CiId | null,
+	name?: string | null,
+	path?: string | null,
+	webUrl?: string | null,
+	defaultBranch?: string | null,
+	accessLevel: number | null,
+};
+
+/**  Проект GitLab. */
+export type GlProject_Serialize = {
+	id: CiId | null,
+	name: string | null,
+	path: string | null,
+	webUrl: string | null,
+	defaultBranch: string | null,
+	accessLevel: number | null,
+};
+
+/**  Remote и, если это GitLab, состояние авторизации: `detectRemote`. */
+export type GlRemoteStatus = GlRemoteStatus_Serialize | GlRemoteStatus_Deserialize;
+
+/**  Remote и, если это GitLab, состояние авторизации: `detectRemote`. */
+export type GlRemoteStatus_Deserialize = {
+	kind?: CiProvider | null,
+	remote: string,
+	url: string,
+	protocol: string,
+	host: string,
+	base: string,
+	path: string,
+	webUrl: string,
+	token: TokenStatus_Deserialize,
+};
+
+/**  Remote и, если это GitLab, состояние авторизации: `detectRemote`. */
+export type GlRemoteStatus_Serialize = {
+	kind: CiProvider | null,
+	remote: string,
+	url: string,
+	protocol: string,
+	host: string,
+	base: string,
+	path: string,
+	webUrl: string,
+	token: TokenStatus_Serialize,
+};
+
+/**  Раннер в простом списке. */
+export type GlRunner = GlRunner_Serialize | GlRunner_Deserialize;
+
+/**  `listRunners`. */
+export type GlRunnerList = GlRunnerList_Serialize | GlRunnerList_Deserialize;
+
+/**  `listRunners`. */
+export type GlRunnerList_Deserialize = {
+	project: GlProject_Deserialize,
+	runners: GlRunner_Deserialize[],
+};
+
+/**  `listRunners`. */
+export type GlRunnerList_Serialize = {
+	project: GlProject_Serialize,
+	runners: GlRunner_Serialize[],
+};
+
+/**  Раннер в простом списке. */
+export type GlRunner_Deserialize = {
+	id?: CiId | null,
+	description: string,
+	status: string,
+	paused: boolean,
+	shared: boolean,
+	type?: string | null,
+};
+
+/**  Раннер в простом списке. */
+export type GlRunner_Serialize = {
+	id: CiId | null,
+	description: string,
+	status: string,
+	paused: boolean,
+	shared: boolean,
+	type: string | null,
+};
+
+/**  Расписание. */
+export type GlSchedule = GlSchedule_Serialize | GlSchedule_Deserialize;
+
+/**  Действие с расписанием. */
+export type GlScheduleAction = GlScheduleAction_Serialize | GlScheduleAction_Deserialize;
+
+/**  Результат действия с расписанием. */
+export type GlScheduleActionResult = {
+	id: number | null,
+	type: string,
+};
+
+/**  Действие с расписанием. */
+export type GlScheduleAction_Deserialize = {
+	id?: CiId | null,
+	type?: string | null,
+};
+
+/**  Действие с расписанием. */
+export type GlScheduleAction_Serialize = {
+	id: CiId | null,
+	type: string | null,
+};
+
+/**  Форма расписания. */
+export type GlScheduleInput = GlScheduleInput_Serialize | GlScheduleInput_Deserialize;
+
+/**  Форма расписания. */
+export type GlScheduleInput_Deserialize = {
+	id?: CiId | null,
+	description?: string | null,
+	ref?: string | null,
+	cron?: string | null,
+	timezone?: string | null,
+	active?: boolean | null,
+};
+
+/**  Форма расписания. */
+export type GlScheduleInput_Serialize = {
+	id: CiId | null,
+	description: string | null,
+	ref: string | null,
+	cron: string | null,
+	timezone: string | null,
+	active: boolean | null,
+};
+
+/**  `listSchedules`. */
+export type GlScheduleList = GlScheduleList_Serialize | GlScheduleList_Deserialize;
+
+/**  `listSchedules`. */
+export type GlScheduleList_Deserialize = {
+	project: GlProject_Deserialize,
+	canWrite: boolean,
+	me?: string | null,
+	schedules: GlSchedule_Deserialize[],
+};
+
+/**  `listSchedules`. */
+export type GlScheduleList_Serialize = {
+	project: GlProject_Serialize,
+	canWrite: boolean,
+	me: string | null,
+	schedules: GlSchedule_Serialize[],
+};
+
+/**  Расписание. */
+export type GlSchedule_Deserialize = {
+	id?: CiId | null,
+	description: string,
+	ref: string,
+	cron?: string | null,
+	timezone: string,
+	nextRunAt?: string | null,
+	active: boolean,
+	owner?: CiActor_Deserialize | null,
+	lastPipeline?: GlLastPipeline_Deserialize | null,
+	webUrl?: string | null,
+};
+
+/**  Расписание. */
+export type GlSchedule_Serialize = {
+	id: CiId | null,
+	description: string,
+	ref: string,
+	cron: string | null,
+	timezone: string,
+	nextRunAt: string | null,
+	active: boolean,
+	owner: CiActor_Serialize | null,
+	lastPipeline: GlLastPipeline_Serialize | null,
+	webUrl: string | null,
+};
+
+/**  Значок пайплайна в графе. */
+export type GlShaBadge = GlShaBadge_Serialize | GlShaBadge_Deserialize;
+
+/**  Значок пайплайна в графе. */
+export type GlShaBadge_Deserialize = {
+	id?: CiId | null,
+	status?: string | null,
+	ref?: string | null,
+	webUrl?: string | null,
+};
+
+/**  Значок пайплайна в графе. */
+export type GlShaBadge_Serialize = {
+	id: CiId | null,
+	status: string | null,
+	ref: string | null,
+	webUrl: string | null,
+};
+
+/**  Этап. */
+export type GlStage = GlStage_Serialize | GlStage_Deserialize;
+
+/**  Этап. */
+export type GlStage_Deserialize = {
+	name?: string | null,
+	status: string,
+	jobs: GlJob_Deserialize[],
+};
+
+/**  Этап. */
+export type GlStage_Serialize = {
+	name: string | null,
+	status: string,
+	jobs: GlJob_Serialize[],
+};
+
 /**  Строка списка старых токенов. */
 export type GlTokenRow = GlTokenRow_Serialize | GlTokenRow_Deserialize;
 
@@ -2299,6 +3198,181 @@ export type GlTokenRow_Serialize = {
 	expiresAt: string | null,
 	savedAt: string | null,
 	readable: boolean,
+};
+
+/**  Пользователь в подробностях пайплайна. */
+export type GlUser = GlUser_Serialize | GlUser_Deserialize;
+
+/**  Пользователь в подробностях пайплайна. */
+export type GlUser_Deserialize = {
+	name?: string | null,
+	username?: string | null,
+	avatarUrl?: string | null,
+};
+
+/**  Пользователь в подробностях пайплайна. */
+export type GlUser_Serialize = {
+	name: string | null,
+	username: string | null,
+	avatarUrl: string | null,
+};
+
+/**  Переменная в списке: значения идут только по явному запросу. */
+export type GlVariable = GlVariable_Serialize | GlVariable_Deserialize;
+
+/**  Переменная, как её присылает форма. */
+export type GlVariableInput = GlVariableInput_Serialize | GlVariableInput_Deserialize;
+
+/**  Переменная, как её присылает форма. */
+export type GlVariableInput_Deserialize = {
+	key?: string | null,
+	type?: string | null,
+	protected?: boolean,
+	masked?: boolean,
+	hidden?: boolean,
+	raw?: boolean,
+	scope?: string | null,
+	description?: string | null,
+	value?: YamlValue_Deserialize | null,
+};
+
+/**  Переменная, как её присылает форма. */
+export type GlVariableInput_Serialize = {
+	key: string | null,
+	type: string | null,
+	protected: boolean,
+	masked: boolean,
+	hidden: boolean,
+	raw: boolean,
+	scope: string | null,
+	description: string | null,
+	value: YamlValue_Serialize | null,
+};
+
+/**  `listVariables`. */
+export type GlVariableList = GlVariableList_Serialize | GlVariableList_Deserialize;
+
+/**  `listVariables`. */
+export type GlVariableList_Deserialize = {
+	project: GlProject_Deserialize,
+	variables: GlVariable_Deserialize[],
+};
+
+/**  `listVariables`. */
+export type GlVariableList_Serialize = {
+	project: GlProject_Serialize,
+	variables: GlVariable_Serialize[],
+};
+
+/**  Что изменяется. */
+export type GlVariableOriginal = GlVariableOriginal_Serialize | GlVariableOriginal_Deserialize;
+
+/**  Что изменяется. */
+export type GlVariableOriginal_Deserialize = {
+	key?: string | null,
+	scope?: string | null,
+};
+
+/**  Что изменяется. */
+export type GlVariableOriginal_Serialize = {
+	key: string | null,
+	scope: string | null,
+};
+
+/**  Имя и окружение переменной. */
+export type GlVariableRef = GlVariableRef_Serialize | GlVariableRef_Deserialize;
+
+/**  Имя и окружение переменной. */
+export type GlVariableRef_Deserialize = {
+	key?: YamlValue_Deserialize | null,
+	scope?: string | null,
+};
+
+/**  Имя и окружение переменной. */
+export type GlVariableRef_Serialize = {
+	key: YamlValue_Serialize | null,
+	scope: string | null,
+};
+
+/**  `gitlab:variable-save`. */
+export type GlVariableSave = GlVariableSave_Serialize | GlVariableSave_Deserialize;
+
+/**  `gitlab:variable-save`. */
+export type GlVariableSave_Deserialize = {
+	original?: GlVariableOriginal_Deserialize | null,
+	variable?: GlVariableInput_Deserialize | null,
+};
+
+/**  `gitlab:variable-save`. */
+export type GlVariableSave_Serialize = {
+	original: GlVariableOriginal_Serialize | null,
+	variable: GlVariableInput_Serialize | null,
+};
+
+/**  Результат сохранения. */
+export type GlVariableSaved = GlVariableSaved_Serialize | GlVariableSaved_Deserialize;
+
+/**  Результат сохранения. */
+export type GlVariableSaved_Deserialize = {
+	key?: string | null,
+	scope?: string | null,
+	created?: boolean | null,
+	renamed?: boolean | null,
+	updated?: boolean | null,
+	deleted?: boolean | null,
+};
+
+/**  Результат сохранения. */
+export type GlVariableSaved_Serialize = {
+	key: string | null,
+	scope: string | null,
+	created: boolean | null,
+	renamed: boolean | null,
+	updated: boolean | null,
+	deleted: boolean | null,
+};
+
+/**  `variableValue`. */
+export type GlVariableValue = GlVariableValue_Serialize | GlVariableValue_Deserialize;
+
+/**  `variableValue`. */
+export type GlVariableValue_Deserialize = {
+	key: string,
+	hidden: boolean,
+	value?: string | null,
+};
+
+/**  `variableValue`. */
+export type GlVariableValue_Serialize = {
+	key: string,
+	hidden: boolean,
+	value: string | null,
+};
+
+/**  Переменная в списке: значения идут только по явному запросу. */
+export type GlVariable_Deserialize = {
+	key?: string | null,
+	type?: string | null,
+	protected: boolean,
+	masked: boolean,
+	hidden: boolean,
+	raw: boolean,
+	scope: string,
+	description?: string | null,
+	empty: boolean,
+};
+
+/**  Переменная в списке: значения идут только по явному запросу. */
+export type GlVariable_Serialize = {
+	key: string | null,
+	type: string | null,
+	protected: boolean,
+	masked: boolean,
+	hidden: boolean,
+	raw: boolean,
+	scope: string,
+	description: string | null,
+	empty: boolean,
 };
 
 /**  Ошибка, пересекающая IPC. JSON совпадает с `GitError.toJSON()` из 1.x. */
@@ -2751,6 +3825,29 @@ export type InitStep = {
 	ok: boolean,
 };
 
+/**  Поле формы запуска. */
+export type InputField = InputField_Serialize | InputField_Deserialize;
+
+/**  Поле формы запуска. */
+export type InputField_Deserialize = {
+	key: string,
+	type: string,
+	description?: string | null,
+	required: boolean,
+	default: YamlValue_Deserialize,
+	options?: string[] | null,
+};
+
+/**  Поле формы запуска. */
+export type InputField_Serialize = {
+	key: string,
+	type: string,
+	description: string | null,
+	required: boolean,
+	default: YamlValue_Serialize,
+	options: string[] | null,
+};
+
 /**  Правило с ошибкой в шаблоне или флагах. */
 export type InvalidRule = InvalidRule_Serialize | InvalidRule_Deserialize;
 
@@ -2766,6 +3863,59 @@ export type InvalidRule_Serialize = {
 	id?: string,
 	label?: string,
 	error: string,
+};
+
+/**  Файл артефакта задания GitLab. */
+export type JobArtifactFile = JobArtifactFile_Serialize | JobArtifactFile_Deserialize;
+
+/**  Файл артефакта задания GitLab. */
+export type JobArtifactFile_Deserialize = {
+	type?: string | null,
+	size?: number | null,
+};
+
+/**  Файл артефакта задания GitLab. */
+export type JobArtifactFile_Serialize = {
+	type: string | null,
+	size: number | null,
+};
+
+/**  Лог задания. */
+export type JobLog = JobLog_Serialize | JobLog_Deserialize;
+
+/**  `opts` команды `cicd:job-log`. */
+export type JobLogOptions = JobLogOptions_Serialize | JobLogOptions_Deserialize;
+
+/**  `opts` команды `cicd:job-log`. */
+export type JobLogOptions_Deserialize = {
+	remote?: string | null,
+	/**  Bitbucket и Gitea находят шаг только вместе с пайплайном. */
+	pipelineId?: CiId | null,
+};
+
+/**  `opts` команды `cicd:job-log`. */
+export type JobLogOptions_Serialize = {
+	remote: string | null,
+	/**  Bitbucket и Gitea находят шаг только вместе с пайплайном. */
+	pipelineId: CiId | null,
+};
+
+/**  Лог задания. */
+export type JobLog_Deserialize = {
+	job?: PipelineJob_Deserialize | null,
+	text: string,
+	size: number | null,
+	truncated: boolean,
+	unavailable?: boolean | null,
+};
+
+/**  Лог задания. */
+export type JobLog_Serialize = {
+	job: PipelineJob_Serialize | null,
+	text: string,
+	size: number | null,
+	truncated: boolean,
+	unavailable: boolean | null,
 };
 
 /**  Словарь с порядком ключей объекта JS: целые индексы по возрастанию, затем остальные в порядке появления. */
@@ -2915,6 +4065,72 @@ export type LocalBranch_Serialize = {
 	ahead: number | null,
 	behind: number | null,
 	date: string | null,
+};
+
+/**  Контейнер с раннером. */
+export type LocalRunner = LocalRunner_Serialize | LocalRunner_Deserialize;
+
+/**  Имя запущенного или остановленного контейнера. */
+export type LocalRunnerName = {
+	name: string,
+};
+
+/**  Тело `cicd:local-runner-start`. */
+export type LocalRunnerStartRequest = LocalRunnerStartRequest_Serialize | LocalRunnerStartRequest_Deserialize;
+
+/**  Тело `cicd:local-runner-start`. */
+export type LocalRunnerStartRequest_Deserialize = {
+	labels?: YamlValue_Deserialize[],
+};
+
+/**  Тело `cicd:local-runner-start`. */
+export type LocalRunnerStartRequest_Serialize = {
+	labels: YamlValue_Serialize[],
+};
+
+/**  Что вернул запуск локального раннера. */
+export type LocalRunnerStarted = {
+	name: string,
+	provider: string,
+};
+
+/**  Контейнер с раннером. */
+export type LocalRunner_Deserialize = {
+	id?: string | null,
+	name?: string | null,
+	image?: string | null,
+	state: string,
+	status?: string | null,
+	provider?: string | null,
+	repo?: string | null,
+	runnerLabels: string[],
+};
+
+/**  Контейнер с раннером. */
+export type LocalRunner_Serialize = {
+	id: string | null,
+	name: string | null,
+	image: string | null,
+	state: string,
+	status: string | null,
+	provider: string | null,
+	repo: string | null,
+	runnerLabels: string[],
+};
+
+/**  Docker и контейнеры репозитория. */
+export type LocalRunners = LocalRunners_Serialize | LocalRunners_Deserialize;
+
+/**  Docker и контейнеры репозитория. */
+export type LocalRunners_Deserialize = {
+	docker: DockerStatus_Deserialize,
+	runners: LocalRunner_Deserialize[],
+};
+
+/**  Docker и контейнеры репозитория. */
+export type LocalRunners_Serialize = {
+	docker: DockerStatus_Serialize,
+	runners: LocalRunner_Serialize[],
 };
 
 /**  Итог проверки входа. */
@@ -3243,6 +4459,217 @@ export type PathsRequest_Serialize = {
 	paths: PathsArg | null,
 };
 
+/**  Подробности запуска. */
+export type PipelineDetail = PipelineDetail_Serialize | PipelineDetail_Deserialize;
+
+/**  Подробности запуска. */
+export type PipelineDetail_Deserialize = {
+	pipeline?: PipelineRun_Deserialize | null,
+	stages: PipelineStage_Deserialize[],
+	artifacts: CiArtifact_Deserialize[],
+	canWrite: boolean,
+};
+
+/**  Подробности запуска. */
+export type PipelineDetail_Serialize = {
+	pipeline: PipelineRun_Serialize | null,
+	stages: PipelineStage_Serialize[],
+	artifacts: CiArtifact_Serialize[],
+	canWrite: boolean,
+};
+
+/**  Задание. */
+export type PipelineJob = PipelineJob_Serialize | PipelineJob_Deserialize;
+
+/**  Задание. */
+export type PipelineJob_Deserialize = {
+	id?: CiId | null,
+	kind: string,
+	name?: string | null,
+	stage?: string | null,
+	status?: string | null,
+	runnerName?: string | null,
+	runnerId?: CiId | null,
+	runnerTags: string[],
+	startedAt?: string | null,
+	finishedAt?: string | null,
+	duration?: number | null,
+	queuedDuration?: number | null,
+	url?: string | null,
+	logsUrl?: string | null,
+	allowFailure: boolean,
+	failureReason?: string | null,
+	steps: PipelineStep_Deserialize[],
+	manual: boolean,
+	when?: string | null,
+	coverage?: YamlValue_Deserialize | null,
+	triggeredBy?: CiActor_Deserialize | null,
+	downstream?: Downstream_Deserialize | null,
+	artifacts?: JobArtifactFile_Deserialize[] | null,
+	runId?: CiId | null,
+	pipelineId?: CiId | null,
+	logUnavailable?: boolean | null,
+};
+
+/**  Задание. */
+export type PipelineJob_Serialize = {
+	id: CiId | null,
+	kind: string,
+	name: string | null,
+	stage: string | null,
+	status: string | null,
+	runnerName: string | null,
+	runnerId: CiId | null,
+	runnerTags: string[],
+	startedAt: string | null,
+	finishedAt: string | null,
+	duration: number | null,
+	queuedDuration: number | null,
+	url: string | null,
+	logsUrl: string | null,
+	allowFailure: boolean,
+	failureReason: string | null,
+	steps: PipelineStep_Serialize[],
+	manual: boolean,
+	when: string | null,
+	coverage: YamlValue_Serialize | null,
+	triggeredBy: CiActor_Serialize | null,
+	downstream: Downstream_Serialize | null,
+	artifacts: JobArtifactFile_Serialize[] | null,
+	runId: CiId | null,
+	pipelineId: CiId | null,
+	logUnavailable: boolean | null,
+};
+
+/**  Список пайплайнов. */
+export type PipelineList = PipelineList_Serialize | PipelineList_Deserialize;
+
+/**  Список пайплайнов. */
+export type PipelineList_Deserialize = {
+	pipelines: PipelineRun_Deserialize[],
+	bySha: { [key in string]: ShaBadge_Deserialize },
+	canWrite: boolean,
+};
+
+/**  Список пайплайнов. */
+export type PipelineList_Serialize = {
+	pipelines: PipelineRun_Serialize[],
+	bySha: { [key in string]: ShaBadge_Serialize },
+	canWrite: boolean,
+};
+
+/**  Запуск пайплайна. */
+export type PipelineRun = PipelineRun_Serialize | PipelineRun_Deserialize;
+
+/**  Запуск пайплайна. */
+export type PipelineRun_Deserialize = {
+	id?: CiId | null,
+	number?: CiId | null,
+	iid?: CiId | null,
+	uuid?: string | null,
+	name?: string | null,
+	workflow?: string | null,
+	workflowPath?: string | null,
+	workflowId?: CiId | null,
+	workflowFile?: string | null,
+	status?: string | null,
+	branch?: string | null,
+	sha?: string | null,
+	createdAt?: string | null,
+	startedAt?: string | null,
+	finishedAt?: string | null,
+	duration?: number | null,
+	queuedDuration?: number | null,
+	url?: string | null,
+	triggeredBy?: CiActor_Deserialize | null,
+	source?: string | null,
+	coverage?: YamlValue_Deserialize | null,
+	yamlErrors?: YamlValue_Deserialize | null,
+	attempt?: number | null,
+};
+
+/**  Запуск пайплайна. */
+export type PipelineRun_Serialize = {
+	id: CiId | null,
+	number: CiId | null,
+	iid: CiId | null,
+	uuid: string | null,
+	name: string | null,
+	workflow: string | null,
+	workflowPath: string | null,
+	workflowId: CiId | null,
+	workflowFile: string | null,
+	status: string | null,
+	branch: string | null,
+	sha: string | null,
+	createdAt: string | null,
+	startedAt: string | null,
+	finishedAt: string | null,
+	duration: number | null,
+	queuedDuration: number | null,
+	url: string | null,
+	triggeredBy: CiActor_Serialize | null,
+	source: string | null,
+	coverage: YamlValue_Serialize | null,
+	yamlErrors: YamlValue_Serialize | null,
+	attempt: number | null,
+};
+
+/**  Этап пайплайна. */
+export type PipelineStage = PipelineStage_Serialize | PipelineStage_Deserialize;
+
+/**  Этап пайплайна. */
+export type PipelineStage_Deserialize = {
+	name?: string | null,
+	status: string,
+	jobs: PipelineJob_Deserialize[],
+};
+
+/**  Этап пайплайна. */
+export type PipelineStage_Serialize = {
+	name: string | null,
+	status: string,
+	jobs: PipelineJob_Serialize[],
+};
+
+/**  Шаг задания. */
+export type PipelineStep = PipelineStep_Serialize | PipelineStep_Deserialize;
+
+/**  Шаг задания. */
+export type PipelineStep_Deserialize = {
+	number?: number | null,
+	name?: string | null,
+	status: string,
+	startedAt?: string | null,
+	duration?: number | null,
+};
+
+/**  Шаг задания. */
+export type PipelineStep_Serialize = {
+	number: number | null,
+	name: string | null,
+	status: string,
+	startedAt: string | null,
+	duration: number | null,
+};
+
+/**  `opts` команд `cicd:pipelines` и `gitlab:pipelines`. */
+export type PipelinesOptions = PipelinesOptions_Serialize | PipelinesOptions_Deserialize;
+
+/**  `opts` команд `cicd:pipelines` и `gitlab:pipelines`. */
+export type PipelinesOptions_Deserialize = {
+	remote?: string | null,
+	/**  Только пайплайны этой ветки. */
+	ref?: string | null,
+};
+
+/**  `opts` команд `cicd:pipelines` и `gitlab:pipelines`. */
+export type PipelinesOptions_Serialize = {
+	remote: string | null,
+	/**  Только пайплайны этой ветки. */
+	ref: string | null,
+};
+
 /**  Строка плана. */
 export type PlanItem = PlanItem_Serialize | PlanItem_Deserialize;
 
@@ -3303,6 +4730,35 @@ export type ProbeRemote_Deserialize = {
 export type ProbeRemote_Serialize = {
 	url: string | null,
 	branch: string | null,
+};
+
+/**  Удаление раннеров не в сети. */
+export type PruneResult = PruneResult_Serialize | PruneResult_Deserialize;
+
+/**  Удаление раннеров не в сети. */
+export type PruneResult_Deserialize = {
+	removed: PrunedRunner_Deserialize[],
+	failed: PrunedRunner_Deserialize[],
+};
+
+/**  Удаление раннеров не в сети. */
+export type PruneResult_Serialize = {
+	removed: PrunedRunner_Serialize[],
+	failed: PrunedRunner_Serialize[],
+};
+
+export type PrunedRunner = PrunedRunner_Serialize | PrunedRunner_Deserialize;
+
+export type PrunedRunner_Deserialize = {
+	id?: CiId | null,
+	name: string,
+	error?: string | null,
+};
+
+export type PrunedRunner_Serialize = {
+	id: CiId | null,
+	name: string,
+	error: string | null,
 };
 
 /**  Ответ `creds:copy-public-key`. */
@@ -3594,6 +5050,27 @@ export type RefRequest_Serialize = {
 	ref: string | null,
 };
 
+/**  Токен для нового раннера. */
+export type RegistrationToken = RegistrationToken_Serialize | RegistrationToken_Deserialize;
+
+/**  Токен для нового раннера. */
+export type RegistrationToken_Deserialize = {
+	token?: string | null,
+	runnerId?: CiId | null,
+	expiresAt?: string | null,
+	kind: string,
+	url?: string | null,
+};
+
+/**  Токен для нового раннера. */
+export type RegistrationToken_Serialize = {
+	token: string | null,
+	runnerId: CiId | null,
+	expiresAt: string | null,
+	kind: string,
+	url: string | null,
+};
+
 /**  Удалённый репозиторий. */
 export type Remote = Remote_Serialize | Remote_Deserialize;
 
@@ -3714,6 +5191,19 @@ export type RemoteHeads_Serialize = {
 	branches: RemoteHead[],
 	defaultBranch: string | null,
 	headBranch: string | null,
+};
+
+/**  `opts` большинства команд: remote, к которому обращаться (иначе — upstream текущей ветки или `origin`). */
+export type RemoteOptions = RemoteOptions_Serialize | RemoteOptions_Deserialize;
+
+/**  `opts` большинства команд: remote, к которому обращаться (иначе — upstream текущей ветки или `origin`). */
+export type RemoteOptions_Deserialize = {
+	remote?: string | null,
+};
+
+/**  `opts` большинства команд: remote, к которому обращаться (иначе — upstream текущей ветки или `origin`). */
+export type RemoteOptions_Serialize = {
+	remote: string | null,
 };
 
 /**  Результат `probeRemote`. */
@@ -4099,6 +5589,321 @@ export type RevertedTo_Serialize = {
 	branch: string | null,
 };
 
+/**  Форма запуска. */
+export type RunForm = RunForm_Serialize | RunForm_Deserialize;
+
+/**  Форма запуска. */
+export type RunForm_Deserialize = {
+	kind: string,
+	workflows: RunWorkflow_Deserialize[],
+	inputs?: InputField_Deserialize[] | null,
+	variables: RunVariableField_Deserialize[],
+	allowCustomVariables: boolean,
+};
+
+/**  Форма запуска. */
+export type RunForm_Serialize = {
+	kind: string,
+	workflows: RunWorkflow_Serialize[],
+	inputs: InputField_Serialize[] | null,
+	variables: RunVariableField_Serialize[],
+	allowCustomVariables: boolean,
+};
+
+/**  Параметры запуска. */
+export type RunParams = RunParams_Serialize | RunParams_Deserialize;
+
+/**  Параметры запуска. */
+export type RunParams_Deserialize = {
+	ref?: string | null,
+	workflow?: string | null,
+	inputs?: { [key in string]: YamlValue_Deserialize } | null,
+	variables?: RunVariable_Deserialize[] | null,
+};
+
+/**  Параметры запуска. */
+export type RunParams_Serialize = {
+	ref: string | null,
+	workflow: string | null,
+	inputs: { [key in string]: YamlValue_Serialize } | null,
+	variables: RunVariable_Serialize[] | null,
+};
+
+/**  Новый запуск. */
+export type RunResult = RunResult_Serialize | RunResult_Deserialize;
+
+/**  Новый запуск. */
+export type RunResult_Deserialize = {
+	id?: CiId | null,
+	url?: string | null,
+};
+
+/**  Новый запуск. */
+export type RunResult_Serialize = {
+	id: CiId | null,
+	url: string | null,
+};
+
+/**  Переменная запуска. */
+export type RunVariable = RunVariable_Serialize | RunVariable_Deserialize;
+
+/**  Переменная GitLab, которую предлагают при ручном запуске. */
+export type RunVariableField = RunVariableField_Serialize | RunVariableField_Deserialize;
+
+/**  Переменная GitLab, которую предлагают при ручном запуске. */
+export type RunVariableField_Deserialize = {
+	key: string,
+	description: string,
+	default: string,
+	options?: string[] | null,
+};
+
+/**  Переменная GitLab, которую предлагают при ручном запуске. */
+export type RunVariableField_Serialize = {
+	key: string,
+	description: string,
+	default: string,
+	options: string[] | null,
+};
+
+/**  Переменная запуска. */
+export type RunVariable_Deserialize = {
+	key?: string | null,
+	value?: YamlValue_Deserialize | null,
+	file?: boolean,
+	secured?: boolean,
+};
+
+/**  Переменная запуска. */
+export type RunVariable_Serialize = {
+	key: string | null,
+	value: YamlValue_Serialize | null,
+	file: boolean,
+	secured: boolean,
+};
+
+/**  Что можно запустить. */
+export type RunWorkflow = RunWorkflow_Serialize | RunWorkflow_Deserialize;
+
+/**  Что можно запустить. */
+export type RunWorkflow_Deserialize = {
+	path?: string | null,
+	name: string,
+	value?: string | null,
+	dispatchable: boolean,
+	inputs: InputField_Deserialize[],
+};
+
+/**  Что можно запустить. */
+export type RunWorkflow_Serialize = {
+	path: string | null,
+	name: string,
+	value: string | null,
+	dispatchable: boolean,
+	inputs: InputField_Serialize[],
+};
+
+/**  Команда для копирования. */
+export type RunnerCommand = {
+	id: string,
+	label: string,
+	shell: string,
+	text: string,
+};
+
+/**  Тело `cicd:runner-delete`. */
+export type RunnerDeleteRequest = RunnerDeleteRequest_Serialize | RunnerDeleteRequest_Deserialize;
+
+/**  Тело `cicd:runner-delete`. */
+export type RunnerDeleteRequest_Deserialize = {
+	id?: CiId | null,
+};
+
+/**  Тело `cicd:runner-delete`. */
+export type RunnerDeleteRequest_Serialize = {
+	id: CiId | null,
+};
+
+/**  Текущее задание раннера. */
+export type RunnerJob = RunnerJob_Serialize | RunnerJob_Deserialize;
+
+/**  Текущее задание раннера. */
+export type RunnerJob_Deserialize = {
+	id?: CiId | null,
+	name?: string | null,
+	pipelineId?: CiId | null,
+	url?: string | null,
+};
+
+/**  Текущее задание раннера. */
+export type RunnerJob_Serialize = {
+	id: CiId | null,
+	name: string | null,
+	pipelineId: CiId | null,
+	url: string | null,
+};
+
+/**  Что меняется в раннере. */
+export type RunnerPatch = RunnerPatch_Serialize | RunnerPatch_Deserialize;
+
+/**  Что меняется в раннере. */
+export type RunnerPatch_Deserialize = {
+	labels?: YamlValue_Deserialize[] | null,
+	paused?: boolean | null,
+	runUntagged?: boolean | null,
+	locked?: boolean | null,
+	description?: string | null,
+	/**  `None` — поля нет, `Some(None)` — сбросить. */
+	maximumTimeout?: YamlValue_Deserialize | null,
+};
+
+/**  Что меняется в раннере. */
+export type RunnerPatch_Serialize = {
+	labels: YamlValue_Serialize[] | null,
+	paused: boolean | null,
+	runUntagged: boolean | null,
+	locked: boolean | null,
+	description: string | null,
+	/**  `None` — поля нет, `Some(None)` — сбросить. */
+	maximumTimeout: YamlValue_Serialize | null,
+};
+
+/**  Параметры нового раннера. */
+export type RunnerRegisterOptions = RunnerRegisterOptions_Serialize | RunnerRegisterOptions_Deserialize;
+
+/**  Параметры нового раннера. */
+export type RunnerRegisterOptions_Deserialize = {
+	labels?: YamlValue_Deserialize[],
+	name?: string | null,
+	description?: string | null,
+	runUntagged?: boolean | null,
+	locked?: boolean | null,
+	paused?: boolean | null,
+};
+
+/**  Параметры нового раннера. */
+export type RunnerRegisterOptions_Serialize = {
+	labels: YamlValue_Serialize[],
+	name: string | null,
+	description: string | null,
+	runUntagged: boolean | null,
+	locked: boolean | null,
+	paused: boolean | null,
+};
+
+/**  Новый раннер с готовыми командами. */
+export type RunnerRegistration = RunnerRegistration_Serialize | RunnerRegistration_Deserialize;
+
+/**  Новый раннер с готовыми командами. */
+export type RunnerRegistration_Deserialize = {
+	labels: string[],
+	name: string,
+	provider: string,
+	commands: RunnerCommand[],
+} & RegistrationToken_Deserialize;
+
+/**  Новый раннер с готовыми командами. */
+export type RunnerRegistration_Serialize = {
+	labels: string[],
+	name: string,
+	provider: string,
+	commands: RunnerCommand[],
+} & RegistrationToken_Serialize;
+
+/**  Результат изменения раннера. */
+export type RunnerResult = RunnerResult_Serialize | RunnerResult_Deserialize;
+
+/**  Результат изменения раннера. */
+export type RunnerResult_Deserialize = {
+	id?: CiId | null,
+};
+
+/**  Результат изменения раннера. */
+export type RunnerResult_Serialize = {
+	id: CiId | null,
+};
+
+/**  Сверка тегов с раннерами. */
+export type RunnerTagReport = RunnerTagReport_Serialize | RunnerTagReport_Deserialize;
+
+/**  Сверка тегов с раннерами. */
+export type RunnerTagReport_Deserialize = {
+	available: boolean,
+	reason?: string | null,
+	issues: CiRunnerIssue_Deserialize[],
+	labels: string[],
+	runners?: number | null,
+	live?: number | null,
+	provider?: string | null,
+};
+
+/**  Сверка тегов с раннерами. */
+export type RunnerTagReport_Serialize = {
+	available: boolean,
+	reason: string | null,
+	issues: CiRunnerIssue_Serialize[],
+	labels: string[],
+	runners: number | null,
+	live: number | null,
+	provider: string | null,
+};
+
+/**  Параметры `runner-tags`. */
+export type RunnerTagRequest = RunnerTagRequest_Serialize | RunnerTagRequest_Deserialize;
+
+/**  Параметры `runner-tags`. */
+export type RunnerTagRequest_Deserialize = {
+	file?: string | null,
+	drafts?: { [key in string]: string } | null,
+};
+
+/**  Параметры `runner-tags`. */
+export type RunnerTagRequest_Serialize = {
+	file: string | null,
+	drafts: { [key in string]: string } | null,
+};
+
+/**  Тело `cicd:runner-update`. */
+export type RunnerUpdateRequest = RunnerUpdateRequest_Serialize | RunnerUpdateRequest_Deserialize;
+
+/**  Тело `cicd:runner-update`. */
+export type RunnerUpdateRequest_Deserialize = {
+	id?: CiId | null,
+	patch?: RunnerPatch_Deserialize | null,
+};
+
+/**  Тело `cicd:runner-update`. */
+export type RunnerUpdateRequest_Serialize = {
+	id: CiId | null,
+	patch: RunnerPatch_Serialize | null,
+};
+
+/**  Список раннеров. */
+export type RunnersData = RunnersData_Serialize | RunnersData_Deserialize;
+
+/**  Список раннеров. */
+export type RunnersData_Deserialize = {
+	runners: CiRunner_Deserialize[],
+};
+
+/**  Список раннеров. */
+export type RunnersData_Serialize = {
+	runners: CiRunner_Serialize[],
+};
+
+/**  Тело `cicd:runners-prune`: без `ids` — все подходящие раннеры не в сети. */
+export type RunnersPruneRequest = RunnersPruneRequest_Serialize | RunnersPruneRequest_Deserialize;
+
+/**  Тело `cicd:runners-prune`: без `ids` — все подходящие раннеры не в сети. */
+export type RunnersPruneRequest_Deserialize = {
+	ids?: CiId[] | null,
+};
+
+/**  Тело `cicd:runners-prune`: без `ids` — все подходящие раннеры не в сети. */
+export type RunnersPruneRequest_Serialize = {
+	ids: CiId[] | null,
+};
+
 /**  Параметры `saveResolution`. */
 export type SaveResolution = SaveResolution_Serialize | SaveResolution_Deserialize;
 
@@ -4169,6 +5974,68 @@ export type SearchHistory_Serialize = {
 	caseSensitive: boolean,
 };
 
+/**  Секрет при сохранении и удалении. */
+export type SecretRef = SecretRef_Serialize | SecretRef_Deserialize;
+
+/**  Секрет при сохранении и удалении. */
+export type SecretRef_Deserialize = {
+	key?: string | null,
+	secret?: boolean,
+	uuid?: string | null,
+};
+
+/**  Секрет при сохранении и удалении. */
+export type SecretRef_Serialize = {
+	key: string | null,
+	secret: boolean,
+	uuid: string | null,
+};
+
+/**  Результат изменения секрета. */
+export type SecretResult = SecretResult_Serialize | SecretResult_Deserialize;
+
+/**  Результат изменения секрета. */
+export type SecretResult_Deserialize = {
+	key?: string | null,
+};
+
+/**  Результат изменения секрета. */
+export type SecretResult_Serialize = {
+	key: string | null,
+};
+
+/**  Сохранение секрета. */
+export type SecretSave = SecretSave_Serialize | SecretSave_Deserialize;
+
+/**  Сохранение секрета. */
+export type SecretSave_Deserialize = {
+	key?: string | null,
+	value?: YamlValue_Deserialize | null,
+	secret?: boolean,
+	original?: SecretRef_Deserialize | null,
+};
+
+/**  Сохранение секрета. */
+export type SecretSave_Serialize = {
+	key: string | null,
+	value: YamlValue_Serialize | null,
+	secret: boolean,
+	original: SecretRef_Serialize | null,
+};
+
+/**  Список секретов. */
+export type SecretsData = SecretsData_Serialize | SecretsData_Deserialize;
+
+/**  Список секретов. */
+export type SecretsData_Deserialize = {
+	secrets: CiSecretVariable_Deserialize[],
+};
+
+/**  Список секретов. */
+export type SecretsData_Serialize = {
+	secrets: CiSecretVariable_Serialize[],
+};
+
 /**  Тип сервера. */
 export type ServerKind = "github" | "gitlab" | "gitea" | "bitbucket" | "other";
 
@@ -4219,6 +6086,42 @@ export type ServerWithCi_Serialize = {
 	kindSaved: boolean,
 	cloud: boolean,
 	sharedCi: GlTokenRow_Serialize[] | null,
+};
+
+/**  Параметры обновления настроек. */
+export type SettingsInput = SettingsInput_Serialize | SettingsInput_Deserialize;
+
+/**  Параметры обновления настроек. */
+export type SettingsInput_Deserialize = {
+	provider?: string | null,
+	apiBase?: string | null,
+};
+
+/**  Параметры обновления настроек. */
+export type SettingsInput_Serialize = {
+	provider: string | null,
+	apiBase: string | null,
+};
+
+/**  Значок пайплайна в графе коммитов. */
+export type ShaBadge = ShaBadge_Serialize | ShaBadge_Deserialize;
+
+/**  Значок пайплайна в графе коммитов. */
+export type ShaBadge_Deserialize = {
+	id?: CiId | null,
+	status?: string | null,
+	branch?: string | null,
+	url?: string | null,
+	name?: string | null,
+};
+
+/**  Значок пайплайна в графе коммитов. */
+export type ShaBadge_Serialize = {
+	id: CiId | null,
+	status: string | null,
+	branch: string | null,
+	url: string | null,
+	name: string | null,
 };
 
 /**  Общий вход сервера в списке серверов. */
@@ -4753,6 +6656,23 @@ export type WipFile = {
 	untracked: boolean,
 	staged: boolean,
 };
+
+/**  Данные и то, что про них нужно знать интерфейсу: `withCaps`. */
+export type WithCaps<T> = WithCaps_Serialize<T> | WithCaps_Deserialize<T>;
+
+/**  Данные и то, что про них нужно знать интерфейсу: `withCaps`. */
+export type WithCaps_Deserialize<T> = {
+	provider: string,
+	label: string,
+	capabilities: Capabilities_Deserialize,
+} & T;
+
+/**  Данные и то, что про них нужно знать интерфейсу: `withCaps`. */
+export type WithCaps_Serialize<T> = {
+	provider: string,
+	label: string,
+	capabilities: Capabilities_Serialize,
+} & T;
 
 /**  Значение, как результат `doc.toJS()`. */
 export type YamlValue = YamlValue_Serialize | YamlValue_Deserialize;

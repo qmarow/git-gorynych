@@ -57,8 +57,10 @@ async function smoke(dir) {
   const cancelled = await invoke('repo_clone_cancel', { id: 'нет' });
   const unwatched = await invoke('repo_watch', { dir: null, opts: null });
   const creds = await credsSmoke(dir);
+  const cicd = await cicdSmoke(dir);
   return {
     creds,
+    cicd,
     loaded: { name: loaded.name, commits: loaded.commits.length, currentBranch: loaded.currentBranch, history: loaded.history, ci: loaded.ci, forge: loaded.forge },
     watching,
     staged,
@@ -120,6 +122,41 @@ async function credsSmoke(dir) {
     copied,
     noPub,
     badUrl,
+  };
+}
+
+// CI/CD после `credsSmoke`: remote — `git@gitlab.example.invalid:group/project.git`, входа нет. Ни одна команда здесь не идёт
+// в сеть: без входа API не вызывается, а ошибки аргументов проверяются раньше
+async function cicdSmoke(dir) {
+  const status = await invoke('cicd_status', { dir, opts: null });
+  const gitlab = await invoke('gitlab_status', { dir, opts: { remote: 'origin' } });
+  const settings = await invoke('cicd_settings', { dir, opts: null });
+  const savedSettings = await invoke('cicd_settings_save', { dir, data: { provider: 'gitea', apiBase: 'https://gitea.example.invalid/' }, opts: null });
+  const resetSettings = await invoke('cicd_settings_save', { dir, data: { provider: null, apiBase: null }, opts: null });
+  const runForm = await invoke('cicd_run_form', { dir, opts: null });
+  const localRunners = await invoke('cicd_local_runners', { dir, opts: null });
+  const noToken = await rejected(invoke('cicd_pipelines', { dir, opts: { ref: 'main' } }));
+  const glNoToken = await rejected(invoke('gitlab_variables', { dir, opts: null }));
+  const badAction = await rejected(invoke('cicd_action', { dir, action: { type: 'нет', id: 1 }, opts: null }));
+  const badRun = await rejected(invoke('cicd_run', { dir, params: { ref: ' ' }, opts: null }));
+  const badSecret = await rejected(invoke('cicd_secret_save', { dir, data: { key: '1x', value: 'v' }, opts: null }));
+  const badRunner = await rejected(invoke('cicd_local_runner_stop', { name: 'не-горыныч' }));
+  const notRepo = await rejected(invoke('cicd_info', { dir: `${dir}\\нет-такой-папки`, opts: null }));
+  return {
+    status: status && { kind: status.kind, host: status.host, path: status.path, protocol: status.protocol, base: status.base, configured: status.token.configured },
+    gitlab: gitlab && { kind: gitlab.kind, remote: gitlab.remote, path: gitlab.path, configured: gitlab.token.configured },
+    settings,
+    savedSettings,
+    resetSettings,
+    runForm,
+    localRunners: { available: localRunners.docker.available, runners: localRunners.runners },
+    noToken,
+    glNoToken,
+    badAction,
+    badRun,
+    badSecret,
+    badRunner,
+    notRepo,
   };
 }
 
