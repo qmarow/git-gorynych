@@ -24,5 +24,24 @@ node tests/ui-parity/i18n-graph-view.mjs $old $PWD
   `en.json` грузится хуком `registerHooks` (Vite импортирует JSON без `with { type: 'json' }`); `?lang=…` даёт отдельный
   экземпляр модуля на каждый язык.
 
+Остальные сверки берут прежние файлы из коммита перед переводом в папку `<old>/lib/` и запускаются так же:
+`node tests/ui-parity/<сверка>.mjs <old> <корень репозитория>`. Общие хуки — `hooks.mjs` (`i18n` старой копии подменяется
+текущим `src/i18n/index.ts`, у каждого языка свой экземпляр модулей).
+
+```powershell
+$old = "$env:TEMP\ui-old"
+New-Item -ItemType Directory -Force "$old\lib" | Out-Null
+foreach ($f in 'format','stashName','dnd','syncStatus','avatars') { cmd /c "git show d40db43~:src/lib/$f.js > `"$old\lib\$f.js`"" }
+'{"type":"module"}' | Set-Content "$old\package.json"
+node tests/ui-parity/lib-small.mjs $old $PWD
+```
+
+| Сверка | Модули | Коммит перевода |
+|---|---|---|
+| `lib-small.mjs` | `format`, `stashName`, `dnd`, `syncStatus`, `avatars` | `d40db43` |
+| `lib-batch2.mjs` | `inlineDiff`, `cron`, `servers`, `ansi` | `e84e6c0` |
+| `lib-commit.mjs` | `commitMsg`, `commitPrefs` | `1b412f6` |
+| `lib-batch3.mjs` | `ciSnippets`, `platform`, `guardRules` | `7c8e902` |
+
 Проверять сами сверки: внести в старую копию заведомое изменение и убедиться, что сверка падает.
 Ключи React (`key`) в `renderToStaticMarkup` не видны, такое изменение сверка не ловит.
