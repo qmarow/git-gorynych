@@ -22,7 +22,7 @@ import {
   Trash2,
   X,
 } from 'lucide-react';
-import { kb } from '../lib/platform.js';
+import { kb } from '../lib/platform.ts';
 import { t as tr, tj } from '../i18n/index.ts';
 
 /* =================== Базовое модальное окно =================== */

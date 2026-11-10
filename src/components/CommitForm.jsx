@@ -20,7 +20,7 @@ import {
 } from '../lib/commitMsg.ts';
 import { DEFAULT_COMMIT_PREFS, setCommitPrefs, useCommitPrefs } from '../lib/commitPrefs.ts';
 import { Switch } from './Guard.jsx';
-import { isMod, kb } from '../lib/platform.js';
+import { isMod, kb } from '../lib/platform.ts';
 import { plural } from '../lib/format.ts';
 import { readable } from '../lib/scheme.ts';
 import { t as tr, tj } from '../i18n/index.ts';

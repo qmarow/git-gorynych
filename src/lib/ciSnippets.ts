@@ -2,7 +2,13 @@ import { t } from '../i18n/index.ts';
 // Шаблоны шагов для редактора CI: вставляются в позицию курсора с отступом текущей строки.
 // Для GitHub/Gitea — шаги (steps), для GitLab — ключи задания или целое задание, для Bitbucket — шаги.
 
-const GH = [
+export interface CiSnippet {
+  id: 'checkout' | 'cache' | 'docker' | 'ssh';
+  label: string;
+  text: string;
+}
+
+const GH: readonly CiSnippet[] = [
   { id: 'checkout', label: t('Checkout репозитория'), text: '- uses: actions/checkout@v4\n  with:\n    fetch-depth: 0' },
   {
     id: 'cache',
@@ -21,7 +27,7 @@ const GH = [
   },
 ];
 
-const GL = [
+const GL: readonly CiSnippet[] = [
   { id: 'checkout', label: t('Checkout: глубина и стратегия клона'), text: 'variables:\n  GIT_DEPTH: "20"\n  GIT_STRATEGY: fetch' },
   { id: 'cache', label: t('Кэширование зависимостей'), text: 'cache:\n  key:\n    files: [package-lock.json]\n  paths:\n    - .npm/' },
   {
@@ -36,7 +42,7 @@ const GL = [
   },
 ];
 
-const BB = [
+const BB: readonly CiSnippet[] = [
   { id: 'checkout', label: t('Checkout: глубина клона'), text: 'clone:\n  depth: 20' },
   { id: 'cache', label: t('Кэширование зависимостей'), text: 'caches:\n  - node' },
   { id: 'docker', label: t('Шаг: сборка Docker-образа'), text: t('- step:\n    name: Сборка образа\n    services: [docker]\n    script:\n      - docker build -t app:$BITBUCKET_COMMIT .') },
@@ -47,7 +53,8 @@ const BB = [
   },
 ];
 
-export function snippetsFor(system) {
+/** `system` — `id` из `detect_ci` (`gitlab`, `github`, …); для прочих систем шаблонов нет. */
+export function snippetsFor(system: unknown): readonly CiSnippet[] {
   if (system === 'gitlab') return GL;
   if (system === 'bitbucket') return BB;
   if (system === 'github' || system === 'gitea' || system === 'forgejo') return GH;
@@ -55,4 +62,4 @@ export function snippetsFor(system) {
 }
 
 /** Ключи, после которых редактор подсказывает метки раннеров */
-export const TAG_KEYS = { gitlab: ['tags'], github: ['runs-on'], gitea: ['runs-on'], forgejo: ['runs-on'], bitbucket: ['runs-on'] };
+export const TAG_KEYS: Readonly<Record<string, readonly string[]>> = { gitlab: ['tags'], github: ['runs-on'], gitea: ['runs-on'], forgejo: ['runs-on'], bitbucket: ['runs-on'] };

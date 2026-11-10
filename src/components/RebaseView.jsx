@@ -18,7 +18,7 @@ import {
   X,
 } from 'lucide-react';
 import { FILE_STATUS, plural, relativeTime } from '../lib/format.ts';
-import { isMod, kb } from '../lib/platform.js';
+import { isMod, kb } from '../lib/platform.ts';
 import { readable } from '../lib/scheme.ts';
 import { t as tr, tj } from '../i18n/index.ts';
 

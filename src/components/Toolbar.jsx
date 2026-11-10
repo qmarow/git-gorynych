@@ -21,7 +21,7 @@ import {
   Undo2,
 } from 'lucide-react';
 import BranchPicker from './BranchPicker.jsx';
-import { isMod, kb } from '../lib/platform.js';
+import { isMod, kb } from '../lib/platform.ts';
 import { t, tj } from '../i18n/index.ts';
 
 export const PULL_MODES = [

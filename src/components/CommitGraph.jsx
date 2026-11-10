@@ -8,7 +8,7 @@ import { fullDate, initials, relativeTime, shortDate } from '../lib/format.ts';
 import { ResizeHandle, useStoredWidth } from './Resizer.jsx';
 import { avatarUrl, isFailed, markFailed } from '../lib/avatars.ts';
 import { hasRefDrag, readRefDrag, startRefDrag } from '../lib/dnd.ts';
-import { isMod, kb } from '../lib/platform.js';
+import { isMod, kb } from '../lib/platform.ts';
 import { CC_TYPES, parseSummary } from '../lib/commitMsg.ts';
 import { DEFAULT_VIEW, columnById, moveColumn, useGraphView } from '../lib/graphView.ts';
 import GraphViewMenu from './GraphViewMenu.jsx';

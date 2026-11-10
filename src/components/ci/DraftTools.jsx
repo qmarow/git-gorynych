@@ -3,7 +3,7 @@ import { AlertTriangle, CheckCircle2, CircleX, FileDiff, Loader2, Save, ShieldCh
 import { UnifiedDiff } from '../DiffView.jsx';
 import { inlineHighlights } from '../../lib/inlineDiff.ts';
 import { detectLanguage, highlightHunks } from '../../lib/highlight.js';
-import { kb } from '../../lib/platform.js';
+import { kb } from '../../lib/platform.ts';
 import { t, tj } from '../../i18n/index.ts';
 
 const api = window.api;

@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { kb } from '../lib/platform.js';
+import { kb } from '../lib/platform.ts';
 
 /**
  * Подсказки для элементов с атрибутом data-tip (вместо системного title).

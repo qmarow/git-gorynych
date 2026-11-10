@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { AlertTriangle, CheckCircle2, ChevronDown, ChevronRight, Info, X } from 'lucide-react';
-import { kb } from '../lib/platform.js';
+import { kb } from '../lib/platform.ts';
 import { tj } from '../i18n/index.ts';
 
 const STYLES = {

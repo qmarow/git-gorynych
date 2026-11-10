@@ -3,7 +3,25 @@ import { t } from '../i18n/index.ts';
 // files — расширения через запятую (пусто = все файлы). Порядок важен: на строку показывается первое сработавшее правило,
 // поэтому секреты идут первыми.
 
-export const DEFAULT_RULES = [
+export type GuardCategory = 'secret' | 'debug' | 'other' | (string & {});
+export type GuardLevel = 'off' | 'warn' | 'block';
+
+/**
+ * Правило: `pattern` и `flags` — регулярное выражение JS (в 2.0 его исполняет `JsRegex` в Rust), `files` — расширения
+ * через запятую. Свои правила приходят из настроек как есть: поля не проверяются, кроме `pattern` (см. [`readGuard`]).
+ */
+export interface GuardRule {
+  id: string;
+  category?: GuardCategory;
+  label: string;
+  pattern: string;
+  flags?: string;
+  files?: string;
+  level?: GuardLevel | string;
+}
+
+// Литерал списка читает и эталон Rust (crates/gorynych-ci-linter/tests/fixtures/gen-guard-parity.cjs): без типов внутри
+export const DEFAULT_RULES: readonly GuardRule[] = [
   // Секреты
   { id: 'private-key', category: 'secret', label: t('Приватный ключ'), pattern: '-----BEGIN (?:RSA |EC |DSA |OPENSSH |PGP |ENCRYPTED )?PRIVATE KEY(?: BLOCK)?-----' },
   { id: 'aws-key-id', category: 'secret', label: 'AWS Access Key ID', pattern: '\\b(?:AKIA|ASIA)[0-9A-Z]{16}\\b' },
@@ -29,21 +47,31 @@ export const DEFAULT_RULES = [
   { id: 'do-not-commit', category: 'debug', label: 'DO NOT COMMIT', flags: 'iu', pattern: '(?<![\\p{L}\\p{N}_])(?:DO\\s*NOT\\s*COMMIT|NOCOMMIT|НЕ\\s*КОММИТИТЬ)(?![\\p{L}\\p{N}_])' }, // gorynych-ignore
 ];
 
-export const CATEGORY_LABELS = { secret: t('Похоже на секрет'), debug: t('Забытая отладка'), other: t('Свои правила') };
+export const CATEGORY_LABELS: Record<'secret' | 'debug' | 'other', string> = { secret: t('Похоже на секрет'), debug: t('Забытая отладка'), other: t('Свои правила') };
 
 // Что делать при срабатывании правила
-export const LEVELS = [
+export const LEVELS: readonly { id: GuardLevel; label: string; hint: string }[] = [
   { id: 'off', label: t('Выкл'), hint: t('Правило не проверяется') },
   { id: 'warn', label: t('Предупреждать'), hint: t('Показать и спросить, коммитить ли всё равно') },
   { id: 'block', label: t('Запрещать'), hint: t('Коммит не создаётся, пока строка не исправлена или не помечена gorynych-ignore') },
 ];
 
 // Частые исключения — подсказки в настройках
-export const EXCLUDE_SUGGESTIONS = ['**/*.min.js', '**/vendor/**', '**/dist/**', '**/*.test.*', '**/__tests__/**', 'docs/**', '*.md', 'package-lock.json'];
+export const EXCLUDE_SUGGESTIONS: readonly string[] = ['**/*.min.js', '**/vendor/**', '**/dist/**', '**/*.test.*', '**/__tests__/**', 'docs/**', '*.md', 'package-lock.json'];
 
 const KEY = 'guard.v1';
 
-export const DEFAULT_GUARD = {
+export interface GuardConfig {
+  enabled: boolean;
+  live: boolean;
+  /** id правила → off | warn | block (по умолчанию warn). */
+  levels: Record<string, GuardLevel | string>;
+  exclude: string[];
+  custom: GuardRule[];
+  repoOff: string[];
+}
+
+export const DEFAULT_GUARD: GuardConfig = {
   enabled: true, // проверять перед коммитом
   live: true, // подсказки, пока готовите коммит (плашка, значки, отметки в diff)
   levels: {}, // id правила → off | warn | block (по умолчанию warn)
@@ -52,19 +80,19 @@ export const DEFAULT_GUARD = {
   repoOff: [], // репозитории, где проверка выключена
 };
 
-export function readGuard() {
+export function readGuard(): GuardConfig {
   try {
     const v = JSON.parse(localStorage.getItem(KEY) ?? 'null');
     if (!v) return DEFAULT_GUARD;
-    const levels = v.levels && typeof v.levels === 'object' ? { ...v.levels } : {};
+    const levels: Record<string, string> = v.levels && typeof v.levels === 'object' ? { ...v.levels } : {};
     // Старый формат: список выключенных правил
     if (Array.isArray(v.disabled)) for (const id of v.disabled) levels[id] = levels[id] ?? 'off';
     return {
       enabled: v.enabled !== false,
       live: v.live !== false,
       levels,
-      exclude: Array.isArray(v.exclude) ? v.exclude.filter((x) => typeof x === 'string' && x.trim()) : [],
-      custom: Array.isArray(v.custom) ? v.custom.filter((r) => r && r.pattern) : [],
+      exclude: Array.isArray(v.exclude) ? v.exclude.filter((x: unknown) => typeof x === 'string' && x.trim()) : [],
+      custom: Array.isArray(v.custom) ? v.custom.filter((r: GuardRule | null) => r && r.pattern) : [],
       repoOff: Array.isArray(v.repoOff) ? v.repoOff : [],
     };
   } catch {
@@ -72,7 +100,7 @@ export function readGuard() {
   }
 }
 
-export function writeGuard(cfg) {
+export function writeGuard(cfg: GuardConfig): void {
   try {
     localStorage.setItem(KEY, JSON.stringify(cfg));
   } catch {
@@ -80,16 +108,16 @@ export function writeGuard(cfg) {
   }
 }
 
-export const levelOf = (cfg, rule) => cfg.levels?.[rule.id] ?? rule.level ?? 'warn';
+export const levelOf = (cfg: Pick<GuardConfig, 'levels'>, rule: GuardRule): GuardLevel | string => cfg.levels?.[rule.id] ?? rule.level ?? 'warn';
 
-export function guardOnFor(cfg, repoPath) {
+export function guardOnFor(cfg: Pick<GuardConfig, 'enabled' | 'repoOff'>, repoPath?: string | null): boolean {
   return Boolean(cfg.enabled) && !(repoPath && cfg.repoOff?.includes(repoPath));
 }
 
 // Правила, которые реально отправляются на проверку (с уровнем)
-export function activeRules(cfg) {
+export function activeRules(cfg: GuardConfig): GuardRule[] {
   const custom = cfg.custom.map((r) => ({ ...r, category: r.category ?? 'other' }));
-  const withLevel = (r) => ({ ...r, level: levelOf(cfg, r) });
+  const withLevel = (r: GuardRule): GuardRule => ({ ...r, level: levelOf(cfg, r) });
   // Свои правила-секреты — вперёд, остальные свои — в конец
   return [
     ...custom.filter((r) => r.category === 'secret'),
@@ -100,11 +128,12 @@ export function activeRules(cfg) {
     .filter((r) => r.level !== 'off');
 }
 
-export function validatePattern(pattern, flags = '') {
+/** Текст ошибки `RegExp` или `null`, если шаблон верный. */
+export function validatePattern(pattern: string, flags = ''): string | null {
   try {
     new RegExp(pattern, flags); // eslint-disable-line no-new
     return null;
   } catch (error) {
-    return error.message;
+    return (error as Error).message;
   }
 }

@@ -16,7 +16,7 @@ import {
   Trash2,
   X,
 } from 'lucide-react';
-import { CATEGORY_LABELS, DEFAULT_GUARD, DEFAULT_RULES, EXCLUDE_SUGGESTIONS, LEVELS, levelOf, validatePattern } from '../lib/guardRules.js';
+import { CATEGORY_LABELS, DEFAULT_GUARD, DEFAULT_RULES, EXCLUDE_SUGGESTIONS, LEVELS, levelOf, validatePattern } from '../lib/guardRules.ts';
 import { plural } from '../lib/format.ts';
 import { t, tj } from '../i18n/index.ts';
 

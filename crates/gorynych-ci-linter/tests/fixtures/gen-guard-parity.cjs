@@ -6,9 +6,11 @@ const path = require('node:path');
 const root = path.resolve(__dirname, '../../../..');
 const { scanDiff, globToRe } = require(path.join(root, 'electron/guard.cjs'));
 
-// Настоящие правила по умолчанию из интерфейса: модуль ESM, поэтому берём из него только литерал списка
-const source = fs.readFileSync(path.join(root, 'src/lib/guardRules.js'), 'utf8');
-const literal = source.slice(source.indexOf('export const DEFAULT_RULES = ') + 'export const DEFAULT_RULES = '.length, source.indexOf('\n];') + 2);
+// Настоящие правила по умолчанию из интерфейса: модуль ESM на TypeScript, поэтому берём из него только литерал списка
+// (после `export const DEFAULT_RULES: …` идёт `= [`, внутри — обычные объекты без типов)
+const source = fs.readFileSync(path.join(root, 'src/lib/guardRules.ts'), 'utf8');
+const open = source.indexOf('= [', source.indexOf('export const DEFAULT_RULES')) + 2;
+const literal = source.slice(open, source.indexOf('\n];', open) + 2);
 const DEFAULT_RULES = new Function('t', `return ${literal}`)((x) => x);
 
 const clean = (value) => JSON.parse(JSON.stringify(value));

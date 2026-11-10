@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { StatusIcon, statusInfo } from './PipelineStatus.jsx';
 import { hasRefDrag, readRefDrag, startRefDrag } from '../lib/dnd.ts';
 import { SyncBadges } from './BranchSync.jsx';
-import { kb } from '../lib/platform.js';
+import { kb } from '../lib/platform.ts';
 import { RefKindIcon } from './RefBadge.jsx';
 import { describeStash, shortAgo } from '../lib/stashName.ts';
 import { fullDate, relativeTime } from '../lib/format.ts';

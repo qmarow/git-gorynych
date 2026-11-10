@@ -1,5 +1,5 @@
 import { AlertTriangle, ArrowDown, ArrowUp, Crosshair, FolderGit2, GitBranch, Loader2, Pencil, RefreshCw, SquareTerminal, WifiOff } from 'lucide-react';
-import { openFolderLabel, openTerminalLabel } from '../lib/platform.js';
+import { openFolderLabel, openTerminalLabel } from '../lib/platform.ts';
 import { fullDate, relativeTime } from '../lib/format.ts';
 import { BACKGROUND_SEC, syncModeById, useSyncStatus } from '../lib/syncStatus.ts';
 import { ACTIVE_STATUSES, StatusIcon, statusInfo } from './PipelineStatus.jsx';

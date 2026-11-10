@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { installGitHint, kb, openFolderLabel } from '../lib/platform.js';
+import { installGitHint, kb, openFolderLabel } from '../lib/platform.ts';
 import {
   Archive,
   BookOpen,

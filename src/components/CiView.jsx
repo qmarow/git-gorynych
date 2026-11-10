@@ -33,12 +33,12 @@ import { highlight } from '../lib/syntax.jsx';
 import CiPanel from './ci/CiPanel.jsx';
 import DagView from './ci/DagView.jsx';
 import { describeCron } from '../lib/cron.ts';
-import { TAG_KEYS, snippetsFor } from '../lib/ciSnippets.js';
+import { TAG_KEYS, snippetsFor } from '../lib/ciSnippets.ts';
 import CiEditor from './ci/CiEditor.jsx';
 import JobForm from './ci/JobForm.jsx';
 import { ChoiceDialog, DraftBar, DraftDiff, LintPanel } from './ci/DraftTools.jsx';
 import CheckView, { CheckBanner, SEVERITY, issueKey } from './ci/CheckView.jsx';
-import { kb } from '../lib/platform.js';
+import { kb } from '../lib/platform.ts';
 import { readable } from '../lib/scheme.ts';
 import { t as tr, tj } from '../i18n/index.ts';
 

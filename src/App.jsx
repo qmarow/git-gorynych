@@ -69,7 +69,7 @@ import GuideDialog from './components/GuideDialog.jsx';
 import ActionBuilder, { ACTION_ICONS } from './components/ActionBuilder.jsx';
 import { RunDialog, RunnerCard } from './components/ActionRunner.jsx';
 import { GuardDialog } from './components/Guard.jsx';
-import { activeRules, guardOnFor, readGuard, writeGuard } from './lib/guardRules.js';
+import { activeRules, guardOnFor, readGuard, writeGuard } from './lib/guardRules.ts';
 import { STEP_TYPES, defaultBranchOf, expandParams, hotkeyFromEvent, inputsOf, readActions, validateAction, writeActions } from './lib/actions.js';
 import SettingsDialog from './components/SettingsDialog.jsx';
 import {
@@ -84,7 +84,7 @@ import {
 } from './lib/appearance.js';
 import { ACTIVE_STATUSES } from './components/PipelineStatus.jsx';
 import StatusBar from './components/StatusBar.jsx';
-import { IS_MAC, isMod, kb, openFolderLabel, openTerminalLabel } from './lib/platform.js';
+import { IS_MAC, isMod, kb, openFolderLabel, openTerminalLabel } from './lib/platform.ts';
 import { DEFAULT_SYNC_MODE, SYNC_MODES, nextDelay, resetSyncStatus, setSyncStatus } from './lib/syncStatus.ts';
 import InitRepoDialog, { plural } from './components/InitRepoDialog.jsx';
 import CloneDialog from './components/CloneDialog.jsx';

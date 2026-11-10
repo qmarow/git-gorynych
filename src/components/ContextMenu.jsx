@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { ChevronRight, Copy } from 'lucide-react';
-import { kb } from '../lib/platform.js';
+import { kb } from '../lib/platform.ts';
 import { t } from '../i18n/index.ts';
 
 /**

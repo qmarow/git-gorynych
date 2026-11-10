@@ -17,7 +17,7 @@ import { FILE_STATUS, avatarColor, initials, plural, relativeTime } from '../lib
 import { detectLanguage, highlightLines } from '../lib/highlight.js';
 import { TokenText } from './CodeText.jsx';
 import { readable } from '../lib/scheme.ts';
-import { kb } from '../lib/platform.js';
+import { kb } from '../lib/platform.ts';
 import { t as tr, tj, locale } from '../i18n/index.ts';
 
 const api = typeof window !== 'undefined' ? window.api : null;

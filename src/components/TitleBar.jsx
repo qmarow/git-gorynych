@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Copy, FolderGit2, Loader2, Minus, Plus, Square, X } from 'lucide-react';
 import AppLogo from './AppLogo.jsx';
-import { IS_MAC, kb } from '../lib/platform.js';
+import { IS_MAC, kb } from '../lib/platform.ts';
 import { t as tr } from '../i18n/index.ts';
 
 // Подписи — по-русски, ключи — имена меню в App (appMenus)

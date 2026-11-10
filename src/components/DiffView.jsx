@@ -3,7 +3,7 @@ import { ArrowDownToLine, ArrowUpToLine, CaseSensitive, ChevronDown, ChevronUp, 
 import { FILE_STATUS } from '../lib/format.ts';
 import { inlineHighlights } from '../lib/inlineDiff.ts';
 import { detectLanguage, findAll, highlightHunks, languageName, layerLine, searchRegex } from '../lib/highlight.js';
-import { isMod, kb } from '../lib/platform.js';
+import { isMod, kb } from '../lib/platform.ts';
 import { readable } from '../lib/scheme.ts';
 import { t as tr, tj } from '../i18n/index.ts';
 
