@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { AlertTriangle, ArrowRightLeft, Check, CircleCheck, Cloud, Copy, Eye, EyeOff, ExternalLink, FileKey, FolderGit2, FolderOpen, KeyRound, Loader2, Lock, Server, Sparkles, Trash2, UserRound, Workflow } from 'lucide-react';
 import { Button, Modal } from './Dialogs.jsx';
 import { secretStorageText } from '../lib/platform.js';
-import { CLOUD_SERVERS, SERVER_KINDS, kindInfo, kindLabel, prefersToken, sshKeysPage, tokenPage, tokenPlaceholder, tokenScopes } from '../lib/servers.js';
+import { CLOUD_SERVERS, SERVER_KINDS, kindInfo, kindLabel, prefersToken, sshKeysPage, tokenPage, tokenPlaceholder, tokenScopes } from '../lib/servers.ts';
 import { t as tr, tj } from '../i18n/index.ts';
 
 const api = typeof window !== 'undefined' ? window.api : null;

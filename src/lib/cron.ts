@@ -1,8 +1,12 @@
 // Расписания в формате cron: готовые варианты и описание по-русски (и по-английски)
-import { getLanguage } from '../i18n/index.ts';
-import { t } from '../i18n/index.ts';
+import { getLanguage, t } from '../i18n/index.ts';
 
-export const CRON_PRESETS = [
+export interface CronPreset {
+  cron: string;
+  label: string;
+}
+
+export const CRON_PRESETS: readonly CronPreset[] = [
   { cron: '0 3 * * *', label: t('Каждый день в 3:00') },
   { cron: '0 9 * * 1-5', label: t('По будням в 9:00') },
   { cron: '0 * * * *', label: t('Каждый час') },
@@ -15,10 +19,10 @@ export const CRON_PRESETS = [
 const DOW_SHORT = ['вс', 'пн', 'вт', 'ср', 'чт', 'пт', 'сб', 'вс'];
 const MONTHS = ['', 'январе', 'феврале', 'марте', 'апреле', 'мае', 'июне', 'июле', 'августе', 'сентябре', 'октябре', 'ноябре', 'декабре'];
 
-const pad = (n) => String(n).padStart(2, '0');
-const isNum = (s) => /^\d+$/.test(s);
+const pad = (n: string | number) => String(n).padStart(2, '0');
+const isNum = (s: string) => /^\d+$/.test(s);
 
-function listDays(field) {
+function listDays(field: string): string | null {
   if (field === '1-5') return 'по будням';
   if (field === '0,6' || field === '6,0' || field === '6-7' || field === '6,7') return 'по выходным';
   const parts = field.split(',');
@@ -31,12 +35,13 @@ function listDays(field) {
   return null;
 }
 
-function dowPlural(d) {
+/** День вне 0…7 — `undefined`, как в 1.x: в тексте окажется «по undefined». */
+function dowPlural(d: number): string | undefined {
   return ['воскресеньям', 'понедельникам', 'вторникам', 'средам', 'четвергам', 'пятницам', 'субботам', 'воскресеньям'][d];
 }
 
 /** «0 3 * * 1-5» → «по будням в 03:00». Если формат непонятен — null */
-export function describeCron(expr) {
+export function describeCron(expr: unknown): string | null {
   if (getLanguage() !== 'ru') return describeCronEn(expr);
   const f = String(expr ?? '').trim().split(/\s+/);
   if (f.length !== 5) return null;
@@ -53,7 +58,7 @@ export function describeCron(expr) {
   if (!isNum(min) || !(isNum(hour) || /^\d+(,\d+)+$/.test(hour))) return null;
   const time = hour.split(',').map((h) => `${pad(h)}:${pad(min)}`).join(', ');
 
-  let when;
+  let when: string | null;
   if (dom === '*' && dow === '*') when = 'каждый день';
   else if (dom === '*' && dow !== '*') when = listDays(dow);
   else if (isNum(dom) && dow === '*') when = `${dom}-го числа`;
@@ -74,9 +79,9 @@ export function describeCron(expr) {
 const DOW_EN = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 const DOW_EN_LONG = ['Sundays', 'Mondays', 'Tuesdays', 'Wednesdays', 'Thursdays', 'Fridays', 'Saturdays', 'Sundays'];
 const MONTHS_EN = ['', 'January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
-const ordinal = (n) => `${n}${[11, 12, 13].includes(n % 100) ? 'th' : ['th', 'st', 'nd', 'rd'][n % 10] ?? 'th'}`;
+const ordinal = (n: number) => `${n}${[11, 12, 13].includes(n % 100) ? 'th' : ['th', 'st', 'nd', 'rd'][n % 10] ?? 'th'}`;
 
-function describeCronEn(expr) {
+function describeCronEn(expr: unknown): string | null {
   const f = String(expr ?? '').trim().split(/\s+/);
   if (f.length !== 5) return null;
   const [min, hour, dom, mon, dow] = f;
@@ -88,7 +93,7 @@ function describeCronEn(expr) {
   if (isNum(min) && everyHour && dom === '*' && mon === '*' && dow === '*') return `every ${everyHour[1]} h at :${pad(min)}`;
   if (!isNum(min) || !(isNum(hour) || /^\d+(,\d+)+$/.test(hour))) return null;
   const time = hour.split(',').map((h) => `${pad(h)}:${pad(min)}`).join(', ');
-  let when;
+  let when: string;
   if (dom === '*' && dow === '*') when = 'every day';
   else if (dom === '*' && dow !== '*') {
     if (dow === '1-5') when = 'on weekdays';
@@ -110,7 +115,7 @@ function describeCronEn(expr) {
   return `${when}${month} at ${time}`;
 }
 
-export const TIMEZONES = [
+export const TIMEZONES: readonly string[] = [
   'UTC',
   'Europe/Kaliningrad',
   'Europe/Moscow',
@@ -134,7 +139,7 @@ export const TIMEZONES = [
   'America/Los_Angeles',
 ];
 
-export function localTimezone() {
+export function localTimezone(): string {
   try {
     return Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
   } catch {

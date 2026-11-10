@@ -3,11 +3,57 @@ import { t } from '../i18n/index.ts';
 // GitLab (section_start:<время>:<имя>[collapsed=true] … section_end), GitHub/Gitea (##[group] / ::group:: … ##[endgroup]),
 // метки времени GitHub в начале строк и аннотации ##[error] / ##[warning].
 
-const FG = {
+/** Оформление текста: цвет и начертание. */
+export interface TextStyle {
+  fg: string | null;
+  bold: boolean;
+  italic: boolean;
+  underline: boolean;
+  dim: boolean;
+}
+
+/**
+ * Кусок строки лога. У строки аннотации (`##[error]` и т. п.) первый кусок — подпись: у него только `fg`, `bold`, `dim`
+ * (`bold`/`dim` могут отсутствовать), поэтому поля стиля необязательны.
+ */
+export type LogSegment = { text: string } & Partial<TextStyle>;
+
+export interface LogLine {
+  type: 'line';
+  n: number;
+  segs: LogSegment[];
+  error?: true;
+}
+
+export interface LogSection {
+  type: 'section';
+  /** Группа GitHub/Gitea (`##[group]`), а не секция GitLab. */
+  group?: true;
+  key: number;
+  name: string;
+  /** Время начала и конца секции GitLab, секунды Unix. */
+  start: number | null;
+  end: number | null;
+  duration: number | null;
+  collapsed: boolean;
+  title: LogSegment[];
+  n: number;
+  children: LogNode[];
+}
+
+export type LogNode = LogLine | LogSection;
+
+export interface LogTree {
+  type: 'root';
+  children: LogNode[];
+  lineCount: number;
+}
+
+const FG: Record<number, string> = {
   30: '#6b7385', 31: '#ff6b6b', 32: '#3cf0a0', 33: '#f5c451', 34: '#5aa2ff', 35: '#c792ea', 36: '#56d4e0', 37: '#d7dae0',
   90: '#8b93a7', 91: '#ff8f8f', 92: '#7dffc0', 93: '#ffe08a', 94: '#8cc0ff', 95: '#e0a8ff', 96: '#8eeaf2', 97: '#ffffff',
 };
-const PALETTE_256 = (n) => {
+const PALETTE_256 = (n: number): string => {
   if (n < 8) return FG[30 + n];
   if (n < 16) return FG[90 + n - 8];
   if (n >= 232) {
@@ -15,11 +61,11 @@ const PALETTE_256 = (n) => {
     return `rgb(${v},${v},${v})`;
   }
   const i = n - 16;
-  const c = (x) => (x ? 55 + x * 40 : 0);
+  const c = (x: number) => (x ? 55 + x * 40 : 0);
   return `rgb(${c(Math.floor(i / 36))},${c(Math.floor(i / 6) % 6)},${c(i % 6)})`;
 };
 
-function applySgr(state, codes) {
+function applySgr(state: TextStyle, codes: string): void {
   const list = codes === '' ? [0] : codes.split(';').map(Number);
   for (let i = 0; i < list.length; i++) {
     const c = list[i];
@@ -44,11 +90,11 @@ function applySgr(state, codes) {
 }
 
 // Текст с ANSI → сегменты { text, fg, bold, italic, underline, dim }
-function toSegments(text, state) {
-  const segs = [];
+function toSegments(text: string, state: TextStyle): LogSegment[] {
+  const segs: LogSegment[] = [];
   const re = /\x1b\[([0-9;]*)m|\x1b\[[0-9;?]*[A-Za-z]|\x1b[()][A-Za-z0-9]/g;
   let last = 0;
-  let m;
+  let m: RegExpExecArray | null;
   while ((m = re.exec(text))) {
     if (m.index > last) segs.push({ text: text.slice(last, m.index), ...state });
     if (m[1] !== undefined && m[0].endsWith('m')) applySgr(state, m[1]);
@@ -59,20 +105,26 @@ function toSegments(text, state) {
 }
 
 // \r внутри строки: терминал перезаписывает строку — оставляем последний вариант
-function collapseCarriage(text) {
+function collapseCarriage(text: string): string {
   if (!text.includes('\r')) return text;
   const parts = text.split('\r').filter((p) => p.replace(/\x1b\[[0-9;]*[A-Za-z]/g, '') !== '');
   return parts.length ? parts[parts.length - 1] : '';
 }
 
-/**
- * Возвращает дерево: { children: [ { type:'line', n, segs } | { type:'section', key, name, title:segs, n, duration, collapsed, children } ] }
- */
 // Строка с ошибкой — для кнопки «К первой ошибке»
 export const ERROR_LINE = /(^|[\s:>\]])(error:|error\b(?=\s*[:!])|fatal:|failed\b|fail\b|exception\b|traceback \(most recent|exit code [1-9]|exit status [1-9]|err!|✗|✖)/i;
 const TS = /^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d(?:\.\d+)?Z ?/;
 const GH_CMD = /^(?:##\[(group|endgroup|error|warning|notice|debug|command|section)\]|::(group|endgroup|error|warning|notice|debug)(?: [^:]*)?::)(.*)$/;
-const ANNOTATION = {
+
+type AnnotationKind = 'error' | 'warning' | 'notice' | 'debug' | 'command' | 'section';
+interface Annotation {
+  fg: string | null;
+  bold?: boolean;
+  dim?: boolean;
+  prefix: string;
+  error?: boolean;
+}
+const ANNOTATION: Record<AnnotationKind, Annotation> = {
   error: { fg: '#ff6b6b', bold: true, prefix: t('Ошибка: ') },
   warning: { fg: '#f5c451', bold: true, prefix: t('Предупреждение: ') },
   notice: { fg: '#5aa2ff', bold: false, prefix: '' },
@@ -80,22 +132,28 @@ const ANNOTATION = {
   command: { fg: '#56d4e0', bold: false, prefix: '' },
   section: { fg: '#56d4e0', bold: true, prefix: '' },
 };
-const plainOf = (segs) => segs.map((s) => s.text).join('');
+const plainOf = (segs: LogSegment[]) => segs.map((s) => s.text).join('');
 
-export function parseLog(text) {
-  const root = { type: 'root', children: [] };
-  const stack = [root];
-  const state = { fg: null, bold: false, italic: false, underline: false, dim: false };
+/** Корень или открытая секция: то, во что добавляются строки. */
+type Container = { type: 'root'; children: LogNode[]; name?: undefined; group?: undefined } | LogSection;
+
+/**
+ * Возвращает дерево: { children: [ { type:'line', n, segs } | { type:'section', key, name, title:segs, n, duration, collapsed, children } ] }
+ */
+export function parseLog(text: string): LogTree {
+  const root: Container & { type: 'root' } = { type: 'root', children: [] };
+  const stack: Container[] = [root];
+  const state: TextStyle = { fg: null, bold: false, italic: false, underline: false, dim: false };
   let n = 0;
   let key = 0;
   const marker = /section_(start|end):(\d+):([A-Za-z0-9_.\-]+)(\[[^\]]*\])?\r?(?:\x1b\[0?K)*/g;
 
   const top = () => stack[stack.length - 1];
-  const pushLine = (raw, extra = null) => {
+  const pushLine = (raw: string, extra: Annotation | null = null) => {
     let segs = toSegments(collapseCarriage(raw), state);
     if (extra) segs = [{ text: extra.prefix ?? '', fg: extra.fg, bold: extra.bold, dim: extra.dim }, ...segs.map((x) => ({ ...x, fg: x.fg ?? extra.fg, dim: x.dim || extra.dim }))].filter((x) => x.text);
     n += 1;
-    const node = { type: 'line', n, segs };
+    const node: LogLine = { type: 'line', n, segs };
     if (extra?.error || ERROR_LINE.test(plainOf(segs))) node.error = true;
     top().children.push(node);
   };
@@ -109,11 +167,11 @@ export function parseLog(text) {
     if (stamped) line = line.replace(TS, '');
     const gh = line.startsWith('##[') || line.startsWith('::') ? GH_CMD.exec(line) : null;
     if (gh) {
-      const kind = gh[1] ?? gh[2];
+      const kind = (gh[1] ?? gh[2]) as AnnotationKind | 'group' | 'endgroup';
       const rest = gh[3];
       if (kind === 'group') {
         n += 1;
-        const section = { type: 'section', group: true, key: key++, name: `::group${key}`, start: null, end: null, duration: null, collapsed: true, title: toSegments(rest || t('Группа'), { ...state }), n, children: [] };
+        const section: LogSection = { type: 'section', group: true, key: key++, name: `::group${key}`, start: null, end: null, duration: null, collapsed: true, title: toSegments(rest || t('Группа'), { ...state }), n, children: [] };
         top().children.push(section);
         stack.push(section);
       } else if (kind === 'endgroup') {
@@ -129,15 +187,15 @@ export function parseLog(text) {
       continue;
     }
     let last = 0;
-    let m;
-    let pendingHeader = null;
+    let m: RegExpExecArray | null;
+    let pendingHeader: LogSection | null = null;
     while ((m = marker.exec(line))) {
       const before = line.slice(last, m.index);
       if (before.replace(/\x1b\[[0-9;]*[A-Za-z]/g, '').trim()) pushLine(before);
       last = m.index + m[0].length;
       const [, kind, ts, name, opts] = m;
       if (kind === 'start') {
-        const section = {
+        const section: LogSection = {
           type: 'section',
           key: key++,
           name,
@@ -156,9 +214,9 @@ export function parseLog(text) {
         // Закрываем ближайшую секцию с таким именем (и всё, что внутри неё осталось открытым)
         const idx = stack.map((s) => s.name).lastIndexOf(name);
         if (idx > 0) {
-          const section = stack[idx];
+          const section = stack[idx] as LogSection;
           section.end = Number(ts);
-          section.duration = section.end - section.start;
+          section.duration = section.end - section.start!;
           stack.length = idx;
         }
       }
@@ -174,10 +232,10 @@ export function parseLog(text) {
     }
   }
   // Хвост из одних escape-кодов — не строка
-  while (root.children.length && root.children.at(-1).type === 'line' && !root.children.at(-1).segs.length) {
+  const lastChild = () => root.children.at(-1);
+  while (root.children.length && lastChild()!.type === 'line' && !(lastChild() as LogLine).segs.length) {
     root.children.pop();
     n -= 1;
   }
-  root.lineCount = n;
-  return root;
+  return Object.assign(root, { lineCount: n });
 }

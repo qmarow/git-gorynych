@@ -32,7 +32,7 @@ import { relativeTime } from '../lib/format.ts';
 import { highlight } from '../lib/syntax.jsx';
 import CiPanel from './ci/CiPanel.jsx';
 import DagView from './ci/DagView.jsx';
-import { describeCron } from '../lib/cron.js';
+import { describeCron } from '../lib/cron.ts';
 import { TAG_KEYS, snippetsFor } from '../lib/ciSnippets.js';
 import CiEditor from './ci/CiEditor.jsx';
 import JobForm from './ci/JobForm.jsx';

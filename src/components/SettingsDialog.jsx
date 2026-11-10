@@ -4,7 +4,7 @@ import { AUTO_THEME, BACKGROUNDS, THEMES, resolveThemeId, themeById } from '../l
 import { GuardSettings, Switch } from './Guard.jsx';
 import { CommitSettings } from './CommitForm.jsx';
 import { BACKGROUND_SEC, BACKOFF_SEC, SYNC_MODES, useSyncStatus } from '../lib/syncStatus.ts';
-import { kindInfo, kindLabel } from '../lib/servers.js';
+import { kindInfo, kindLabel } from '../lib/servers.ts';
 import { t as tr, tj, locale, LANGUAGES, getLanguage, setLanguage } from '../i18n/index.ts';
 
 const api = typeof window !== 'undefined' ? window.api : null;

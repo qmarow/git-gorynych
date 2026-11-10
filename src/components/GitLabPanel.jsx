@@ -21,7 +21,7 @@ import {
   Zap,
 } from 'lucide-react';
 import { relativeTime } from '../lib/format.ts';
-import { parseLog } from '../lib/ansi.js';
+import { parseLog } from '../lib/ansi.ts';
 import { CiAuth } from './TokenSetup.jsx';
 import GitLabVariables from './ci/GitLabVariables.jsx';
 import GitLabSchedules from './ci/GitLabSchedules.jsx';

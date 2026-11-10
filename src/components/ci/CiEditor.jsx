@@ -1,6 +1,6 @@
 import { memo, useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { highlight } from '../../lib/syntax.jsx';
-import { describeCron } from '../../lib/cron.js';
+import { describeCron } from '../../lib/cron.ts';
 import { t } from '../../i18n/index.ts';
 
 const LINE_H = 20; // px — одинаковая высота строки у подсветки, номеров и textarea

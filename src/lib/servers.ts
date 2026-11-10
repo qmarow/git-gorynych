@@ -2,7 +2,17 @@ import { t } from '../i18n/index.ts';
 // Git-серверы: облачные (github.com, gitlab.com) и свои (Self-Managed) — тип, подписи, ссылки на страницы токенов и SSH-ключей.
 // Тип для домена определяет main-процесс (credentials.cjs): выбранный пользователем, догадка по имени или по API сервера.
 
-export const SERVER_KINDS = [
+export type ServerKindId = 'gitlab' | 'github' | 'gitea' | 'bitbucket' | 'other';
+
+export interface ServerKind {
+  id: ServerKindId;
+  label: string;
+  /** Подпись своего сервера (Self-Managed). */
+  self: string;
+  color: string;
+}
+
+export const SERVER_KINDS: readonly ServerKind[] = [
   { id: 'gitlab', label: 'GitLab', self: 'GitLab Self-Managed', color: '#fc6d26' },
   { id: 'github', label: 'GitHub', self: 'GitHub Enterprise Server', color: '#8b949e' },
   { id: 'gitea', label: 'Gitea / Forgejo', self: 'Gitea / Forgejo', color: '#609926' },
@@ -10,25 +20,33 @@ export const SERVER_KINDS = [
   { id: 'other', label: t('Другой Git-сервер'), self: t('Другой Git-сервер'), color: '#8a92a2' },
 ];
 
+export interface CloudServer {
+  id: string;
+  kind: ServerKindId;
+  label: string;
+  host: string;
+}
+
 /** Облачные сервисы, которые выбираются одной кнопкой */
-export const CLOUD_SERVERS = [
+export const CLOUD_SERVERS: readonly CloudServer[] = [
   { id: 'github.com', kind: 'github', label: 'GitHub', host: 'github.com' },
   { id: 'gitlab.com', kind: 'gitlab', label: 'GitLab', host: 'gitlab.com' },
 ];
 
-export const kindInfo = (kind) => SERVER_KINDS.find((k) => k.id === kind) ?? null;
+/** `kind` приходит из бэкенда строкой или `null`. */
+export const kindInfo = (kind: unknown): ServerKind | null => SERVER_KINDS.find((k) => k.id === kind) ?? null;
 
 /** Название для человека: «GitLab» для gitlab.com, «GitLab Self-Managed» для своего сервера */
-export function kindLabel(kind, cloud = false) {
+export function kindLabel(kind: unknown, cloud = false): string {
   const k = kindInfo(kind);
   if (!k) return t('Git-сервер');
   return cloud ? k.label : k.self;
 }
 
-const trimBase = (base) => String(base ?? '').replace(/\/+$/, '');
+const trimBase = (base: unknown): string => String(base ?? '').replace(/\/+$/, '');
 
 /** Страница создания токена доступа */
-export function tokenPage(kind, base, hostname) {
+export function tokenPage(kind: unknown, base: unknown, hostname?: string | null): string | null {
   const b = trimBase(base);
   if (!b) return null;
   if (kind === 'github') return `${hostname === 'github.com' ? 'https://github.com' : b}/settings/tokens`;
@@ -40,7 +58,7 @@ export function tokenPage(kind, base, hostname) {
 }
 
 /** Страница SSH-ключей профиля */
-export function sshKeysPage(kind, base, hostname) {
+export function sshKeysPage(kind: unknown, base: unknown, hostname?: string | null): string | null {
   const b = trimBase(base);
   if (!b) return null;
   if (kind === 'github') return `${hostname === 'github.com' ? 'https://github.com' : b}/settings/keys`;
@@ -51,7 +69,7 @@ export function sshKeysPage(kind, base, hostname) {
 }
 
 /** Какие права нужны токену для clone / pull / push (для GitLab — и для пайплайнов CI/CD) */
-export function tokenScopes(kind) {
+export function tokenScopes(kind: unknown): string[] | null {
   if (kind === 'github') return ['repo'];
   if (kind === 'gitlab') return ['api'];
   if (kind === 'gitea') return ['write:repository'];
@@ -59,11 +77,11 @@ export function tokenScopes(kind) {
   return null;
 }
 
-export function tokenPlaceholder(kind) {
+export function tokenPlaceholder(kind: unknown): string {
   if (kind === 'github') return t('ghp_… или github_pat_…');
   if (kind === 'gitlab') return 'glpat-…';
   return t('токен доступа');
 }
 
 /** Сервер не принимает обычный пароль для Git (2FA / политика) — подсказать вкладку «Токен» */
-export const prefersToken = (kind) => kind === 'github' || kind === 'gitlab' || kind === 'bitbucket';
+export const prefersToken = (kind: unknown): boolean => kind === 'github' || kind === 'gitlab' || kind === 'bitbucket';

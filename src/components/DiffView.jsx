@@ -1,7 +1,7 @@
 import { memo, useEffect, useMemo, useRef, useState } from 'react';
 import { ArrowDownToLine, ArrowUpToLine, CaseSensitive, ChevronDown, ChevronUp, CodeXml, Columns2, Diff, FileText, Highlighter, Loader2, Regex, Rows3, Search, Space, X } from 'lucide-react';
 import { FILE_STATUS } from '../lib/format.ts';
-import { inlineHighlights } from '../lib/inlineDiff.js';
+import { inlineHighlights } from '../lib/inlineDiff.ts';
 import { detectLanguage, findAll, highlightHunks, languageName, layerLine, searchRegex } from '../lib/highlight.js';
 import { isMod, kb } from '../lib/platform.js';
 import { readable } from '../lib/scheme.ts';
