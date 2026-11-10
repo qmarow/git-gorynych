@@ -3,7 +3,7 @@ import { createRoot } from 'react-dom/client';
 import App from './App.jsx';
 import { syncLanguageToMain } from './i18n/index.ts';
 import './index.css';
-import { applyAppearance, readCachedAppearance } from './lib/appearance.js';
+import { applyAppearance, readCachedAppearance } from './lib/appearance.ts';
 import { t } from './i18n/index.ts';
 import { notifyReady } from './platform/tauri.ts';
 import { reportError, startupErrors } from './platform/errors.js';

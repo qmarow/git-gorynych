@@ -3,7 +3,53 @@ import { t as tr } from '../i18n/index.ts';
 
 // Оформление: темы, фоны, прозрачность панелей. Применяется через CSS-переменные на <html>.
 
-export const THEMES = [
+type Rgb = readonly [number, number, number];
+
+/** Тема: цвета `#rrggbb` и подложки панелей в RGB. */
+export interface Theme {
+  id: string;
+  name: string;
+  scheme?: 'light';
+  base: string;
+  surface: Rgb;
+  panel: Rgb;
+  panel2: Rgb;
+  titlebar: Rgb;
+  text: string;
+  muted: string;
+  dim: string;
+  ink: string;
+  green: string;
+  blue: string;
+  red: string;
+  yellow: string;
+  purple?: string;
+  strong?: string;
+  fg?: Rgb;
+  glow: readonly [string, string, string];
+  /** Цвета дорожек графа; нет — по умолчанию (scheme.ts). */
+  lanes?: readonly string[];
+}
+
+export type BackgroundId = 'glow' | 'aurora' | 'grid' | 'gradient' | 'solid' | 'image' | 'system';
+export type Material = 'acrylic' | 'mica';
+
+/** Настройки оформления (`appearance` в localStorage; в 2.0 — свой тип в базе). */
+export interface Appearance {
+  /** id темы или `auto` («Как в системе»). */
+  theme: string;
+  background: BackgroundId;
+  transparency: number;
+  blur: number;
+  motion: boolean;
+  imageBlur: number;
+  imageDim: number;
+  hasImage: boolean;
+  material: Material;
+  [extra: string]: unknown;
+}
+
+export const THEMES: readonly Theme[] = [
   {
     id: 'kraken',
     name: tr('Тёмная'),
@@ -154,7 +200,7 @@ export const THEMES = [
   },
 ];
 
-export const BACKGROUNDS = [
+export const BACKGROUNDS: readonly { id: BackgroundId; name: string; hint: string }[] = [
   { id: 'glow', name: tr('Сияние'), hint: tr('Мягкие цветные пятна за стеклом') },
   { id: 'aurora', name: tr('Аврора'), hint: tr('Переливающиеся полосы, как северное сияние') },
   { id: 'grid', name: tr('Сетка'), hint: tr('Тонкая сетка и свечение сверху') },
@@ -176,9 +222,9 @@ const systemPrefersLight = () => {
 };
 
 /** id темы, которая реально применяется (для «Как в системе» — светлая или тёмная) */
-export const resolveThemeId = (id) => (id === AUTO_THEME.id ? (systemPrefersLight() ? AUTO_THEME.light : AUTO_THEME.dark) : id);
+export const resolveThemeId = (id: unknown): unknown => (id === AUTO_THEME.id ? (systemPrefersLight() ? AUTO_THEME.light : AUTO_THEME.dark) : id);
 
-export const DEFAULT_APPEARANCE = {
+export const DEFAULT_APPEARANCE: Appearance = {
   theme: 'kraken',
   background: 'glow',
   transparency: 50, // 0 — панели непрозрачные, 100 — максимум стекла
@@ -190,15 +236,16 @@ export const DEFAULT_APPEARANCE = {
   material: 'acrylic', // для фона «Windows»: acrylic | mica
 };
 
-const hexToRgb = (hex) => {
+const hexToRgb = (hex: string): Rgb => {
   const h = hex.replace('#', '');
-  return [0, 2, 4].map((i) => parseInt(h.slice(i, i + 2), 16));
+  return [0, 2, 4].map((i) => parseInt(h.slice(i, i + 2), 16)) as unknown as Rgb;
 };
-const rgba = ([r, g, b], a) => `rgb(${r} ${g} ${b} / ${Math.round(a * 1000) / 1000})`;
-const clamp = (v, min, max) => Math.min(max, Math.max(min, v));
+const rgba = ([r, g, b]: Rgb, a: number): string => `rgb(${r} ${g} ${b} / ${Math.round(a * 1000) / 1000})`;
+const clamp = (v: number, min: number, max: number): number => Math.min(max, Math.max(min, v));
 
-export function normalizeAppearance(value) {
-  const v = { ...DEFAULT_APPEARANCE, ...(value && typeof value === 'object' ? value : {}) };
+/** Сохранённое (или пришедшее из настроек) — к допустимому виду; лишние поля остаются как есть. */
+export function normalizeAppearance(value: unknown): Appearance {
+  const v: Appearance = { ...DEFAULT_APPEARANCE, ...(value && typeof value === 'object' ? value : {}) };
   if (v.theme !== AUTO_THEME.id && !THEMES.some((t) => t.id === v.theme)) v.theme = DEFAULT_APPEARANCE.theme;
   if (!BACKGROUNDS.some((b) => b.id === v.background)) v.background = DEFAULT_APPEARANCE.background;
   v.transparency = clamp(Number(v.transparency) || 0, 0, 100);
@@ -211,7 +258,7 @@ export function normalizeAppearance(value) {
 }
 
 /** Применить оформление к документу. imageUrl — data: URL своей картинки (если выбран фон «Картинка») */
-export function applyAppearance(value, { imageUrl, systemSupported = true } = {}) {
+export function applyAppearance(value: unknown, { imageUrl, systemSupported = true }: { imageUrl?: string | null; systemSupported?: boolean } = {}): Appearance {
   const a = normalizeAppearance(value);
   const t = themeById(resolveThemeId(a.theme));
   const light = t.scheme === 'light';
@@ -219,7 +266,7 @@ export function applyAppearance(value, { imageUrl, systemSupported = true } = {}
   const root = document.documentElement;
   const k = a.transparency / 100;
   // Чем выше прозрачность, тем меньше альфа у панелей. При 50% — как было изначально.
-  const vars = {
+  const vars: Record<string, string> = {
     '--color-gk-bg': rgba(t.surface, 1 - k * 0.9),
     '--color-gk-panel': rgba(t.panel, 1 - k * 0.76),
     '--color-gk-panel-2': rgba(t.panel2, 1 - k * 0.44),
@@ -270,14 +317,14 @@ export function applyAppearance(value, { imageUrl, systemSupported = true } = {}
  * Сообщить схеме (scheme.js) цвета текущей темы. Вызывается прямо во время рендера App,
  * чтобы граф и бейджи в этом же рендере взяли цвета новой темы.
  */
-export function syncScheme(value) {
+export function syncScheme(value: unknown): Theme {
   const t = themeById(resolveThemeId(normalizeAppearance(value).theme));
   setScheme(t.scheme === 'light' ? 'light' : 'dark', t.lanes);
   return t;
 }
 
 /** Что сообщить окну Electron: цвет подложки и светлая/тёмная схема системных элементов */
-export function nativeAppearance(value) {
+export function nativeAppearance(value: unknown): Appearance & { base: string; scheme: 'system' | 'light' | 'dark' } {
   const a = normalizeAppearance(value);
   const t = themeById(resolveThemeId(a.theme));
   return { ...a, base: t.base, scheme: a.theme === AUTO_THEME.id ? 'system' : t.scheme === 'light' ? 'light' : 'dark' };
@@ -285,7 +332,7 @@ export function nativeAppearance(value) {
 
 const CACHE_KEY = 'appearance';
 
-export function readCachedAppearance() {
+export function readCachedAppearance(): Appearance {
   try {
     return normalizeAppearance(JSON.parse(localStorage.getItem(CACHE_KEY) || 'null'));
   } catch {
@@ -293,7 +340,7 @@ export function readCachedAppearance() {
   }
 }
 
-export function cacheAppearance(value) {
+export function cacheAppearance(value: unknown): void {
   try {
     localStorage.setItem(CACHE_KEY, JSON.stringify(value));
   } catch {
@@ -301,4 +348,4 @@ export function cacheAppearance(value) {
   }
 }
 
-export const themeById = (id) => THEMES.find((t) => t.id === id) ?? THEMES[0];
+export const themeById = (id: unknown): Theme => THEMES.find((t) => t.id === id) ?? THEMES[0];

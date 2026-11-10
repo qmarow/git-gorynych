@@ -81,7 +81,7 @@ import {
   normalizeAppearance,
   readCachedAppearance,
   syncScheme,
-} from './lib/appearance.js';
+} from './lib/appearance.ts';
 import { ACTIVE_STATUSES } from './components/PipelineStatus.jsx';
 import StatusBar from './components/StatusBar.jsx';
 import { IS_MAC, isMod, kb, openFolderLabel, openTerminalLabel } from './lib/platform.ts';

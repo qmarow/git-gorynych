@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Archive, Check, Cloud, FileKey, FolderGit2, GitBranch, GitCommitHorizontal, KeyRound, LogIn, RefreshCw, Image as ImageIcon, Loader2, Palette, Pencil, Plug, RotateCcw, Server, ShieldCheck, Sparkles, Trash2, UserRound, Workflow, X } from 'lucide-react';
-import { AUTO_THEME, BACKGROUNDS, THEMES, resolveThemeId, themeById } from '../lib/appearance.js';
+import { AUTO_THEME, BACKGROUNDS, THEMES, resolveThemeId, themeById } from '../lib/appearance.ts';
 import { GuardSettings, Switch } from './Guard.jsx';
 import { CommitSettings } from './CommitForm.jsx';
 import { BACKGROUND_SEC, BACKOFF_SEC, SYNC_MODES, useSyncStatus } from '../lib/syncStatus.ts';
