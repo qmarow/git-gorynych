@@ -1,5 +1,5 @@
 import { memo, useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
-import { highlight } from '../../lib/syntax.jsx';
+import { highlight } from '../../lib/syntax.tsx';
 import { describeCron } from '../../lib/cron.ts';
 import { t } from '../../i18n/index.ts';
 

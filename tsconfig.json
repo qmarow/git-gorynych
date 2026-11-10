@@ -1,5 +1,5 @@
 {
-  // Фаза 4: интерфейс переводится на TypeScript постепенно. Проверяются только файлы .ts; JSX 1.x — позже, по модулю.
+  // Фаза 4: интерфейс переводится на TypeScript постепенно. Проверяются только файлы .ts и .tsx; JSX 1.x — позже, по модулю.
   // Проверка: npm run typecheck
   "compilerOptions": {
     "target": "ES2022",
@@ -17,5 +17,5 @@
     "noUnusedParameters": true
   },
   // bindings/commands.ts — типы команд, которые генерирует `tauri-specta`: модули интерфейса будут импортировать их
-  "include": ["src/**/*.ts", "crates/gorynych-tauri/bindings/commands.ts"]
+  "include": ["src/**/*.ts", "src/**/*.tsx", "crates/gorynych-tauri/bindings/commands.ts"]
 }

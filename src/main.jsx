@@ -1,7 +1,7 @@
 // Точка входа. Под Tauri сначала ставится `window.api` (слой совместимости с `electron/preload.cjs`) и заполняется
 // `localStorage`: модули интерфейса читают их сразу при загрузке, поэтому сам интерфейс загружается только после этого.
 // Под Electron `window.api` уже поставил preload, и слой ничего не делает.
-import './platform/errors.js';
+import './platform/errors.ts';
 import { installTauriApi } from './platform/tauri.ts';
 
 installTauriApi()

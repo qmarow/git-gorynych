@@ -6,7 +6,7 @@ import './index.css';
 import { applyAppearance, readCachedAppearance } from './lib/appearance.ts';
 import { t } from './i18n/index.ts';
 import { notifyReady } from './platform/tauri.ts';
-import { reportError, startupErrors } from './platform/errors.js';
+import { reportError, startupErrors } from './platform/errors.ts';
 
 // Тему и фон применяем до первой отрисовки — без вспышки стандартных цветов
 try {

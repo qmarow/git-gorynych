@@ -29,7 +29,7 @@ import {
   Zap,
 } from 'lucide-react';
 import { relativeTime } from '../lib/format.ts';
-import { highlight } from '../lib/syntax.jsx';
+import { highlight } from '../lib/syntax.tsx';
 import CiPanel from './ci/CiPanel.jsx';
 import DagView from './ci/DagView.jsx';
 import { describeCron } from '../lib/cron.ts';

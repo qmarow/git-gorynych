@@ -1,4 +1,5 @@
 // Минимальная подсветка YAML и Groovy (Jenkinsfile) для просмотра и редактора CI
+import type { ReactNode } from 'react';
 
 /* =================== Подсветка синтаксиса (минимальная) =================== */
 
@@ -13,11 +14,11 @@ const T = {
   punct: 'text-gk-dim',
 };
 
-function tokenizeValue(text, out, keyPrefix) {
+function tokenizeValue(text: string, out: ReactNode[], keyPrefix: string): void {
   // Строки в кавычках, переменные $VAR / ${{ }}, якоря/теги, числа и булевы
   const re = /("(?:[^"\\]|\\.)*"|'(?:[^']|'')*')|(\$\{\{[^}]*\}\}|\$\{?[A-Za-z_][A-Za-z0-9_]*\}?)|([&*][\w-]+|![\w-]+)|(\b(?:true|false|null|yes|no|on|off)\b|\b\d+(?:\.\d+)?\b)/g;
   let last = 0;
-  let m;
+  let m: RegExpExecArray | null;
   let k = 0;
   while ((m = re.exec(text))) {
     if (m.index > last) out.push(text.slice(last, m.index));
@@ -32,9 +33,12 @@ function tokenizeValue(text, out, keyPrefix) {
   if (last < text.length) out.push(text.slice(last));
 }
 
-export function highlight(line, lang) {
+/**
+ * Строка → куски с классами цвета. `lang`: `yaml` или прочее (Groovy). Пустая строка (и не строка) — как есть.
+ */
+export function highlight(line: string, lang: string | null | undefined): ReactNode[] | string {
   if (!line) return line;
-  const out = [];
+  const out: ReactNode[] = [];
   if (lang === 'yaml') {
     // Комментарий: # в начале или после пробела, не внутри кавычек (приблизительно)
     let code = line;
@@ -86,7 +90,7 @@ export function highlight(line, lang) {
   const code = cm >= 0 ? line.slice(0, cm) : line;
   const re = /("(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*')|\b(pipeline|agent|stages?|steps|parallel|post|when|environment|options|triggers|tools|parameters|script|node|def|if|else|always|success|failure|input|sh|bat|echo)\b/g;
   let last = 0;
-  let m;
+  let m: RegExpExecArray | null;
   let k = 0;
   while ((m = re.exec(code))) {
     if (m.index > last) out.push(code.slice(last, m.index));
