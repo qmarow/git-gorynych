@@ -3,7 +3,7 @@ import { Archive, Check, Cloud, FileKey, FolderGit2, GitBranch, GitCommitHorizon
 import { AUTO_THEME, BACKGROUNDS, THEMES, resolveThemeId, themeById } from '../lib/appearance.js';
 import { GuardSettings, Switch } from './Guard.jsx';
 import { CommitSettings } from './CommitForm.jsx';
-import { BACKGROUND_SEC, BACKOFF_SEC, SYNC_MODES, useSyncStatus } from '../lib/syncStatus.js';
+import { BACKGROUND_SEC, BACKOFF_SEC, SYNC_MODES, useSyncStatus } from '../lib/syncStatus.ts';
 import { kindInfo, kindLabel } from '../lib/servers.js';
 import { t as tr, tj, locale, LANGUAGES, getLanguage, setLanguage } from '../i18n/index.ts';
 

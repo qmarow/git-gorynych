@@ -21,7 +21,7 @@ import {
 import { DEFAULT_COMMIT_PREFS, setCommitPrefs, useCommitPrefs } from '../lib/commitPrefs.js';
 import { Switch } from './Guard.jsx';
 import { isMod, kb } from '../lib/platform.js';
-import { plural } from '../lib/format.js';
+import { plural } from '../lib/format.ts';
 import { readable } from '../lib/scheme.ts';
 import { t as tr, tj } from '../i18n/index.ts';
 

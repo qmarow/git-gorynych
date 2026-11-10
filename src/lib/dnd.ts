@@ -2,11 +2,23 @@
 
 export const REF_MIME = 'application/x-gitidea-ref';
 
-/** payload: { kind: 'commit' | 'branch' | 'remote', hash, name?, label } */
-export function startRefDrag(e, payload) {
-  e.dataTransfer.effectAllowed = 'copyMove';
-  e.dataTransfer.setData(REF_MIME, JSON.stringify(payload));
-  e.dataTransfer.setData('text/plain', payload.name ?? payload.hash);
+export interface RefDragPayload {
+  kind: 'commit' | 'branch' | 'remote';
+  hash: string;
+  name?: string;
+  label: string;
+}
+
+/** Событие перетаскивания: React `DragEvent` или DOM `DragEvent` — нужен только `dataTransfer`. */
+interface DragLike {
+  dataTransfer: DataTransfer | null;
+}
+
+export function startRefDrag(e: DragLike, payload: RefDragPayload): void {
+  const transfer = e.dataTransfer!;
+  transfer.effectAllowed = 'copyMove';
+  transfer.setData(REF_MIME, JSON.stringify(payload));
+  transfer.setData('text/plain', payload.name ?? payload.hash);
   // Своя «ярлычок»-картинка вместо полупрозрачной копии строки
   const ghost = document.createElement('div');
   ghost.textContent = `${payload.kind === 'commit' ? '◉' : '⎇'} ${payload.label}`;
@@ -26,17 +38,18 @@ export function startRefDrag(e, payload) {
     textOverflow: 'ellipsis',
   });
   document.body.appendChild(ghost);
-  e.dataTransfer.setDragImage(ghost, 12, 12);
+  transfer.setDragImage(ghost, 12, 12);
   setTimeout(() => ghost.remove(), 0);
 }
 
-export function hasRefDrag(e) {
+export function hasRefDrag(e: DragLike): boolean {
   return [...(e.dataTransfer?.types ?? [])].includes(REF_MIME);
 }
 
-export function readRefDrag(e) {
+/** Данные чужого перетаскивания или испорченный JSON — `null`. Форма не проверяется, как и в 1.x. */
+export function readRefDrag(e: DragLike): RefDragPayload | null {
   try {
-    return JSON.parse(e.dataTransfer.getData(REF_MIME));
+    return JSON.parse(e.dataTransfer!.getData(REF_MIME));
   } catch {
     return null;
   }

@@ -4,10 +4,10 @@ import { Check, Copy, FileSearch, Pencil, SlidersHorizontal } from 'lucide-react
 import { RefKindIcon, RefsPopover, refKindLabel, useHoverPopover } from './RefBadge.jsx';
 import { edgePath, fitMetrics, graphWidth, laneColor, laneX, layoutGraph, metricsFor, rowY } from '../lib/graphLayout.ts';
 import { StatusIcon, statusInfo } from './PipelineStatus.jsx';
-import { fullDate, initials, relativeTime, shortDate } from '../lib/format.js';
+import { fullDate, initials, relativeTime, shortDate } from '../lib/format.ts';
 import { ResizeHandle, useStoredWidth } from './Resizer.jsx';
-import { avatarUrl, isFailed, markFailed } from '../lib/avatars.js';
-import { hasRefDrag, readRefDrag, startRefDrag } from '../lib/dnd.js';
+import { avatarUrl, isFailed, markFailed } from '../lib/avatars.ts';
+import { hasRefDrag, readRefDrag, startRefDrag } from '../lib/dnd.ts';
 import { isMod, kb } from '../lib/platform.js';
 import { CC_TYPES, parseSummary } from '../lib/commitMsg.js';
 import { DEFAULT_VIEW, columnById, moveColumn, useGraphView } from '../lib/graphView.ts';

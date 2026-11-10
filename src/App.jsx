@@ -85,12 +85,12 @@ import {
 import { ACTIVE_STATUSES } from './components/PipelineStatus.jsx';
 import StatusBar from './components/StatusBar.jsx';
 import { IS_MAC, isMod, kb, openFolderLabel, openTerminalLabel } from './lib/platform.js';
-import { DEFAULT_SYNC_MODE, SYNC_MODES, nextDelay, resetSyncStatus, setSyncStatus } from './lib/syncStatus.js';
+import { DEFAULT_SYNC_MODE, SYNC_MODES, nextDelay, resetSyncStatus, setSyncStatus } from './lib/syncStatus.ts';
 import InitRepoDialog, { plural } from './components/InitRepoDialog.jsx';
 import CloneDialog from './components/CloneDialog.jsx';
 import AuthDialog from './components/AuthDialog.jsx';
 import NewTabPage from './components/NewTabPage.jsx';
-import { describeStash } from './lib/stashName.js';
+import { describeStash } from './lib/stashName.ts';
 import RevertToDialog from './components/RevertToDialog.jsx';
 import SearchBar, { EMPTY_FILTER, isFilterActive, matchCommit } from './components/SearchBar.jsx';
 import { GraphLoader, LoadingOverlay, Splash } from './components/Loader.jsx';

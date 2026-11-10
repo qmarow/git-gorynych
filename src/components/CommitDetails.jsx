@@ -23,8 +23,8 @@ import {
   SquareMinus,
   Trash2,
 } from 'lucide-react';
-import { FILE_STATUS, avatarColor, fullDate, initials, plural, relativeTime } from '../lib/format.js';
-import { describeStash } from '../lib/stashName.js';
+import { FILE_STATUS, avatarColor, fullDate, initials, plural, relativeTime } from '../lib/format.ts';
+import { describeStash } from '../lib/stashName.ts';
 import { GuardBanner } from './Guard.jsx';
 import CommitForm from './CommitForm.jsx';
 import { readable } from '../lib/scheme.ts';

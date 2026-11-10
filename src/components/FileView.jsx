@@ -13,7 +13,7 @@ import {
   X,
 } from 'lucide-react';
 import DiffView from './DiffView.jsx';
-import { FILE_STATUS, avatarColor, initials, plural, relativeTime } from '../lib/format.js';
+import { FILE_STATUS, avatarColor, initials, plural, relativeTime } from '../lib/format.ts';
 import { detectLanguage, highlightLines } from '../lib/highlight.js';
 import { TokenText } from './CodeText.jsx';
 import { readable } from '../lib/scheme.ts';

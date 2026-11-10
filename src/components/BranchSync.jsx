@@ -1,7 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { ArrowDown, ArrowDownToLine, ArrowUp, ArrowUpFromLine, Loader2 } from 'lucide-react';
-import { relativeTime } from '../lib/format.js';
+import { relativeTime } from '../lib/format.ts';
 import { useHoverPopover } from './RefBadge.jsx';
 import { t, tj } from '../i18n/index.ts';
 

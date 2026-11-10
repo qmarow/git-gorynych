@@ -28,7 +28,7 @@ import {
   X,
   Zap,
 } from 'lucide-react';
-import { relativeTime } from '../lib/format.js';
+import { relativeTime } from '../lib/format.ts';
 import { highlight } from '../lib/syntax.jsx';
 import CiPanel from './ci/CiPanel.jsx';
 import DagView from './ci/DagView.jsx';

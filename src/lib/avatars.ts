@@ -2,25 +2,25 @@
 // Если картинки нет — остаются инициалы на цвете ветки.
 // Чтобы ничего не запрашивать из сети, поставьте ENABLE_REMOTE_AVATARS = false.
 
-export const ENABLE_REMOTE_AVATARS = true;
+export const ENABLE_REMOTE_AVATARS: boolean = true;
 
-const cache = new Map(); // email -> Promise<string|null>
-const failed = new Set(); // url, которые не загрузились
+const cache = new Map<string, Promise<string | null>>(); // email -> адрес картинки или null
+const failed = new Set<string>(); // url, которые не загрузились
 
-async function sha256Hex(text) {
+async function sha256Hex(text: string): Promise<string> {
   const data = new TextEncoder().encode(text);
   const hash = await crypto.subtle.digest('SHA-256', data);
   return [...new Uint8Array(hash)].map((b) => b.toString(16).padStart(2, '0')).join('');
 }
 
-function githubAvatar(email) {
+function githubAvatar(email: string): string | null {
   // 12345+login@users.noreply.github.com или login@users.noreply.github.com
   const m = /^(?:(\d+)\+)?([^@]+)@users\.noreply\.github\.com$/i.exec(email);
   if (!m) return null;
   return m[1] ? `https://avatars.githubusercontent.com/u/${m[1]}?s=64&v=4` : `https://github.com/${m[2]}.png?size=64`;
 }
 
-export function avatarUrl(email) {
+export function avatarUrl(email: string | null | undefined): Promise<string | null> {
   if (!ENABLE_REMOTE_AVATARS || !email) return Promise.resolve(null);
   const key = email.trim().toLowerCase();
   if (!cache.has(key)) {
@@ -35,8 +35,8 @@ export function avatarUrl(email) {
       })(),
     );
   }
-  return cache.get(key);
+  return cache.get(key)!;
 }
 
-export const markFailed = (url) => failed.add(url);
-export const isFailed = (url) => failed.has(url);
+export const markFailed = (url: string): Set<string> => failed.add(url);
+export const isFailed = (url: string): boolean => failed.has(url);

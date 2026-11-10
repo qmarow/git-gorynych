@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { CalendarDays, ChevronDown, ChevronUp, FileSearch, Loader2, Search, User, X } from 'lucide-react';
-import { avatarColor, initials } from '../lib/format.js';
+import { avatarColor, initials } from '../lib/format.ts';
 import { t as tr, tj } from '../i18n/index.ts';
 
 export const EMPTY_FILTER = { query: '', authors: [], period: 'all', from: '', to: '' };

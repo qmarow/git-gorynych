@@ -11,7 +11,7 @@ import {
   Plus,
   Search,
 } from 'lucide-react';
-import { relativeTime } from '../lib/format.js';
+import { relativeTime } from '../lib/format.ts';
 import { t, tj } from '../i18n/index.ts';
 
 // Имя ветки, которое git точно не примет — чтобы не предлагать «Создать» заведомо зря

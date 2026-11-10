@@ -20,7 +20,7 @@ import {
   WrapText,
   Zap,
 } from 'lucide-react';
-import { relativeTime } from '../lib/format.js';
+import { relativeTime } from '../lib/format.ts';
 import { parseLog } from '../lib/ansi.js';
 import { CiAuth } from './TokenSetup.jsx';
 import GitLabVariables from './ci/GitLabVariables.jsx';

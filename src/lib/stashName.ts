@@ -1,5 +1,19 @@
-import { relativeTime } from './format.js';
+import { relativeTime } from './format.ts';
 import { t } from '../i18n/index.ts';
+
+/** То, что нужно от stash: `message` из `git stash list` и запасное имя `id`. */
+export interface StashLike {
+  message?: unknown;
+  id?: string | null;
+}
+
+export interface StashDescription {
+  /** Спрятано умным переключением ветки. */
+  auto: boolean;
+  branch: string | null;
+  title: string;
+  detail: string;
+}
 
 /**
  * Единый вид названий stash в интерфейсе. Git хранит их по-разному:
@@ -8,7 +22,7 @@ import { t } from '../i18n/index.ts';
  *  - «WIP on <ветка>: <sha> <коммит>»    — Stash без сообщения (как git stash).
  * → { auto, branch, title, detail }
  */
-export function describeStash(st) {
+export function describeStash(st: StashLike | null | undefined): StashDescription {
   const msg = String(st?.message ?? '');
   const auto = /(?:gorynych|gitidea)-auto: (.+)$/.exec(msg)?.[1]?.trim() ?? null;
   const m = /^(WIP on|On) ([^:]+):\s*(.*)$/.exec(msg);
@@ -23,7 +37,7 @@ export function describeStash(st) {
 }
 
 /** «5 мин», «3 ч», «вчера» — коротко, для правого края строки */
-export function shortAgo(iso) {
+export function shortAgo(iso: string | null | undefined): string {
   if (!iso) return '';
   return relativeTime(iso).replace(t(' назад'), '');
 }

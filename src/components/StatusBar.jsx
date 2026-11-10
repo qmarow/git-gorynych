@@ -1,7 +1,7 @@
 import { AlertTriangle, ArrowDown, ArrowUp, Crosshair, FolderGit2, GitBranch, Loader2, Pencil, RefreshCw, SquareTerminal, WifiOff } from 'lucide-react';
 import { openFolderLabel, openTerminalLabel } from '../lib/platform.js';
-import { fullDate, relativeTime } from '../lib/format.js';
-import { BACKGROUND_SEC, syncModeById, useSyncStatus } from '../lib/syncStatus.js';
+import { fullDate, relativeTime } from '../lib/format.ts';
+import { BACKGROUND_SEC, syncModeById, useSyncStatus } from '../lib/syncStatus.ts';
 import { ACTIVE_STATUSES, StatusIcon, statusInfo } from './PipelineStatus.jsx';
 import { Duration } from './ci/common.jsx';
 import { t as tr, tj, locale } from '../i18n/index.ts';

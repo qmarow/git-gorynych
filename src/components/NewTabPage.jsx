@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { BookOpen, CloudDownload, FolderGit2, FolderOpen, Keyboard, Link2, Loader2, Plus, Search, Settings, X } from 'lucide-react';
 import AppLogo from './AppLogo.jsx';
-import { relativeTime } from '../lib/format.js';
+import { relativeTime } from '../lib/format.ts';
 import { kb } from '../lib/platform.js';
 import { t, tj } from '../i18n/index.ts';
 
