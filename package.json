@@ -13,6 +13,7 @@
     "build": "vite build",
     "ui:watch": "vite build --watch",
     "typecheck": "tsc -p tsconfig.json",
+    "app:build": "vite build && cargo build --release -p gorynych-tauri --features custom-protocol",
     "electron:preview": "vite build && electron .",
     "electron:build": "vite build && electron-builder --win --x64",
     "electron:build:portable": "vite build && electron-builder --win portable --x64"

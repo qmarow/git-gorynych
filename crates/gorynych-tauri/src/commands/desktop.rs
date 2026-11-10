@@ -38,7 +38,6 @@
 //! а дописываются строкой в `<папка>/desktop.log`, как и каждый вопрос диалога: тесты проверяют их, не открывая окон на машине.
 
 use std::fs;
-use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::time::UNIX_EPOCH;
@@ -124,6 +123,7 @@ fn dev_log(services: &Services, line: &str) -> bool {
 
 #[cfg(debug_assertions)]
 fn dev_log_at(root: Option<&Path>, line: &str) -> bool {
+    use std::io::Write;
     let Some(root) = root else {
         return false;
     };

@@ -15,6 +15,11 @@ path = "src/lib.rs"
 name = "gorynych-tauri"
 path = "src/main.rs"
 
+[features]
+# Рабочая сборка: страница из встроенного `dist` по протоколу приложения, без режима разработки Tauri.
+# `npm run build && cargo build --release -p gorynych-tauri --features custom-protocol` (`npm run app:build`)
+custom-protocol = ["tauri/custom-protocol"]
+
 [dependencies]
 gorynych-core.workspace = true
 gorynych-storage.workspace = true

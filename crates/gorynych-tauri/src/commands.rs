@@ -9,7 +9,6 @@ pub mod menu;
 pub mod repo;
 pub mod storage;
 
-use std::fs;
 use std::path::Path;
 
 use gorynych_core::error::{GorynychError, Result};
@@ -73,7 +72,7 @@ pub fn frontend_ready(window: WebviewWindow, state: State<'_, AppState>, report:
         use tauri::Manager;
         let mut status = serde_json::to_value(status_of(&state)).unwrap_or_default();
         status["report"] = report.and_then(|text| serde_json::from_str(&text).ok()).unwrap_or_default();
-        let _ = fs::write(file, status.to_string());
+        let _ = std::fs::write(file, status.to_string());
         window.app_handle().exit(0);
         return;
     }
@@ -188,6 +187,8 @@ pub fn appearance_set(window: WebviewWindow, state: State<'_, AppState>, value: 
 
 #[cfg(test)]
 mod tests {
+    use std::fs;
+
     use super::*;
 
     #[test]
