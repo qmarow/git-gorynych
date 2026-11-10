@@ -12,8 +12,11 @@ export function setup(repo, { sharedI18n = true } = {}) {
   const enPath = path.join(repo, 'electron', 'i18n', 'en.json');
   const reactUrl = pathToFileURL(path.join(repo, 'node_modules', 'react', 'index.js')).href;
   const i18nUrl = pathToFileURL(path.join(repo, 'src', 'i18n', 'index.ts')).href;
+  const hljsUrl = pathToFileURL(path.join(repo, 'src', 'vendor', 'hljs.js')).href;
   registerHooks({
     resolve(specifier, context, next) {
+      // Собранный highlight.js — общий для старой и новой копии
+      if (/\/vendor\/hljs\.js$/.test(specifier)) return { url: hljsUrl, shortCircuit: true };
       if (specifier.endsWith('electron/i18n/en.json')) return { url: pathToFileURL(enPath).href + '#en', shortCircuit: true };
       if (specifier === 'react') return { url: reactUrl, shortCircuit: true };
       const query = context.parentURL?.match(/\?lang=[^#]*/)?.[0] ?? '';

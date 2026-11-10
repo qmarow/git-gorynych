@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { ArrowLeftRight, CaseSensitive, ChevronDown, ChevronRight, Folder, GitCompareArrows, Loader2, Regex, Search, X } from 'lucide-react';
 import { plural, relativeTime } from '../lib/format.ts';
-import { detectLanguage, highlightLines, layerLine } from '../lib/highlight.js';
+import { detectLanguage, highlightLines, layerLine } from '../lib/highlight.ts';
 import { isMod, kb } from '../lib/platform.ts';
 import { StatusBadge } from './RebaseView.jsx';
 import { t, tj } from '../i18n/index.ts';

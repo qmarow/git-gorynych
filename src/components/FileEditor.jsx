@@ -1,5 +1,5 @@
 import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import { highlightLines } from '../lib/highlight.js';
+import { highlightLines } from '../lib/highlight.ts';
 
 /**
  * Редактор файла рабочей копии в окне изменений: прозрачная textarea поверх подсвеченного текста, как CiEditor,

@@ -20,7 +20,7 @@ import {
   X,
 } from 'lucide-react';
 import { CodeLang, HighlightedLines, TokenText, useLineTokens } from './CodeText.jsx';
-import { detectLanguage } from '../lib/highlight.js';
+import { detectLanguage } from '../lib/highlight.ts';
 import { isMod, kb } from '../lib/platform.ts';
 import { readable } from '../lib/scheme.ts';
 import { t, tj } from '../i18n/index.ts';

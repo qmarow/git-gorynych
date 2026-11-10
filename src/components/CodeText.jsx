@@ -1,5 +1,5 @@
 import { Fragment, createContext, useContext, useMemo } from 'react';
-import { highlightLines } from '../lib/highlight.js';
+import { highlightLines } from '../lib/highlight.ts';
 
 // Язык кода для вложенных компонентов (редактор конфликтов) — чтобы не передавать его через каждый уровень
 export const CodeLang = createContext(null);

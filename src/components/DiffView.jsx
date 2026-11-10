@@ -2,7 +2,7 @@ import { memo, useEffect, useMemo, useRef, useState } from 'react';
 import { ArrowDownToLine, ArrowUpToLine, CaseSensitive, ChevronDown, ChevronUp, CodeXml, Columns2, Diff, FileText, FoldVertical, Highlighter, Loader2, Pencil, Regex, Rows3, Save, Search, Space, UnfoldVertical, X } from 'lucide-react';
 import { FILE_STATUS } from '../lib/format.ts';
 import { inlineHighlights } from '../lib/inlineDiff.ts';
-import { detectLanguage, findAll, highlightHunks, languageName, layerLine, searchRegex } from '../lib/highlight.js';
+import { detectLanguage, findAll, highlightHunks, languageName, layerLine, searchRegex } from '../lib/highlight.ts';
 import { isMod, kb } from '../lib/platform.ts';
 import { readable } from '../lib/scheme.ts';
 import { t as tr, tj } from '../i18n/index.ts';

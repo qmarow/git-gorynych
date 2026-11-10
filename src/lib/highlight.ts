@@ -3,9 +3,39 @@
 import hljs from '../vendor/hljs.js';
 import { t as tr } from '../i18n/index.ts';
 
+/** Кусок строки с классом цвета (`tok-*`) или без него. */
+export interface Token {
+  text: string;
+  cls: string | null;
+}
+
+/** Строка ханка: `t` — `' '`, `'-'`, `'+'` или `'\\'` (нет перевода строки в конце). */
+interface HunkLine {
+  t: string;
+  text: string;
+}
+
+/** Совпадение поиска в строке: позиции в единицах UTF-16. */
+export interface Hit {
+  start: number;
+  end: number;
+  idx?: number;
+  current?: boolean;
+}
+
+/** Кусок строки после наложения слоёв. */
+export interface LayerPiece {
+  text: string;
+  cls: string | null;
+  changed: boolean;
+  /** Изменились только пробелы. */
+  ws: boolean;
+  hit: { idx: number | undefined; current: boolean | undefined } | null;
+}
+
 /* =================== Язык по имени файла =================== */
 
-const BY_NAME = {
+const BY_NAME: Record<string, string> = {
   dockerfile: 'dockerfile',
   containerfile: 'dockerfile',
   makefile: 'makefile',
@@ -30,7 +60,7 @@ const BY_NAME = {
   '.gitlab-ci.yml': 'yaml',
 };
 
-const BY_EXT = {
+const BY_EXT: Record<string, string> = {
   js: 'javascript', mjs: 'javascript', cjs: 'javascript', jsx: 'javascript',
   ts: 'typescript', tsx: 'typescript', mts: 'typescript', cts: 'typescript',
   html: 'xml', htm: 'xml', xhtml: 'xml', xml: 'xml', svg: 'xml', vue: 'xml', svelte: 'xml', xaml: 'xml', csproj: 'xml', plist: 'xml',
@@ -59,25 +89,25 @@ const BY_EXT = {
 };
 
 /** id языка highlight.js для файла или null (неизвестный тип — без подсветки) */
-export function detectLanguage(path) {
-  const name = String(path ?? '').split('/').pop().toLowerCase();
+export function detectLanguage(path: unknown): string | null {
+  const name = String(path ?? '').split('/').pop()!.toLowerCase();
   if (!name) return null;
   if (BY_NAME[name]) return BY_NAME[name];
   if (/^dockerfile\b/.test(name) || name.endsWith('.dockerfile')) return 'dockerfile';
   if (/^\.env\./.test(name)) return 'bash';
-  const ext = name.includes('.') ? name.split('.').pop() : '';
+  const ext = name.includes('.') ? name.split('.').pop()! : '';
   return BY_EXT[ext] ?? null;
 }
 
 /** Название языка для подсказки */
-export function languageName(lang) {
+export function languageName(lang: string | null | undefined): string | null {
   return lang ? hljs.getLanguage(lang)?.name ?? lang : null;
 }
 
 /* =================== Токены =================== */
 
 // Классы highlight.js → наши (цвета — CSS-переменные --syn-*, свои для светлой и тёмной темы)
-const SCOPES = {
+const SCOPES: Record<string, string> = {
   keyword: 'tok-keyword',
   'selector-tag': 'tok-tag',
   built_in: 'tok-builtin',
@@ -124,7 +154,7 @@ const SCOPES = {
   strong: 'tok-plain',
 };
 
-function scopeClass(attr) {
+function scopeClass(attr: string): string | null {
   // "hljs-title function_" → "title.function_"; "language-xml" (вложенный язык) — без цвета
   const parts = attr.split(/\s+/).filter(Boolean);
   if (!parts[0]?.startsWith('hljs-')) return null;
@@ -132,8 +162,8 @@ function scopeClass(attr) {
   return SCOPES[scope] ?? SCOPES[scope.split('.')[0]] ?? null;
 }
 
-const ENTITIES = { amp: '&', lt: '<', gt: '>', quot: '"', apos: "'", '#x27': "'", '#39': "'", '#x2F': '/' };
-const decode = (s) => s.replace(/&(#x?[0-9a-f]+|[a-z]+);/gi, (m, e) => ENTITIES[e] ?? (e[0] === '#' ? String.fromCodePoint(e[1] === 'x' || e[1] === 'X' ? parseInt(e.slice(2), 16) : Number(e.slice(1))) : m));
+const ENTITIES: Record<string, string> = { amp: '&', lt: '<', gt: '>', quot: '"', apos: "'", '#x27': "'", '#39': "'", '#x2F': '/' };
+const decode = (s: string): string => s.replace(/&(#x?[0-9a-f]+|[a-z]+);/gi, (m, e: string) => ENTITIES[e] ?? (e[0] === '#' ? String.fromCodePoint(e[1] === 'x' || e[1] === 'X' ? parseInt(e.slice(2), 16) : Number(e.slice(1))) : m));
 
 const MAX_CHARS = 400_000;
 
@@ -141,25 +171,25 @@ const MAX_CHARS = 400_000;
  * Подсветить несколько строк одним куском (многострочные строки и комментарии — правильно).
  * → массив той же длины: для каждой строки [{ text, cls }] (сумма text === строка) или null.
  */
-export function highlightLines(lines, lang) {
+export function highlightLines(lines: readonly string[] | null | undefined, lang: string | null | undefined): Token[][] | null {
   if (!lang || !lines?.length || !hljs.getLanguage(lang)) return null;
   const text = lines.join('\n');
   if (text.length > MAX_CHARS) return null;
-  let html;
+  let html: string;
   try {
     html = hljs.highlight(text, { language: lang, ignoreIllegals: true }).value;
   } catch {
     return null;
   }
-  const out = [[]];
-  const stack = [];
+  const out: Token[][] = [[]];
+  const stack: (string | null)[] = [];
   const re = /<span class="([^"]*)">|<\/span>|([^<]+)/g;
-  let m;
+  let m: RegExpExecArray | null;
   while ((m = re.exec(html))) {
     if (m[1] !== undefined) stack.push(scopeClass(m[1]));
     else if (m[0] === '</span>') stack.pop();
     else {
-      let cls = null;
+      let cls: string | null = null;
       for (let i = stack.length - 1; i >= 0; i--) {
         if (stack[i]) {
           cls = stack[i];
@@ -190,15 +220,15 @@ export function highlightLines(lines, lang) {
  * Токены для каждой строки фрагментов диффа: «было» (контекст и −) и «стало» (контекст и +)
  * подсвечиваются отдельно, как два куска файла. → [Map(индекс строки → токены)] по фрагментам или null.
  */
-export function highlightHunks(hunks, lang) {
+export function highlightHunks(hunks: readonly { lines: readonly HunkLine[] }[] | null | undefined, lang: string | null | undefined): Map<number, Token[]>[] | null {
   if (!lang || !hunks?.length) return null;
   let total = 0;
   for (const h of hunks) for (const l of h.lines) total += l.text.length + 1;
   if (total > MAX_CHARS) return null;
   return hunks.map((h) => {
-    const map = new Map();
-    const oldIdx = [];
-    const newIdx = [];
+    const map = new Map<number, Token[]>();
+    const oldIdx: number[] = [];
+    const newIdx: number[] = [];
     h.lines.forEach((l, i) => {
       if (l.t === ' ' || l.t === '-') oldIdx.push(i);
       if (l.t === ' ' || l.t === '+') newIdx.push(i);
@@ -219,10 +249,13 @@ export function highlightHunks(hunks, lang) {
  * hits — [{ start, end, idx, current }] (совпадения поиска).
  * → [{ text, cls, changed, ws (изменились только пробелы), hit: null | { idx, current } }]
  */
-export function layerLine(text, { tokens, segs, hits } = {}) {
+export function layerLine(
+  text: string,
+  { tokens, segs, hits }: { tokens?: readonly Token[] | null; segs?: readonly { text: string; changed: boolean }[] | null; hits?: readonly Hit[] | null } = {},
+): LayerPiece[] {
   if (!text) return [];
   const cuts = new Set([0, text.length]);
-  const tokRanges = [];
+  const tokRanges: [number, number, string | null][] = [];
   if (tokens) {
     let p = 0;
     for (const t of tokens) {
@@ -231,7 +264,7 @@ export function layerLine(text, { tokens, segs, hits } = {}) {
       cuts.add(p);
     }
   }
-  const segRanges = [];
+  const segRanges: [number, number, boolean, boolean][] = [];
   if (segs) {
     let p = 0;
     for (const s of segs) {
@@ -245,7 +278,7 @@ export function layerLine(text, { tokens, segs, hits } = {}) {
     cuts.add(Math.max(0, Math.min(text.length, h.end)));
   }
   const points = [...cuts].sort((a, b) => a - b);
-  const pieces = [];
+  const pieces: LayerPiece[] = [];
   let ti = 0;
   let si = 0;
   for (let k = 0; k < points.length - 1; k++) {
@@ -257,7 +290,7 @@ export function layerLine(text, { tokens, segs, hits } = {}) {
     const tok = tokRanges[ti] && tokRanges[ti][0] <= a ? tokRanges[ti] : null;
     const seg = segRanges[si] && segRanges[si][0] <= a ? segRanges[si] : null;
     const hit = hits?.find((h) => h.start <= a && h.end >= b) ?? null;
-    const piece = { text: text.slice(a, b), cls: tok?.[2] ?? null, changed: Boolean(seg?.[2]), ws: Boolean(seg?.[3]), hit: hit ? { idx: hit.idx, current: hit.current } : null };
+    const piece: LayerPiece = { text: text.slice(a, b), cls: tok?.[2] ?? null, changed: Boolean(seg?.[2]), ws: Boolean(seg?.[3]), hit: hit ? { idx: hit.idx, current: hit.current } : null };
     const last = pieces[pieces.length - 1];
     if (last && last.cls === piece.cls && last.changed === piece.changed && last.ws === piece.ws && last.hit?.idx === piece.hit?.idx) last.text += piece.text;
     else pieces.push(piece);
@@ -271,7 +304,7 @@ export function layerLine(text, { tokens, segs, hits } = {}) {
  * Регулярка для поиска: обычный текст или regex, с учётом регистра или без.
  * → { re } или { error } (неверное регулярное выражение).
  */
-export function searchRegex(query, { regex = false, caseSensitive = false } = {}) {
+export function searchRegex(query: string | null | undefined, { regex = false, caseSensitive = false }: { regex?: boolean; caseSensitive?: boolean } = {}): { re: RegExp | null; error?: undefined } | { re?: undefined; error: string } {
   if (!query) return { re: null };
   try {
     const source = regex ? query : query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -280,16 +313,16 @@ export function searchRegex(query, { regex = false, caseSensitive = false } = {}
     re.lastIndex = 0;
     return { re };
   } catch (error) {
-    return { error: tr('Неверное выражение: {0}', error.message.replace(/^Invalid regular expression: /, '')) };
+    return { error: tr('Неверное выражение: {0}', (error as Error).message.replace(/^Invalid regular expression: /, '')) };
   }
 }
 
 /** Все совпадения в строке → [{ start, end }] */
-export function findAll(text, re, limit = 200) {
-  const out = [];
+export function findAll(text: string | null | undefined, re: RegExp | null | undefined, limit = 200): Hit[] {
+  const out: Hit[] = [];
   if (!re || !text) return out;
   re.lastIndex = 0;
-  let m;
+  let m: RegExpExecArray | null;
   while ((m = re.exec(text)) && out.length < limit) {
     if (m[0] === '') {
       re.lastIndex++;
