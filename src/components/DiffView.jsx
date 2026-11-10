@@ -1,11 +1,13 @@
 import { memo, useEffect, useMemo, useRef, useState } from 'react';
-import { ArrowDownToLine, ArrowUpToLine, CaseSensitive, ChevronDown, ChevronUp, CodeXml, Columns2, Diff, FileText, Highlighter, Loader2, Regex, Rows3, Search, Space, X } from 'lucide-react';
+import { ArrowDownToLine, ArrowUpToLine, CaseSensitive, ChevronDown, ChevronUp, CodeXml, Columns2, Diff, FileText, FoldVertical, Highlighter, Loader2, Pencil, Regex, Rows3, Save, Search, Space, UnfoldVertical, X } from 'lucide-react';
 import { FILE_STATUS } from '../lib/format.ts';
 import { inlineHighlights } from '../lib/inlineDiff.ts';
 import { detectLanguage, findAll, highlightHunks, languageName, layerLine, searchRegex } from '../lib/highlight.js';
 import { isMod, kb } from '../lib/platform.ts';
 import { readable } from '../lib/scheme.ts';
 import { t as tr, tj } from '../i18n/index.ts';
+import FileEditor from './FileEditor.jsx';
+import { ConfirmDialog } from './Dialogs.jsx';
 
 const writePref = (key, on) => {
   try {
@@ -17,6 +19,11 @@ const writePref = (key, on) => {
 
 // Поиск переносится между файлами: открыли следующий файл — строка поиска остаётся
 let lastSearch = null;
+
+// Несохранённые правки редактора, если окно изменений закрылось без вопроса (другой файл выбран в списке, сменилась вкладка):
+// ключ — editor.key (репозиторий и путь), значение — { text, hash } той версии, с которой начиналась правка.
+// При следующем открытии того же файла правки возвращаются; если файл с тех пор изменился, сохранение покажет CHANGED_ON_DISK
+const editDrafts = new Map();
 const MAX_HITS = 5000;
 
 const readPref = (key, def) => {
@@ -50,10 +57,13 @@ export default function DiffView({
   fileActions,
   guardMarkers,
   initialSearch,
+  fullFile = false,
+  onToggleFullFile,
+  editor,
 }) {
   const [hunkBusy, setHunkBusy] = useState(null);
-  // Действия с фрагментом (stage / отменить …) — только когда фрагменты считаются по точному тексту
-  const actions = ignoreWhitespace ? null : hunkActions?.length ? hunkActions : null;
+  // Действия с фрагментом (stage / отменить …) — только когда фрагменты считаются по точному тексту и не на весь файл
+  const actions = ignoreWhitespace || fullFile ? null : hunkActions?.length ? hunkActions : null;
   const runHunk = async (action, hunk, index) => {
     setHunkBusy(`${action.id}:${index}`);
     try {
@@ -63,6 +73,74 @@ export default function DiffView({
     }
   };
   const hunkProps = actions ? { actions, busy: hunkBusy, onRun: runHunk } : null;
+
+  /* ---------- Редактирование файла рабочей копии (нового в 2.0) ---------- */
+  // edit: null — просмотр diff; { loading } — файл читается; { loadError } — не открылся;
+  // { text, base, hash, eol, mixedEol, saving, error, savedAt } — открыт: base — текст последней сохранённой версии
+  const [edit, setEdit] = useState(null);
+  const [caret, setCaret] = useState(null);
+  const [leaveGuard, setLeaveGuard] = useState(null); // () => void — что сделать после «Закрыть без сохранения»
+  const editing = Boolean(edit);
+  const dirty = Boolean(edit && edit.text !== undefined && edit.text !== edit.base);
+  const opened = (file) => ({ text: file.text, base: file.text, hash: file.hash, eol: file.eol, mixedEol: file.mixedEol });
+
+  const openEditor = async () => {
+    setEdit({ loading: true });
+    const res = await editor.read();
+    if (!res.ok) {
+      setEdit({ loadError: res.error });
+      return;
+    }
+    const draft = editDrafts.get(editor.key);
+    // Черновик с отпечатком своей исходной версии: base — текст на диске, поэтому правки видны как несохранённые
+    setEdit(draft ? { ...opened(res.data), text: draft.text, hash: draft.hash, restored: true } : opened(res.data));
+  };
+  // Окно закрылось с несохранёнными правками — запомнить их; сохранили или закрыли без сохранения — забыть
+  const editRef = useRef(null);
+  editRef.current = edit;
+  useEffect(
+    () => () => {
+      const e = editRef.current;
+      if (editor?.key && e && e.text !== undefined && e.text !== e.base) editDrafts.set(editor.key, { text: e.text, hash: e.hash });
+    },
+    [], // eslint-disable-line react-hooks/exhaustive-deps
+  );
+  const reloadEditor = async () => {
+    editDrafts.delete(editor.key);
+    const res = await editor.read();
+    setEdit((e) => (res.ok ? opened(res.data) : { ...e, error: res.error }));
+  };
+  // overwrite — «Сохранить поверх»: отпечаток берётся у того, что сейчас на диске
+  const saveEditor = async (overwrite = false) => {
+    if (!edit || edit.text === undefined || edit.saving) return;
+    const text = edit.text;
+    let hash = edit.hash;
+    setEdit((e) => ({ ...e, saving: true, error: null }));
+    if (overwrite) {
+      const fresh = await editor.read();
+      if (!fresh.ok) {
+        setEdit((e) => ({ ...e, saving: false, error: fresh.error }));
+        return;
+      }
+      hash = fresh.data.hash;
+    }
+    const res = await editor.save(text, hash);
+    setEdit((e) => (res.ok ? { ...e, saving: false, error: null, hash: res.data.hash, base: text, savedAt: Date.now(), restored: false } : { ...e, saving: false, error: res.error }));
+    if (res.ok) {
+      editDrafts.delete(editor.key);
+      editor.saved?.();
+    }
+  };
+  // Несохранённые правки не теряются молча: закрыть редактор, перейти к другому файлу или закрыть diff — только после вопроса
+  const guarded = (fn) => (...args) => (dirty ? setLeaveGuard(() => () => fn(...args)) : fn(...args));
+  const closeEditor = guarded(() => {
+    editDrafts.delete(editor.key);
+    setEdit(null);
+    setCaret(null);
+  });
+  const close = guarded(onClose);
+  const prev = onPrev && guarded(onPrev);
+  const next = onNext && guarded(onNext);
 
   const [inline, setInline] = useState(() => readPref('diff.inline', true));
   const scrollRef = useRef(null);
@@ -214,7 +292,7 @@ export default function DiffView({
   // Ctrl+F — поиск в этом файле (а не по коммитам); перехватываем раньше общего обработчика окна
   useEffect(() => {
     const onKey = (e) => {
-      if (document.querySelector('.fixed.inset-0')) return;
+      if (editing || document.querySelector('.fixed.inset-0')) return;
       const key = e.key.toLowerCase();
       if (isMod(e) && !e.altKey && !e.shiftKey && (key === 'f' || key === 'а')) {
         e.preventDefault();
@@ -234,6 +312,10 @@ export default function DiffView({
   useEffect(() => {
     const onKey = (e) => {
       if (document.querySelector('.fixed.inset-0')) return; // открыт диалог
+      if (editing) {
+        if (e.key === 'Escape' && !e.defaultPrevented) closeEditor();
+        return;
+      }
       if (e.key === 'Escape' && !e.defaultPrevented) {
         if (search.open) closeSearch();
         else onClose();
@@ -301,6 +383,8 @@ export default function DiffView({
           </button>
         ))}
 
+        {!editing && (
+          <>
         <div className="ml-2 flex overflow-hidden rounded ring-1 ring-gk-border">
           <ToggleButton active={view === 'unified'} onClick={() => onViewChange('unified')} title="Unified">
             <Rows3 size={13} />
@@ -317,6 +401,17 @@ export default function DiffView({
         >
           <Space size={13} />
         </ToggleButton>
+        {onToggleFullFile && target.mode !== 'untracked' && (
+          <ToggleButton
+            active={fullFile}
+            onClick={onToggleFullFile}
+            title={fullFile ? tr('Показан весь файл. Нажмите, чтобы оставить только места изменений') : tr('Показать весь файл, а не только места изменений')}
+            data-testid="diff-full-file"
+            className="rounded ring-1 ring-gk-border"
+          >
+            {fullFile ? <FoldVertical size={13} /> : <UnfoldVertical size={13} />}
+          </ToggleButton>
+        )}
         <ToggleButton
           active={inline}
           onClick={toggleInline}
@@ -344,6 +439,20 @@ export default function DiffView({
         >
           <Search size={13} />
         </ToggleButton>
+        {editor && (
+          <button
+            onClick={openEditor}
+            disabled={!data || Boolean(data.error) || data.binary || data.tooLarge}
+            data-testid="diff-edit"
+            data-draft={editDrafts.has(editor.key) ? '1' : undefined}
+            title={kb(editDrafts.has(editor.key) ? tr('В редакторе остались несохранённые правки этого файла — открыть их') : tr('Редактировать файл в рабочей папке (Ctrl+S — сохранить)'))}
+            className={`ml-1 flex h-6 shrink-0 items-center gap-1 rounded px-2 text-[11.5px] ring-1 transition-colors disabled:opacity-40 ${
+              editDrafts.has(editor.key) ? 'text-gk-yellow ring-gk-yellow/50 enabled:hover:bg-gk-yellow/10' : 'text-gk-muted ring-gk-border enabled:hover:bg-gk-fg/10 enabled:hover:text-gk-text'
+            }`}
+          >
+            <Pencil size={12} /> {editDrafts.has(editor.key) ? tr('Продолжить правку') : tr('Редактировать')}
+          </button>
+        )}
         {changeCount > 0 && (
           <div className="ml-1 flex items-center rounded ring-1 ring-gk-border">
             <ToggleButton onClick={() => goChange(-1)} title={tr('Предыдущее изменение (Shift+F7)')}>
@@ -357,24 +466,64 @@ export default function DiffView({
             </ToggleButton>
           </div>
         )}
+          </>
+        )}
+
+        {editing && (
+          <div className="ml-2 flex shrink-0 items-center gap-2 text-[11px]">
+            {caret && <span className="text-gk-dim">{tr('Стр {0}, кол {1}', caret.line, caret.column)}</span>}
+            {edit.mixedEol && (
+              <span className="text-gk-yellow" title={tr('В файле есть и CRLF, и LF: при сохранении все строки получат {0}', edit.eol === '\r\n' ? 'CRLF' : 'LF')}>
+                {tr('Смешанные окончания строк')}
+              </span>
+            )}
+            {edit.restored && (
+              <span className="text-gk-blue" title={tr('Окно изменений закрылось, пока правки не были сохранены: они возвращены. «Закрыть редактор» без сохранения их отбросит.')}>
+                {tr('Правки восстановлены')}
+              </span>
+            )}
+            {dirty ? (
+              <span className="text-gk-yellow" data-testid="file-editor-dirty">{tr('Не сохранено')}</span>
+            ) : edit.savedAt ? (
+              <span className="text-gk-green" data-testid="file-editor-saved">{tr('Сохранено')}</span>
+            ) : null}
+            <button
+              onClick={() => saveEditor()}
+              disabled={!dirty || edit.saving}
+              data-testid="file-editor-save"
+              title={kb(tr('Сохранить (Ctrl+S)'))}
+              className="flex h-6 items-center gap-1 rounded bg-gk-blue/20 px-2 text-[11.5px] text-gk-blue ring-1 ring-gk-blue/40 transition-colors enabled:hover:bg-gk-blue/30 disabled:opacity-40"
+            >
+              {edit.saving ? <Loader2 size={12} className="animate-spin" /> : <Save size={12} />} {tr('Сохранить')}
+            </button>
+            <button
+              onClick={closeEditor}
+              data-testid="file-editor-close"
+              title={tr('Вернуться к просмотру изменений (Esc)')}
+              className="flex h-6 items-center rounded px-2 text-[11.5px] text-gk-muted ring-1 ring-gk-border transition-colors hover:bg-gk-fg/10 hover:text-gk-text"
+            >
+              {tr('Закрыть редактор')}
+            </button>
+          </div>
+        )}
 
         <div className="ml-1 flex items-center">
           <span className="mr-1 text-[11px] text-gk-dim">
             {target.index + 1} / {target.list.length}
           </span>
-          <IconBtn title={kb(tr('Предыдущий файл (Alt+↑)'))} disabled={!onPrev} onClick={onPrev}>
+          <IconBtn title={kb(tr('Предыдущий файл (Alt+↑)'))} disabled={!onPrev} onClick={prev}>
             <ChevronUp size={15} />
           </IconBtn>
-          <IconBtn title={kb(tr('Следующий файл (Alt+↓)'))} disabled={!onNext} onClick={onNext}>
+          <IconBtn title={kb(tr('Следующий файл (Alt+↓)'))} disabled={!onNext} onClick={next}>
             <ChevronDown size={15} />
           </IconBtn>
-          <IconBtn title={tr('Закрыть (Esc)')} onClick={onClose}>
+          <IconBtn title={tr('Закрыть (Esc)')} onClick={close}>
             <X size={15} />
           </IconBtn>
         </div>
       </div>
 
-      {search.open && (
+      {search.open && !editing && (
         <SearchBar
           inputRef={searchInput}
           search={search}
@@ -388,7 +537,35 @@ export default function DiffView({
         />
       )}
 
-      {/* Содержимое */}
+      {editing ? (
+        <div className="flex min-h-0 flex-1 flex-col">
+          {edit.error && (
+            <div data-testid="file-editor-error" className="flex shrink-0 items-center gap-2 border-b border-gk-red/30 bg-gk-red/10 px-3 py-1.5 text-xs text-gk-red">
+              <span className="min-w-0 flex-1">
+                {edit.error.message}
+                {edit.error.hint ? ` ${edit.error.hint}` : ''}
+              </span>
+              {edit.error.code === 'CHANGED_ON_DISK' && (
+                <>
+                  <button onClick={reloadEditor} className="rounded px-2 py-0.5 ring-1 ring-gk-red/40 hover:bg-gk-red/15">
+                    {tr('Перечитать')}
+                  </button>
+                  <button onClick={() => saveEditor(true)} data-testid="file-editor-overwrite" className="rounded px-2 py-0.5 ring-1 ring-gk-red/40 hover:bg-gk-red/15">
+                    {tr('Сохранить поверх')}
+                  </button>
+                </>
+              )}
+            </div>
+          )}
+          {edit.loading ? (
+            <Placeholder>{tj('{0} Открываю файл…', [<Loader2 size={15} className="animate-spin" />])}</Placeholder>
+          ) : edit.loadError ? (
+            <Placeholder className="text-gk-red">{edit.loadError.message}</Placeholder>
+          ) : (
+            <FileEditor value={edit.text} onChange={(text) => setEdit((e) => ({ ...e, text }))} lang={syntaxOn ? lang : null} onSave={() => saveEditor()} onCaret={setCaret} />
+          )}
+        </div>
+      ) : (
       <div ref={scrollRef} className="min-h-0 flex-1 overflow-auto font-mono text-[12px] leading-5 [tab-size:4]">
         {!data ? (
           <Placeholder>
@@ -420,6 +597,12 @@ export default function DiffView({
             {tr('Diff слишком большой — показана только часть строк')}</div>
         )}
       </div>
+      )}
+      {leaveGuard && (
+        <ConfirmDialog title={tr('Правки не сохранены')} confirmLabel={tr('Закрыть без сохранения')} danger onConfirm={leaveGuard} onClose={() => setLeaveGuard(null)}>
+          {tr('В редакторе есть несохранённые правки. Если закрыть, они пропадут.')}
+        </ConfirmDialog>
+      )}
     </div>
   );
 }

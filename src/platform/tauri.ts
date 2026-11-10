@@ -299,6 +299,9 @@ function buildApi() {
       load: (dir: Json, opts?: { known?: string | null }) => safe('repo_load', { dir, known: opts?.known ?? null }),
       commitFiles: (dir: Json, hash: Json, parent: Json) => safe('repo_commit_files', { dir, hash, parent: parent ?? null }),
       fileDiff: (dir: Json, params: Json) => safe('repo_file_diff', { dir, params }),
+      // Нового в 2.0: редактор файла рабочей копии в окне изменений. В preload 1.x их нет — интерфейс проверяет наличие
+      readFile: (dir: Json, path: Json) => safe('repo_read_file', { dir, path }),
+      saveFile: (dir: Json, params: Json) => safe('repo_save_file', { dir, params }),
       compare: (dir: Json, params: Json) => safe('repo_compare', { dir, params }),
       compareSearch: (dir: Json, params: Json) => safe('repo_compare_search', { dir, params }),
       searchHistory: (dir: Json, params: Json) => safe('repo_search_history', { dir, params }),

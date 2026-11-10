@@ -23,6 +23,8 @@
 //! - `repo:load(dir, known)`: `known` — `graphFingerprint` прежнего ответа. Если ссылки и HEAD с тех пор не менялись, `git log`
 //!   не запускается и приходит `commitsUnchanged: true` с пустым `commits` (около 900 КБ JSON меньше на каждое изменение в `.git`).
 //!   Без `known` ответ полный, как в 1.x.
+//! - Нового в 2.0: `repo:read-file` и `repo:save-file` — редактор файла рабочей копии в окне изменений; `repo:file-diff` принимает
+//!   `fullFile` (весь файл одним фрагментом).
 //! - События называются по имени структуры (`repo-changed`, `repo-index-synced`, `clone-progress-event`) — так их называет `tauri-specta`.
 //! - `repo:open-dialog` и `repo:open-path` — в `commands::desktop`, вместе с остальными диалогами и `shell:*`.
 //!
@@ -48,6 +50,7 @@ use gorynych_git::clone::{CloneProbe, CloneProgress, CloneRequest, Cloned, cance
 use gorynych_git::compare::{ChangeSearch, CompareRequest, Comparison, HistorySearch, SearchChanges, SearchHistory, compare_commits, search_changes, search_history};
 use gorynych_git::diff::{FileDiff, FileDiffRequest, get_file_diff};
 use gorynych_git::gitflow::{GitflowConfig, gitflow_config};
+use gorynych_git::worktree_file::{WorktreeSave, WorktreeSaved, WorktreeText, read_worktree_file, save_worktree_file};
 use gorynych_git::history::{Blame, BlameRequest, CommitInfo, CommitInfoRequest, FileHistory, FileHistoryRequest, blame, commit_info, file_history};
 use gorynych_git::init::{ConnectOptions, ConnectResult, FolderInfo, InitOptions, InitResult, ProbeRemote, RemoteProbe, connect_repository, init_repository, inspect_folder, probe_remote};
 use gorynych_git::read::{CommitFile, QuickStatus, Repository, RepositoryUpdate, StashDetails, get_commit_files, get_stash_details, load_repository_since, quick_status, resolve_repo_root};
@@ -201,6 +204,20 @@ pub async fn repo_commit_files(dir: String, hash: String, parent: Option<String>
 #[specta::specta]
 pub async fn repo_file_diff(dir: String, params: FileDiffRequest) -> Result<FileDiff> {
     get_file_diff(Path::new(&dir), &params).await
+}
+
+/// Файл рабочей копии для редактора в окне изменений (нового в 2.0, см. `gorynych_git::worktree_file`).
+#[tauri::command]
+#[specta::specta]
+pub async fn repo_read_file(dir: String, path: String) -> Result<WorktreeText> {
+    read_worktree_file(Path::new(&dir), &path).await
+}
+
+/// Сохранить текст редактора: `CHANGED_ON_DISK`, если файл изменился после чтения.
+#[tauri::command]
+#[specta::specta]
+pub async fn repo_save_file(dir: String, params: WorktreeSave) -> Result<WorktreeSaved> {
+    save_worktree_file(Path::new(&dir), &params).await
 }
 
 #[tauri::command]

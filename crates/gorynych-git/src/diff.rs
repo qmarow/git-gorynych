@@ -7,6 +7,9 @@
 //! - Пусто, но `--stat` что-то показывает — поменялись только окончания строк: `eolOnly`.
 //!
 //! **Отличие от 1.x:** ошибка чтения неотслеживаемого файла остаётся `UNKNOWN`, но с текстом ОС, а не Node.
+//!
+//! **Нового в 2.0:** `fullFile` — контекст на весь файл ([`FULL_CONTEXT`] строк), то есть один фрагмент со всем текстом. Без него запрос
+//! тот же, что в 1.x. Предел в 20000 строк действует и здесь: у большого файла показывается начало и `truncated`.
 
 use std::path::Path;
 use std::sync::LazyLock;
@@ -23,6 +26,8 @@ use crate::run::git;
 
 const MAX_DIFF_LINES: u32 = 20_000;
 const MAX_UNTRACKED_BYTES: u64 = 2 * 1024 * 1024;
+/// Контекст «весь файл»: строк больше, чем показывается ([`MAX_DIFF_LINES`]), поэтому фрагмент всегда один.
+const FULL_CONTEXT: &str = "--unified=1000000";
 
 // `.` в JS не совпадает ещё и с \r, U+2028, U+2029
 static HEADER: LazyLock<Regex> = LazyLock::new(|| Regex::new("^@@ -([0-9]+)(?:,[0-9]+)? \\+([0-9]+)(?:,[0-9]+)? @@ ?([^\r\n\u{2028}\u{2029}]*)$").expect("корректный шаблон"));
@@ -122,6 +127,8 @@ pub struct FileDiffRequest {
     pub old_path: Option<String>,
     pub ignore_whitespace: bool,
     pub conflicted: bool,
+    /// Показать весь файл, а не только фрагменты вокруг изменений (нового в 2.0).
+    pub full_file: bool,
 }
 
 /// Diff файла.
@@ -183,7 +190,11 @@ pub async fn get_file_diff(dir: &Path, request: &FileDiffRequest) -> Result<File
         return untracked_diff(file, &full);
     }
 
-    let ws: &[&str] = if request.ignore_whitespace { &["--ignore-all-space"] } else { &[] };
+    let mut ws: Vec<&str> = if request.ignore_whitespace { vec!["--ignore-all-space"] } else { Vec::new() };
+    if request.full_file {
+        ws.push(FULL_CONTEXT);
+    }
+    let ws = ws.as_slice();
     let mut args: Vec<&str> = Vec::new();
     match mode {
         "commit" => {

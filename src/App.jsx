@@ -274,6 +274,9 @@ export default function App() {
   const [diffData, setDiffData] = useState(null);
   const [diffView, setDiffView] = useState(() => readPref('diffView', 'unified'));
   const [ignoreWs, setIgnoreWs] = useState(() => readPref('ignoreWs', '0') === '1');
+  // Показывать весь файл, а не только места изменений: выбор запоминается (localStorage → в 2.0 ещё и SQLite)
+  const [diffFullFile, setDiffFullFile] = useState(() => readPref('diff.fullFile', '0') === '1');
+  const [diffNonce, setDiffNonce] = useState(0); // файл сохранён из редактора — перечитать diff
 
   // Вкладки: [{ path, name }], активная — по path
   const [tabs, setTabs] = useState([]);
@@ -2572,6 +2575,7 @@ export default function App() {
         oldPath: t.file.oldPath,
         conflicted: t.file.status === 'U',
         ignoreWhitespace: ignoreWs,
+        fullFile: diffFullFile,
       })
       .then((res) => {
         if (cancelled) return;
@@ -2580,7 +2584,24 @@ export default function App() {
     return () => {
       cancelled = true;
     };
-  }, [diffTarget, ignoreWs, diffReload]);
+  }, [diffTarget, ignoreWs, diffFullFile, diffReload, diffNonce]);
+
+  // Редактирование в окне изменений: файл рабочей копии (unstaged или новый), команды есть только в 2.0
+  const editorFor = (t) => {
+    if (!api?.repo.readFile || !api.repo.saveFile || !repoRef.current) return null;
+    if (t.mode !== 'unstaged' && t.mode !== 'untracked') return null;
+    const dir = repoRef.current.path;
+    const path = t.file.path;
+    return {
+      key: `${dir}\0${path}`,
+      read: () => api.repo.readFile(dir, path),
+      save: (text, baseHash) => api.repo.saveFile(dir, { path, text, baseHash }),
+      saved: () => {
+        setDiffNonce((n) => n + 1);
+        refresh();
+      },
+    };
+  };
 
   /* ---------- Двойной клик по коммиту ---------- */
 
@@ -3176,6 +3197,14 @@ export default function App() {
                       return !v;
                     });
                   }}
+                  fullFile={diffFullFile}
+                  onToggleFullFile={() => {
+                    setDiffFullFile((v) => {
+                      writePref('diff.fullFile', v ? '0' : '1');
+                      return !v;
+                    });
+                  }}
+                  editor={editorFor(diffTarget)}
                   onPrev={stepFile(-1)}
                   onNext={stepFile(1)}
                   onClose={closeDiff}

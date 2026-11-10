@@ -30,6 +30,10 @@ export const commands = {
 	repoStashDetails: (dir: string, hash: string) => typedError<StashDetails_Serialize, GorynychError_Serialize>(__TAURI_INVOKE("repo_stash_details", { dir, hash })),
 	repoCommitFiles: (dir: string, hash: string, parent: string | null) => typedError<CommitFile_Serialize[], GorynychError_Serialize>(__TAURI_INVOKE("repo_commit_files", { dir, hash, parent })),
 	repoFileDiff: (dir: string, params: FileDiffRequest_Deserialize) => typedError<FileDiff_Serialize, GorynychError_Serialize>(__TAURI_INVOKE("repo_file_diff", { dir, params })),
+	/**  Файл рабочей копии для редактора в окне изменений (нового в 2.0, см. `gorynych_git::worktree_file`). */
+	repoReadFile: (dir: string, path: string) => typedError<WorktreeText, GorynychError_Serialize>(__TAURI_INVOKE("repo_read_file", { dir, path })),
+	/**  Сохранить текст редактора: `CHANGED_ON_DISK`, если файл изменился после чтения. */
+	repoSaveFile: (dir: string, params: WorktreeSave) => typedError<WorktreeSaved, GorynychError_Serialize>(__TAURI_INVOKE("repo_save_file", { dir, params })),
 	repoCompare: (dir: string, params: CompareRequest_Deserialize) => typedError<Comparison_Serialize, GorynychError_Serialize>(__TAURI_INVOKE("repo_compare", { dir, params })),
 	repoCompareSearch: (dir: string, params: SearchChanges_Deserialize) => typedError<ChangeSearch_Serialize, GorynychError_Serialize>(__TAURI_INVOKE("repo_compare_search", { dir, params })),
 	repoSearchHistory: (dir: string, params: SearchHistory_Deserialize | null) => typedError<HistorySearch_Serialize, GorynychError_Serialize>(__TAURI_INVOKE("repo_search_history", { dir, params })),
@@ -2344,6 +2348,8 @@ export type FileDiffRequest_Deserialize = {
 	oldPath?: string | null,
 	ignoreWhitespace?: boolean,
 	conflicted?: boolean,
+	/**  Показать весь файл, а не только фрагменты вокруг изменений (нового в 2.0). */
+	fullFile?: boolean,
 };
 
 /**  Параметры `getFileDiff`. */
@@ -2355,6 +2361,8 @@ export type FileDiffRequest_Serialize = {
 	oldPath: string | null,
 	ignoreWhitespace: boolean,
 	conflicted: boolean,
+	/**  Показать весь файл, а не только фрагменты вокруг изменений (нового в 2.0). */
+	fullFile: boolean,
 };
 
 /**  Diff файла. */
@@ -6908,6 +6916,36 @@ export type WipFile = {
 	status: string,
 	untracked: boolean,
 	staged: boolean,
+};
+
+/**  Что сохранить. */
+export type WorktreeSave = {
+	path: string,
+	/**  Текст из редактора: окончания строк любые, на диск идут окончания файла. */
+	text: string,
+	/**  Отпечаток прочитанной версии ([`WorktreeText::hash`]). */
+	baseHash: string,
+};
+
+/**  Результат сохранения. */
+export type WorktreeSaved = {
+	path: string,
+	/**  Отпечаток записанного: `baseHash` следующего сохранения. */
+	hash: string,
+};
+
+/**  Файл для редактора. */
+export type WorktreeText = {
+	path: string,
+	/**  Без BOM, строки через `\n`. */
+	text: string,
+	/**  `"\n"` или `"\r\n"` — с какими окончаниями файл будет записан. */
+	eol: string,
+	/**  В файле есть и `\r\n`, и одиночные `\n`: при записи они станут одинаковыми (`eol`). */
+	mixedEol: boolean,
+	bom: boolean,
+	/**  SHA-1 сырых байтов: `baseHash` при сохранении. */
+	hash: string,
 };
 
 /**  Значение, как результат `doc.toJS()`. */

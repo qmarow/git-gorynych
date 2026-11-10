@@ -333,6 +333,8 @@ pub fn specta_builder() -> Builder<tauri::Wry> {
             commands::repo::repo_stash_details,
             commands::repo::repo_commit_files,
             commands::repo::repo_file_diff,
+            commands::repo::repo_read_file,
+            commands::repo::repo_save_file,
             commands::repo::repo_compare,
             commands::repo::repo_compare_search,
             commands::repo::repo_search_history,

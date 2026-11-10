@@ -32,4 +32,5 @@ pub mod read;
 pub mod rebase;
 pub mod restore;
 pub mod run;
+pub mod worktree_file;
 pub mod write;

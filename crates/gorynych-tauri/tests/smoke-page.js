@@ -65,6 +65,12 @@ async function smoke(dir) {
   }
   const gitflow = await invoke('repo_gitflow_config', { dir });
   const fileDiff = await invoke('repo_file_diff', { dir, params: { mode: 'staged', path: SMOKE_FILE } });
+  // Весь файл и редактор файла рабочей копии (нового в 2.0): сохраняется тот же текст, поэтому сценарий дальше не меняется
+  const fullDiff = await invoke('repo_file_diff', { dir, params: { mode: 'staged', path: SMOKE_FILE, fullFile: true } });
+  const opened = await invoke('repo_read_file', { dir, path: SMOKE_FILE });
+  const saved = await invoke('repo_save_file', { dir, params: { path: SMOKE_FILE, text: opened.text, baseHash: opened.hash } });
+  const staleSave = await rejected(invoke('repo_save_file', { dir, params: { path: SMOKE_FILE, text: 'x', baseHash: 'устарел' } }));
+  const gitFile = await rejected(invoke('repo_read_file', { dir, path: '.git/HEAD' }));
   const unknownAction = await rejected(invoke('repo_action', { dir, action: { name: 'нетТакого', payload: {} } }));
   const badCompare = await rejected(invoke('repo_compare', { dir, params: { a: 'не хэш', b: null } }));
   const cancelled = await invoke('repo_clone_cancel', { id: 'нет' });
@@ -90,6 +96,7 @@ async function smoke(dir) {
     skippedReasons,
     gitflow,
     fileDiff: { additions: fileDiff.additions },
+    editor: { fullHunks: fullDiff.hunks.length, fullLines: fullDiff.hunks[0]?.lines.length ?? 0, sameHash: saved.hash === opened.hash, staleSave: staleSave?.code, gitFile: gitFile?.code },
     unknownAction,
     badCompare,
     cancelled,

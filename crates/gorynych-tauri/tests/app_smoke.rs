@@ -132,9 +132,16 @@ fn real_interface_opens_repository_on_the_compatibility_layer() {
     git(&repo, &["init", "-q", "-b", "main"]);
     git(&repo, &["config", "user.name", "Тест"]);
     git(&repo, &["config", "user.email", "t@example.com"]);
-    fs::write(repo.join("файл.txt"), "1\n").unwrap();
+    git(&repo, &["config", "core.autocrlf", "false"]);
+    let lines = |edited: bool| (1..=40).map(|n| if edited && n == 20 { "строка 20 правка\n".to_owned() } else { format!("строка {n}\n") }).collect::<String>();
+    fs::write(repo.join("файл.txt"), lines(false)).unwrap();
+    fs::write(repo.join("другой.txt"), "раз\n").unwrap();
     git(&repo, &["add", "-A"]);
     git(&repo, &["commit", "-q", "-m", "Начало"]);
+    // Изменённые файлы: зонд открывает `файл.txt` в окне изменений, включает «Весь файл», правит и сохраняет, а на `другой.txt`
+    // переходит кликом в списке посреди правки, чтобы проверить черновик (tests/ui-probe.js)
+    fs::write(repo.join("файл.txt"), lines(true)).unwrap();
+    fs::write(repo.join("другой.txt"), "два\n").unwrap();
     let profile = dir.path().join("git-Gorynych");
     fs::create_dir_all(&profile).unwrap();
     fs::write(profile.join("settings.json"), json!({ "lastRepo": repo.to_str().unwrap(), "tabs": [repo.to_str().unwrap()] }).to_string()).unwrap();
@@ -146,6 +153,15 @@ fn real_interface_opens_repository_on_the_compatibility_layer() {
     assert_eq!(report["graph"], json!(true), "граф коммитов не появился: {report}");
     assert_eq!(report["errors"], json!([]), "ошибки интерфейса: {report}");
     assert_eq!(report["seeded"], Value::Null, "настройки ещё нет");
+    assert_eq!(report["fullFilePref"], Value::Null, "{report}");
+    let editor = &report["editor"];
+    assert_eq!(editor["partial"], json!(true), "по умолчанию — только места изменений: {report}");
+    assert_eq!(
+        editor["steps"],
+        json!([["diff", true], ["fullFile", true, "1"], ["editor", true], ["save", true, true, true], ["back", true], ["draft", true, true, true, true]]),
+        "окно изменений: {report}"
+    );
+    assert!(fs::read_to_string(repo.join("файл.txt")).unwrap().contains("строка 2 из окна\n"));
 
     // Новый профиль WebView: `localStorage` пуст и заполняется из базы
     // Процессы WebView2 отпускают профиль не сразу после выхода приложения
@@ -158,6 +174,7 @@ fn real_interface_opens_repository_on_the_compatibility_layer() {
     let (status, again) = launch_page(dir.path(), Page::Interface);
     assert!(status.success(), "{status:?}");
     assert_eq!(again["report"]["seeded"], json!("сохранено"), "настройка вернулась из SQLite: {again}");
+    assert_eq!(again["report"]["fullFilePref"], json!("1"), "выбор «Весь файл» вернулся из SQLite: {again}");
     assert_eq!(again["report"]["errors"], json!([]), "{again}");
 }
 
@@ -233,6 +250,7 @@ fn git_commands_work_through_the_page() {
     assert_eq!(report["gitflow"]["develop"], json!("develop"));
     assert_eq!(report["gitflow"]["configured"], json!(true));
     assert_eq!(report["fileDiff"]["additions"], json!(2), "{report}");
+    assert_eq!(report["editor"], json!({"fullHunks": 1, "fullLines": 2, "sameHash": true, "staleSave": "CHANGED_ON_DISK", "gitFile": "BAD_ARGS"}), "весь файл и редактор: {report}");
     assert!(report["unknownAction"].as_str().is_some_and(|text| text.contains("unknown variant")), "неизвестное действие отклоняет сам Tauri: {report}");
     assert_eq!(report["badCompare"]["code"], json!("BAD_ARGS"), "{report}");
     assert_eq!(report["cancelled"], json!(false));
