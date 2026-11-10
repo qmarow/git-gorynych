@@ -70,7 +70,7 @@ import ActionBuilder, { ACTION_ICONS } from './components/ActionBuilder.jsx';
 import { RunDialog, RunnerCard } from './components/ActionRunner.jsx';
 import { GuardDialog } from './components/Guard.jsx';
 import { activeRules, guardOnFor, readGuard, writeGuard } from './lib/guardRules.ts';
-import { STEP_TYPES, defaultBranchOf, expandParams, hotkeyFromEvent, inputsOf, readActions, validateAction, writeActions } from './lib/actions.js';
+import { STEP_TYPES, defaultBranchOf, expandParams, hotkeyFromEvent, inputsOf, readActions, validateAction, writeActions } from './lib/actions.ts';
 import SettingsDialog from './components/SettingsDialog.jsx';
 import {
   DEFAULT_APPEARANCE,

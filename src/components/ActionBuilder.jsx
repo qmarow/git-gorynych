@@ -44,7 +44,7 @@ import {
   newStep,
   uid,
   validateAction,
-} from '../lib/actions.js';
+} from '../lib/actions.ts';
 import { t as tr, tj } from '../i18n/index.ts';
 
 // Иконки, которые можно выбрать для действия (имя → компонент)

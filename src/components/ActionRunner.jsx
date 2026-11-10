@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Check, CircleX, Loader2, CircleMinus, Play, RotateCcw, WandSparkles, X } from 'lucide-react';
 import { ACTION_ICONS, STEP_ICONS } from './ActionBuilder.jsx';
-import { STEP_TYPES, slugify } from '../lib/actions.js';
+import { STEP_TYPES, slugify } from '../lib/actions.ts';
 import { t as tr, tj } from '../i18n/index.ts';
 
 /**

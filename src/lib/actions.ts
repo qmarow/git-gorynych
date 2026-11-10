@@ -3,8 +3,53 @@ import { t as tr } from '../i18n/index.ts';
 
 /* ---------------- Шаги ---------------- */
 
+export type FieldType = 'text' | 'branch' | 'select' | 'bool' | 'textarea';
+
+/** Поле шага в конструкторе. `def` — значение по умолчанию (строка с переменными или флаг). */
+export interface StepField {
+  key: string;
+  label: string;
+  type: FieldType;
+  def: string | boolean;
+  placeholder?: string;
+  options?: readonly (readonly [string, string])[];
+  optional?: boolean;
+}
+
+/** Параметры шага: значения полей. Хранятся как пришли из настроек, поэтому `unknown`. */
+export type StepParams = Record<string, unknown>;
+
+export interface StepType {
+  group: StepGroupId;
+  label: string;
+  hint: string;
+  fields: readonly StepField[];
+  describe: (params: StepParams) => string;
+}
+
+export type StepTypeId = 'fetch' | 'pull' | 'push' | 'createBranch' | 'checkout' | 'rebase' | 'merge' | 'deleteBranch' | 'stash' | 'stashPop' | 'commit' | 'mergeRequest' | 'confirm' | 'git';
+export type StepGroupId = 'branch' | 'sync' | 'changes' | 'server' | 'other';
+
+export interface ActionStep {
+  id: string;
+  /** Тип из сохранённого действия: неизвестный — ошибка проверки (`validateAction`), а не падение. */
+  type: StepTypeId | (string & {});
+  params: StepParams;
+}
+
+/** Действие пользователя (`actions.v1` в localStorage; в 2.0 — таблица `custom_actions`). */
+export interface CustomAction {
+  id: string;
+  name: string;
+  icon?: string;
+  steps: ActionStep[];
+  hotkey?: string | null;
+  toolbar?: boolean;
+  [extra: string]: unknown;
+}
+
 // fields: { key, label, type: 'text' | 'branch' | 'select' | 'bool' | 'textarea', placeholder, options, def }
-export const STEP_TYPES = {
+export const STEP_TYPES: Record<StepTypeId, StepType> = {
   fetch: {
     group: 'sync',
     label: 'Fetch',
@@ -128,11 +173,11 @@ export const STEP_TYPES = {
     label: tr('Своя git-команда'),
     hint: tr('Любая команда git (без shell)'),
     fields: [{ key: 'command', label: tr('Команда'), type: 'text', def: 'git status', placeholder: 'git tag v{date}' }],
-    describe: (p) => p.command || 'git …',
+    describe: (p) => (p.command as string) || 'git …',
   },
 };
 
-export const STEP_GROUPS = [
+export const STEP_GROUPS: readonly (readonly [StepGroupId, string])[] = [
   ['branch', tr('Ветки')],
   ['sync', tr('Сервер')],
   ['changes', tr('Изменения')],
@@ -140,17 +185,20 @@ export const STEP_GROUPS = [
   ['other', tr('Другое')],
 ];
 
-export function newStep(type) {
-  const params = {};
+/** Неизвестный тип — исключение, как в 1.x: вызывают только с типами из STEP_TYPES. */
+export function newStep(type: StepTypeId): ActionStep {
+  const params: StepParams = {};
   for (const f of STEP_TYPES[type].fields) params[f.key] = f.def;
   return { id: uid(), type, params };
 }
 
-export const uid = () => Math.random().toString(36).slice(2, 10);
+export const uid = (): string => Math.random().toString(36).slice(2, 10);
 
 /* ---------------- Шаблоны ---------------- */
 
-const tpl = (name, icon, steps, extra = {}) => ({
+type TemplateAction = Omit<CustomAction, 'id'>;
+
+const tpl = (name: string, icon: string, steps: [StepTypeId, StepParams?][], extra: Partial<TemplateAction> = {}): TemplateAction => ({
   name,
   icon,
   steps: steps.map(([type, params = {}]) => ({ ...newStep(type), params: { ...newStep(type).params, ...params } })),
@@ -159,7 +207,14 @@ const tpl = (name, icon, steps, extra = {}) => ({
   ...extra,
 });
 
-export const TEMPLATES = [
+export interface ActionTemplate {
+  id: string;
+  title: string;
+  description: string;
+  make: () => TemplateAction;
+}
+
+export const TEMPLATES: readonly ActionTemplate[] = [
   {
     id: 'feature-mr',
     title: tr('Новая задача → MR'),
@@ -219,16 +274,16 @@ export const TEMPLATES = [
 
 const KEY = 'actions.v1';
 
-export function readActions() {
+export function readActions(): CustomAction[] {
   try {
     const v = JSON.parse(localStorage.getItem(KEY) ?? 'null');
-    return Array.isArray(v) ? v.filter((a) => a && a.id && Array.isArray(a.steps)) : [];
+    return Array.isArray(v) ? v.filter((a: CustomAction | null) => a && a.id && Array.isArray(a.steps)) : [];
   } catch {
     return [];
   }
 }
 
-export function writeActions(list) {
+export function writeActions(list: readonly CustomAction[]): void {
   try {
     localStorage.setItem(KEY, JSON.stringify(list));
   } catch {
@@ -238,7 +293,7 @@ export function writeActions(list) {
 
 /* ---------------- Переменные ---------------- */
 
-export const VARIABLES = [
+export const VARIABLES: readonly (readonly [string, string])[] = [
   ['{branch}', tr('текущая ветка в момент шага')],
   ['{start}', tr('ветка, с которой запустили действие')],
   ['{default}', tr('основная ветка (main / master)')],
@@ -250,8 +305,14 @@ export const VARIABLES = [
 const INPUT_RE = /\{input:([^}|]+)(\|slug)?\}/g;
 
 // Какие значения нужно спросить у пользователя перед запуском
-export function inputsOf(action) {
-  const seen = new Map();
+export interface ActionInput {
+  label: string;
+  /** Значение станет именем ветки: поле подсказывает ветки. */
+  branchLike: boolean;
+}
+
+export function inputsOf(action: Pick<CustomAction, 'steps'>): ActionInput[] {
+  const seen = new Map<string, ActionInput>();
   for (const step of action.steps) {
     for (const v of Object.values(step.params ?? {})) {
       if (typeof v !== 'string') continue;
@@ -264,10 +325,10 @@ export function inputsOf(action) {
   return [...seen.values()];
 }
 
-const TRANSLIT = { а: 'a', б: 'b', в: 'v', г: 'g', д: 'd', е: 'e', ё: 'e', ж: 'zh', з: 'z', и: 'i', й: 'y', к: 'k', л: 'l', м: 'm', н: 'n', о: 'o', п: 'p', р: 'r', с: 's', т: 't', у: 'u', ф: 'f', х: 'h', ц: 'ts', ч: 'ch', ш: 'sh', щ: 'sch', ъ: '', ы: 'y', ь: '', э: 'e', ю: 'yu', я: 'ya' };
+const TRANSLIT: Record<string, string> = { а: 'a', б: 'b', в: 'v', г: 'g', д: 'd', е: 'e', ё: 'e', ж: 'zh', з: 'z', и: 'i', й: 'y', к: 'k', л: 'l', м: 'm', н: 'n', о: 'o', п: 'p', р: 'r', с: 's', т: 't', у: 'u', ф: 'f', х: 'h', ц: 'ts', ч: 'ch', ш: 'sh', щ: 'sch', ъ: '', ы: 'y', ь: '', э: 'e', ю: 'yu', я: 'ya' };
 
 // «Новая форма входа» → novaya-forma-vhoda: латиница удобнее в URL, CI и терминале
-export function slugify(text) {
+export function slugify(text: unknown): string {
   return String(text)
     .trim()
     .toLowerCase()
@@ -278,10 +339,19 @@ export function slugify(text) {
     .replace(/^[-./]+|[-./]+$/g, '');
 }
 
-export function expand(value, ctx) {
+/** Значения для переменных шага. */
+export interface ExpandContext {
+  inputs?: Record<string, string | undefined> | null;
+  branch?: string | null;
+  start?: string | null;
+  defaultBranch?: string | null;
+}
+
+/** Не строка — как есть (флаги, числа). */
+export function expand<T>(value: T, ctx: ExpandContext): T | string {
   if (typeof value !== 'string') return value;
   return value
-    .replace(INPUT_RE, (_, label, slug) => {
+    .replace(INPUT_RE, (_, label: string, slug: string | undefined) => {
       const v = ctx.inputs?.[label.trim()] ?? '';
       return slug ? slugify(v) : v;
     })
@@ -291,8 +361,8 @@ export function expand(value, ctx) {
     .replace(/\{date\}/g, new Date().toISOString().slice(0, 10));
 }
 
-export function expandParams(params, ctx) {
-  const out = {};
+export function expandParams(params: StepParams | null | undefined, ctx: ExpandContext): StepParams {
+  const out: StepParams = {};
   for (const [k, v] of Object.entries(params ?? {})) out[k] = expand(v, ctx);
   return out;
 }
@@ -300,19 +370,19 @@ export function expandParams(params, ctx) {
 /* ---------------- Горячие клавиши ---------------- */
 
 // Уже занятые программой сочетания
-export const RESERVED_HOTKEYS = new Set([
+export const RESERVED_HOTKEYS: ReadonlySet<string> = new Set([
   'Ctrl+Z', 'Ctrl+Y', 'Ctrl+Shift+Z', 'Ctrl+F', 'Ctrl+B', 'Ctrl+O', 'Ctrl+N', 'Ctrl+W', 'Ctrl+S', 'Ctrl+,', 'Ctrl+Enter',
   'Ctrl+Tab', 'Ctrl+Shift+Tab', 'Ctrl+Shift+O', 'Ctrl+Alt+F', 'Ctrl+/', 'Ctrl+C', 'Ctrl+V', 'Ctrl+X', 'Ctrl+A',
   'F1', 'F5', 'F7', 'Shift+F7', 'F11', 'F12', 'Alt+F4',
 ]);
 
-const KEY_NAMES = { Comma: ',', Period: '.', Slash: '/', Backquote: '`', Minus: '-', Equal: '=', BracketLeft: '[', BracketRight: ']', Semicolon: ';', Quote: "'", Backslash: '\\', Enter: 'Enter', Space: 'Space', Tab: 'Tab' };
+const KEY_NAMES: Record<string, string> = { Comma: ',', Period: '.', Slash: '/', Backquote: '`', Minus: '-', Equal: '=', BracketLeft: '[', BracketRight: ']', Semicolon: ';', Quote: "'", Backslash: '\\', Enter: 'Enter', Space: 'Space', Tab: 'Tab' };
 
 /** Сочетание из события клавиатуры: «Ctrl+Alt+K». Одиночные модификаторы — null. */
-export function hotkeyFromEvent(e) {
+export function hotkeyFromEvent(e: { code?: string; key?: string; ctrlKey?: boolean; metaKey?: boolean; altKey?: boolean; shiftKey?: boolean }): string | null {
   const code = e.code ?? '';
-  if (/^(Control|Shift|Alt|Meta|OS)/.test(code) || ['Control', 'Shift', 'Alt', 'Meta'].includes(e.key)) return null;
-  let key = null;
+  if (/^(Control|Shift|Alt|Meta|OS)/.test(code) || ['Control', 'Shift', 'Alt', 'Meta'].includes(e.key as string)) return null;
+  let key: string | null = null;
   if (/^Key[A-Z]$/.test(code)) key = code.slice(3);
   else if (/^Digit\d$/.test(code)) key = code.slice(5);
   else if (/^Numpad\d$/.test(code)) key = `Num${code.slice(6)}`;
@@ -326,10 +396,10 @@ export function hotkeyFromEvent(e) {
   return [...mods, key].join('+');
 }
 
-export function hotkeyProblem(combo, actions, selfId) {
+export function hotkeyProblem(combo: string | null | undefined, actions: readonly Pick<CustomAction, 'id' | 'hotkey' | 'name'>[], selfId?: string | null): string | null {
   if (!combo) return null;
   const parts = combo.split('+');
-  const key = parts.at(-1);
+  const key = parts.at(-1)!;
   if (parts.length === 1 && !/^F\d+$/.test(key)) return tr('Нужен модификатор: Ctrl, Alt или Shift');
   if (parts.length === 2 && parts[0] === 'Shift' && !/^F\d+$/.test(key)) return tr('Shift + буква мешает вводу текста — добавьте Ctrl или Alt');
   if (RESERVED_HOTKEYS.has(combo)) return tr('Это сочетание уже занято программой');
@@ -339,7 +409,13 @@ export function hotkeyProblem(combo, actions, selfId) {
 }
 
 // Основная ветка: main, master или то, что есть
-export function defaultBranchOf(repo) {
+/** Нужны только имена веток: `Repository` из `repo:load` или его часть. */
+export interface BranchSource {
+  localBranches: readonly { name: string }[];
+  remotes: readonly { branches: readonly { name: string }[] }[];
+}
+
+export function defaultBranchOf(repo: BranchSource | null | undefined): string {
   if (!repo) return 'main';
   const local = new Set(repo.localBranches.map((b) => b.name));
   const remote = new Set(repo.remotes.flatMap((r) => r.branches.map((b) => b.name)));
@@ -347,12 +423,12 @@ export function defaultBranchOf(repo) {
   return repo.localBranches[0]?.name ?? 'main';
 }
 
-export function validateAction(a) {
-  const problems = [];
+export function validateAction(a: Pick<CustomAction, 'name' | 'steps'>): string[] {
+  const problems: string[] = [];
   if (!a.name?.trim()) problems.push(tr('Введите название'));
   if (!a.steps.length) problems.push(tr('Добавьте хотя бы один шаг'));
   a.steps.forEach((s, i) => {
-    const t = STEP_TYPES[s.type];
+    const t: StepType | undefined = STEP_TYPES[s.type as StepTypeId];
     if (!t) problems.push(tr('Шаг {0}: неизвестный тип', i + 1));
     for (const f of t?.fields ?? []) {
       if (f.type !== 'bool' && !f.optional && !String(s.params?.[f.key] ?? '').trim()) {
