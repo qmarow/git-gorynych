@@ -15,5 +15,6 @@
     "noUnusedLocals": true,
     "noUnusedParameters": true
   },
-  "include": ["src/**/*.ts"]
+  // bindings/commands.ts — типы команд, которые генерирует `tauri-specta`: модули интерфейса будут импортировать их
+  "include": ["src/**/*.ts", "crates/gorynych-tauri/bindings/commands.ts"]
 }

@@ -78,16 +78,16 @@ export const commands = {
 	credsSwitchToSsh: (dir: string | null) => typedError<SwitchedToSsh_Serialize, GorynychError_Serialize>(__TAURI_INVOKE("creds_switch_to_ssh", { dir })),
 	credsCopyPublicKey: (keyPath: string | null) => typedError<PublicKeyCopied, GorynychError_Serialize>(__TAURI_INVOKE("creds_copy_public_key", { keyPath })),
 	cicdStatus: (dir: string, opts: RemoteOptions_Deserialize | null) => typedError<ForgeStatus_Serialize | null, GorynychError_Serialize>(__TAURI_INVOKE("cicd_status", { dir, opts })),
-	cicdInfo: (dir: string, opts: RemoteOptions_Deserialize | null) => typedError<WithCaps_Serialize<T>, GorynychError_Serialize>(__TAURI_INVOKE("cicd_info", { dir, opts })),
+	cicdInfo: (dir: string, opts: RemoteOptions_Deserialize | null) => typedError<ForgeInfoWithCaps_Serialize, GorynychError_Serialize>(__TAURI_INVOKE("cicd_info", { dir, opts })),
 	cicdSettings: (dir: string, opts: RemoteOptions_Deserialize | null) => typedError<CicdSettingsView_Serialize | null, GorynychError_Serialize>(__TAURI_INVOKE("cicd_settings", { dir, opts })),
 	cicdSettingsSave: (dir: string, data: SettingsInput_Deserialize | null, opts: RemoteOptions_Deserialize | null) => typedError<CicdSettingsView_Serialize | null, GorynychError_Serialize>(__TAURI_INVOKE("cicd_settings_save", { dir, data, opts })),
-	cicdPipelines: (dir: string, opts: PipelinesOptions_Deserialize | null) => typedError<WithCaps_Serialize<T>, GorynychError_Serialize>(__TAURI_INVOKE("cicd_pipelines", { dir, opts })),
-	cicdPipeline: (dir: string, id: CiId | null, opts: RemoteOptions_Deserialize | null) => typedError<WithCaps_Serialize<T>, GorynychError_Serialize>(__TAURI_INVOKE("cicd_pipeline", { dir, id, opts })),
-	cicdJobLog: (dir: string, id: CiId | null, opts: JobLogOptions_Deserialize | null) => typedError<WithCaps_Serialize<T>, GorynychError_Serialize>(__TAURI_INVOKE("cicd_job_log", { dir, id, opts })),
+	cicdPipelines: (dir: string, opts: PipelinesOptions_Deserialize | null) => typedError<PipelineListWithCaps_Serialize, GorynychError_Serialize>(__TAURI_INVOKE("cicd_pipelines", { dir, opts })),
+	cicdPipeline: (dir: string, id: CiId | null, opts: RemoteOptions_Deserialize | null) => typedError<PipelineDetailWithCaps_Serialize, GorynychError_Serialize>(__TAURI_INVOKE("cicd_pipeline", { dir, id, opts })),
+	cicdJobLog: (dir: string, id: CiId | null, opts: JobLogOptions_Deserialize | null) => typedError<JobLogWithCaps_Serialize, GorynychError_Serialize>(__TAURI_INVOKE("cicd_job_log", { dir, id, opts })),
 	cicdAction: (dir: string, action: ActionRequest_Deserialize | null, opts: RemoteOptions_Deserialize | null) => typedError<ActionResult_Serialize, GorynychError_Serialize>(__TAURI_INVOKE("cicd_action", { dir, action, opts })),
 	cicdRun: (dir: string, params: RunParams_Deserialize | null, opts: RemoteOptions_Deserialize | null) => typedError<RunResult_Serialize, GorynychError_Serialize>(__TAURI_INVOKE("cicd_run", { dir, params, opts })),
 	cicdRunForm: (dir: string, opts: RemoteOptions_Deserialize | null) => typedError<RunForm_Serialize, GorynychError_Serialize>(__TAURI_INVOKE("cicd_run_form", { dir, opts })),
-	cicdRunners: (dir: string, opts: RemoteOptions_Deserialize | null) => typedError<WithCaps_Serialize<T>, GorynychError_Serialize>(__TAURI_INVOKE("cicd_runners", { dir, opts })),
+	cicdRunners: (dir: string, opts: RemoteOptions_Deserialize | null) => typedError<RunnersWithCaps_Serialize, GorynychError_Serialize>(__TAURI_INVOKE("cicd_runners", { dir, opts })),
 	cicdRunnerUpdate: (dir: string, data: RunnerUpdateRequest_Deserialize | null, opts: RemoteOptions_Deserialize | null) => typedError<RunnerResult_Serialize, GorynychError_Serialize>(__TAURI_INVOKE("cicd_runner_update", { dir, data, opts })),
 	cicdRunnerDelete: (dir: string, data: RunnerDeleteRequest_Deserialize | null, opts: RemoteOptions_Deserialize | null) => typedError<RunnerResult_Serialize, GorynychError_Serialize>(__TAURI_INVOKE("cicd_runner_delete", { dir, data, opts })),
 	cicdRunnersPrune: (dir: string, data: RunnersPruneRequest_Deserialize | null, opts: RemoteOptions_Deserialize | null) => typedError<PruneResult_Serialize, GorynychError_Serialize>(__TAURI_INVOKE("cicd_runners_prune", { dir, data, opts })),
@@ -98,7 +98,7 @@ export const commands = {
 	cicdLocalRunnerStart: (dir: string, data: LocalRunnerStartRequest_Deserialize | null, opts: RemoteOptions_Deserialize | null) => typedError<LocalRunnerStarted, GorynychError_Serialize>(__TAURI_INVOKE("cicd_local_runner_start", { dir, data, opts })),
 	cicdLocalRunnerStop: (name: string) => typedError<LocalRunnerName, GorynychError_Serialize>(__TAURI_INVOKE("cicd_local_runner_stop", { name })),
 	cicdLocalRunnerResume: (name: string) => typedError<LocalRunnerName, GorynychError_Serialize>(__TAURI_INVOKE("cicd_local_runner_resume", { name })),
-	cicdSecrets: (dir: string, opts: RemoteOptions_Deserialize | null) => typedError<WithCaps_Serialize<T>, GorynychError_Serialize>(__TAURI_INVOKE("cicd_secrets", { dir, opts })),
+	cicdSecrets: (dir: string, opts: RemoteOptions_Deserialize | null) => typedError<SecretsWithCaps_Serialize, GorynychError_Serialize>(__TAURI_INVOKE("cicd_secrets", { dir, opts })),
 	cicdSecretSave: (dir: string, data: SecretSave_Deserialize | null, opts: RemoteOptions_Deserialize | null) => typedError<SecretResult_Serialize, GorynychError_Serialize>(__TAURI_INVOKE("cicd_secret_save", { dir, data, opts })),
 	cicdSecretDelete: (dir: string, data: SecretRef_Deserialize | null, opts: RemoteOptions_Deserialize | null) => typedError<SecretResult_Serialize, GorynychError_Serialize>(__TAURI_INVOKE("cicd_secret_delete", { dir, data, opts })),
 	gitlabStatus: (dir: string, opts: RemoteOptions_Deserialize | null) => typedError<GlRemoteStatus_Serialize | null, GorynychError_Serialize>(__TAURI_INVOKE("gitlab_status", { dir, opts })),
@@ -2490,6 +2490,20 @@ export type FolderInfo_Serialize = {
 /**  `info`. */
 export type ForgeInfo = ForgeInfo_Serialize | ForgeInfo_Deserialize;
 
+export type ForgeInfoWithCaps = ForgeInfoWithCaps_Serialize | ForgeInfoWithCaps_Deserialize;
+
+export type ForgeInfoWithCaps_Deserialize = {
+	provider: string,
+	label: string,
+	capabilities: Capabilities_Deserialize,
+} & ForgeInfo_Deserialize;
+
+export type ForgeInfoWithCaps_Serialize = {
+	provider: string,
+	label: string,
+	capabilities: Capabilities_Serialize,
+} & ForgeInfo_Serialize;
+
 /**  `info`. */
 export type ForgeInfo_Deserialize = {
 	webUrl?: string | null,
@@ -3973,6 +3987,20 @@ export type JobLogOptions_Serialize = {
 	pipelineId: CiId | null,
 };
 
+export type JobLogWithCaps = JobLogWithCaps_Serialize | JobLogWithCaps_Deserialize;
+
+export type JobLogWithCaps_Deserialize = {
+	provider: string,
+	label: string,
+	capabilities: Capabilities_Deserialize,
+} & JobLog_Deserialize;
+
+export type JobLogWithCaps_Serialize = {
+	provider: string,
+	label: string,
+	capabilities: Capabilities_Serialize,
+} & JobLog_Serialize;
+
 /**  Лог задания. */
 export type JobLog_Deserialize = {
 	job?: PipelineJob_Deserialize | null,
@@ -4616,6 +4644,20 @@ export type PickedImage_Serialize = {
 /**  Подробности запуска. */
 export type PipelineDetail = PipelineDetail_Serialize | PipelineDetail_Deserialize;
 
+export type PipelineDetailWithCaps = PipelineDetailWithCaps_Serialize | PipelineDetailWithCaps_Deserialize;
+
+export type PipelineDetailWithCaps_Deserialize = {
+	provider: string,
+	label: string,
+	capabilities: Capabilities_Deserialize,
+} & PipelineDetail_Deserialize;
+
+export type PipelineDetailWithCaps_Serialize = {
+	provider: string,
+	label: string,
+	capabilities: Capabilities_Serialize,
+} & PipelineDetail_Serialize;
+
 /**  Подробности запуска. */
 export type PipelineDetail_Deserialize = {
 	pipeline?: PipelineRun_Deserialize | null,
@@ -4697,6 +4739,20 @@ export type PipelineJob_Serialize = {
 
 /**  Список пайплайнов. */
 export type PipelineList = PipelineList_Serialize | PipelineList_Deserialize;
+
+export type PipelineListWithCaps = PipelineListWithCaps_Serialize | PipelineListWithCaps_Deserialize;
+
+export type PipelineListWithCaps_Deserialize = {
+	provider: string,
+	label: string,
+	capabilities: Capabilities_Deserialize,
+} & PipelineList_Deserialize;
+
+export type PipelineListWithCaps_Serialize = {
+	provider: string,
+	label: string,
+	capabilities: Capabilities_Serialize,
+} & PipelineList_Serialize;
 
 /**  Список пайплайнов. */
 export type PipelineList_Deserialize = {
@@ -6073,6 +6129,20 @@ export type RunnersPruneRequest_Serialize = {
 	ids: CiId[] | null,
 };
 
+export type RunnersWithCaps = RunnersWithCaps_Serialize | RunnersWithCaps_Deserialize;
+
+export type RunnersWithCaps_Deserialize = {
+	provider: string,
+	label: string,
+	capabilities: Capabilities_Deserialize,
+} & RunnersData_Deserialize;
+
+export type RunnersWithCaps_Serialize = {
+	provider: string,
+	label: string,
+	capabilities: Capabilities_Serialize,
+} & RunnersData_Serialize;
+
 /**  Параметры `saveResolution`. */
 export type SaveResolution = SaveResolution_Serialize | SaveResolution_Deserialize;
 
@@ -6204,6 +6274,20 @@ export type SecretsData_Deserialize = {
 export type SecretsData_Serialize = {
 	secrets: CiSecretVariable_Serialize[],
 };
+
+export type SecretsWithCaps = SecretsWithCaps_Serialize | SecretsWithCaps_Deserialize;
+
+export type SecretsWithCaps_Deserialize = {
+	provider: string,
+	label: string,
+	capabilities: Capabilities_Deserialize,
+} & SecretsData_Deserialize;
+
+export type SecretsWithCaps_Serialize = {
+	provider: string,
+	label: string,
+	capabilities: Capabilities_Serialize,
+} & SecretsData_Serialize;
 
 /**  Тип сервера. */
 export type ServerKind = "github" | "gitlab" | "gitea" | "bitbucket" | "other";
@@ -6825,23 +6909,6 @@ export type WipFile = {
 	untracked: boolean,
 	staged: boolean,
 };
-
-/**  Данные и то, что про них нужно знать интерфейсу: `withCaps`. */
-export type WithCaps<T> = WithCaps_Serialize<T> | WithCaps_Deserialize<T>;
-
-/**  Данные и то, что про них нужно знать интерфейсу: `withCaps`. */
-export type WithCaps_Deserialize<T> = {
-	provider: string,
-	label: string,
-	capabilities: Capabilities_Deserialize,
-} & T;
-
-/**  Данные и то, что про них нужно знать интерфейсу: `withCaps`. */
-export type WithCaps_Serialize<T> = {
-	provider: string,
-	label: string,
-	capabilities: Capabilities_Serialize,
-} & T;
 
 /**  Значение, как результат `doc.toJS()`. */
 export type YamlValue = YamlValue_Serialize | YamlValue_Deserialize;

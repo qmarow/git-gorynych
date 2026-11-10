@@ -17,6 +17,8 @@
 //! - Не перенесены `gitlab:set-token` и `gitlab:clear-token`: в `src/` их не вызывают, функций нет и в `gorynych-cicd`
 //!   (шапка `gitlab/mod.rs`).
 //! - `cicd:artifact-download` и `cicd:show-file` — в `commands::desktop`: им нужны диалог сохранения и Проводник.
+//! - Ответы с возможностями провайдера (`withCaps`) — шесть конкретных типов [`ForgeInfoWithCaps`] и т. п. той же формы, что
+//!   `models::WithCaps<T>`: `specta` rc.26 не подставляет `T` в обобщённую структуру с `flatten`, и в `bindings/commands.ts` оставалось `WithCaps<T>`.
 
 use std::path::{Path, PathBuf};
 
@@ -26,16 +28,48 @@ use gorynych_cicd::gitlab::{
 };
 use gorynych_cicd::json::{Json, JsonType};
 use gorynych_cicd::models::{
-    ActionRequest, ActionResult, CiId, CicdSettingsView, ForgeInfo, ForgeStatus, JobLog, PipelineDetail, PipelineList, PruneResult, RunForm, RunParams, RunResult, RunnerPatch,
+    ActionRequest, ActionResult, Capabilities, CiId, CicdSettingsView, ForgeInfo, ForgeStatus, JobLog, PipelineDetail, PipelineList, PruneResult, RunForm, RunParams, RunResult, RunnerPatch,
     RunnerRegisterOptions, RunnerRegistration, RunnerResult, RunnerTagReport, SecretRef, SecretResult, SecretSave, WithCaps,
 };
 use gorynych_cicd::service::{LocalRunnerName, LocalRunnerStarted, LocalRunners, RunnerTagRequest, RunnersData, SecretsData, SettingsInput};
 use gorynych_core::error::Result;
 use gorynych_git::read::resolve_repo_root;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use tauri::State;
 
 use crate::AppState;
+
+/* ---------- Ответы с возможностями провайдера ---------- */
+
+/// Конкретный тип вместо `WithCaps<T>` для `bindings/commands.ts` (см. шапку). Поля и порядок — как у `models::WithCaps`.
+macro_rules! with_caps {
+    ($($name:ident($inner:ty);)+) => {$(
+        #[doc = concat!("`WithCaps<", stringify!($inner), ">`: данные и возможности провайдера.")]
+        #[derive(Debug, Clone, PartialEq, Serialize, specta::Type)]
+        pub struct $name {
+            #[serde(flatten)]
+            pub data: $inner,
+            pub provider: String,
+            pub label: String,
+            pub capabilities: Capabilities,
+        }
+
+        impl From<WithCaps<$inner>> for $name {
+            fn from(value: WithCaps<$inner>) -> Self {
+                Self { data: value.data, provider: value.provider, label: value.label, capabilities: value.capabilities }
+            }
+        }
+    )+};
+}
+
+with_caps! {
+    ForgeInfoWithCaps(ForgeInfo);
+    PipelineListWithCaps(PipelineList);
+    PipelineDetailWithCaps(PipelineDetail);
+    JobLogWithCaps(JobLog);
+    RunnersWithCaps(RunnersData);
+    SecretsWithCaps(SecretsData);
+}
 
 /* ---------- Параметры ---------- */
 
@@ -121,9 +155,9 @@ pub async fn cicd_status(state: State<'_, AppState>, dir: String, opts: Option<R
 
 #[tauri::command]
 #[specta::specta]
-pub async fn cicd_info(state: State<'_, AppState>, dir: String, opts: Option<RemoteOptions>) -> Result<WithCaps<ForgeInfo>> {
+pub async fn cicd_info(state: State<'_, AppState>, dir: String, opts: Option<RemoteOptions>) -> Result<ForgeInfoWithCaps> {
     let cicd = &state.services()?.cicd;
-    cicd.info(&root_of(&dir).await?, remote(&opts)).await
+    cicd.info(&root_of(&dir).await?, remote(&opts)).await.map(Into::into)
 }
 
 #[tauri::command]
@@ -142,25 +176,25 @@ pub async fn cicd_settings_save(state: State<'_, AppState>, dir: String, data: O
 
 #[tauri::command]
 #[specta::specta]
-pub async fn cicd_pipelines(state: State<'_, AppState>, dir: String, opts: Option<PipelinesOptions>) -> Result<WithCaps<PipelineList>> {
+pub async fn cicd_pipelines(state: State<'_, AppState>, dir: String, opts: Option<PipelinesOptions>) -> Result<PipelineListWithCaps> {
     let cicd = &state.services()?.cicd;
     let opts = opts.unwrap_or_default();
-    cicd.pipelines(&root_of(&dir).await?, opts.reference.as_deref(), opts.remote.as_deref()).await
+    cicd.pipelines(&root_of(&dir).await?, opts.reference.as_deref(), opts.remote.as_deref()).await.map(Into::into)
 }
 
 #[tauri::command]
 #[specta::specta]
-pub async fn cicd_pipeline(state: State<'_, AppState>, dir: String, id: Option<CiId>, opts: Option<RemoteOptions>) -> Result<WithCaps<PipelineDetail>> {
+pub async fn cicd_pipeline(state: State<'_, AppState>, dir: String, id: Option<CiId>, opts: Option<RemoteOptions>) -> Result<PipelineDetailWithCaps> {
     let cicd = &state.services()?.cicd;
-    cicd.pipeline(&root_of(&dir).await?, &id_or_undefined(id), remote(&opts)).await
+    cicd.pipeline(&root_of(&dir).await?, &id_or_undefined(id), remote(&opts)).await.map(Into::into)
 }
 
 #[tauri::command]
 #[specta::specta]
-pub async fn cicd_job_log(state: State<'_, AppState>, dir: String, id: Option<CiId>, opts: Option<JobLogOptions>) -> Result<WithCaps<JobLog>> {
+pub async fn cicd_job_log(state: State<'_, AppState>, dir: String, id: Option<CiId>, opts: Option<JobLogOptions>) -> Result<JobLogWithCaps> {
     let cicd = &state.services()?.cicd;
     let opts = opts.unwrap_or_default();
-    cicd.job_log(&root_of(&dir).await?, &id_or_undefined(id), opts.pipeline_id.as_ref(), opts.remote.as_deref()).await
+    cicd.job_log(&root_of(&dir).await?, &id_or_undefined(id), opts.pipeline_id.as_ref(), opts.remote.as_deref()).await.map(Into::into)
 }
 
 #[tauri::command]
@@ -186,9 +220,9 @@ pub async fn cicd_run_form(state: State<'_, AppState>, dir: String, opts: Option
 
 #[tauri::command]
 #[specta::specta]
-pub async fn cicd_runners(state: State<'_, AppState>, dir: String, opts: Option<RemoteOptions>) -> Result<WithCaps<RunnersData>> {
+pub async fn cicd_runners(state: State<'_, AppState>, dir: String, opts: Option<RemoteOptions>) -> Result<RunnersWithCaps> {
     let cicd = &state.services()?.cicd;
-    cicd.runners(&root_of(&dir).await?, remote(&opts)).await
+    cicd.runners(&root_of(&dir).await?, remote(&opts)).await.map(Into::into)
 }
 
 #[tauri::command]
@@ -257,9 +291,9 @@ pub async fn cicd_local_runner_resume(state: State<'_, AppState>, name: String) 
 
 #[tauri::command]
 #[specta::specta]
-pub async fn cicd_secrets(state: State<'_, AppState>, dir: String, opts: Option<RemoteOptions>) -> Result<WithCaps<SecretsData>> {
+pub async fn cicd_secrets(state: State<'_, AppState>, dir: String, opts: Option<RemoteOptions>) -> Result<SecretsWithCaps> {
     let cicd = &state.services()?.cicd;
-    cicd.secrets(&root_of(&dir).await?, remote(&opts)).await
+    cicd.secrets(&root_of(&dir).await?, remote(&opts)).await.map(Into::into)
 }
 
 #[tauri::command]
