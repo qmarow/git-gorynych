@@ -180,6 +180,26 @@ pub fn parse_target(url: &str) -> RemoteTarget {
     }
 }
 
+/// Адрес без пароля: `https://user:pass@host/…` → `https://user@host/…`, `https://:pass@host` → `https://host`.
+/// Имя пользователя остаётся: по нему адрес отличают от других входов. Адреса без `://` (scp-вид) пароля не несут.
+pub(crate) fn without_password(url: &str) -> String {
+    let Some(start) = url.find("://").map(|index| index + 3) else {
+        return url.to_owned();
+    };
+    let rest = &url[start..];
+    let authority = &rest[..rest.find(['/', '?', '#']).unwrap_or(rest.len())];
+    let Some(at) = authority.rfind('@') else {
+        return url.to_owned();
+    };
+    let Some(colon) = authority[..at].find(':') else {
+        return url.to_owned();
+    };
+    if colon == 0 {
+        return format!("{}{}", &url[..start], &rest[at + 1..]);
+    }
+    format!("{}{}", &url[..start + colon], &rest[at..])
+}
+
 /// Ключ сервера. Вызывается только для адреса с хостом.
 pub fn server_key(target: &RemoteTarget) -> String {
     if target.protocol == RemoteProtocol::Https {

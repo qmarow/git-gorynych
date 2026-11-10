@@ -11,7 +11,7 @@ use gorynych_core::GorynychError;
 use gorynych_core::i18n::set_language;
 use gorynych_storage::Db;
 use gorynych_storage::credentials::{
-    ApiLogin, AuthMethod, Credentials, LegacyLogin, LegacySecret, LoginInput, LoginScope, ServerKind, guess_kind, parse_server, parse_target,
+    ApiLogin, AuthMethod, Credentials, GITHUB_TOKEN_PREFIXES, LegacyLogin, LegacySecret, LoginInput, LoginScope, ServerKind, guess_kind, parse_server, parse_target,
     repo_key_of, repo_path_of, ssh_command, ssh_url_for,
 };
 use gorynych_storage::secrets::SecretStore;
@@ -173,6 +173,21 @@ fn run_op(creds: &Credentials, op: &str, args: &[Value]) -> (Option<Value>, Opti
     }
 }
 
+/// Вход по паролю, который не похож на токен GitHub.
+fn github_password(login: &Value) -> bool {
+    login["method"] == "password"
+        && login["viaApiToken"] == false
+        && !GITHUB_TOKEN_PREFIXES.iter().any(|prefix| login["secret"].as_str().is_some_and(|secret| secret.starts_with(prefix)))
+}
+
+/// Исправлено в 2.0: для API GitHub 1.x брал пароль учётной записи и отправлял его как `Bearer`. Расхождение допустимо, только
+/// если 1.x выбрал такой пароль, а Rust — нет.
+fn github_password_fixed(op: &str, args: &[Value], actual: &Value, expected: &Value) -> bool {
+    let is_github = op == "apiLoginFor" && args.get(2).and_then(Value::as_str) == Some("github");
+    let picked = |result: &Value| ["repo", "shared"].iter().any(|slot| github_password(&result[*slot]));
+    is_github && picked(expected) && !picked(actual)
+}
+
 /// Первое отличие двух значений: иначе в выводе теста его не найти.
 fn first_difference(actual: &Value, expected: &Value, path: &str) -> Option<String> {
     match (actual, expected) {
@@ -209,6 +224,7 @@ fn replay_scenario(language: &str) {
 
     let mut creds = Credentials::new(Arc::new(Db::open(&dir.path().join("a.db")).unwrap()), Arc::new(Memory::default()));
     let mut seed_index = 0;
+    let mut fixed_steps = 0;
     for (step, case) in FIXTURE["scenario"][language].as_array().unwrap().iter().enumerate() {
         let op = text(&case["op"]);
         let args: Vec<Value> = case["args"].as_array().unwrap().iter().map(&fill).collect();
@@ -227,12 +243,19 @@ fn replay_scenario(language: &str) {
             (Some(expected), None) => panic!("{where_}: ждали ошибку {expected}, получили {result:?}"),
             (None, Some(actual)) => panic!("{where_}: неожиданная ошибка {actual}"),
             (None, None) => {
-                if let Some(difference) = first_difference(&blank(&result.unwrap()), &case["result"], "") {
+                let actual = blank(&result.unwrap());
+                if let Some(difference) = first_difference(&actual, &case["result"], "") {
+                    if github_password_fixed(op, &args, &actual, &case["result"]) {
+                        fixed_steps += 1;
+                        continue;
+                    }
                     panic!("{where_}\n{difference}");
                 }
             }
         }
     }
+    // Сценарий содержит такие шаги: если их не стало, правило выше больше ничего не проверяет
+    assert!(fixed_steps > 0, "[{language}] нет шагов с паролем для API GitHub");
 }
 
 #[test]

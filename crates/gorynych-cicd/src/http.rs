@@ -14,6 +14,8 @@
 //!   (схема, хост, порт). `fetch` в 1.x снимал только `Authorization`, а `PRIVATE-TOKEN` и `X-GitHub-Api-Version` отправлял дальше.
 //! - Нечитаемый JSON в успешном ответе остаётся кодом `UNKNOWN`, но текст ошибки другой: в 1.x это сообщение `SyntaxError` из V8.
 //! - `details` у `NETWORK` — текст ошибки `reqwest`, а не `fetch`.
+//! - Авторизация идёт на абсолютный адрес, только если совпадают схема, хост и порт: 1.x сравнивал лишь `host`, и ссылка `http://`
+//!   на сервер API с `https://` получала токен открытым текстом.
 
 use std::path::Path;
 use std::sync::LazyLock;
@@ -218,7 +220,8 @@ fn error_message(body: &str) -> String {
 async fn send(ctx: &HttpCtx, method: reqwest::Method, api_path: &str, opts: &Opts, text: bool) -> Result<reqwest::Response> {
     let address = if is_http(api_path) { api_path.to_owned() } else { format!("{}{api_path}", ctx.api_base) };
     let url = build_url(&address, &opts.query)?;
-    let same_host = Url::parse(&ctx.api_base).is_ok_and(|base| host_of(&base) == host_of(&url));
+    // Схема тоже: ссылка `http://` на тот же хост унесла бы токен открытым текстом (в 1.x сравнивался только `host`)
+    let same_host = Url::parse(&ctx.api_base).is_ok_and(|base| same_origin(&base, &url));
     let timeout = opts.timeout.unwrap_or(TIMEOUT);
     let host = host_of(&url);
 
@@ -361,6 +364,17 @@ mod tests {
         let head = server.join().unwrap();
         assert!(!head.contains("authorization"), "{head}");
         assert!(head.contains("user-agent: git-gorynych"), "{head}");
+    }
+
+    #[tokio::test]
+    async fn authorization_never_goes_over_plain_http_to_an_https_api() {
+        // Тот же хост и порт, но API — `https`, а ссылка — `http`: токен ушёл бы открытым текстом
+        let (port, server) = serve(|_| vec![ok()]);
+        let mut ctx = private(port);
+        ctx.api_base = format!("https://127.0.0.1:{port}");
+        request(&ctx, reqwest::Method::GET, format!("http://127.0.0.1:{port}/log"), Opts::default()).await.unwrap();
+        let heads = server.join().unwrap();
+        assert!(!heads[0].contains("private-token"), "{}", heads[0]);
     }
 
     /// Сервер: ответы строятся по его порту и отдаются по порядку, по одному на соединение. Возвращает начало каждого запроса.

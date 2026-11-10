@@ -81,9 +81,13 @@ fn with_session(command: &mut Command, session: &AuthSession) {
 
 /// Запускает `git ls-remote`: настройки пользователя (в том числе Git Credential Manager) намеренно остаются.
 fn git_ls_remote(server: &AuthServer, session: &AuthSession) -> Output {
+    git_ls_remote_path(server, session, "/group/app.git")
+}
+
+fn git_ls_remote_path(server: &AuthServer, session: &AuthSession, path: &str) -> Output {
     let mut command = Command::new("git");
     command
-        .args(["ls-remote", &format!("{}/group/app.git", server.server_key())])
+        .args(["ls-remote", &format!("{}{path}", server.server_key())])
         .env("GIT_TERMINAL_PROMPT", "0")
         .env("GCM_INTERACTIVE", "never")
         .env("NO_PROXY", "127.0.0.1")
@@ -95,6 +99,7 @@ fn git_ls_remote(server: &AuthServer, session: &AuthSession) -> Output {
 fn https_auth(server: &AuthServer) -> GitAuth {
     GitAuth {
         https: vec![HttpsAuth { server: server.server_key(), username: USERNAME.into(), secret: SECRET.into() }],
+        by_path: vec![],
         ssh: None,
     }
 }
@@ -122,6 +127,32 @@ fn assert_git_authenticated(helper: &Path) {
 #[test]
 fn git_gets_credentials_through_real_helper() {
     assert_git_authenticated(Path::new(HELPER));
+}
+
+/// Два репозитория одного сервера с разными входами: git выбирает helper по точному пути адреса.
+#[test]
+fn git_picks_login_by_repository_path_on_the_same_server() {
+    let server = AuthServer::start();
+    let broker = AuthBroker::start(HELPER).unwrap();
+    let other = format!("{}/group/other.git", server.server_key());
+    let session = broker
+        .session(GitAuth {
+            https: vec![HttpsAuth { server: server.server_key(), username: "первый".into(), secret: "п1".into() }],
+            by_path: vec![HttpsAuth { server: other, username: "второй".into(), secret: "п2".into() }],
+            ssh: None,
+        })
+        .unwrap();
+
+    let first = git_ls_remote_path(&server, &session, "/group/app.git");
+    let second = git_ls_remote_path(&server, &session, "/group/other.git");
+    let received: Vec<String> = server.received().iter().map(|value| decode_base64(value)).collect();
+    assert_eq!(
+        received,
+        ["первый:п1", "второй:п2"],
+        "\nstderr 1: {}\nstderr 2: {}",
+        String::from_utf8_lossy(&first.stderr),
+        String::from_utf8_lossy(&second.stderr)
+    );
 }
 
 /// Копия бинаря в папке с кириллицей, пробелом и апострофом: так выглядит установка в профиль пользователя.
@@ -215,7 +246,7 @@ fn assert_ssh_add_uses_passphrase(helper: &Path) {
 
     let broker = AuthBroker::start(helper).unwrap();
     let session = broker
-        .session(GitAuth { https: vec![], ssh: Some(SshAuth { key_path: key.to_string_lossy().into_owned(), passphrase: Some(passphrase.into()) }) })
+        .session(GitAuth { https: vec![], by_path: vec![], ssh: Some(SshAuth { key_path: key.to_string_lossy().into_owned(), passphrase: Some(passphrase.into()) }) })
         .unwrap();
 
     let agent = Command::new(bin.join("ssh-agent.exe")).arg("-s").stdin(Stdio::null()).output().unwrap();

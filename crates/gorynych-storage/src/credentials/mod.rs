@@ -25,6 +25,13 @@
 //! - `envFor` разделён: здесь только выбор входа ([`Credentials::git_auth`]), передача в git — в `askpass`.
 //! - `detectServer` делает HTTP-запросы и переносится в `gorynych-cicd`; здесь остаётся [`parse_server`].
 //! - Сбой чтения базы в `serverKind` и `serverBase` не ошибка: как `try/catch` в 1.x.
+//! - Исправления 1.x (сессия 12):
+//!   - пароль и токен для `http://` не сохраняются (кроме localhost, 127.x и ::1): 1.x отправлял их открытым текстом;
+//!   - пароль из адреса (`https://user:pass@…`) в базу не пишется, старые записи чистит [`Credentials::new`];
+//!   - для API GitHub пароль годится, только если похож на токен ([`GITHUB_TOKEN_PREFIXES`]): 1.x отправлял пароль
+//!     учётной записи как `Bearer`. Эталон `credentials_parity` допускает только это расхождение (`github_password_fixed`);
+//!   - второй адрес того же сервера с другим входом получает свой helper по пути: [`GitAuth::by_path`]. В 1.x git
+//!     брал вход первого адреса для всех репозиториев сервера.
 
 pub mod target;
 
@@ -319,8 +326,20 @@ impl fmt::Debug for SshAuth {
 /// Что передать git для набора адресов репозитория.
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct GitAuth {
+    /// Вход на сервер: `server` — `https://host[:порт]`, первый адрес этого сервера.
     pub https: Vec<HttpsAuth>,
+    /// Адреса того же сервера с другим входом: `server` — адрес репозитория целиком. Git выбирает helper по точному
+    /// совпадению пути (`credential.<url>.helper`), поэтому второй remote на том же хосте получает свой логин.
+    /// В 1.x их не было: git брал вход первого адреса для всех репозиториев сервера.
+    pub by_path: Vec<HttpsAuth>,
     pub ssh: Option<SshAuth>,
+}
+
+impl GitAuth {
+    /// Все HTTPS-входы по номеру helper'а: сначала серверные, потом по адресу.
+    pub fn https_logins(&self) -> impl Iterator<Item = &HttpsAuth> {
+        self.https.iter().chain(&self.by_path)
+    }
 }
 
 /// Секрет записи из 1.x при переносе.
@@ -583,6 +602,8 @@ fn upsert_entry(db: &Db, entry: &NewEntry<'_>) -> Result<()> {
         SavedAt::Now => (true, None),
         SavedAt::Kept(value) => (false, value),
     };
+    // Пароль из адреса (`https://user:pass@host/…`) в базу не пишется: она не зашифрована
+    let url = entry.url.map(target::without_password);
     db.with(|conn| {
         conn.execute(
             &format!(
@@ -598,7 +619,7 @@ fn upsert_entry(db: &Db, entry: &NewEntry<'_>) -> Result<()> {
                 entry.scope.as_str(),
                 entry.key,
                 entry.method.as_str(),
-                entry.url,
+                url,
                 entry.username,
                 entry.key_path,
                 entry.secret,
@@ -610,6 +631,28 @@ fn upsert_entry(db: &Db, entry: &NewEntry<'_>) -> Result<()> {
         )
     })?;
     Ok(())
+}
+
+/// Токены GitLab (`API_TOKEN_PREFIX` из 1.x).
+pub const GITLAB_TOKEN_PREFIXES: [&str; 3] = ["glpat-", "gloas-", "glsoat-"];
+/// Токены GitHub: классический, OAuth, приложения (пользователь, установка, обновление), fine-grained.
+pub const GITHUB_TOKEN_PREFIXES: [&str; 6] = ["ghp_", "gho_", "ghu_", "ghs_", "ghr_", "github_pat_"];
+
+/// Убирает пароль из уже сохранённых адресов (см. [`target::without_password`]).
+fn scrub_stored_passwords(db: &Db) -> Result<()> {
+    db.with(|conn| {
+        let rows: Vec<(String, String, String)> = conn
+            .prepare("SELECT scope, key, url FROM credential_logins WHERE url LIKE '%@%'")?
+            .query_map([], |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)))?
+            .collect::<rusqlite::Result<_>>()?;
+        for (scope, key, url) in rows {
+            let clean = target::without_password(&url);
+            if clean != url {
+                conn.execute("UPDATE credential_logins SET url = ?1 WHERE scope = ?2 AND key = ?3", params![clean, scope, key])?;
+            }
+        }
+        Ok(())
+    })
 }
 
 /// `shQuote`.
@@ -642,6 +685,8 @@ pub struct Credentials {
 
 impl Credentials {
     pub fn new(db: Arc<Db>, secrets: Arc<dyn SecretStore>) -> Self {
+        // Записи, сохранённые до исправления, могли получить адрес с паролем. Сбой не мешает работе: адрес прочитают как есть.
+        let _ = scrub_stored_passwords(&db);
         Self { db, secrets, write: Mutex::new(()) }
     }
 
@@ -930,6 +975,16 @@ impl Credentials {
             return Err(bad_args("Логин/пароль и токен работают только для адресов https://")
                 .with_hint(t("Адрес remote — SSH. Выберите вкладку «SSH-ключ» или смените адрес remote на https://.", &[])));
         }
+        // `http://` разбирается как HTTPS-адрес (1.x так же), но пароль по нему ушёл бы открытым текстом.
+        // Отличие от 1.x: там такой вход сохранялся. Уже сохранённые входы продолжают работать.
+        // Локальный сервер (localhost, 127.x, ::1) — исключение: трафик не покидает машину.
+        let loopback = target.hostname.as_deref().is_some_and(|name| {
+            name == "localhost" || name.ends_with(".localhost") || name == "[::1]" || name.parse::<std::net::Ipv4Addr>().is_ok_and(|ip| ip.is_loopback())
+        });
+        if method != AuthMethod::Ssh && target.scheme.as_deref() == Some("http") && !loopback {
+            return Err(bad_args("По адресу http:// пароль и токен передаются открытым текстом")
+                .with_hint(t("Смените адрес remote на https:// или войдите SSH-ключом.", &[])));
+        }
         if method == AuthMethod::Ssh && target.protocol != RemoteProtocol::Ssh {
             return Err(bad_args("SSH-ключ работает только для адресов SSH (git@host:… или ssh://…)")
                 .with_hint(t("Адрес remote — https://. Войдите логином и паролем или токеном, либо смените адрес remote на SSH.", &[])));
@@ -1122,13 +1177,16 @@ impl Credentials {
         let path = strip_repo_path(&path_lower);
         let store = read_store(&self.db)?;
 
-        let password_ok = |entry: &Entry| {
-            if kind == Some(ServerKind::Gitlab) {
-                self.decrypt(entry.secret.as_deref())
-                    .is_some_and(|secret| ["glpat-", "gloas-", "glsoat-"].iter().any(|prefix| secret.starts_with(prefix)))
-            } else {
-                entry.secret.is_some()
-            }
+        // GitLab и GitHub в API принимают только токены: пароль учётной записи годится, лишь если это и есть токен.
+        // Отличие от 1.x для GitHub: там пароль уходил в API как `Bearer <пароль>` и получал 401.
+        let token_prefixes: Option<&[&str]> = match kind {
+            Some(ServerKind::Gitlab) => Some(&GITLAB_TOKEN_PREFIXES),
+            Some(ServerKind::Github) => Some(&GITHUB_TOKEN_PREFIXES),
+            _ => None,
+        };
+        let password_ok = |entry: &Entry| match token_prefixes {
+            Some(prefixes) => self.decrypt(entry.secret.as_deref()).is_some_and(|secret| prefixes.iter().any(|prefix| secret.starts_with(prefix))),
+            None => entry.secret.is_some(),
         };
         let usable = |entry: &Entry| {
             entry.api_token.is_some()
@@ -1210,15 +1268,26 @@ impl Credentials {
                 continue;
             };
             if target.protocol == RemoteProtocol::Https {
-                // Один helper на сервер: вход первого адреса
-                let server = server_key(&target);
-                if auth.https.iter().any(|login| login.server == server) || entry.method == AuthMethod::Ssh {
+                if entry.method == AuthMethod::Ssh {
                     continue;
                 }
+                let server = server_key(&target);
                 let (Some(secret), Some(username)) = (self.decrypt(entry.secret.as_deref()), entry.username.as_deref().filter(|name| !name.is_empty())) else {
                     continue;
                 };
-                auth.https.push(HttpsAuth { server, username: username.to_owned(), secret });
+                let login = HttpsAuth { server: server.clone(), username: username.to_owned(), secret };
+                match auth.https.iter().find(|first| first.server == server) {
+                    // Вход сервера: первый адрес
+                    None => auth.https.push(login),
+                    Some(first) if first.username == login.username && first.secret == login.secret => {}
+                    // Другой вход на том же сервере — helper на адрес репозитория
+                    Some(_) => {
+                        let scoped = HttpsAuth { server: target.url.clone(), ..login };
+                        if !auth.by_path.iter().any(|known| known.server == scoped.server) {
+                            auth.by_path.push(scoped);
+                        }
+                    }
+                }
             } else if target.protocol == RemoteProtocol::Ssh && auth.ssh.is_none() && entry.method == AuthMethod::Ssh {
                 let Some(key_path) = entry.key_path.as_deref().filter(|path| !path.is_empty()) else {
                     continue;
@@ -1451,6 +1520,82 @@ mod tests {
         let ssh = SshAuth { key_path: "k".into(), passphrase: Some("СЕКРЕТ".into()) };
         let printed = format!("{input:?} {auth:?} {ssh:?} {:?}", LegacySecret::Value("СЕКРЕТ".into()));
         assert!(!printed.contains("СЕКРЕТ"), "{printed}");
+    }
+
+    #[test]
+    fn password_over_plain_http_is_refused_except_loopback() {
+        let f = fixture();
+        for method in ["password", "token"] {
+            let error = f.creds.save("http://git.company.ru/a/b.git", &login(method, "u", "p")).unwrap_err();
+            assert_eq!(error.code, ErrorCode::BadArgs, "{method}");
+        }
+        assert_eq!(f.secret_count(), 0, "отказ не оставляет следов в Keyring");
+        for url in ["http://localhost:3000/a/b.git", "http://127.0.0.1:8080/a/b.git", "http://[::1]:3000/a/b.git", "https://git.company.ru/a/b.git"] {
+            f.creds.save(url, &login("password", "u", "p")).unwrap_or_else(|error| panic!("{url}: {error:?}"));
+        }
+    }
+
+    #[test]
+    fn password_in_url_never_reaches_the_database() {
+        use target::without_password;
+        assert_eq!(without_password("https://user:pass@host/a.git"), "https://user@host/a.git");
+        assert_eq!(without_password("https://:pass@host:8443/a"), "https://host:8443/a");
+        assert_eq!(without_password("https://us%40er:p@ss@host/a"), "https://us%40er@host/a", "последний @ отделяет хост");
+        assert_eq!(without_password("https://user@host/a:b@c"), "https://user@host/a:b@c", "@ в пути не трогается");
+        for same in ["https://host/a.git", "git@host:a/b.git", "ssh://git@host:22/a", ""] {
+            assert_eq!(without_password(same), same);
+        }
+
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("state.db");
+        let db = Arc::new(Db::open(&path).unwrap());
+        let creds = Credentials::new(Arc::clone(&db), Arc::new(MemoryStore::default()));
+        creds.save("https://user:СЕКРЕТ-в-адресе@gitlab.company.ru/group/app.git", &login("password", "user", "p")).unwrap();
+        let stored: String = db.with(|conn| conn.query_row("SELECT url FROM credential_logins", [], |row| row.get(0))).unwrap();
+        assert_eq!(stored, "https://user@gitlab.company.ru/group/app.git");
+
+        // Запись, сделанная до исправления, чистится при следующем запуске
+        db.with(|conn| conn.execute("UPDATE credential_logins SET url = 'https://user:СЕКРЕТ@gitlab.company.ru/group/app.git'", [])).unwrap();
+        drop(creds);
+        let _creds = Credentials::new(Arc::clone(&db), Arc::new(MemoryStore::default()));
+        let stored: String = db.with(|conn| conn.query_row("SELECT url FROM credential_logins", [], |row| row.get(0))).unwrap();
+        assert_eq!(stored, "https://user@gitlab.company.ru/group/app.git");
+    }
+
+    #[test]
+    fn github_api_gets_only_token_like_passwords() {
+        let f = fixture();
+        f.creds.save("https://github.com/me/plain.git", &login("password", "me", "обычный-пароль")).unwrap();
+        f.creds.save("https://github.com/me/token.git", &login("password", "me", "ghp_abc")).unwrap();
+        f.creds.save("https://github.com/me/fine.git", &login("password", "me", "github_pat_abc")).unwrap();
+        let github = |path: &str| f.creds.api_login_for("github.com", path, Some(ServerKind::Github)).unwrap();
+        let plain = github("me/plain");
+        assert!(plain.repo.is_none(), "пароль учётной записи в API GitHub не уходит");
+        assert_eq!(plain.other.map(|other| other.method), Some(AuthMethod::Password), "интерфейс покажет, что вход не годится");
+        assert_eq!(github("me/token").repo.map(|login| login.secret).as_deref(), Some("ghp_abc"));
+        assert_eq!(github("me/fine").repo.map(|login| login.secret).as_deref(), Some("github_pat_abc"));
+        // Gitea пароли принимает
+        let gitea = f.creds.api_login_for("github.com", "me/plain", Some(ServerKind::Gitea)).unwrap();
+        assert_eq!(gitea.repo.map(|login| login.secret).as_deref(), Some("обычный-пароль"));
+    }
+
+    #[test]
+    fn second_repository_on_the_same_server_gets_its_own_login() {
+        let f = fixture();
+        let other = "https://gitlab.company.ru/group/other.git";
+        let same = "https://gitlab.company.ru/group/same.git";
+        f.creds.save(URL, &login("password", "первый", "п1")).unwrap();
+        f.creds.save(other, &login("password", "второй", "п2")).unwrap();
+        f.creds.save(same, &login("password", "первый", "п1")).unwrap();
+
+        let auth = f.creds.git_auth(&[URL, other, same, other]);
+        let pairs = |list: &[HttpsAuth]| list.iter().map(|l| (l.server.clone(), l.username.clone(), l.secret.clone())).collect::<Vec<_>>();
+        assert_eq!(pairs(&auth.https), [("https://gitlab.company.ru".to_owned(), "первый".to_owned(), "п1".to_owned())]);
+        assert_eq!(pairs(&auth.by_path), [(other.to_owned(), "второй".to_owned(), "п2".to_owned())], "тот же вход и повтор адреса не добавляются");
+
+        let reversed = f.creds.git_auth(&[other, URL]);
+        assert_eq!(reversed.https[0].username, "второй", "вход сервера — у первого адреса, как в 1.x");
+        assert_eq!(pairs(&reversed.by_path), [(URL.to_owned(), "первый".to_owned(), "п1".to_owned())]);
     }
 
     #[test]

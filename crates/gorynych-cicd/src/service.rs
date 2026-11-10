@@ -207,6 +207,29 @@ pub fn api_base_for(kind: CiProvider, host: &str, site: &str, override_base: Opt
     }
 }
 
+/// Облачный Bitbucket: пароли там больше не принимаются.
+fn is_bitbucket_cloud(host: &str) -> bool {
+    host.eq_ignore_ascii_case("bitbucket.org")
+}
+
+/// Заголовки авторизации для API GitHub, Gitea и Bitbucket.
+fn auth_headers(kind: CiProvider, host: &str, login: &ApiLogin) -> Vec<(String, String)> {
+    let is_token = login.via_api_token || login.method == AuthMethod::Token;
+    let secret = &login.secret;
+    match kind {
+        CiProvider::Github => vec![("Authorization".into(), format!("Bearer {secret}")), ("X-GitHub-Api-Version".into(), "2022-11-28".into())],
+        CiProvider::Gitea => vec![("Authorization".into(), if is_token { format!("token {secret}") } else { basic(login.username.as_deref().unwrap_or_default(), secret) })],
+        _ => {
+            // Отличие от 1.x. Bitbucket Cloud отключил пароли приложений 9 июня 2026: остались API-токены и токены доступа,
+            // оба принимают `Bearer`. Basic с логином для API-токена не годится (нужен e-mail), поэтому на bitbucket.org —
+            // всегда Bearer. Basic остаётся для Bitbucket Server / Data Center, где пароли работают.
+            let user = login.username.as_deref().filter(|user| !user.is_empty() && *user != "x-token-auth");
+            let basic_user = user.filter(|_| !is_token && !is_bitbucket_cloud(host));
+            vec![("Authorization".into(), match basic_user { Some(user) => basic(user, secret), None => format!("Bearer {secret}") })]
+        }
+    }
+}
+
 fn basic(user: &str, secret: &str) -> String {
     format!("Basic {}", STANDARD.encode(format!("{user}:{secret}")))
 }
@@ -440,19 +463,14 @@ impl CicdService {
     }
 
     fn http_ctx(&self, r: &ResolvedRemote, kind: CiProvider, login: &ApiLogin, root: &Path) -> Ctx {
-        let is_token = login.via_api_token || login.method == AuthMethod::Token;
-        let secret = &login.secret;
-        let headers: Vec<(String, String)> = match kind {
-            CiProvider::Github => vec![("Authorization".into(), format!("Bearer {secret}")), ("X-GitHub-Api-Version".into(), "2022-11-28".into())],
-            CiProvider::Gitea => vec![("Authorization".into(), if is_token { format!("token {secret}") } else { basic(login.username.as_deref().unwrap_or_default(), secret) })],
-            _ => {
-                let user = login.username.as_deref().filter(|user| !user.is_empty() && *user != "x-token-auth");
-                vec![("Authorization".into(), match user.filter(|_| !is_token) { Some(user) => basic(user, secret), None => format!("Bearer {secret}") })]
-            }
-        };
+        let headers = auth_headers(kind, &r.host, login);
         let (label, scope_hint) = match kind {
             CiProvider::Github => ("GitHub", t("Токену нужны права repo и workflow (классический) или Actions, Administration и Secrets (fine-grained)", &[])),
             CiProvider::Gitea => ("Gitea", t("Токену нужны права write:repository (и read:user)", &[])),
+            _ if is_bitbucket_cloud(&r.host) => (
+                "Bitbucket",
+                t("API-токену Bitbucket нужны права read:repository:bitbucket и read:pipeline:bitbucket, для действий — write:pipeline:bitbucket", &[]),
+            ),
             _ => ("Bitbucket", t("Паролю приложения нужны права Pipelines: Read/Write и Repositories: Read", &[])),
         };
         let conf_base = r.conf.as_ref().and_then(|conf| conf.api_base.as_deref());
@@ -1142,6 +1160,27 @@ mod tests {
         assert_eq!(api(CiProvider::Github, "g", Some("https://api.x")).unwrap(), "https://api.x");
         assert_eq!(api(CiProvider::Gitea, "g", Some("https://x")).unwrap(), "https://x/api/v1");
         assert_eq!(api(CiProvider::Bitbucket, "g", Some("https://x")).unwrap(), "https://x");
+    }
+
+    #[test]
+    fn bitbucket_cloud_always_gets_bearer() {
+        let login = |method, username: &str| ApiLogin {
+            secret: "s".into(),
+            method,
+            via_api_token: false,
+            username: Some(username.into()),
+            key: "k".into(),
+            url: None,
+            saved_at: None,
+            shared: false,
+        };
+        let header = |host, login: &ApiLogin| auth_headers(CiProvider::Bitbucket, host, login)[0].1.clone();
+        let password = login(AuthMethod::Password, "me");
+        assert_eq!(header("bitbucket.org", &password), "Bearer s", "пароль на bitbucket.org — это API-токен");
+        assert_eq!(header("BitBucket.org", &password), "Bearer s");
+        assert_eq!(header("bitbucket.company.ru", &password), basic("me", "s"), "Server / Data Center принимает пароль");
+        assert_eq!(header("bitbucket.company.ru", &login(AuthMethod::Token, "me")), "Bearer s");
+        assert_eq!(header("bitbucket.company.ru", &login(AuthMethod::Password, "x-token-auth")), "Bearer s");
     }
 
     #[test]

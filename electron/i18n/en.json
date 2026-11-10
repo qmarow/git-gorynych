@@ -4099,5 +4099,8 @@
  "Не найден ни один из известных терминалов. Откройте папку вручную.": "None of the known terminals was found. Open the folder manually.",
  "Командная строка": "Command Prompt",
  "Не удалось открыть папку": "Couldn't open the folder",
- "<0>Язык интерфейса</0> — Русский или English: Настройки → Оформление → Язык. Окно перерисуется сразу, меню, подсказки и сообщения об ошибках сменятся целиком; вкладки и настройки сохранятся.": "<0>Interface language</0> — Русский or English: Settings → Appearance → Language. The window redraws immediately, and menus, tooltips and error messages are all switched; tabs and settings are kept."
+ "<0>Язык интерфейса</0> — Русский или English: Настройки → Оформление → Язык. Окно перерисуется сразу, меню, подсказки и сообщения об ошибках сменятся целиком; вкладки и настройки сохранятся.": "<0>Interface language</0> — Русский or English: Settings → Appearance → Language. The window redraws immediately, and menus, tooltips and error messages are all switched; tabs and settings are kept.",
+ "По адресу http:// пароль и токен передаются открытым текстом": "Over http:// the password or token is sent in plain text",
+ "Смените адрес remote на https:// или войдите SSH-ключом.": "Change the remote address to https:// or sign in with an SSH key.",
+ "API-токену Bitbucket нужны права read:repository:bitbucket и read:pipeline:bitbucket, для действий — write:pipeline:bitbucket": "The Bitbucket API token needs the read:repository:bitbucket and read:pipeline:bitbucket scopes, and write:pipeline:bitbucket for actions"
 }

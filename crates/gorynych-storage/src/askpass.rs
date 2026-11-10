@@ -92,7 +92,7 @@ fn answer(sessions: &Sessions, line: &RequestLine) -> AuthResponse {
         return AuthResponse::Denied;
     };
     match line.request {
-        AuthRequest::Https(index) => auth.https.get(index).map_or(AuthResponse::Denied, |login| AuthResponse::Https {
+        AuthRequest::Https(index) => auth.https_logins().nth(index).map_or(AuthResponse::Denied, |login| AuthResponse::Https {
             username: login.username.clone(),
             password: login.secret.clone(),
         }),
@@ -188,7 +188,7 @@ impl AuthBroker {
     pub fn session(&self, auth: GitAuth) -> Result<AuthSession> {
         let token = random_hex()?;
         let env = session_env(&self.helper, &self.endpoint, &token, &auth, config_base());
-        let registered = !auth.https.is_empty() || auth.ssh.as_ref().is_some_and(|ssh| ssh.passphrase.is_some());
+        let registered = auth.https_logins().next().is_some() || auth.ssh.as_ref().is_some_and(|ssh| ssh.passphrase.is_some());
         if registered {
             lock(&self.sessions).insert(token.clone(), auth);
         }
@@ -240,7 +240,9 @@ fn session_env(helper: &Path, endpoint: &str, token: &str, auth: &GitAuth, base:
     let quoted = sh_quote(&posix);
     let mut env = Vec::new();
 
-    for (index, login) in auth.https.iter().enumerate() {
+    // Входы по адресу идут после серверных: их пустое значение сбрасывает и helper сервера, который git тоже сочтёт подходящим
+    let mut count = 0;
+    for (index, login) in auth.https_logins().enumerate() {
         let key = format!("credential.{}.helper", login.server);
         let first = base + index * 2;
         // Пусто — сбросить helpers (Git Credential Manager и т.п.) для этого хоста; затем наш
@@ -248,9 +250,10 @@ fn session_env(helper: &Path, endpoint: &str, token: &str, auth: &GitAuth, base:
         env.push((format!("GIT_CONFIG_VALUE_{first}"), String::new()));
         env.push((format!("GIT_CONFIG_KEY_{}", first + 1), key));
         env.push((format!("GIT_CONFIG_VALUE_{}", first + 1), format!("!{quoted} {FLAG_CRED_HELPER} {index}")));
+        count += 1;
     }
-    if !auth.https.is_empty() {
-        env.push(("GIT_CONFIG_COUNT".to_owned(), (base + auth.https.len() * 2).to_string()));
+    if count > 0 {
+        env.push(("GIT_CONFIG_COUNT".to_owned(), (base + count * 2).to_string()));
     }
 
     let mut with_passphrase = false;
@@ -264,7 +267,7 @@ fn session_env(helper: &Path, endpoint: &str, token: &str, auth: &GitAuth, base:
             env.push((ENV_ASKPASS.to_owned(), "1".to_owned()));
         }
     }
-    if !auth.https.is_empty() || with_passphrase {
+    if count > 0 || with_passphrase {
         env.push((ENV_ENDPOINT.to_owned(), endpoint.to_owned()));
         env.push((ENV_TOKEN.to_owned(), token.to_owned()));
     }
@@ -375,6 +378,7 @@ mod tests {
     fn env_matches_1x_layout_without_secrets() {
         let auth = GitAuth {
             https: vec![https("https://a.example", "u0", "СЕКРЕТ0"), https("http://b.example:8080", "u1", "СЕКРЕТ1")],
+            by_path: vec![],
             ssh: Some(SshAuth { key_path: r"C:\k\id".into(), passphrase: Some("СЕКРЕТ2".into()) }),
         };
         let env = session_env(Path::new(r"C:\Program Files\Горыныч\it's.exe"), "pipe", "TOKEN", &auth, 3);
@@ -406,13 +410,30 @@ mod tests {
     }
 
     #[test]
+    fn login_by_path_comes_after_server_logins() {
+        let auth = GitAuth {
+            https: vec![https("https://a.example", "u0", "p0")],
+            by_path: vec![https("https://a.example/group/other.git", "u1", "p1")],
+            ssh: None,
+        };
+        let env = session_env(Path::new("x"), "pipe", "TOKEN", &auth, 0);
+        assert_eq!(value(&env, "GIT_CONFIG_COUNT"), Some("4"));
+        assert_eq!(value(&env, "GIT_CONFIG_KEY_0"), Some("credential.https://a.example.helper"));
+        // Пустое значение по адресу сбрасывает и helper сервера: git применяет оба шаблона по порядку
+        assert_eq!(value(&env, "GIT_CONFIG_KEY_2"), Some("credential.https://a.example/group/other.git.helper"));
+        assert_eq!(value(&env, "GIT_CONFIG_VALUE_2"), Some(""));
+        assert_eq!(value(&env, "GIT_CONFIG_VALUE_3"), Some("!'x' --internal-cred-helper 1"));
+        assert_eq!(value(&env, ENV_TOKEN), Some("TOKEN"));
+    }
+
+    #[test]
     fn nothing_to_pass_gives_empty_env() {
         assert!(session_env(Path::new("x"), "p", "t", &GitAuth::default(), 0).is_empty());
     }
 
     #[test]
     fn ssh_key_without_passphrase_needs_no_channel() {
-        let auth = GitAuth { https: vec![], ssh: Some(SshAuth { key_path: "/k".into(), passphrase: None }) };
+        let auth = GitAuth { https: vec![], by_path: vec![], ssh: Some(SshAuth { key_path: "/k".into(), passphrase: None }) };
         let env = session_env(Path::new("x"), "p", "t", &auth, 0);
         assert_eq!(env.len(), 1);
         assert_eq!(value(&env, "GIT_SSH_COMMAND"), Some(ssh_command("/k", false).as_str()));
@@ -424,13 +445,15 @@ mod tests {
         let session = broker
             .session(GitAuth {
                 https: vec![https("https://a", "u0", "p0"), https("https://b", "u1", "p1")],
+                by_path: vec![https("https://a/group/other.git", "u2", "p2")],
                 ssh: Some(SshAuth { key_path: "/k".into(), passphrase: Some("pp".into()) }),
             })
             .unwrap();
         let token = session_token(&session);
         assert_eq!(ask_https(&broker, &token, 0), Some(("u0".into(), "p0".into())));
         assert_eq!(ask_https(&broker, &token, 1), Some(("u1".into(), "p1".into())));
-        assert_eq!(ask_https(&broker, &token, 2), None);
+        assert_eq!(ask_https(&broker, &token, 2), Some(("u2".into(), "p2".into())), "вход по адресу — после серверных");
+        assert_eq!(ask_https(&broker, &token, 3), None);
         assert_eq!(ask_passphrase(&broker, &token).as_deref(), Some("pp"));
 
         drop(session);
@@ -441,8 +464,8 @@ mod tests {
     #[test]
     fn wrong_token_and_other_sessions_get_nothing() {
         let broker = broker();
-        let first = broker.session(GitAuth { https: vec![https("https://a", "u0", "p0")], ssh: None }).unwrap();
-        let second = broker.session(GitAuth { https: vec![https("https://b", "u1", "p1")], ssh: None }).unwrap();
+        let first = broker.session(GitAuth { https: vec![https("https://a", "u0", "p0")], by_path: vec![], ssh: None }).unwrap();
+        let second = broker.session(GitAuth { https: vec![https("https://b", "u1", "p1")], by_path: vec![], ssh: None }).unwrap();
         assert_ne!(session_token(&first), session_token(&second));
         assert_eq!(ask_https(&broker, "", 0), None);
         assert_eq!(ask_https(&broker, "неверный", 0), None);
@@ -454,7 +477,7 @@ mod tests {
     #[test]
     fn broken_request_is_denied_and_broker_survives() {
         let broker = broker();
-        let session = broker.session(GitAuth { https: vec![https("https://a", "u", "p")], ssh: None }).unwrap();
+        let session = broker.session(GitAuth { https: vec![https("https://a", "u", "p")], by_path: vec![], ssh: None }).unwrap();
         for garbage in ["не json\n".to_owned(), "{}\n".to_owned(), format!("{}\n", "x".repeat(MAX_REQUEST as usize * 2))] {
             let mut stream = Stream::connect(endpoint_name(&broker.endpoint).unwrap()).unwrap();
             stream.write_all(garbage.as_bytes()).unwrap();
@@ -468,7 +491,7 @@ mod tests {
     #[test]
     fn silent_client_does_not_block_others() {
         let broker = broker();
-        let session = broker.session(GitAuth { https: vec![https("https://a", "u", "p")], ssh: None }).unwrap();
+        let session = broker.session(GitAuth { https: vec![https("https://a", "u", "p")], by_path: vec![], ssh: None }).unwrap();
         let _silent = Stream::connect(endpoint_name(&broker.endpoint).unwrap()).unwrap();
         assert!(ask_https(&broker, &session_token(&session), 0).is_some());
     }
