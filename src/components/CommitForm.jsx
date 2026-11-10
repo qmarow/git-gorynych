@@ -17,8 +17,8 @@ import {
   toggleBreaking,
   toggleTicket,
   toggleType,
-} from '../lib/commitMsg.js';
-import { DEFAULT_COMMIT_PREFS, setCommitPrefs, useCommitPrefs } from '../lib/commitPrefs.js';
+} from '../lib/commitMsg.ts';
+import { DEFAULT_COMMIT_PREFS, setCommitPrefs, useCommitPrefs } from '../lib/commitPrefs.ts';
 import { Switch } from './Guard.jsx';
 import { isMod, kb } from '../lib/platform.js';
 import { plural } from '../lib/format.ts';

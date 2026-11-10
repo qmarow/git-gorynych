@@ -8,7 +8,13 @@ import { t as tr } from '../i18n/index.ts';
  *   prefix   type scope  breaking  subject suffix
  */
 
-export const CC_TYPES = [
+export interface CcType {
+  id: string;
+  hint: string;
+  color: string;
+}
+
+export const CC_TYPES: readonly CcType[] = [
   { id: 'feat', hint: tr('Новая возможность'), color: '#3cf0a0' },
   { id: 'fix', hint: tr('Исправление ошибки'), color: '#f25d5d' },
   { id: 'refactor', hint: tr('Переделка кода без изменения поведения'), color: '#b98cff' },
@@ -25,13 +31,23 @@ const KNOWN_TYPES = new Set([...CC_TYPES.map((t) => t.id), 'build', 'ci', 'rever
 const TICKET_SHAPE = '(?:[A-Z][A-Z0-9]{1,9}-\\d+|#\\d+)';
 const SUFFIX_RE = new RegExp(`(?:^|\\s)\\((${TICKET_SHAPE})\\)\\s*$`);
 
-export function parseSummary(text) {
+/** Части summary. */
+export interface SummaryParts {
+  prefix: string | null;
+  type: string | null;
+  scope: string | null;
+  breaking: boolean;
+  subject: string;
+  suffix: string | null;
+}
+
+export function parseSummary(text: unknown): SummaryParts {
   let rest = String(text ?? '').replace(/^\s+/, '');
-  let prefix = null;
-  let type = null;
-  let scope = null;
+  let prefix: string | null = null;
+  let type: string | null = null;
+  let scope: string | null = null;
   let breaking = false;
-  let suffix = null;
+  let suffix: string | null = null;
 
   const m1 = rest.match(/^\[([^\]\n]{1,40})\]\s*/);
   if (m1) {
@@ -54,20 +70,20 @@ export function parseSummary(text) {
 }
 
 /** Начало summary до текста (префиксы) — сюда ставится курсор после клика по чипсу */
-export function headOf(p) {
+export function headOf(p: SummaryParts): string {
   let out = '';
   if (p.prefix) out += `[${p.prefix}] `;
   if (p.type) out += `${p.type}${p.scope ? `(${p.scope})` : ''}${p.breaking ? '!' : ''}: `;
   return out;
 }
 
-export function buildSummary(p) {
+export function buildSummary(p: SummaryParts): string {
   // Номер в конце всегда отделён пробелом — даже при пустом тексте курсор стоит перед ним
   return headOf(p) + p.subject + (p.suffix ? ` (${p.suffix})` : '');
 }
 
 /** Позиция курсора: конец текста, перед « (TICKET)» */
-export function caretOf(p) {
+export function caretOf(p: SummaryParts): number {
   return headOf(p).length + p.subject.length;
 }
 
@@ -90,12 +106,12 @@ const VERSION_PREFIXES = new Set(['release', 'releases', 'rel', 'version', 'vers
  *   bugfix/1234-fix → #1234,  issue-42 → #42,  fix/#77 → #77.
  * pattern — своё регулярное выражение (первая группа или всё совпадение).
  */
-export function extractTicket(branch, pattern = '') {
+export function extractTicket(branch: unknown, pattern = ''): string | null {
   const name = String(branch ?? '').trim();
   if (!name) return null;
 
   if (pattern && pattern.trim()) {
-    let re;
+    let re: RegExp | null;
     try {
       re = new RegExp(pattern.trim(), 'i');
     } catch {
@@ -141,27 +157,29 @@ export function extractTicket(branch, pattern = '') {
   return null;
 }
 
-export const TICKET_FORMATS = [
+export type TicketFormat = 'prefix' | 'scope' | 'suffix' | 'footer';
+
+export const TICKET_FORMATS: readonly { id: TicketFormat; label: string; hint: string }[] = [
   { id: 'prefix', label: '[PROJ-123] feat: …', hint: tr('В квадратных скобках в начале') },
   { id: 'scope', label: 'feat(PROJ-123): …', hint: tr('Вместо scope; без типа — в скобках в начале') },
   { id: 'suffix', label: 'feat: … (PROJ-123)', hint: tr('В конце, как в GitHub') },
   { id: 'footer', label: 'Refs: PROJ-123', hint: tr('Отдельной строкой в конце Description') },
 ];
 
-const same = (a, b) => Boolean(a && b) && a.toLowerCase() === b.toLowerCase();
-const escapeRe = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-const footerRe = (t) => new RegExp(`^(?:Refs|Closes|Fixes|Resolves):\\s*${escapeRe(t)}\\s*$`, 'im');
+const same = (a: string | null | undefined, b: string | null | undefined) => Boolean(a && b) && a!.toLowerCase() === b!.toLowerCase();
+const escapeRe = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+const footerRe = (t: string) => new RegExp(`^(?:Refs|Closes|Fixes|Resolves):\\s*${escapeRe(t)}\\s*$`, 'im');
 
-export function ticketInSummary(p, t) {
+export function ticketInSummary(p: SummaryParts, t: string | null | undefined): boolean {
   return Boolean(t) && (same(p.prefix, t) || same(p.suffix, t) || same(p.scope, t));
 }
 
-export function hasTicket(summary, description, t) {
+export function hasTicket(summary: unknown, description: string | null | undefined, t: string | null | undefined): boolean {
   if (!t) return false;
   return ticketInSummary(parseSummary(summary), t) || footerRe(t).test(description ?? '');
 }
 
-function stripFromParts(p, t) {
+function stripFromParts(p: SummaryParts, t: string): SummaryParts {
   return {
     ...p,
     prefix: same(p.prefix, t) ? null : p.prefix,
@@ -170,52 +188,70 @@ function stripFromParts(p, t) {
   };
 }
 
-function placeInParts(p, t, format) {
+function placeInParts(p: SummaryParts, t: string, format: unknown): SummaryParts {
   if (format === 'suffix') return { ...p, suffix: t };
   if (format === 'scope' && p.type && !p.scope) return { ...p, scope: t };
   // prefix — и запасной вариант для scope, когда типа нет или scope уже занят
   return { ...p, prefix: t };
 }
 
-function stripFooter(desc, t) {
+function stripFooter(desc: string | null | undefined, t: string): string {
   const lines = String(desc ?? '').split('\n');
   const re = footerRe(t);
   const kept = lines.filter((l) => !re.test(l));
   return kept.join('\n').replace(/\s+$/, '');
 }
 
-function addFooter(desc, t) {
+function addFooter(desc: string | null | undefined, t: string): string {
   const d = String(desc ?? '').replace(/\s+$/, '');
   return d ? `${d}\n\nRefs: ${t}` : `Refs: ${t}`;
 }
 
+/** Номер задачи формы коммита и где его держать. */
+export interface TicketContext {
+  ticket?: string | null;
+  format?: TicketFormat | string;
+}
+
+export interface SummaryEdit {
+  summary: string;
+  caret: number;
+  parts: SummaryParts;
+}
+
 /** Изменить summary, сохранив номер задачи на «своём» месте (тип мог появиться или исчезнуть) */
-function rework(summary, ctx, fn) {
+function rework(summary: unknown, ctx: TicketContext | null | undefined, fn: (q: SummaryParts) => SummaryParts): SummaryEdit {
   const p = parseSummary(summary);
   const t = ctx?.ticket;
-  const att = t && ctx.format !== 'footer' && ticketInSummary(p, t);
+  const att = t && ctx!.format !== 'footer' && ticketInSummary(p, t);
   let q = att ? stripFromParts(p, t) : p;
   q = fn(q);
-  if (att) q = placeInParts(q, t, ctx.format);
+  if (att) q = placeInParts(q, t, ctx!.format);
   return { summary: buildSummary(q), caret: caretOf(q), parts: q };
 }
 
 /** Клик по чипсу типа: поставить, заменить или (повторный клик) убрать */
-export function toggleType(summary, type, ctx) {
+export function toggleType(summary: unknown, type: string, ctx?: TicketContext | null): SummaryEdit {
   return rework(summary, ctx, (q) => (q.type === type ? { ...q, type: null, scope: null, breaking: false } : { ...q, type }));
 }
 
-export function setScope(summary, scope, ctx) {
+export function setScope(summary: unknown, scope: unknown, ctx?: TicketContext | null): SummaryEdit {
   const s = String(scope ?? '').trim().replace(/[()\n]/g, '');
   return rework(summary, ctx, (q) => (q.type ? { ...q, scope: s || null } : q));
 }
 
-export function toggleBreaking(summary, ctx) {
+export function toggleBreaking(summary: unknown, ctx?: TicketContext | null): SummaryEdit {
   return rework(summary, ctx, (q) => (q.type ? { ...q, breaking: !q.breaking } : q));
 }
 
+export interface TicketEdit {
+  summary: string;
+  description: string;
+  caret: number;
+}
+
 /** Добавить или убрать номер задачи. → { summary, description, caret } */
-export function toggleTicket(summary, description, t, format) {
+export function toggleTicket(summary: unknown, description: string | null | undefined, t: string, format: unknown): TicketEdit & { added: boolean } {
   const p = parseSummary(summary);
   if (hasTicket(summary, description, t)) {
     const q = stripFromParts(p, t);
@@ -224,17 +260,20 @@ export function toggleTicket(summary, description, t, format) {
   return { ...attachTicket(summary, description, t, format), added: true };
 }
 
-export function attachTicket(summary, description, t, format) {
+/**
+ * С форматом `footer` summary возвращается как пришло (в 1.x — без `String()`): для строки из поля ввода это одно и то же.
+ */
+export function attachTicket(summary: unknown, description: string | null | undefined, t: string, format: unknown): TicketEdit {
   if (format === 'footer') {
     const p = parseSummary(summary);
-    return { summary, description: addFooter(description, t), caret: caretOf(p) };
+    return { summary: summary as string, description: addFooter(description, t), caret: caretOf(p) };
   }
   const q = placeInParts(parseSummary(summary), t, format);
   return { summary: buildSummary(q), description: description ?? '', caret: caretOf(q) };
 }
 
 /** Есть ли что коммитить: текст без префиксов и номера */
-export function subjectOf(summary) {
+export function subjectOf(summary: unknown): string {
   return parseSummary(summary).subject.trim();
 }
 
@@ -243,18 +282,18 @@ export function subjectOf(summary) {
 const GENERIC_DIRS = new Set(['src', 'source', 'lib', 'libs', 'app', 'apps', 'packages', 'pkg', 'modules', 'internal', 'cmd', 'main', 'java', 'kotlin', 'resources']);
 
 /** Предложения scope по папкам staged-файлов: общая папка, затем самые частые */
-export function suggestScopes(paths, max = 6) {
-  const list = (paths ?? []).filter(Boolean).map((p) => p.replace(/\\/g, '/'));
+export function suggestScopes(paths: readonly (string | null | undefined)[] | null | undefined, max = 6): string[] {
+  const list = (paths ?? []).filter((p): p is string => Boolean(p)).map((p) => p.replace(/\\/g, '/'));
   if (!list.length) return [];
-  const dirsOf = (p) => p.split('/').slice(0, -1);
-  const meaningful = (dirs) => {
+  const dirsOf = (p: string) => p.split('/').slice(0, -1);
+  const meaningful = (dirs: string[]) => {
     const m = dirs.filter((d) => !GENERIC_DIRS.has(d.toLowerCase()) && !d.startsWith('.'));
     // src/lib/x.js — все папки «общие», но вложенная всё же что-то значит
     return m.length || dirs.length < 2 ? m : [dirs[dirs.length - 1]];
   };
 
-  const out = [];
-  const add = (s) => {
+  const out: string[] = [];
+  const add = (s: string | undefined) => {
     if (s && !out.some((x) => x.toLowerCase() === s.toLowerCase())) out.push(s);
   };
 
@@ -270,12 +309,12 @@ export function suggestScopes(paths, max = 6) {
   if (cm.length) add(cm[cm.length - 1]);
 
   // Частота первой осмысленной папки каждого файла
-  const freq = new Map();
+  const freq = new Map<string, number>();
   for (const p of list) {
     const m = meaningful(dirsOf(p));
-    let key = m[0];
+    let key: string | undefined = m[0];
     if (!key) {
-      const base = p.split('/').pop();
+      const base = p.split('/').pop()!;
       if (/^(package(-lock)?\.json|yarn\.lock|pnpm-lock\.yaml|requirements.*\.txt|poetry\.lock|go\.(mod|sum)|Cargo\.(toml|lock)|Gemfile(\.lock)?)$/i.test(base)) key = 'deps';
       else if (/^readme/i.test(base) || /\.md$/i.test(base)) key = 'docs';
       else if (/^\.?(gitlab-ci\.yml|github)/i.test(base) || p.startsWith('.github/')) key = 'ci';
@@ -288,7 +327,13 @@ export function suggestScopes(paths, max = 6) {
 
 /* ---------------- Шаблоны описания ---------------- */
 
-export const DEFAULT_TEMPLATES = [
+export interface CommitTemplate {
+  id: string;
+  name: string;
+  body: string;
+}
+
+export const DEFAULT_TEMPLATES: readonly CommitTemplate[] = [
   {
     id: 'tpl-what-how',
     name: tr('Что сделано / Как проверить'),
@@ -306,18 +351,18 @@ export const DEFAULT_TEMPLATES = [
   },
 ];
 
-export function fillTemplate(body, vars) {
-  return String(body ?? '').replace(/\{(ticket|branch)\}/g, (_, k) => vars?.[k] ?? '');
+export function fillTemplate(body: unknown, vars?: { ticket?: string | null; branch?: string | null } | null): string {
+  return String(body ?? '').replace(/\{(ticket|branch)\}/g, (_, k: 'ticket' | 'branch') => vars?.[k] ?? '');
 }
 
 const FOOTER_LINE = /^(?:Refs|Closes|Fixes|Resolves|BREAKING[ -]CHANGE|Co-authored-by|Signed-off-by):\s/i;
 
 /** Вставить шаблон в описание: перед строками-футерами (Refs: …), через пустую строку. → { description, caret } */
-export function insertTemplate(description, body) {
+export function insertTemplate(description: unknown, body: unknown): { description: string; caret: number } {
   const lines = String(description ?? '').replace(/\s+$/, '').split('\n');
-  const footer = [];
+  const footer: string[] = [];
   while (lines.length && (FOOTER_LINE.test(lines[lines.length - 1]) || (!lines[lines.length - 1].trim() && footer.length))) {
-    const l = lines.pop();
+    const l = lines.pop()!;
     if (l.trim()) footer.unshift(l);
   }
   const main = lines.join('\n').replace(/\s+$/, '');
