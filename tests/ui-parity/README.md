@@ -42,6 +42,12 @@ node tests/ui-parity/lib-small.mjs $old $PWD
 | `lib-batch2.mjs` | `inlineDiff`, `cron`, `servers`, `ansi` | `e84e6c0` |
 | `lib-commit.mjs` | `commitMsg`, `commitPrefs` | `1b412f6` |
 | `lib-batch3.mjs` | `ciSnippets`, `platform`, `guardRules` | `7c8e902` |
+| `lib-highlight.mjs` | `highlight` (корпус — настоящие файлы репозитория) | `a05d364` |
+| `lib-actions.mjs` | `actions` | `8282755` |
+| `lib-appearance.mjs` | `appearance` (подставные `document` и `matchMedia`) | `cf2a17a` |
+| `lib-syntax.mjs` | `syntax.tsx` (обе копии через esbuild; сравнение элементов вместе с `key`) | `d68beaa` |
+
+Для `syntax` прежний файл — `lib/syntax.jsx` (расширение `.jsx`, а не `.js`).
 
 Проверять сами сверки: внести в старую копию заведомое изменение и убедиться, что сверка падает.
 Ключи React (`key`) в `renderToStaticMarkup` не видны, такое изменение сверка не ловит.
