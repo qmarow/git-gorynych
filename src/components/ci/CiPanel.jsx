@@ -30,7 +30,7 @@ import Runners from './Runners.jsx';
 import Secrets from './Secrets.jsx';
 import { ACTIVE_STATUSES, SOURCE_LABELS, StatusIcon, StatusPill, statusInfo } from '../PipelineStatus.jsx';
 import { ActionButton, ConfirmAction, Duration, ErrorNote, IconBtn, ListSkeleton, SegButton, formatSize, usePolling } from './common.jsx';
-import { t as tr, tj } from '../../i18n/index.js';
+import { t as tr, tj } from '../../i18n/index.ts';
 
 const api = window.api;
 

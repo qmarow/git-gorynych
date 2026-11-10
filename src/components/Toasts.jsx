@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { AlertTriangle, CheckCircle2, ChevronDown, ChevronRight, Info, X } from 'lucide-react';
 import { kb } from '../lib/platform.js';
-import { tj } from '../i18n/index.js';
+import { tj } from '../i18n/index.ts';
 
 const STYLES = {
   success: { icon: CheckCircle2, accent: 'text-gk-green', bar: 'bg-gk-green' },

@@ -1,7 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { Check, GripVertical, Lock, RotateCcw } from 'lucide-react';
-import { COLUMNS, DATE_FORMAT_OPTIONS, DENSITY_OPTIONS, NODE_STYLE_OPTIONS, columnById } from '../lib/graphView.js';
-import { t, tj } from '../i18n/index.js';
+import { COLUMNS, DATE_FORMAT_OPTIONS, DENSITY_OPTIONS, NODE_STYLE_OPTIONS, columnById } from '../lib/graphView.ts';
+import { t, tj } from '../i18n/index.ts';
 
 /**
  * Меню настройки вида таблицы коммитов: правый клик по шапке или значок в её правом углу.

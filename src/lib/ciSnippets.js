@@ -1,4 +1,4 @@
-import { t } from '../i18n/index.js';
+import { t } from '../i18n/index.ts';
 // Шаблоны шагов для редактора CI: вставляются в позицию курсора с отступом текущей строки.
 // Для GitHub/Gitea — шаги (steps), для GitLab — ключи задания или целое задание, для Bitbucket — шаги.
 

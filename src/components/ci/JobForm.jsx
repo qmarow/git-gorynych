@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { ChevronDown, ChevronRight, Loader2, Plus, Save, Trash2, X } from 'lucide-react';
-import { t, tj } from '../../i18n/index.js';
+import { t, tj } from '../../i18n/index.ts';
 
 const WHEN_OPTIONS = [
   ['on_success', t('Если предыдущие этапы успешны (по умолчанию)')],

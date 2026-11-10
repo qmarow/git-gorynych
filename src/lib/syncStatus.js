@@ -1,5 +1,5 @@
 import { useSyncExternalStore } from 'react';
-import { t } from '../i18n/index.js';
+import { t } from '../i18n/index.ts';
 
 /**
  * Режимы фоновой проверки сервера и её текущее состояние.

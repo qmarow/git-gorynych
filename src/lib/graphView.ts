@@ -1,5 +1,6 @@
 import { useCallback, useState } from 'react';
-import { t } from '../i18n/index.js';
+import { t } from '../i18n/index.ts';
+import type { DensityId } from './graphLayout.ts';
 
 /**
  * Настройки вида таблицы коммитов: какие колонки видны, в каком порядке,
@@ -7,7 +8,25 @@ import { t } from '../i18n/index.js';
  * Ширины колонок живут отдельно (useStoredWidth) — их сбрасывает «Сбросить ширину и вид колонок».
  */
 
-export const COLUMNS = [
+export type ColumnId = 'refs' | 'graph' | 'message' | 'sha' | 'author' | 'date';
+export type DateFormat = 'absolute' | 'relative';
+export type NodeStyle = 'avatar' | 'dots';
+
+export interface Column {
+  id: ColumnId;
+  label: string;
+  menuLabel?: string;
+  /** Всегда видна и забирает свободное место. */
+  locked?: boolean;
+}
+
+export interface ViewOption<Id extends string> {
+  id: Id;
+  label: string;
+  hint?: string;
+}
+
+export const COLUMNS: readonly Column[] = [
   { id: 'refs', label: t('Ветка / тег') },
   { id: 'graph', label: t('Граф') },
   { id: 'message', label: t('Сообщение коммита'), locked: true }, // всегда видна и забирает свободное место
@@ -15,24 +34,32 @@ export const COLUMNS = [
   { id: 'author', label: t('Автор') },
   { id: 'date', label: t('Дата / время') },
 ];
-export const COLUMN_IDS = COLUMNS.map((c) => c.id);
-export const columnById = (id) => COLUMNS.find((c) => c.id === id);
+export const COLUMN_IDS: readonly ColumnId[] = COLUMNS.map((c) => c.id);
+export const columnById = (id: unknown): Column | undefined => COLUMNS.find((c) => c.id === id);
 
-export const DENSITY_OPTIONS = [
+export const DENSITY_OPTIONS: readonly ViewOption<DensityId>[] = [
   { id: 'compact', label: t('Компактный'), hint: '26px' },
   { id: 'standard', label: t('Стандартный'), hint: '34px' },
   { id: 'relaxed', label: t('Свободный'), hint: '42px' },
 ];
-export const DATE_FORMAT_OPTIONS = [
+export const DATE_FORMAT_OPTIONS: readonly ViewOption<DateFormat>[] = [
   { id: 'absolute', label: t('Абсолютный'), hint: '26.10.26 23:13' },
   { id: 'relative', label: t('Относительный'), hint: t('15 мин назад, вчера') },
 ];
-export const NODE_STYLE_OPTIONS = [
+export const NODE_STYLE_OPTIONS: readonly ViewOption<NodeStyle>[] = [
   { id: 'avatar', label: t('Аватары / инициалы') },
   { id: 'dots', label: t('Компактные точки') },
 ];
 
-export const DEFAULT_VIEW = {
+export interface GraphView {
+  order: ColumnId[];
+  hidden: ColumnId[];
+  density: DensityId;
+  dateFormat: DateFormat;
+  nodeStyle: NodeStyle;
+}
+
+export const DEFAULT_VIEW: Readonly<GraphView> = {
   order: ['refs', 'graph', 'message', 'sha', 'author', 'date'],
   hidden: ['sha'],
   density: 'standard',
@@ -41,14 +68,18 @@ export const DEFAULT_VIEW = {
 };
 
 const KEY = 'graph.view.v1';
-const pick = (value, options, fallback) => (options.some((o) => o.id === value) ? value : fallback);
+const pick = <Id extends string>(value: unknown, options: readonly ViewOption<Id>[], fallback: Id): Id =>
+  options.some((o) => o.id === value) ? (value as Id) : fallback;
+const isColumn = (id: unknown): id is ColumnId => COLUMN_IDS.includes(id as ColumnId);
 
 /** Приводит сохранённое к допустимому виду: все колонки ровно по разу, сообщение всегда видно */
-export function normalizeView(raw) {
-  const v = raw && typeof raw === 'object' ? raw : {};
-  const order = Array.isArray(v.order) ? v.order.filter((id, i, a) => COLUMN_IDS.includes(id) && a.indexOf(id) === i) : [];
+export function normalizeView(raw: unknown): GraphView {
+  const v = (raw && typeof raw === 'object' ? raw : {}) as Partial<Record<keyof GraphView, unknown>>;
+  const order: ColumnId[] = Array.isArray(v.order) ? v.order.filter((id, i, a): id is ColumnId => isColumn(id) && a.indexOf(id) === i) : [];
   for (const id of DEFAULT_VIEW.order) if (!order.includes(id)) order.splice(Math.min(DEFAULT_VIEW.order.indexOf(id), order.length), 0, id);
-  const hidden = Array.isArray(v.hidden) ? v.hidden.filter((id, i, a) => COLUMN_IDS.includes(id) && id !== 'message' && a.indexOf(id) === i) : [...DEFAULT_VIEW.hidden];
+  const hidden: ColumnId[] = Array.isArray(v.hidden)
+    ? v.hidden.filter((id, i, a): id is ColumnId => isColumn(id) && id !== 'message' && a.indexOf(id) === i)
+    : [...DEFAULT_VIEW.hidden];
   return {
     order,
     hidden,
@@ -59,7 +90,7 @@ export function normalizeView(raw) {
 }
 
 /** Переставляет колонку: from встаёт перед (before) или после target */
-export function moveColumn(order, from, target, after = false) {
+export function moveColumn<Id>(order: readonly Id[], from: Id, target: Id, after = false): readonly Id[] {
   if (from === target || !order.includes(from) || !order.includes(target)) return order;
   const next = order.filter((id) => id !== from);
   const at = next.indexOf(target) + (after ? 1 : 0);
@@ -67,7 +98,7 @@ export function moveColumn(order, from, target, after = false) {
   return next;
 }
 
-function load() {
+function load(): GraphView {
   try {
     const raw = localStorage.getItem(KEY);
     return normalizeView(raw ? JSON.parse(raw) : null);
@@ -76,9 +107,11 @@ function load() {
   }
 }
 
-export function useGraphView() {
+export type GraphViewPatch = Partial<GraphView> | ((prev: GraphView) => Partial<GraphView>);
+
+export function useGraphView(): [GraphView, (patch: GraphViewPatch) => void] {
   const [view, setView] = useState(load);
-  const update = useCallback((patch) => {
+  const update = useCallback((patch: GraphViewPatch) => {
     setView((prev) => {
       const next = normalizeView({ ...prev, ...(typeof patch === 'function' ? patch(prev) : patch) });
       try {

@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { Check, CircleX, Loader2, CircleMinus, Play, RotateCcw, WandSparkles, X } from 'lucide-react';
 import { ACTION_ICONS, STEP_ICONS } from './ActionBuilder.jsx';
 import { STEP_TYPES, slugify } from '../lib/actions.js';
-import { t as tr, tj } from '../i18n/index.js';
+import { t as tr, tj } from '../i18n/index.ts';
 
 /**
  * Ход выполнения действия: шаги со статусами; при ошибке — причина и «Повторить с этого шага».

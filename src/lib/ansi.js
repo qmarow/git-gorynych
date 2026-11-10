@@ -1,4 +1,4 @@
-import { t } from '../i18n/index.js';
+import { t } from '../i18n/index.ts';
 // Разбор лога задания: ANSI-цвета, перезапись строки через \r и сворачиваемые секции —
 // GitLab (section_start:<время>:<имя>[collapsed=true] … section_end), GitHub/Gitea (##[group] / ::group:: … ##[endgroup]),
 // метки времени GitHub в начале строк и аннотации ##[error] / ##[warning].

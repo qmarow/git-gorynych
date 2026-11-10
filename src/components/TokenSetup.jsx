@@ -1,6 +1,6 @@
 import { AlertTriangle, Link2, Loader2, LogIn, ShieldCheck } from 'lucide-react';
 import { Button } from './Dialogs.jsx';
-import { t as tr, tj, locale } from '../i18n/index.js';
+import { t as tr, tj, locale } from '../i18n/index.ts';
 
 const SCOPE_LABELS = {
   api: tr('просмотр и действия'),

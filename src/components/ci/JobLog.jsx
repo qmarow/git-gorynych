@@ -22,7 +22,7 @@ import {
 import { parseLog } from '../../lib/ansi.js';
 import { ACTIVE_STATUSES, FAILURE_REASONS, StatusPill } from '../PipelineStatus.jsx';
 import { ActionButton, Duration, ErrorNote, IconBtn, usePolling } from './common.jsx';
-import { t as tr, tj } from '../../i18n/index.js';
+import { t as tr, tj } from '../../i18n/index.ts';
 
 const api = window.api;
 

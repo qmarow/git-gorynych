@@ -4,7 +4,7 @@ import { UnifiedDiff } from '../DiffView.jsx';
 import { inlineHighlights } from '../../lib/inlineDiff.js';
 import { detectLanguage, highlightHunks } from '../../lib/highlight.js';
 import { kb } from '../../lib/platform.js';
-import { t, tj } from '../../i18n/index.js';
+import { t, tj } from '../../i18n/index.ts';
 
 const api = window.api;
 

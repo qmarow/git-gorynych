@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { AlertTriangle, Copy, Eye, EyeOff, FileText, Loader2, Lock, Pencil, Plus, Save, Trash2, Variable, X } from 'lucide-react';
-import { t, tj } from '../../i18n/index.js';
+import { t, tj } from '../../i18n/index.ts';
 
 const api = window.api;
 

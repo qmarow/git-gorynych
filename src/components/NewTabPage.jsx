@@ -3,7 +3,7 @@ import { BookOpen, CloudDownload, FolderGit2, FolderOpen, Keyboard, Link2, Loade
 import AppLogo from './AppLogo.jsx';
 import { relativeTime } from '../lib/format.js';
 import { kb } from '../lib/platform.js';
-import { t, tj } from '../i18n/index.js';
+import { t, tj } from '../i18n/index.ts';
 
 const api = typeof window !== 'undefined' ? window.api : null;
 

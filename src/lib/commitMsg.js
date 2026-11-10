@@ -1,4 +1,4 @@
-import { t as tr } from '../i18n/index.js';
+import { t as tr } from '../i18n/index.ts';
 /**
  * Логика сообщения коммита: Conventional Commits, номер задачи из ветки, шаблоны.
  * Чистые функции — без React и без window, чтобы их было просто проверять.

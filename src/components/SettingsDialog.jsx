@@ -5,7 +5,7 @@ import { GuardSettings, Switch } from './Guard.jsx';
 import { CommitSettings } from './CommitForm.jsx';
 import { BACKGROUND_SEC, BACKOFF_SEC, SYNC_MODES, useSyncStatus } from '../lib/syncStatus.js';
 import { kindInfo, kindLabel } from '../lib/servers.js';
-import { t as tr, tj, locale, LANGUAGES, getLanguage, setLanguage } from '../i18n/index.js';
+import { t as tr, tj, locale, LANGUAGES, getLanguage, setLanguage } from '../i18n/index.ts';
 
 const api = typeof window !== 'undefined' ? window.api : null;
 

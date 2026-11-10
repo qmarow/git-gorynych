@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { CalendarClock, ExternalLink, Loader2, Pencil, Play, Plus, Save, Trash2, UserRoundCheck, X } from 'lucide-react';
 import { CRON_PRESETS, TIMEZONES, describeCron, localTimezone } from '../../lib/cron.js';
 import { StatusIcon, statusInfo } from '../PipelineStatus.jsx';
-import { t, tj, locale } from '../../i18n/index.js';
+import { t, tj, locale } from '../../i18n/index.ts';
 
 const api = window.api;
 

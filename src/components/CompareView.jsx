@@ -4,7 +4,7 @@ import { plural, relativeTime } from '../lib/format.js';
 import { detectLanguage, highlightLines, layerLine } from '../lib/highlight.js';
 import { isMod, kb } from '../lib/platform.js';
 import { StatusBadge } from './RebaseView.jsx';
-import { t, tj } from '../i18n/index.js';
+import { t, tj } from '../i18n/index.ts';
 
 const api = window.api;
 

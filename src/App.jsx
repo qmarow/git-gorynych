@@ -110,7 +110,7 @@ import {
   SwitchToDialog,
   TagDialog,
 } from './components/Dialogs.jsx';
-import { t as tr, tj, locale } from './i18n/index.js';
+import { t as tr, tj, locale } from './i18n/index.ts';
 
 const api = window.api;
 

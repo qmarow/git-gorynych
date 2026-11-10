@@ -45,7 +45,7 @@ import {
   uid,
   validateAction,
 } from '../lib/actions.js';
-import { t as tr, tj } from '../i18n/index.js';
+import { t as tr, tj } from '../i18n/index.ts';
 
 // Иконки, которые можно выбрать для действия (имя → компонент)
 export const ACTION_ICONS = { Zap, Rocket, Send, RefreshCw, Download, GitBranch, GitMerge, GitPullRequest, Layers, Sparkles, Wrench, Star, Flag, Trash2, WandSparkles, Play };

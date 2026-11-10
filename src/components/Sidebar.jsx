@@ -23,7 +23,7 @@ import {
   Tag,
   Workflow,
 } from 'lucide-react';
-import { t as tr, tj } from '../i18n/index.js';
+import { t as tr, tj } from '../i18n/index.ts';
 
 const PROVIDER_SHORT = { gitlab: 'GitLab', github: 'GitHub', gitea: 'Gitea', bitbucket: 'Bitbucket' };
 const PROVIDER_DOT = { gitlab: '#fc6d26', github: '#8b949e', gitea: '#609926', bitbucket: '#2684ff' };

@@ -1,5 +1,5 @@
 import { relativeTime } from './format.js';
-import { t } from '../i18n/index.js';
+import { t } from '../i18n/index.ts';
 
 /**
  * Единый вид названий stash в интерфейсе. Git хранит их по-разному:

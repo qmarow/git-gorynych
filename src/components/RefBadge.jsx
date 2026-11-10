@@ -1,7 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Check, Cloud, CloudOff, Laptop, LogIn, Tag } from 'lucide-react';
-import { t, tj } from '../i18n/index.js';
+import { t, tj } from '../i18n/index.ts';
 
 /**
  * Где живёт ветка: ноутбук — только у вас, облако — только на сервере,

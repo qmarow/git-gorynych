@@ -10,10 +10,10 @@ import { avatarUrl, isFailed, markFailed } from '../lib/avatars.js';
 import { hasRefDrag, readRefDrag, startRefDrag } from '../lib/dnd.js';
 import { isMod, kb } from '../lib/platform.js';
 import { CC_TYPES, parseSummary } from '../lib/commitMsg.js';
-import { DEFAULT_VIEW, columnById, moveColumn, useGraphView } from '../lib/graphView.js';
+import { DEFAULT_VIEW, columnById, moveColumn, useGraphView } from '../lib/graphView.ts';
 import GraphViewMenu from './GraphViewMenu.jsx';
 import { isLight, readable } from '../lib/scheme.ts';
-import { t as tr, tj, locale } from '../i18n/index.js';
+import { t as tr, tj, locale } from '../i18n/index.ts';
 
 const HEADER_HEIGHT = 30;
 const OVERSCAN = 15; // запас строк выше и ниже видимой области

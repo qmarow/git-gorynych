@@ -1,4 +1,4 @@
-import { getLanguage } from '../../i18n/index.js';
+import { getLanguage } from '../../i18n/index.ts';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   AlertTriangle,
@@ -22,7 +22,7 @@ import {
   Tag,
   Wrench,
 } from 'lucide-react';
-import { t, tj } from '../../i18n/index.js';
+import { t, tj } from '../../i18n/index.ts';
 
 export const SEVERITY = {
   error: { label: t('Ошибки'), one: t('ошибка'), icon: CircleX, text: 'text-gk-red', bg: 'bg-gk-red/10', ring: 'ring-gk-red/30', dot: 'bg-gk-red' },

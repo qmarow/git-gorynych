@@ -23,7 +23,7 @@ import { Switch } from './Guard.jsx';
 import { isMod, kb } from '../lib/platform.js';
 import { plural } from '../lib/format.js';
 import { readable } from '../lib/scheme.ts';
-import { t as tr, tj } from '../i18n/index.js';
+import { t as tr, tj } from '../i18n/index.ts';
 
 /*
  * Черновик сообщения живёт вне компонента: панель WIP пересоздаётся при выборе другого коммита,

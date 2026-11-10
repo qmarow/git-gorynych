@@ -4,7 +4,7 @@ import { fullDate, relativeTime } from '../lib/format.js';
 import { BACKGROUND_SEC, syncModeById, useSyncStatus } from '../lib/syncStatus.js';
 import { ACTIVE_STATUSES, StatusIcon, statusInfo } from './PipelineStatus.jsx';
 import { Duration } from './ci/common.jsx';
-import { t as tr, tj, locale } from '../i18n/index.js';
+import { t as tr, tj, locale } from '../i18n/index.ts';
 
 // Строка состояния: текущая ветка и активный коммит (HEAD). Клик — перейти к HEAD в графе.
 export default function StatusBar({ repo, onJumpToHead, sync, onOpenFolder, onOpenTerminal, onPathMenu, pipeline = null, pipelineLabel = null, onOpenPipeline }) {

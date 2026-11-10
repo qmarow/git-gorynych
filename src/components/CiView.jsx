@@ -40,7 +40,7 @@ import { ChoiceDialog, DraftBar, DraftDiff, LintPanel } from './ci/DraftTools.js
 import CheckView, { CheckBanner, SEVERITY, issueKey } from './ci/CheckView.jsx';
 import { kb } from '../lib/platform.js';
 import { readable } from '../lib/scheme.ts';
-import { t as tr, tj } from '../i18n/index.js';
+import { t as tr, tj } from '../i18n/index.ts';
 
 const api = window.api;
 

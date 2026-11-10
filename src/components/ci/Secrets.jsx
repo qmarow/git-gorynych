@@ -5,7 +5,7 @@ import { KeyRound, Loader2, Lock, Pencil, Plus, Save, Trash2, Variable } from 'l
 import { relativeTime } from '../../lib/format.js';
 import { Button, ErrorBox, Modal } from '../Dialogs.jsx';
 import { ActionButton, ConfirmAction, ErrorNote, Loading, Toggle } from './common.jsx';
-import { t, tj } from '../../i18n/index.js';
+import { t, tj } from '../../i18n/index.ts';
 
 const api = window.api;
 

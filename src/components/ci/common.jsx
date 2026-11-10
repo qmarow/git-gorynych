@@ -2,7 +2,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { AlertTriangle, Loader2 } from 'lucide-react';
 import { formatDuration } from '../PipelineStatus.jsx';
-import { t as tr, locale } from '../../i18n/index.js';
+import { t as tr, locale } from '../../i18n/index.ts';
 
 /** Повторяем запрос с интервалом, пока окно видимо; delay может меняться, 0 — не опрашивать */
 export function usePolling(fn, delay, deps) {

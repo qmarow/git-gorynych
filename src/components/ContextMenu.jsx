@@ -1,7 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { ChevronRight, Copy } from 'lucide-react';
 import { kb } from '../lib/platform.js';
-import { t } from '../i18n/index.js';
+import { t } from '../i18n/index.ts';
 
 /**
  * Контекстное меню.

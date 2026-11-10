@@ -28,7 +28,7 @@ import { describeStash } from '../lib/stashName.js';
 import { GuardBanner } from './Guard.jsx';
 import CommitForm from './CommitForm.jsx';
 import { readable } from '../lib/scheme.ts';
-import { t, tj } from '../i18n/index.js';
+import { t, tj } from '../i18n/index.ts';
 
 export default function CommitDetails({
   commit,

@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom';
 import { ArrowDown, ArrowDownToLine, ArrowUp, ArrowUpFromLine, Loader2 } from 'lucide-react';
 import { relativeTime } from '../lib/format.js';
 import { useHoverPopover } from './RefBadge.jsx';
-import { t, tj } from '../i18n/index.js';
+import { t, tj } from '../i18n/index.ts';
 
 /**
  * Бейджи синхронизации ветки в списке Local:

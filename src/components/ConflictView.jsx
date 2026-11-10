@@ -23,7 +23,7 @@ import { CodeLang, HighlightedLines, TokenText, useLineTokens } from './CodeText
 import { detectLanguage } from '../lib/highlight.js';
 import { isMod, kb } from '../lib/platform.js';
 import { readable } from '../lib/scheme.ts';
-import { t, tj } from '../i18n/index.js';
+import { t, tj } from '../i18n/index.ts';
 
 const api = window.api;
 const LEFT = '#2f9bff'; // сторона ours (stage 2)

@@ -27,7 +27,7 @@ import {
 import { relativeTime } from '../../lib/format.js';
 import { Button, ErrorBox, Modal } from '../Dialogs.jsx';
 import { ActionButton, ChipsInput, ConfirmAction, ErrorNote, IconBtn, Loading, SegButton, Toggle, usePolling } from './common.jsx';
-import { t, tj, locale } from '../../i18n/index.js';
+import { t, tj, locale } from '../../i18n/index.ts';
 
 const api = window.api;
 

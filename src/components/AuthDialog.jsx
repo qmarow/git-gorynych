@@ -3,7 +3,7 @@ import { AlertTriangle, ArrowRightLeft, Check, CircleCheck, Cloud, Copy, Eye, Ey
 import { Button, Modal } from './Dialogs.jsx';
 import { secretStorageText } from '../lib/platform.js';
 import { CLOUD_SERVERS, SERVER_KINDS, kindInfo, kindLabel, prefersToken, sshKeysPage, tokenPage, tokenPlaceholder, tokenScopes } from '../lib/servers.js';
-import { t as tr, tj } from '../i18n/index.js';
+import { t as tr, tj } from '../i18n/index.ts';
 
 const api = typeof window !== 'undefined' ? window.api : null;
 

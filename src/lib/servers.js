@@ -1,4 +1,4 @@
-import { t } from '../i18n/index.js';
+import { t } from '../i18n/index.ts';
 // Git-серверы: облачные (github.com, gitlab.com) и свои (Self-Managed) — тип, подписи, ссылки на страницы токенов и SSH-ключей.
 // Тип для домена определяет main-процесс (credentials.cjs): выбранный пользователем, догадка по имени или по API сервера.
 

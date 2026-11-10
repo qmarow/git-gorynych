@@ -1,6 +1,6 @@
 // Расписания в формате cron: готовые варианты и описание по-русски (и по-английски)
-import { getLanguage } from '../i18n/index.js';
-import { t } from '../i18n/index.js';
+import { getLanguage } from '../i18n/index.ts';
+import { t } from '../i18n/index.ts';
 
 export const CRON_PRESETS = [
   { cron: '0 3 * * *', label: t('Каждый день в 3:00') },

@@ -20,7 +20,7 @@ import {
 import { FILE_STATUS, plural, relativeTime } from '../lib/format.js';
 import { isMod, kb } from '../lib/platform.js';
 import { readable } from '../lib/scheme.ts';
-import { t as tr, tj } from '../i18n/index.js';
+import { t as tr, tj } from '../i18n/index.ts';
 
 const api = window.api;
 

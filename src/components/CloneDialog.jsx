@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { Check, CloudDownload, FolderOpen, GitBranch, KeyRound, Link2, Loader2, RefreshCw, X } from 'lucide-react';
 import { Button, ErrorBox, Modal } from './Dialogs.jsx';
-import { t, tj } from '../i18n/index.js';
+import { t, tj } from '../i18n/index.ts';
 
 const api = window.api;
 

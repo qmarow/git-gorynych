@@ -29,7 +29,7 @@ import {
   Ticket,
   MessageSquareText,
 } from 'lucide-react';
-import { t, tj } from '../i18n/index.js';
+import { t, tj } from '../i18n/index.ts';
 
 /* ---------------- Горячие клавиши (используются и в разделе руководства) ---------------- */
 

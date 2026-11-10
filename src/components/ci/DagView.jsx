@@ -2,7 +2,7 @@
 // needs — явные зависимости (сплошные стрелки); без needs задание GitLab ждёт весь предыдущий этап (пунктир).
 import { useMemo, useState } from 'react';
 import { Hand } from 'lucide-react';
-import { tj } from '../../i18n/index.js';
+import { tj } from '../../i18n/index.ts';
 
 const W = 188;
 const H = 46;

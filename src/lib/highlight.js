@@ -1,7 +1,7 @@
 // Подсветка синтаксиса кода в диффах и конфликтах (highlight.js — src/vendor/hljs.js)
 // и наложение слоёв на строку: цвет токенов + изменённые куски + совпадения поиска.
 import hljs from '../vendor/hljs.js';
-import { t as tr } from '../i18n/index.js';
+import { t as tr } from '../i18n/index.ts';
 
 /* =================== Язык по имени файла =================== */
 

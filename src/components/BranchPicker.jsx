@@ -12,7 +12,7 @@ import {
   Search,
 } from 'lucide-react';
 import { relativeTime } from '../lib/format.js';
-import { t, tj } from '../i18n/index.js';
+import { t, tj } from '../i18n/index.ts';
 
 // Имя ветки, которое git точно не примет — чтобы не предлагать «Создать» заведомо зря
 const INVALID_NAME = /(^[-./])|(\.\.)|([\s~^:?*[\\])|(@\{)|(\/$)|(\.lock$)|(\.$)/;

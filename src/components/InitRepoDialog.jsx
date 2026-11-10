@@ -1,4 +1,4 @@
-import { getLanguage } from '../i18n/index.js';
+import { getLanguage } from '../i18n/index.ts';
 import { useMemo, useState } from 'react';
 import {
   AlertTriangle,
@@ -20,7 +20,7 @@ import {
   User,
 } from 'lucide-react';
 import { Button, ErrorBox, Modal } from './Dialogs.jsx';
-import { t as tr, tj, locale } from '../i18n/index.js';
+import { t as tr, tj, locale } from '../i18n/index.ts';
 
 export const plural = (n, one, few, many) => {
   if (getLanguage() !== 'ru') return n === 1 ? one : many; // в английском две формы: one и many (few = many)

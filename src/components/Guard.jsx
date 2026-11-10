@@ -18,7 +18,7 @@ import {
 } from 'lucide-react';
 import { CATEGORY_LABELS, DEFAULT_GUARD, DEFAULT_RULES, EXCLUDE_SUGGESTIONS, LEVELS, levelOf, validatePattern } from '../lib/guardRules.js';
 import { plural } from '../lib/format.js';
-import { t, tj } from '../i18n/index.js';
+import { t, tj } from '../i18n/index.ts';
 
 const TONE = {
   secret: { chip: 'bg-gk-red/15 text-gk-red', mark: 'bg-gk-red/30 text-gk-strong', icon: KeyRound, text: 'text-gk-red' },
