@@ -1,10 +1,10 @@
-//! `read::graph_fingerprint` и `read::load_repository_since` на настоящем git: что меняет отпечаток графа, а что нет,
-//! и что пропуск `git log` не меняет остальной ответ.
+//! Быстрые пути чтения на настоящем git: `read::graph_fingerprint` и `read::load_repository_since` (что меняет отпечаток графа,
+//! а что нет, и что пропуск `git log` не меняет остальной ответ) и счётчики строк одновременно со `status` в `read::read_status`.
 
 use std::path::Path;
 use std::process::Command;
 
-use gorynych_git::read::{graph_fingerprint, load_repository, load_repository_since, locate_repo};
+use gorynych_git::read::{graph_fingerprint, load_repository, load_repository_since, locate_repo, read_status};
 
 fn git(dir: &Path, args: &[&str]) {
     let output = Command::new("git")
@@ -130,4 +130,33 @@ async fn empty_repository() {
     assert!(first.repository.commits.is_empty());
     let again = load_repository_since(dir.path(), None, first.fingerprint.as_deref()).await.unwrap();
     assert!(again.commits_unchanged);
+}
+
+#[tokio::test]
+async fn early_line_counts_match_sequential_ones() {
+    let dir = repo();
+    let root = dir.path();
+    assert!(read_status(root, true).await.unwrap().is_empty(), "чистая копия");
+
+    // Первый вызов после чистой копии считает строки после status, следующие — одновременно с ним
+    std::fs::write(root.join("a.txt"), "1
+2
+3
+").unwrap();
+    std::fs::write(root.join("b.txt"), "x
+y
+").unwrap();
+    git(root, &["add", "b.txt"]);
+    let sequential = read_status(root, true).await.unwrap();
+    let early = read_status(root, true).await.unwrap();
+    assert_eq!(sequential, early);
+    let counts: Vec<(&str, bool, Option<u64>, Option<u64>)> = early.iter().map(|f| (f.path.as_str(), f.staged, f.additions, f.deletions)).collect();
+    assert_eq!(counts, [("a.txt", false, Some(2), Some(0)), ("b.txt", true, Some(2), Some(0))]);
+
+    // Изменения убраны: прежний результат счётчиков не подмешивается
+    git(root, &["reset", "-q", "--hard"]);
+    assert!(read_status(root, true).await.unwrap().is_empty());
+    std::fs::write(root.join("a.txt"), "").unwrap();
+    let after = read_status(root, true).await.unwrap();
+    assert_eq!(after.iter().map(|f| (f.additions, f.deletions)).collect::<Vec<_>>(), [(Some(0), Some(1))]);
 }

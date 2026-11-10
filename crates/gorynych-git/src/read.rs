@@ -472,6 +472,26 @@ pub(crate) fn lacks_flag(error: &GorynychError) -> bool {
     is_old_git_flag_error(error)
 }
 
+/// Копии, где прошлый `read_status` со счётчиками нашёл изменения. Не больше [`MAX_LOCATIONS`]: лишнее сбрасывается целиком,
+/// это только подсказка для [`read_status`].
+static DIRTY: LazyLock<std::sync::Mutex<HashSet<PathBuf>>> = LazyLock::new(Default::default);
+
+fn was_dirty(cwd: &Path) -> bool {
+    DIRTY.lock().expect("изменённые копии").contains(cwd)
+}
+
+fn remember_dirty(cwd: &Path, dirty: bool) {
+    let mut set = DIRTY.lock().expect("изменённые копии");
+    if !dirty {
+        set.remove(cwd);
+        return;
+    }
+    if set.len() >= MAX_LOCATIONS && !set.contains(cwd) {
+        set.clear();
+    }
+    set.insert(cwd.to_path_buf());
+}
+
 async fn diff_numstat(cwd: &Path, extra: &[&str]) -> HashMap<String, NumStat> {
     let mut args: Vec<&str> = vec!["diff"];
     args.extend_from_slice(extra);
@@ -520,7 +540,14 @@ pub struct WipEntry {
 
 /// `readStatus`.
 pub async fn read_status(cwd: &Path, stats: bool) -> Result<Vec<WipEntry>> {
-    let out = git(cwd, &["status", "--porcelain=v1", "-z", "--untracked-files=all"]).await?;
+    // Пока в копии есть изменения (обычное состояние во время правок), счётчики строк почти наверняка понадобятся:
+    // оба `diff --numstat` идут одновременно со `status`, а не после него. В чистой копии — как в 1.x, только по надобности
+    let speculate = stats && was_dirty(cwd);
+    let early = async {
+        if speculate { Some(tokio::join!(diff_numstat(cwd, &[]), diff_numstat(cwd, &["--cached"]))) } else { None }
+    };
+    let (out, early) = tokio::join!(git(cwd, &["status", "--porcelain=v1", "-z", "--untracked-files=all"]), early);
+    let out = out?;
     let parts: Vec<&str> = out.split('\0').collect();
     let mut files = Vec::new();
     let mut index = 0;
@@ -555,11 +582,17 @@ pub async fn read_status(cwd: &Path, stats: bool) -> Result<Vec<WipEntry>> {
             files.push(WipEntry { path, status: status_letter(y).to_owned(), ..WipEntry::default() });
         }
     }
+    if stats {
+        remember_dirty(cwd, !files.is_empty());
+    }
     if !stats || files.is_empty() {
         return Ok(files);
     }
 
-    let (unstaged, staged) = tokio::join!(diff_numstat(cwd, &[]), diff_numstat(cwd, &["--cached"]));
+    let (unstaged, staged) = match early {
+        Some(early) => early,
+        None => tokio::join!(diff_numstat(cwd, &[]), diff_numstat(cwd, &["--cached"])),
+    };
     let untracked: Vec<usize> = files.iter().enumerate().filter(|(_, file)| file.untracked == Some(true)).map(|(index, _)| index).take(MAX_COUNTED_UNTRACKED).collect();
     let counts = join_all(untracked.iter().map(|index| count_lines(cwd.join(&files[*index].path)))).await;
     for (index, count) in untracked.into_iter().zip(counts) {
