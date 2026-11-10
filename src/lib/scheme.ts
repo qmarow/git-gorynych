@@ -2,49 +2,54 @@
 // линии и узлы графа (SVG), цветные бейджи с прозрачностью через `${hex}55` и т. п.
 // Значения выставляет applyAppearance(); компоненты перечитывают их при каждом рендере.
 
+export type Scheme = 'dark' | 'light';
+type Rgb = [number, number, number];
+
 // Цвета дорожек графа в духе GitKraken (тёмные темы)
-export const DEFAULT_LANES = ['#15a0bf', '#0669f7', '#8e00c2', '#c517b6', '#d90171', '#cd0101', '#f25d2e', '#f2ca33', '#7bd938', '#2ece9d'];
+export const DEFAULT_LANES: readonly string[] = ['#15a0bf', '#0669f7', '#8e00c2', '#c517b6', '#d90171', '#cd0101', '#f25d2e', '#f2ca33', '#7bd938', '#2ece9d'];
 
-let scheme = 'dark';
-let lanes = DEFAULT_LANES;
+let scheme: Scheme = 'dark';
+let lanes: readonly string[] = DEFAULT_LANES;
 
-export function setScheme(next, laneColors) {
+/** `laneColors` приходит из сохранённого оформления как есть: не массив или пустой массив — цвета по умолчанию. */
+export function setScheme(next: unknown, laneColors?: unknown): void {
   scheme = next === 'light' ? 'light' : 'dark';
-  lanes = Array.isArray(laneColors) && laneColors.length ? laneColors : DEFAULT_LANES;
+  lanes = Array.isArray(laneColors) && laneColors.length ? (laneColors as string[]) : DEFAULT_LANES;
 }
 
-export const isLight = () => scheme === 'light';
-export const laneColors = () => lanes;
+export const isLight = (): boolean => scheme === 'light';
+export const laneColors = (): readonly string[] => lanes;
 
-const hexToRgb = (hex) => {
+const hexToRgb = (hex: string): Rgb => {
   const h = hex.replace('#', '');
   const full = h.length === 3 ? h.replace(/./g, (c) => c + c) : h.slice(0, 6);
-  return [0, 2, 4].map((i) => parseInt(full.slice(i, i + 2), 16));
+  return [0, 2, 4].map((i) => parseInt(full.slice(i, i + 2), 16)) as Rgb;
 };
-const toHex = (rgb) => `#${rgb.map((v) => Math.round(Math.max(0, Math.min(255, v))).toString(16).padStart(2, '0')).join('')}`;
+const toHex = (rgb: Rgb): string => `#${rgb.map((v) => Math.round(Math.max(0, Math.min(255, v))).toString(16).padStart(2, '0')).join('')}`;
 
 /** Относительная яркость по WCAG */
-function luminance([r, g, b]) {
-  const f = (v) => {
+function luminance([r, g, b]: Rgb): number {
+  const f = (v: number) => {
     const c = v / 255;
     return c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4;
   };
   return 0.2126 * f(r) + 0.7152 * f(g) + 0.0722 * f(b);
 }
 
-const cache = new Map();
+const cache = new Map<string, string>();
 
 /**
  * Цвет, который читается как текст или тонкая линия на фоне текущей схемы.
  * В тёмных темах — как есть. В светлой яркие неоновые цвета (#3cf0a0, #f2ca33) затемняются,
  * пока контраст с белым не станет не меньше 3.2:1, — оттенок сохраняется.
+ * Не строка или не `#…` — возвращается как есть (компоненты передают и `undefined`).
  */
-export function readable(hex) {
+export function readable<T>(hex: T): T | string {
   if (scheme !== 'light' || typeof hex !== 'string' || !hex.startsWith('#')) return hex;
   const hit = cache.get(hex);
   if (hit) return hit;
   let rgb = hexToRgb(hex);
-  for (let i = 0; i < 24 && (1.05 / (luminance(rgb) + 0.05)) < 3.2; i++) rgb = rgb.map((v) => v * 0.9);
+  for (let i = 0; i < 24 && 1.05 / (luminance(rgb) + 0.05) < 3.2; i++) rgb = rgb.map((v) => v * 0.9) as Rgb;
   const out = toHex(rgb);
   cache.set(hex, out);
   return out;

@@ -1,5 +1,5 @@
 // Статусы пайплайнов и заданий (GitLab, GitHub, Gitea, Bitbucket — после нормализации): иконки в духе GitLab, подписи, форматирование времени
-import { readable } from '../lib/scheme.js';
+import { readable } from '../lib/scheme.ts';
 import { t } from '../i18n/index.js';
 
 export const STATUS = {

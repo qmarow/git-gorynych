@@ -2,7 +2,7 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } fr
 import { flushSync } from 'react-dom';
 import { Check, Copy, FileSearch, Pencil, SlidersHorizontal } from 'lucide-react';
 import { RefKindIcon, RefsPopover, refKindLabel, useHoverPopover } from './RefBadge.jsx';
-import { edgePath, fitMetrics, graphWidth, laneColor, laneX, layoutGraph, metricsFor, rowY } from '../lib/graphLayout.js';
+import { edgePath, fitMetrics, graphWidth, laneColor, laneX, layoutGraph, metricsFor, rowY } from '../lib/graphLayout.ts';
 import { StatusIcon, statusInfo } from './PipelineStatus.jsx';
 import { fullDate, initials, relativeTime, shortDate } from '../lib/format.js';
 import { ResizeHandle, useStoredWidth } from './Resizer.jsx';
@@ -12,7 +12,7 @@ import { isMod, kb } from '../lib/platform.js';
 import { CC_TYPES, parseSummary } from '../lib/commitMsg.js';
 import { DEFAULT_VIEW, columnById, moveColumn, useGraphView } from '../lib/graphView.js';
 import GraphViewMenu from './GraphViewMenu.jsx';
-import { isLight, readable } from '../lib/scheme.js';
+import { isLight, readable } from '../lib/scheme.ts';
 import { t as tr, tj, locale } from '../i18n/index.js';
 
 const HEADER_HEIGHT = 30;

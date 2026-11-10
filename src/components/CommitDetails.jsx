@@ -27,7 +27,7 @@ import { FILE_STATUS, avatarColor, fullDate, initials, plural, relativeTime } fr
 import { describeStash } from '../lib/stashName.js';
 import { GuardBanner } from './Guard.jsx';
 import CommitForm from './CommitForm.jsx';
-import { readable } from '../lib/scheme.js';
+import { readable } from '../lib/scheme.ts';
 import { t, tj } from '../i18n/index.js';
 
 export default function CommitDetails({

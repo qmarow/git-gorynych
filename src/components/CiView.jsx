@@ -39,7 +39,7 @@ import JobForm from './ci/JobForm.jsx';
 import { ChoiceDialog, DraftBar, DraftDiff, LintPanel } from './ci/DraftTools.jsx';
 import CheckView, { CheckBanner, SEVERITY, issueKey } from './ci/CheckView.jsx';
 import { kb } from '../lib/platform.js';
-import { readable } from '../lib/scheme.js';
+import { readable } from '../lib/scheme.ts';
 import { t as tr, tj } from '../i18n/index.js';
 
 const api = window.api;

@@ -4,7 +4,7 @@ import { FILE_STATUS } from '../lib/format.js';
 import { inlineHighlights } from '../lib/inlineDiff.js';
 import { detectLanguage, findAll, highlightHunks, languageName, layerLine, searchRegex } from '../lib/highlight.js';
 import { isMod, kb } from '../lib/platform.js';
-import { readable } from '../lib/scheme.js';
+import { readable } from '../lib/scheme.ts';
 import { t as tr, tj } from '../i18n/index.js';
 
 const writePref = (key, on) => {

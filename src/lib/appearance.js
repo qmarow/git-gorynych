@@ -1,4 +1,4 @@
-import { setScheme } from './scheme.js';
+import { setScheme } from './scheme.ts';
 import { t as tr } from '../i18n/index.js';
 
 // Оформление: темы, фоны, прозрачность панелей. Применяется через CSS-переменные на <html>.
