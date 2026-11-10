@@ -24,7 +24,7 @@ export const commands = {
 	appearanceGet: () => typedError<AppearanceInfo_Serialize, GorynychError_Serialize>(__TAURI_INVOKE("appearance_get")),
 	/**  Сохраняет оформление и применяет к окну. Возвращает, включён ли системный материал. */
 	appearanceSet: (value: Appearance_Deserialize) => typedError<boolean, GorynychError_Serialize>(__TAURI_INVOKE("appearance_set", { value })),
-	repoLoad: (dir: string) => typedError<LoadedRepository_Serialize, GorynychError_Serialize>(__TAURI_INVOKE("repo_load", { dir })),
+	repoLoad: (dir: string, known: string | null) => typedError<LoadedRepository_Serialize, GorynychError_Serialize>(__TAURI_INVOKE("repo_load", { dir, known })),
 	repoInspect: (dir: string | null) => typedError<FolderInfo_Serialize, GorynychError_Serialize>(__TAURI_INVOKE("repo_inspect", { dir })),
 	repoStatus: (dir: string) => typedError<StatusWithCi_Serialize, GorynychError_Serialize>(__TAURI_INVOKE("repo_status", { dir })),
 	repoStashDetails: (dir: string, hash: string) => typedError<StashDetails_Serialize, GorynychError_Serialize>(__TAURI_INVOKE("repo_stash_details", { dir, hash })),
@@ -4100,6 +4100,10 @@ export type LoadedRepository_Deserialize = {
 	history: HistorySummary_Deserialize,
 	ci: CiSystem[],
 	forge?: ForgeStatus_Deserialize | null,
+	/**  Отпечаток графа (`read::graph_fingerprint`); интерфейс возвращает его в `known` следующего `repo:load`. */
+	graphFingerprint?: string | null,
+	/**  `known` совпал: `commits` пуст, `truncated` — `false`, их надо взять из ответа с этим отпечатком. */
+	commitsUnchanged: boolean,
 } & Repository_Deserialize;
 
 /**  Ответ `repo:load`. */
@@ -4107,6 +4111,10 @@ export type LoadedRepository_Serialize = {
 	history: HistorySummary_Serialize,
 	ci: CiSystem[],
 	forge: ForgeStatus_Serialize | null,
+	/**  Отпечаток графа (`read::graph_fingerprint`); интерфейс возвращает его в `known` следующего `repo:load`. */
+	graphFingerprint: string | null,
+	/**  `known` совпал: `commits` пуст, `truncated` — `false`, их надо взять из ответа с этим отпечатком. */
+	commitsUnchanged: boolean,
 } & Repository_Serialize;
 
 /**  Локальная ветка. */

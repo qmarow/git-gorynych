@@ -294,7 +294,9 @@ function buildApi() {
       onIndexSynced: (cb: (value: Json) => void) => subscribe('repo-index-synced', cb),
       onChanged: (cb: (value: Json) => void) => subscribe('repo-changed', cb),
       getLast: () => raw('repo_get_last', undefined, null),
-      load: (dir: Json) => safe('repo_load', { dir }),
+      // `known` — `graphFingerprint` прежнего ответа: если граф не изменился, приходит `commitsUnchanged` без коммитов.
+      // Под Electron второго аргумента нет, ответ всегда полный
+      load: (dir: Json, opts?: { known?: string | null }) => safe('repo_load', { dir, known: opts?.known ?? null }),
       commitFiles: (dir: Json, hash: Json, parent: Json) => safe('repo_commit_files', { dir, hash, parent: parent ?? null }),
       fileDiff: (dir: Json, params: Json) => safe('repo_file_diff', { dir, params }),
       compare: (dir: Json, params: Json) => safe('repo_compare', { dir, params }),

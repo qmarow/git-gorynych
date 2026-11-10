@@ -225,6 +225,7 @@ fn git_commands_work_through_the_page() {
     assert!(!report["guard"]["findings"][0]["text"].as_str().unwrap().contains("123"), "секрет замаскирован: {report}");
     assert!(report["committed"]["hash"].is_string(), "{report}");
     assert!(report["undone"]["label"].is_string(), "{report}");
+    assert_eq!(report["reload"], json!([{"unchanged": false, "commits": 2, "same": false}, {"unchanged": true, "commits": 0, "same": true}]), "отпечаток графа: {report}");
     assert_eq!(report["after"], json!([["gorynych-smoke.txt", true]]), "отмена коммита вернула файл в индекс: {report}");
     assert_eq!(report["ci"]["current"], json!("gitlab"));
     assert_eq!(report["ci"]["jobs"], json!(1));

@@ -7,7 +7,7 @@
 use std::path::PathBuf;
 use std::time::Instant;
 
-use gorynych_git::read::{load_repository, quick_status, resolve_repo_root};
+use gorynych_git::read::{load_repository, load_repository_since, quick_status, resolve_repo_root};
 use gorynych_git::run::spawned;
 
 async fn measure<F, Fut, T>(name: &str, rounds: usize, mut work: F)
@@ -39,4 +39,11 @@ async fn main() {
     let repo = load_repository(&dir, None).await.expect("репозиторий читается");
     let json = serde_json::to_vec(&repo).expect("сериализация");
     println!("load_repository: коммитов {}, JSON для интерфейса {} КБ", repo.commits.len(), json.len() / 1024);
+    // Граф не менялся: так интерфейс перечитывает репозиторий после stash, правки индекса и т. п.
+    let known = load_repository_since(&dir, None, None).await.expect("репозиторий читается").fingerprint.expect("отпечаток");
+    measure("load_repository_since (граф тот же)", rounds, || load_repository_since(&dir, None, Some(&known))).await;
+    let same = load_repository_since(&dir, None, Some(&known)).await.expect("репозиторий читается");
+    assert!(same.commits_unchanged, "граф изменился во время замера");
+    let json = serde_json::to_vec(&same.repository).expect("сериализация");
+    println!("load_repository_since: JSON для интерфейса {} КБ", json.len() / 1024);
 }

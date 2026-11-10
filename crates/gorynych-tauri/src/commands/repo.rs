@@ -20,6 +20,9 @@
 //!   получает размеченное объединение. Аргумент неверной формы отклоняется самим Tauri строкой, а не `BAD_ARGS`; поля внутри
 //!   параметров по-прежнему снисходительны (`lenient`), как `typeof` в 1.x. То же для остальных команд: форму аргументов
 //!   гарантируют типы `bindings/commands.ts`.
+//! - `repo:load(dir, known)`: `known` — `graphFingerprint` прежнего ответа. Если ссылки и HEAD с тех пор не менялись, `git log`
+//!   не запускается и приходит `commitsUnchanged: true` с пустым `commits` (около 900 КБ JSON меньше на каждое изменение в `.git`).
+//!   Без `known` ответ полный, как в 1.x.
 //! - События называются по имени структуры (`repo-changed`, `repo-index-synced`, `clone-progress-event`) — так их называет `tauri-specta`.
 //! - `repo:open-dialog` и `repo:open-path` — в `commands::desktop`, вместе с остальными диалогами и `shell:*`.
 //!
@@ -47,7 +50,7 @@ use gorynych_git::diff::{FileDiff, FileDiffRequest, get_file_diff};
 use gorynych_git::gitflow::{GitflowConfig, gitflow_config};
 use gorynych_git::history::{Blame, BlameRequest, CommitInfo, CommitInfoRequest, FileHistory, FileHistoryRequest, blame, commit_info, file_history};
 use gorynych_git::init::{ConnectOptions, ConnectResult, FolderInfo, InitOptions, InitResult, ProbeRemote, RemoteProbe, connect_repository, init_repository, inspect_folder, probe_remote};
-use gorynych_git::read::{CommitFile, QuickStatus, Repository, StashDetails, get_commit_files, get_stash_details, load_repository, quick_status, resolve_repo_root};
+use gorynych_git::read::{CommitFile, QuickStatus, Repository, RepositoryUpdate, StashDetails, get_commit_files, get_stash_details, load_repository_since, quick_status, resolve_repo_root};
 use gorynych_git::rebase::{RebasePreview, RebaseRequest, simulate};
 use gorynych_git::write::{BranchLog, BranchLogRequest, CommitTemplate, branch_log, read_commit_template};
 use gorynych_storage::undo::HistorySummary;
@@ -73,6 +76,12 @@ pub struct LoadedRepository {
     pub history: HistorySummary,
     pub ci: Vec<CiSystem>,
     pub forge: Option<ForgeStatus>,
+    /// Отпечаток графа (`read::graph_fingerprint`); интерфейс возвращает его в `known` следующего `repo:load`.
+    #[serde(rename = "graphFingerprint")]
+    pub graph_fingerprint: Option<String>,
+    /// `known` совпал: `commits` пуст, `truncated` — `false`, их надо взять из ответа с этим отпечатком.
+    #[serde(rename = "commitsUnchanged")]
+    pub commits_unchanged: bool,
 }
 
 /// Ответ `repo:status`.
@@ -148,9 +157,9 @@ async fn detect(path: String) -> Result<Vec<CiSystem>> {
 
 #[tauri::command]
 #[specta::specta]
-pub async fn repo_load(state: State<'_, AppState>, dir: String) -> Result<LoadedRepository> {
+pub async fn repo_load(state: State<'_, AppState>, dir: String, known: Option<String>) -> Result<LoadedRepository> {
     let services = state.services()?;
-    let repository = load_repository(Path::new(&dir), None).await?;
+    let RepositoryUpdate { repository, fingerprint: graph_fingerprint, commits_unchanged } = load_repository_since(Path::new(&dir), None, known.as_deref()).await?;
     let root = PathBuf::from(&repository.path);
     let history = services.engine.history_summary(&root)?;
     let ci = detect(repository.path.clone()).await?;
@@ -159,7 +168,7 @@ pub async fn repo_load(state: State<'_, AppState>, dir: String) -> Result<Loaded
     // Как `writeSettings` в 1.x: сбой записи только в журнал, ответ не меняется
     let _ = services.db.set_last_repo(&repository.path);
     let _ = services.db.remember_recent(&repository.path, Some(&repository.name));
-    Ok(LoadedRepository { repository, history, ci, forge })
+    Ok(LoadedRepository { repository, history, ci, forge, graph_fingerprint, commits_unchanged })
 }
 
 #[tauri::command]

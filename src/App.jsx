@@ -318,7 +318,11 @@ export default function App() {
       setLoadingLabel(dir);
     }
 
-    const res = await api.repo.load(dir);
+    // Прежний ответ для той же папки: его отпечаток графа позволяет 2.0 не перечитывать историю (`commitsUnchanged`).
+    // Коммиты берутся именно из него — отпечаток описывает ровно их, даже если состояние с тех пор обновлялось
+    const base = repoRef.current?.path === dir ? repoRef.current : tabCache.current.get(dir)?.repo;
+    const known = base?.path === dir ? base.graphFingerprint : undefined;
+    const res = await api.repo.load(dir, known ? { known } : undefined);
     const stale = seq !== loadSeq.current;
     if (!stale) setLoading(false);
 
@@ -327,7 +331,8 @@ export default function App() {
       return null;
     }
 
-    const data = res.data;
+    // Тот же массив коммитов — граф и поиск не пересчитываются (зависят от `repo.commits`)
+    const data = res.data.commitsUnchanged ? { ...res.data, commits: base.commits, truncated: base.truncated } : res.data;
     const cached = tabCache.current.get(data.path);
     tabCache.current.set(data.path, { ...(cached ?? {}), repo: data });
     if (stale || (activeRef.current && activeRef.current !== data.path && silent)) return data;

@@ -49,7 +49,10 @@ async function smoke(dir) {
     params: { rules: [{ id: 'secret', label: 'Секрет', pattern: 'секрет-\\d+', flags: 'i', level: 'block', category: 'secret' }] },
   });
   const committed = await invoke('repo_action', { dir, action: { name: 'commit', payload: { summary: 'Из окна' } } });
+  const afterCommit = await invoke('repo_load', { dir, known: loaded.graphFingerprint });
   const undone = await invoke('repo_action', { dir, action: { name: 'undo', payload: {} } });
+  // Отмена вернула ветку на прежний коммит: граф тот же, git log не нужен
+  const afterUndo = await invoke('repo_load', { dir, known: loaded.graphFingerprint });
   const after = await invoke('repo_status', { dir });
   const ci = await invoke('repo_ci', { dir, file: null });
   // `skipped` — временно (идёт действие, внешний git держит index.lock): интерфейс 1.x повторяет через 2 с, здесь так же
@@ -80,6 +83,7 @@ async function smoke(dir) {
     guard: { blocked: guard.blocked, findings: guard.findings },
     committed,
     undone,
+    reload: [afterCommit, afterUndo].map((r) => ({ unchanged: r.commitsUnchanged, commits: r.commits.length, same: r.graphFingerprint === loaded.graphFingerprint })),
     after: after.wipFiles.map((file) => [file.path, file.staged]),
     ci: { systems: ci.systems.map((system) => system.id), current: ci.current && ci.current.system, jobs: ci.current && ci.current.jobCount },
     remote: { status: remote.status, remotes: remote.remotes, fetched: remote.fetched },

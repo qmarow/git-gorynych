@@ -17,6 +17,8 @@
 //! - `detectOperation` проверяет файлы в папке git сам, без `rev-parse --git-path`.
 //! - `loadRepository`: хэш HEAD — из `.git/HEAD` и уже прочитанных веток (в неясных случаях — как в 1.x, через git); `git log`
 //!   идёт одновременно с чтением веток. На ripgrep (2300 коммитов): 9 процессов и 304 мс → 6 и 171 мс; `quickStatus` 3 → 1.
+//! - Нового в 2.0: [`load_repository_since`] не запускает `git log`, если [`graph_fingerprint`] (содержимое HEAD и файлов ссылок)
+//!   совпал с отпечатком прежнего ответа. Интерфейс берёт коммиты из прежнего ответа, граф не пересчитывается.
 
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
@@ -650,19 +652,105 @@ pub struct Repository {
 
 /// `loadRepository`; `limit: None` — 2000 коммитов.
 pub async fn load_repository(dir: &Path, limit: Option<u32>) -> Result<Repository> {
+    Ok(load_repository_since(dir, limit, None).await?.repository)
+}
+
+/// Ответ [`load_repository_since`].
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RepositoryUpdate {
+    pub repository: Repository,
+    /// [`graph_fingerprint`] на момент чтения; `None`, если файлы ссылок не прочитались.
+    pub fingerprint: Option<String>,
+    /// Отпечаток совпал с `known`: `git log` не запускался, `commits` пуст и `truncated` — `false`, их надо взять из прежнего ответа.
+    pub commits_unchanged: bool,
+}
+
+/// Отпечаток всего, от чего зависит вывод `git log` в [`load_repository`]: HEAD, все ссылки (кроме `refs/stash`: её `log` не
+/// показывает), `packed-refs`, reftable, `shallow`, `info/grafts`, `config` и предел. Процесс git не нужен: на ripgrep это чтение
+/// около десятка файлов против `git log` на 2000 коммитов (≈ 900 КБ ответа).
+///
+/// Хэш коммита определяет его содержимое, поэтому при тех же вершинах и том же HEAD список и украшения коммитов те же.
+/// Отпечаток снимается **до** `git log`: если ссылки сдвинутся во время чтения, следующий запрос увидит новый отпечаток и перечитает граф.
+pub fn graph_fingerprint(git_dir: &Path, limit: u32) -> Option<String> {
+    use sha1::{Digest, Sha1};
+    // У дополнительного worktree свои HEAD и config.worktree, а ссылки — в общей папке
+    let common = match std::fs::read_to_string(git_dir.join("commondir")) {
+        Ok(text) => git_dir.join(gorynych_core::js::trim(&text)),
+        Err(_) => git_dir.to_path_buf(),
+    };
+    let mut hash = Sha1::new();
+    hash.update(format!("limit {limit}\0"));
+    let mut add = |label: &str, path: &Path, required: bool| -> Option<()> {
+        match std::fs::read(path) {
+            Ok(bytes) => {
+                hash.update(format!("{label}\0{}\0", bytes.len()));
+                hash.update(&bytes);
+            }
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound && !required => hash.update(format!("{label}\0-\0")),
+            Err(_) => return None,
+        }
+        Some(())
+    };
+    add("HEAD", &git_dir.join("HEAD"), true)?;
+    add("config.worktree", &git_dir.join("config.worktree"), false)?;
+    for name in ["packed-refs", "shallow", "info/grafts", "config", "reftable/tables.list"] {
+        add(name, &common.join(name), false)?;
+    }
+    let mut loose = Vec::new();
+    collect_refs(&common.join("refs"), "refs", &mut loose).ok()?;
+    loose.sort();
+    for name in &loose {
+        add(name, &common.join(name), false)?;
+    }
+    Some(hash.finalize().iter().map(|byte| format!("{byte:02x}")).collect())
+}
+
+/// Имена файлов ссылок под `refs/` (через `/`), без `refs/stash`.
+fn collect_refs(dir: &Path, prefix: &str, out: &mut Vec<String>) -> std::io::Result<()> {
+    let entries = match std::fs::read_dir(dir) {
+        Ok(entries) => entries,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(()),
+        Err(error) => return Err(error),
+    };
+    for entry in entries {
+        let entry = entry?;
+        let name = format!("{prefix}/{}", entry.file_name().to_string_lossy());
+        if name == "refs/stash" || name.ends_with(".lock") {
+            continue;
+        }
+        if entry.file_type()?.is_dir() {
+            collect_refs(&entry.path(), &name, out)?;
+        } else {
+            out.push(name);
+        }
+    }
+    Ok(())
+}
+
+/// [`load_repository`], который пропускает `git log`, когда [`graph_fingerprint`] совпал с `known` — отпечатком прежнего ответа
+/// с тем же пределом. Ветки, теги, stash, HEAD и рабочая копия читаются всегда.
+pub async fn load_repository_since(dir: &Path, limit: Option<u32>, known: Option<&str>) -> Result<RepositoryUpdate> {
     let limit = limit.unwrap_or(DEFAULT_LIMIT);
     let location = locate_repo(dir).await?;
     let root = location.root.clone();
+    let fingerprint = graph_fingerprint(&location.git_dir, limit);
+    let commits_unchanged = known.is_some() && fingerprint.as_deref() == known;
+    let read_log = async {
+        if commits_unchanged { None } else { Some(log_commits(&root, limit).await) }
+    };
     // Все процессы git — одновременно: каждый запуск на Windows стоит десятки миллисекунд, и ждать друг друга им незачем
-    let (refs, log, wip, operation) = tokio::join!(read_refs(&root), log_commits(&root, limit), read_status(&root, true), detect_operation(&root));
+    let (refs, log, wip, operation) = tokio::join!(read_refs(&root), read_log, read_status(&root, true), detect_operation(&root));
     let refs = refs?;
     let head_hash = match head_from_files(&location.git_dir, &refs.local_branches) {
         Some(hash) => Some(hash),
         None => git(&root, &["rev-parse", "--verify", "--quiet", "HEAD"]).await.ok().map(|out| gorynych_core::js::trim(&out).to_owned()),
     };
-    let commits = parse_commits(&root, &refs, log).await?;
+    let commits = match log {
+        Some(log) => parse_commits(&root, &refs, log).await?,
+        None => Vec::new(),
+    };
     let wip_files = wip?;
-    Ok(Repository {
+    let repository = Repository {
         path: root.display().to_string(),
         name: root.file_name().map_or_else(String::new, |name| name.to_string_lossy().into_owned()),
         detached: refs.current_branch.is_none() && head_hash.as_deref().is_some_and(|hash| !hash.is_empty()),
@@ -676,7 +764,8 @@ pub async fn load_repository(dir: &Path, limit: Option<u32>) -> Result<Repositor
         truncated: commits.len() as u64 >= u64::from(limit),
         commits,
         wip_files,
-    })
+    };
+    Ok(RepositoryUpdate { repository, fingerprint, commits_unchanged })
 }
 
 /* ---------- Файлы коммита и stash ---------- */
