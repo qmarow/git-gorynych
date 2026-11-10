@@ -50,6 +50,7 @@ async function editorScenario(invoke, waitFor, sleep) {
   const full = await waitFor(() => diffText().includes('строка 5') && diffText().includes('строка 40'), 10000);
   steps.push(['fullFile', Boolean(full), localStorage.getItem('diff.fullFile')]);
 
+  await waitFor(() => $('diff-edit') && !$('diff-edit').disabled, 10000);
   $('diff-edit').click();
   const input = await waitFor(() => $('file-editor-input'), 10000);
   steps.push(['editor', Boolean(input)]);
@@ -71,6 +72,7 @@ async function editorScenario(invoke, waitFor, sleep) {
   steps.push(['back', Boolean(back)]);
 
   // Черновик: правка без сохранения, затем другой файл кликом в списке (без вопроса) и обратно — правка не потеряна
+  await waitFor(() => $('diff-edit') && !$('diff-edit').disabled, 10000);
   $('diff-edit').click();
   const again = await waitFor(() => $('file-editor-input'), 10000);
   setter.call(again, again.value.replace('строка 3\n', 'строка 3 черновик\n'));
@@ -80,7 +82,8 @@ async function editorScenario(invoke, waitFor, sleep) {
   other?.click();
   const switched = await waitFor(() => !$('file-editor-input') && $('diff-edit') && !$('diff-edit').dataset.draft, 10000);
   (await waitFor(leaf, 5000))?.click();
-  const marked = await waitFor(() => $('diff-edit')?.dataset.draft === '1', 10000);
+  // Кнопка выключена, пока не пришёл diff файла: клик по ней раньше ничего не делает (так и у пользователя)
+  const marked = await waitFor(() => $('diff-edit')?.dataset.draft === '1' && !$('diff-edit').disabled, 10000);
   $('diff-edit')?.click();
   const restored = await waitFor(() => $('file-editor-input')?.value.includes('строка 3 черновик\n') && $('file-editor-dirty'), 10000);
   const untouched = !(await invoke('repo_read_file', { dir, path: FILE })).text.includes('черновик');
