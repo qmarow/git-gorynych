@@ -85,7 +85,8 @@ node tests/ui-parity/components-compiled.mjs $old $PWD Toasts CodeText Resizer A
 | `ContextMenu`, `PipelineStatus`, `RefBadge` | `fd6118d` |
 | `Dialogs`, `TokenSetup` | `3b9565c` |
 | `TitleBar`, `GraphViewMenu`, `NewTabPage`, `BranchSync`, `StatusBar`, `RevertToDialog`, `SearchBar`, `ci/common`, `ci/DagView`, `ci/Secrets` | `2021687` |
-| `FileEditor`, `CloneDialog`, `BranchPicker` | см. `git log -- src/components/BranchPicker.tsx` |
+| `FileEditor`, `CloneDialog`, `BranchPicker` | `6806d93` |
+| `ci/RunDialog`, `ci/JobLog` | см. `git log -- src/components/ci/JobLog.tsx` |
 
 Обе копии компилируются как TypeScript (`loader: 'tsx'`): он убирает неиспользуемые импорты (`COLUMNS` в `GraphViewMenu`),
 и это не считается отличием. Импорт, у которого не используется ни одно имя, пропал бы целиком — у компонентов таких

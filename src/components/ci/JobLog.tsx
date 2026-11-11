@@ -1,6 +1,6 @@
 // Умный просмотр лога задания: ANSI-цвета, сворачиваемые секции (GitLab section_*, GitHub ##[group] / ::group::),
 // поиск по логу, «К первой ошибке», живой таймер, повтор / отмена / ручной запуск по возможностям провайдера.
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import {
   AlertTriangle,
   ArrowDownToLine,
@@ -19,15 +19,37 @@ import {
   WrapText,
   X,
 } from 'lucide-react';
-import { parseLog } from '../../lib/ansi.ts';
+import { parseLog, type LogNode, type LogLine as LogLineNode, type LogSection, type LogSegment } from '../../lib/ansi.ts';
 import { ACTIVE_STATUSES, FAILURE_REASONS, StatusPill } from '../PipelineStatus.tsx';
 import { ActionButton, Duration, ErrorNote, IconBtn, usePolling } from './common.tsx';
 import { t as tr, tj } from '../../i18n/index.ts';
+import type { ApiError, ApiResult } from '../../platform/tauri.ts';
+import type { Capabilities_Serialize, JobLog_Serialize, PipelineJob_Serialize, RemoteOptions_Deserialize } from '../../../crates/gorynych-tauri/bindings/commands.ts';
 
-const api = window.api;
+interface JobLogApi {
+  cicd: { jobLog: (dir: string, jobId: unknown, opts: unknown) => Promise<ApiResult<JobLog_Serialize>> };
+  openExternal: (url: string) => void;
+}
+
+const api = window.api as unknown as JobLogApi;
+
+/** Строка плоского списка: строка лога или заголовок секции, с путём из секций над ней */
+type FlatEntry = { node: LogNode; path: LogSection[]; header?: true };
+
+interface JobLogProps {
+  repoPath: string;
+  opts: RemoteOptions_Deserialize | null | undefined;
+  job: PipelineJob_Serialize;
+  pipelineId: unknown;
+  caps?: Capabilities_Serialize | null;
+  onClose: () => void;
+  /** Действие с заданием (`job.play`, `job.retry`, `job.cancel`) и текст уведомления об успехе */
+  onAction: (action: string, success: string) => void;
+  providerLabel?: string | null;
+}
 
 /** Все строки дерева по порядку, с путём из секций (чтобы раскрыть их при переходе к строке) */
-function flatten(nodes, path = [], out = []) {
+function flatten(nodes: LogNode[], path: LogSection[] = [], out: FlatEntry[] = []): FlatEntry[] {
   for (const node of nodes) {
     if (node.type === 'line') out.push({ node, path });
     else {
@@ -38,17 +60,17 @@ function flatten(nodes, path = [], out = []) {
   return out;
 }
 
-const plain = (segs) => segs.map((s) => s.text).join('');
+const plain = (segs: LogSegment[]) => segs.map((s) => s.text).join('');
 
-export default function JobLog({ repoPath, opts, job: initialJob, pipelineId, caps, onClose, onAction, providerLabel }) {
-  const [state, setState] = useState({ loading: true, data: null, error: null });
+export default function JobLog({ repoPath, opts, job: initialJob, pipelineId, caps, onClose, onAction, providerLabel }: JobLogProps) {
+  const [state, setState] = useState<{ loading: boolean; data: JobLog_Serialize | null; error: ApiError | null }>({ loading: true, data: null, error: null });
   const [wrap, setWrap] = useState(true);
-  const [collapsed, setCollapsed] = useState(() => new Map());
-  const [search, setSearch] = useState(null); // строка поиска (null — поле закрыто)
+  const [collapsed, setCollapsed] = useState(() => new Map<number, boolean>());
+  const [search, setSearch] = useState<string | null>(null); // строка поиска (null — поле закрыто)
   const [hit, setHit] = useState(0);
-  const [flash, setFlash] = useState(null); // номер строки, к которой перешли
-  const scrollRef = useRef(null);
-  const searchRef = useRef(null);
+  const [flash, setFlash] = useState<number | null>(null); // номер строки, к которой перешли
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const searchRef = useRef<HTMLInputElement>(null);
   const stickToBottom = useRef(true);
 
   const load = useCallback(async () => {
@@ -61,20 +83,20 @@ export default function JobLog({ repoPath, opts, job: initialJob, pipelineId, ca
   }, [load]);
 
   const job = { ...initialJob, ...(state.data?.job ?? {}) };
-  const running = ACTIVE_STATUSES.has(job.status);
+  const running = ACTIVE_STATUSES.has(job.status!);
   usePolling(load, state.error ? 0 : running ? 3000 : 0, [load]);
 
   const tree = useMemo(() => (state.data ? parseLog(state.data.text ?? '') : null), [state.data]);
   const flat = useMemo(() => (tree ? flatten(tree.children) : []), [tree]);
-  const firstError = useMemo(() => flat.find((x) => !x.header && x.node.error) ?? null, [flat]);
+  const firstError = useMemo(() => flat.find((x) => !x.header && (x.node as LogLineNode).error) ?? null, [flat]);
 
   const query = (search ?? '').trim().toLowerCase();
-  const hits = useMemo(() => (query ? flat.filter((x) => plain(x.header ? x.node.title : x.node.segs).toLowerCase().includes(query)) : []), [flat, query]);
+  const hits = useMemo(() => (query ? flat.filter((x) => plain(x.header ? (x.node as LogSection).title : (x.node as LogLineNode).segs).toLowerCase().includes(query)) : []), [flat, query]);
   useEffect(() => setHit(0), [query]);
 
   // Esc — закрыть поиск, затем назад к пайплайну
   useEffect(() => {
-    const onKey = (e) => {
+    const onKey = (e: KeyboardEvent) => {
       if (e.code === 'KeyF' && (e.ctrlKey || e.metaKey)) {
         e.preventDefault();
         e.stopPropagation(); // поиск по логу, а не по графу
@@ -101,11 +123,11 @@ export default function JobLog({ repoPath, opts, job: initialJob, pipelineId, ca
     if (el) stickToBottom.current = el.scrollHeight - el.scrollTop - el.clientHeight < 40;
   };
 
-  const isCollapsed = (s) => (collapsed.has(s.key) ? collapsed.get(s.key) : s.collapsed);
-  const toggle = (s) => setCollapsed((m) => new Map(m).set(s.key, !isCollapsed(s)));
+  const isCollapsed = (s: LogSection): boolean => (collapsed.has(s.key) ? collapsed.get(s.key)! : s.collapsed);
+  const toggle = (s: LogSection) => setCollapsed((m) => new Map(m).set(s.key, !isCollapsed(s)));
 
   /** Раскрыть секции и прокрутить к строке */
-  const goTo = useCallback((entry) => {
+  const goTo = useCallback((entry: FlatEntry | null | undefined) => {
     if (!entry) return;
     stickToBottom.current = false;
     setCollapsed((m) => {
@@ -148,7 +170,7 @@ export default function JobLog({ repoPath, opts, job: initialJob, pipelineId, ca
           <ArrowLeft size={15} />
         </IconBtn>
         <StatusPill status={shownStatus} />
-        <span className="min-w-0 shrink truncate text-[13px] font-semibold text-gk-strong" title={job.name}>
+        <span className="min-w-0 shrink truncate text-[13px] font-semibold text-gk-strong" title={job.name as string}>
           {job.name}
         </span>
         <span className="flex min-w-0 flex-1 items-center gap-1 truncate text-[11px] text-gk-dim">
@@ -164,7 +186,7 @@ export default function JobLog({ repoPath, opts, job: initialJob, pipelineId, ca
           <ActionButton icon={Play} onClick={() => onAction('job.play', tr('Задание {0} запущено', job.name))}>
             {tr('Запустить')}</ActionButton>
         )}
-        {['failed', 'canceled', 'success'].includes(job.status) && (
+        {['failed', 'canceled', 'success'].includes(job.status!) && (
           <ActionButton icon={RotateCcw} why={caps?.canRerunSingleJob ? null : caps?.why?.canRerunSingleJob ?? tr('Недоступно')} onClick={() => onAction('job.retry', tr('Задание {0} перезапущено', job.name))} data-testid="log-retry">
             {tr('Повторить')}</ActionButton>
         )}
@@ -190,7 +212,7 @@ export default function JobLog({ repoPath, opts, job: initialJob, pipelineId, ca
         >
           <ArrowDownToLine size={14} />
         </IconBtn>
-        <IconBtn title={tr('Открыть в {0}', providerLabel ?? tr('браузере'))} onClick={() => (job.logsUrl || job.url) && api.openExternal(job.logsUrl || job.url)}>
+        <IconBtn title={tr('Открыть в {0}', providerLabel ?? tr('браузере'))} onClick={() => (job.logsUrl || job.url) && api.openExternal((job.logsUrl || job.url)!)}>
           <ExternalLink size={14} />
         </IconBtn>
       </div>
@@ -257,7 +279,7 @@ export default function JobLog({ repoPath, opts, job: initialJob, pipelineId, ca
         )}
         {state.error && !state.data && <ErrorNote error={state.error} />}
         {state.data?.truncated && (
-          <div className="px-4 pb-2 font-sans text-[11px] text-gk-dim">{tj('Лог большой ({0} КБ) — показан конец. Полностью — на сервере.', [Math.round(state.data.size / 1024)])}</div>
+          <div className="px-4 pb-2 font-sans text-[11px] text-gk-dim">{tj('Лог большой ({0} КБ) — показан конец. Полностью — на сервере.', [Math.round(state.data.size! / 1024)])}</div>
         )}
         {state.data?.unavailable && (
           <div className="px-4 py-6 font-sans text-[13px] text-gk-dim">{tr('Этот сервер не отдаёт логи по API — откройте задание в браузере.')}</div>
@@ -268,7 +290,7 @@ export default function JobLog({ repoPath, opts, job: initialJob, pipelineId, ca
           </div>
         )}
         {tree && <LogNodes nodes={tree.children} wrap={wrap} isCollapsed={isCollapsed} toggle={toggle} hitSet={hitSet} current={currentHit} flash={flash} query={query} />}
-        {running && tree?.children.length > 0 && (
+        {running && tree?.children.length! > 0 && (
           <div className="flex items-center gap-2 px-4 py-1 font-sans text-[11px] text-gk-blue">
             {tj('{0} выполняется…', [<Loader2 size={11} className="animate-spin" />])}</div>
         )}
@@ -277,7 +299,18 @@ export default function JobLog({ repoPath, opts, job: initialJob, pipelineId, ca
   );
 }
 
-function LogNodes({ nodes, wrap, isCollapsed, toggle, hitSet, current, flash, query }) {
+interface LogNodesProps {
+  nodes: LogNode[];
+  wrap: boolean;
+  isCollapsed: (s: LogSection) => boolean;
+  toggle: (s: LogSection) => void;
+  hitSet: Set<number>;
+  current: number | null | undefined;
+  flash: number | null;
+  query: string;
+}
+
+function LogNodes({ nodes, wrap, isCollapsed, toggle, hitSet, current, flash, query }: LogNodesProps): ReactNode {
   return nodes.map((node, i) =>
     node.type === 'line' ? (
       <LogLine key={`l${node.n}-${i}`} node={node} wrap={wrap} hit={hitSet.has(node.n)} current={current === node.n} flash={flash === node.n} query={query} />
@@ -302,7 +335,7 @@ function LogNodes({ nodes, wrap, isCollapsed, toggle, hitSet, current, flash, qu
   );
 }
 
-function LogLine({ node, wrap, hit, current, flash, query }) {
+function LogLine({ node, wrap, hit, current, flash, query }: { node: LogLineNode; wrap: boolean; hit: boolean; current: boolean; flash: boolean; query: string }) {
   return (
     <div
       data-n={node.n}
@@ -317,13 +350,13 @@ function LogLine({ node, wrap, hit, current, flash, query }) {
 }
 
 /** Сегменты с цветами; совпадения поиска — подсвечены */
-function Segs({ segs, query }) {
+function Segs({ segs, query }: { segs: LogSegment[]; query: string }): ReactNode {
   return segs.map((s, i) => {
-    const style = s.fg || s.bold || s.italic || s.underline || s.dim
+    const style: CSSProperties | undefined = s.fg || s.bold || s.italic || s.underline || s.dim
       ? { color: s.fg ?? undefined, fontWeight: s.bold ? 700 : undefined, fontStyle: s.italic ? 'italic' : undefined, textDecoration: s.underline ? 'underline' : undefined, opacity: s.dim ? 0.6 : undefined }
       : undefined;
     if (!query || !s.text.toLowerCase().includes(query)) return <span key={i} style={style}>{s.text}</span>;
-    const parts = [];
+    const parts: ReactNode[] = [];
     const low = s.text.toLowerCase();
     let at = 0;
     let k = 0;

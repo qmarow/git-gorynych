@@ -5,10 +5,34 @@ import { GitBranch, Loader2, Play, Plus, Trash2, Zap } from 'lucide-react';
 import { Button, ErrorBox, Modal } from '../Dialogs.tsx';
 import { Toggle } from './common.tsx';
 import { t as tr, tj } from '../../i18n/index.ts';
+import type { ReactNode } from 'react';
+import type { ApiError, ApiResult } from '../../platform/tauri.ts';
+import type { Capabilities_Serialize, InputField_Serialize, RemoteOptions_Deserialize, RunForm_Serialize, RunResult_Serialize, RunWorkflow_Serialize } from '../../../crates/gorynych-tauri/bindings/commands.ts';
 
-const api = window.api;
+type Value = string | boolean | number | null | undefined;
+type Variable = { key: string; value: unknown };
 
-function Field({ input, value, onChange }) {
+/** Параметры запуска в форме, которую ждёт `cicd:run` */
+export interface RunParams {
+  ref: string;
+  workflow?: string | null;
+  inputs?: Record<string, unknown>;
+  variables?: Variable[];
+}
+
+/** Поле формы: input из workflow_dispatch / spec:inputs или переменная GitLab с описанием */
+type FieldInput = Pick<InputField_Serialize, 'key' | 'type'> & { description?: string | null; required?: boolean; default?: unknown; options?: string[] | null };
+
+interface RunApi {
+  cicd: {
+    runForm: (dir: string, opts: unknown) => Promise<ApiResult<RunForm_Serialize>>;
+    run: (dir: string, params: RunParams, opts: unknown) => Promise<ApiResult<RunResult_Serialize>>;
+  };
+}
+
+const api = window.api as unknown as RunApi;
+
+function Field({ input, value, onChange }: { input: FieldInput; value: Value; onChange: (value: string | boolean) => void }) {
   const label = (
     <span className="mb-1 flex items-baseline gap-1.5">
       <span className="font-mono text-[12px] text-gk-text">{input.key}</span>
@@ -23,7 +47,7 @@ function Field({ input, value, onChange }) {
     return (
       <label className="block" data-testid={`run-input-${input.key}`}>
         {label}
-        <select value={value ?? ''} onChange={(e) => onChange(e.target.value)} className="w-full rounded-md bg-gk-bg px-2 py-1.5 text-[12.5px] outline-none ring-1 ring-gk-border focus:ring-gk-blue">
+        <select value={(value ?? '') as string} onChange={(e) => onChange(e.target.value)} className="w-full rounded-md bg-gk-bg px-2 py-1.5 text-[12.5px] outline-none ring-1 ring-gk-border focus:ring-gk-blue">
           {input.options.map((o) => (
             <option key={o} value={o}>
               {o}
@@ -38,7 +62,7 @@ function Field({ input, value, onChange }) {
       {label}
       <input
         type={input.type === 'number' ? 'number' : 'text'}
-        value={value ?? ''}
+        value={(value ?? '') as string}
         onChange={(e) => onChange(e.target.value)}
         placeholder={input.default ? String(input.default) : ''}
         className="w-full rounded-md bg-gk-bg px-2 py-1.5 font-mono text-[12.5px] outline-none ring-1 ring-gk-border focus:ring-gk-blue"
@@ -47,17 +71,29 @@ function Field({ input, value, onChange }) {
   );
 }
 
-const initValues = (inputs) => Object.fromEntries((inputs ?? []).map((i) => [i.key, i.default ?? (i.type === 'boolean' ? false : '')]));
+const initValues = (inputs: readonly FieldInput[] | null | undefined): Record<string, Value> => Object.fromEntries((inputs ?? []).map((i) => [i.key, (i.default ?? (i.type === 'boolean' ? false : '')) as Value]));
 
-export default function RunDialog({ repoPath, opts, caps, providerLabel, branches = [], currentBranch, defaultWorkflow, onClose, onStarted }) {
-  const [form, setForm] = useState({ loading: true, data: null, error: null });
+interface RunDialogProps {
+  repoPath: string;
+  opts: RemoteOptions_Deserialize | null | undefined;
+  caps?: Capabilities_Serialize | null;
+  providerLabel: ReactNode;
+  branches?: string[];
+  currentBranch?: string | null;
+  defaultWorkflow?: string | null;
+  onClose: () => void;
+  onStarted: (run: RunResult_Serialize, params: RunParams) => void;
+}
+
+export default function RunDialog({ repoPath, opts, caps, providerLabel, branches = [], currentBranch, defaultWorkflow, onClose, onStarted }: RunDialogProps) {
+  const [form, setForm] = useState<{ loading: boolean; data: RunForm_Serialize | null; error: ApiError | null }>({ loading: true, data: null, error: null });
   const [ref, setRef] = useState(currentBranch ?? '');
-  const [workflow, setWorkflow] = useState(null);
-  const [values, setValues] = useState({});
-  const [vars, setVars] = useState({}); // переменные с описанием (GitLab)
-  const [custom, setCustom] = useState([]); // [{ key, value }]
+  const [workflow, setWorkflow] = useState<RunWorkflow_Serialize | null | undefined>(null);
+  const [values, setValues] = useState<Record<string, Value>>({});
+  const [vars, setVars] = useState<Record<string, Value>>({}); // переменные с описанием (GitLab)
+  const [custom, setCustom] = useState<{ key: string; value: string }[]>([]); // [{ key, value }]
   const [busy, setBusy] = useState(false);
-  const [error, setError] = useState(null);
+  const [error, setError] = useState<ApiError | null>(null);
 
   useEffect(() => {
     api.cicd.runForm(repoPath, opts).then((res) => {
@@ -73,20 +109,20 @@ export default function RunDialog({ repoPath, opts, caps, providerLabel, branche
   }, [repoPath, opts, defaultWorkflow]);
 
   const d = form.data;
-  const inputs = d?.kind === 'gitlab' ? d.inputs ?? [] : workflow?.inputs ?? [];
+  const inputs: FieldInput[] = d?.kind === 'gitlab' ? d.inputs ?? [] : workflow?.inputs ?? [];
   const missing = inputs.filter((i) => i.required && i.type !== 'boolean' && !String(values[i.key] ?? '').trim()).map((i) => i.key);
   const needsWorkflow = d && (d.kind === 'github' || d.kind === 'gitea');
-  const branchList = useMemo(() => [...new Set([currentBranch, ...branches].filter(Boolean))], [branches, currentBranch]);
+  const branchList = useMemo(() => [...new Set([currentBranch, ...branches].filter(Boolean) as string[])], [branches, currentBranch]);
 
   const submit = async () => {
     setBusy(true);
     setError(null);
-    const params = { ref: ref.trim() };
+    const params: RunParams = { ref: ref.trim() };
     if (needsWorkflow) params.workflow = workflow?.path ?? null;
-    if (d.kind === 'bitbucket') {
+    if (d!.kind === 'bitbucket') {
       params.workflow = workflow?.value ?? null;
       params.variables = [...Object.entries(values).map(([key, value]) => ({ key, value: String(value) })), ...custom];
-    } else if (d.kind === 'gitlab') {
+    } else if (d!.kind === 'gitlab') {
       params.inputs = Object.fromEntries(Object.entries(values).filter(([, v]) => v !== ''));
       params.variables = [...Object.entries(vars).map(([key, value]) => ({ key, value })), ...custom];
     } else {
@@ -174,7 +210,7 @@ export default function RunDialog({ repoPath, opts, caps, providerLabel, branche
             </div>
           )}
 
-          {d.kind === 'gitlab' && d.variables?.length > 0 && (
+          {d.kind === 'gitlab' && d.variables?.length! > 0 && (
             <div className="space-y-2.5 rounded-lg border border-gk-border p-3" data-testid="run-prefilled">
               <div className="text-[11px] font-semibold uppercase tracking-wider text-gk-dim">{tr('Переменные из .gitlab-ci.yml')}</div>
               {d.variables.map((v) => (
