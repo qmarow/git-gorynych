@@ -53,7 +53,7 @@ import {
 } from 'lucide-react';
 import ContextMenu from './components/ContextMenu.tsx';
 import TitleBar from './components/TitleBar.tsx';
-import Toolbar from './components/Toolbar.jsx';
+import Toolbar from './components/Toolbar.tsx';
 import Sidebar from './components/Sidebar.jsx';
 import CommitGraph from './components/CommitGraph.jsx';
 import CommitDetails from './components/CommitDetails.jsx';
@@ -86,7 +86,7 @@ import { ACTIVE_STATUSES } from './components/PipelineStatus.tsx';
 import StatusBar from './components/StatusBar.tsx';
 import { IS_MAC, isMod, kb, openFolderLabel, openTerminalLabel } from './lib/platform.ts';
 import { DEFAULT_SYNC_MODE, SYNC_MODES, nextDelay, resetSyncStatus, setSyncStatus } from './lib/syncStatus.ts';
-import InitRepoDialog, { plural } from './components/InitRepoDialog.jsx';
+import InitRepoDialog, { plural } from './components/InitRepoDialog.tsx';
 import CloneDialog from './components/CloneDialog.tsx';
 import AuthDialog from './components/AuthDialog.jsx';
 import NewTabPage from './components/NewTabPage.tsx';

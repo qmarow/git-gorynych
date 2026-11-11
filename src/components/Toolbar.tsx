@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, type ButtonHTMLAttributes, type ComponentType, type ReactNode } from 'react';
 import {
   Archive,
   ArrowDownToLine,
@@ -20,9 +20,51 @@ import {
   ShieldX,
   Undo2,
 } from 'lucide-react';
-import BranchPicker from './BranchPicker.tsx';
+import BranchPicker, { type CheckoutTarget } from './BranchPicker.tsx';
 import { isMod, kb } from '../lib/platform.ts';
 import { t, tj } from '../i18n/index.ts';
+import type { RepoData } from '../state/repoStore.ts';
+import type { AccessState } from './Dialogs.tsx';
+
+type Icon = ComponentType<{ size?: number; strokeWidth?: number; className?: string }>;
+
+/** Кнопка своего действия на панели (готовит App) */
+interface ToolbarAction {
+  id: string;
+  name: string;
+  icon: Icon;
+  title?: string;
+  running?: boolean;
+}
+
+interface ToolbarProps {
+  repo: RepoData;
+  loading?: boolean;
+  busyAction?: string | null;
+  access?: AccessState | null;
+  pullMode: string;
+  onOpenRepository?: () => void;
+  onRepoMenu?: (x: number, y: number) => void;
+  onRefresh?: () => void;
+  onUndo?: () => void;
+  onRedo?: () => void;
+  onPull: (mode?: string) => void;
+  onFetch: () => void;
+  onPush: () => void;
+  onBranch?: () => void;
+  onCheckout: (target: CheckoutTarget) => void;
+  onCreateBranch: (name: string) => void;
+  onLocate: (hash: string) => void;
+  onStash?: () => void;
+  onPop?: () => void;
+  onAccessClick?: () => void;
+  onSettings?: () => void;
+  onSearch?: () => void;
+  searchOpen?: boolean;
+  customActions?: ToolbarAction[];
+  onRunAction?: (id: string) => void;
+  onOpenActions?: () => void;
+}
 
 export const PULL_MODES = [
   { id: 'merge', label: t('Pull — перемотать, иначе слить (merge)') },
@@ -57,7 +99,7 @@ export default function Toolbar({
   customActions = [],
   onRunAction,
   onOpenActions,
-}) {
+}: ToolbarProps) {
   const current = repo.localBranches.find((b) => b.name === repo.currentBranch);
   const hasRemote = repo.remotes.length > 0;
   const onBranchHead = Boolean(repo.currentBranch && repo.headHash);
@@ -106,7 +148,7 @@ export default function Toolbar({
           disabled={busy}
           onCheckout={onCheckout}
           onCreate={onCreateBranch}
-          onNewBranchDialog={onBranch}
+          onNewBranchDialog={onBranch!}
           onLocate={onLocate}
         />
       </div>
@@ -209,7 +251,7 @@ export default function Toolbar({
 
 /* ---------- Индикатор доступа к remote ---------- */
 
-function AccessChip({ repo, access, onClick }) {
+function AccessChip({ repo, access, onClick }: { repo: RepoData; access?: AccessState | null; onClick?: () => void }) {
   if (repo.remotes.length === 0) {
     return (
       <span title={t('У репозитория нет remote')} className="mr-1 flex items-center gap-1.5 px-2 text-xs text-gk-dim">
@@ -217,7 +259,7 @@ function AccessChip({ repo, access, onClick }) {
     );
   }
 
-  let view;
+  let view: { icon: Icon; spin?: boolean; cls: string; text: ReactNode; title?: string };
   const d = access?.data;
   if (!access || (access.status === 'checking' && !d)) {
     view = { icon: Loader2, spin: true, cls: 'text-gk-muted', text: t('проверка…'), title: t('Проверяем доступ к remote') };
@@ -247,13 +289,13 @@ function AccessChip({ repo, access, onClick }) {
 
 /* ---------- Pull с выпадающим меню ---------- */
 
-function PullButton({ title, disabled, pullDisabled, loading, badge, pullMode, onPull, onFetch }) {
+function PullButton({ title, disabled, pullDisabled, loading, badge, pullMode, onPull, onFetch }: { title: string; disabled?: boolean; pullDisabled?: boolean; loading?: boolean; badge?: ReactNode; pullMode: string; onPull: (mode?: string) => void; onFetch: () => void }) {
   const [open, setOpen] = useState(false);
-  const ref = useRef(null);
+  const ref = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (!open) return undefined;
-    const close = (e) => !ref.current?.contains(e.target) && setOpen(false);
+    const close = (e: MouseEvent) => !ref.current?.contains(e.target as Node) && setOpen(false);
     window.addEventListener('mousedown', close);
     return () => window.removeEventListener('mousedown', close);
   }, [open]);
@@ -311,7 +353,7 @@ function PullButton({ title, disabled, pullDisabled, loading, badge, pullMode, o
   );
 }
 
-function MenuItem({ icon: Icon, children, ...props }) {
+function MenuItem({ icon: Icon, children, ...props }: ButtonHTMLAttributes<HTMLButtonElement> & { icon: Icon | null }) {
   return (
     <button
       {...props}
@@ -325,20 +367,20 @@ function MenuItem({ icon: Icon, children, ...props }) {
 
 /* ---------- Выбор ветки ---------- */
 
-function BranchSelector({ repo, label, value, disabled, onCheckout, onCreate, onNewBranchDialog, onLocate }) {
+function BranchSelector({ repo, label, value, disabled, onCheckout, onCreate, onNewBranchDialog, onLocate }: { repo: RepoData; label: ReactNode; value: ReactNode; disabled?: boolean; onCheckout: (target: CheckoutTarget) => void; onCreate: (name: string) => void; onNewBranchDialog: () => void; onLocate: (hash: string) => void }) {
   const [open, setOpen] = useState(false);
-  const ref = useRef(null);
+  const ref = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (!open) return undefined;
-    const close = (e) => !ref.current?.contains(e.target) && setOpen(false);
+    const close = (e: MouseEvent) => !ref.current?.contains(e.target as Node) && setOpen(false);
     window.addEventListener('mousedown', close);
     return () => window.removeEventListener('mousedown', close);
   }, [open]);
 
   // Ctrl+B — открыть список веток откуда угодно
   useEffect(() => {
-    const onKey = (e) => {
+    const onKey = (e: KeyboardEvent) => {
       if (!(isMod(e) && !e.shiftKey && !e.altKey && e.code === 'KeyB')) return;
       if (document.querySelector('.fixed.inset-0')) return; // открыт диалог
       e.preventDefault();
@@ -386,7 +428,7 @@ function BranchSelector({ repo, label, value, disabled, onCheckout, onCreate, on
 
 /* ---------- Общие кнопки ---------- */
 
-function Selector({ label, value, icon: Icon, active, ...props }) {
+function Selector({ label, value, icon: Icon, active, ...props }: Omit<ButtonHTMLAttributes<HTMLButtonElement>, 'value'> & { label: ReactNode; value: ReactNode; icon: Icon; active?: boolean }) {
   return (
     <button
       {...props}
@@ -407,7 +449,7 @@ function Selector({ label, value, icon: Icon, active, ...props }) {
   );
 }
 
-function ActionButton({ icon: Icon, label, disabled, loading, badge, className = '', ...props }) {
+function ActionButton({ icon: Icon, label, disabled, loading, badge, className = '', ...props }: ButtonHTMLAttributes<HTMLButtonElement> & { icon: Icon; label: ReactNode; loading?: boolean; badge?: ReactNode }) {
   return (
     <button
       {...props}
@@ -431,7 +473,7 @@ function ActionButton({ icon: Icon, label, disabled, loading, badge, className =
   );
 }
 
-function IconButton({ icon: Icon, title, onClick, iconClass = '' }) {
+function IconButton({ icon: Icon, title, onClick, iconClass = '' }: { icon: Icon; title: string; onClick?: () => void; iconClass?: string }) {
   return (
     <button
       title={title}

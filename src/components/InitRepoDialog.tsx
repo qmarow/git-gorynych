@@ -1,5 +1,5 @@
 import { getLanguage } from '../i18n/index.ts';
-import { useMemo, useState } from 'react';
+import { useMemo, useState, type ComponentType, type ReactNode } from 'react';
 import {
   AlertTriangle,
   Check,
@@ -21,8 +21,35 @@ import {
 } from 'lucide-react';
 import { Button, ErrorBox, Modal } from './Dialogs.tsx';
 import { t as tr, tj, locale } from '../i18n/index.ts';
+import type { ApiError, ApiResult } from '../platform/tauri.ts';
+import type { ConnectOptions_Deserialize, FolderInfo_Serialize, InitOptions_Deserialize, RemoteProbe_Serialize } from '../../crates/gorynych-tauri/bindings/commands.ts';
 
-export const plural = (n, one, few, many) => {
+type Icon = ComponentType<{ size?: number; className?: string }>;
+type Probe =
+  | { status: 'idle'; url?: undefined; data?: undefined; error?: undefined }
+  | { status: 'loading'; url: string; data?: undefined; error?: undefined }
+  | { status: 'ok'; url: string; data: RemoteProbe_Serialize; error?: undefined }
+  | { status: 'error'; url: string; error: ApiError; data?: undefined };
+
+type FolderView = Omit<FolderInfo_Serialize, 'files' | 'dirs' | 'bytes' | 'heavy'> & { files: number; dirs: number; bytes: number; heavy: Record<string, number> };
+
+interface InitRepoDialogProps {
+  /** Результат `repo:inspect`: мастер открывается после проверки папки, размеры уже посчитаны */
+  info: FolderView;
+  /** Почему открыт мастер */
+  reason: 'open' | 'create' | string;
+  initialMode?: 'init' | 'connect';
+  busy?: boolean;
+  error?: ApiError | null;
+  onClose: () => void;
+  onSubmit: (options: InitOptions_Deserialize) => void;
+  onSubmitConnect: (options: ConnectOptions_Deserialize) => void;
+  onProbe: (url: string, branch?: string) => Promise<ApiResult<RemoteProbe_Serialize>>;
+  onChangeFolder: () => void;
+  onOpenParent: () => void;
+}
+
+export const plural = (n: number, one: string, few: string, many: string): string => {
   if (getLanguage() !== 'ru') return n === 1 ? one : many; // в английском две формы: one и many (few = many)
   const m10 = n % 10;
   const m100 = n % 100;
@@ -31,7 +58,7 @@ export const plural = (n, one, few, many) => {
   return many;
 };
 
-function formatBytes(b) {
+function formatBytes(b: number): string {
   if (b < 1024) return tr('{0} Б', b);
   if (b < 1024 * 1024) return tr('{0} КБ', (b / 1024).toFixed(1));
   if (b < 1024 * 1024 * 1024) return tr('{0} МБ', (b / 1024 / 1024).toFixed(1));
@@ -54,19 +81,19 @@ export default function InitRepoDialog({
   onProbe,
   onChangeFolder,
   onOpenParent,
-}) {
+}: InitRepoDialogProps) {
   const needIdentity = !info.identity.name || !info.identity.email;
 
   // 'init' — новый репозиторий, 'connect' — подключить уже созданный на GitLab/GitHub
   const [mode, setMode] = useState(initialMode);
   const connect = mode === 'connect';
   const [url, setUrl] = useState('');
-  const [probe, setProbe] = useState({ status: 'idle' }); // idle | loading | ok | error
+  const [probe, setProbe] = useState<Probe>({ status: 'idle' }); // idle | loading | ok | error
   const [remoteBranch, setRemoteBranch] = useState('');
   const [push, setPush] = useState(true);
   const [connectMessage, setConnectMessage] = useState('Add project files');
 
-  const runProbe = async (branchName) => {
+  const runProbe = async (branchName?: string) => {
     const target = url.trim();
     if (!target) return;
     setProbe({ status: 'loading', url: target });
@@ -83,7 +110,7 @@ export default function InitRepoDialog({
   const [branch, setBranch] = useState(info.identity.defaultBranch || 'main');
   const [useGitignore, setUseGitignore] = useState(!info.hasGitignore);
   const [templates, setTemplates] = useState(() => ['common', ...info.types]);
-  const [customIgnore, setCustomIgnore] = useState(null); // текст, если правили вручную
+  const [customIgnore, setCustomIgnore] = useState<string | null>(null); // текст, если правили вручную
   const [showIgnore, setShowIgnore] = useState(false);
   const [readme, setReadme] = useState(!info.hasReadme && info.empty);
   const [commit, setCommit] = useState(!info.empty || !info.hasReadme);
@@ -109,12 +136,12 @@ export default function InitRepoDialog({
     files,
     ignored: (useGitignore || ignoreBlocked) && (ignoreBlocked || ignoreLines.has(dir) || ignoreLines.has(`[${dir[0].toUpperCase()}${dir[0].toLowerCase()}]${dir.slice(1)}`)),
   }));
-  const heavyIncluded = heavy.filter((h) => !h.ignored && h.files > 0);
+  const heavyIncluded = heavy.filter((h) => !h.ignored && h.files! > 0);
 
   const identityMissing = commit && (!name.trim() || !email.trim());
   const emailBad = email.trim() && !/^[^\s@]+@[^\s@]+$/.test(email.trim());
   const canSubmit =
-    !busy && !identityMissing && !emailBad && (connect ? Boolean(probeData) && (!probeData.empty || branch.trim()) : branch.trim());
+    !busy && !identityMissing && !emailBad && (connect ? Boolean(probeData) && (!probeData!.empty || branch.trim()) : branch.trim());
 
   const submit = () => {
     if (!canSubmit) return;
@@ -123,7 +150,7 @@ export default function InitRepoDialog({
     if (connect) {
       onSubmitConnect({
         url: url.trim(),
-        branch: probeData.empty ? branch.trim() : remoteBranch,
+        branch: probeData!.empty ? branch.trim() : remoteBranch,
         gitignore: useGitignore && !ignoreBlocked ? ignoreText : null,
         commit: commit ? { message: connectMessage.trim() || 'Add project files' } : null,
         identity,
@@ -231,7 +258,7 @@ export default function InitRepoDialog({
           ].map((m) => (
             <button
               key={m.id}
-              onClick={() => setMode(m.id)}
+              onClick={() => setMode(m.id as 'init' | 'connect')}
               disabled={busy}
               className={`flex items-center gap-2.5 rounded-md px-3 py-2 text-left transition-colors ${
                 mode === m.id ? 'bg-gk-fg/10 text-gk-strong ring-1 ring-gk-fg/10' : 'text-gk-muted hover:bg-gk-fg/5 hover:text-gk-text'
@@ -449,7 +476,7 @@ export default function InitRepoDialog({
 
 /* ---------- Подключение к существующему репозиторию ---------- */
 
-function FileList({ files, max = 6 }) {
+function FileList({ files, max = 6 }: { files: string[]; max?: number }) {
   const shown = files.slice(0, max);
   return (
     <span className="font-mono text-[11px]">
@@ -459,7 +486,7 @@ function FileList({ files, max = 6 }) {
   );
 }
 
-function ConnectSection({ url, setUrl, probe, probeData, onProbe, remoteBranch, onBranchChange, busy }) {
+function ConnectSection({ url, setUrl, probe, probeData, onProbe, remoteBranch, onBranchChange, busy }: { url: string; setUrl: (url: string) => void; probe: Probe; probeData: RemoteProbe_Serialize | null | undefined; onProbe: () => void; remoteBranch: string; onBranchChange: (branch: string) => void; busy?: boolean }) {
   const loading = probe.status === 'loading';
   const stale = probe.status === 'ok' && probe.url !== url.trim();
   return (
@@ -520,7 +547,7 @@ function ConnectSection({ url, setUrl, probe, probeData, onProbe, remoteBranch, 
               </div>
               {probeData.lastCommit && (
                 <div className="text-gk-muted">
-                  {tj('Последний коммит: <0>«{1}»</0> · {2} · {3} {4}', [<span className="text-gk-text" />, probeData.lastCommit.message, probeData.lastCommit.author, probeData.remoteFiles, plural(probeData.remoteFiles, tr('файл'), tr('файла'), tr('файлов'))])}
+                  {tj('Последний коммит: <0>«{1}»</0> · {2} · {3} {4}', [<span className="text-gk-text" />, probeData.lastCommit.message, probeData.lastCommit.author, probeData.remoteFiles, plural(probeData.remoteFiles as number, tr('файл'), tr('файла'), tr('файлов'))])}
                 </div>
               )}
               <div className="space-y-1 border-t border-gk-border pt-2">
@@ -548,7 +575,7 @@ function ConnectSection({ url, setUrl, probe, probeData, onProbe, remoteBranch, 
   );
 }
 
-function Row({ tone, mark, children }) {
+function Row({ tone, mark, children }: { tone: string; mark: ReactNode; children: ReactNode }) {
   return (
     <div className="flex items-start gap-2 leading-relaxed">
       <span className={`w-3 shrink-0 text-center font-mono font-bold ${tone}`}>{mark}</span>
@@ -557,7 +584,7 @@ function Row({ tone, mark, children }) {
   );
 }
 
-function Field({ icon: Icon, label, hint, children }) {
+function Field({ icon: Icon, label, hint, children }: { icon: Icon; label: ReactNode; hint?: ReactNode; children: ReactNode }) {
   return (
     <div className="flex items-center gap-3">
       <Icon size={16} className="shrink-0 text-gk-muted" />
@@ -570,7 +597,7 @@ function Field({ icon: Icon, label, hint, children }) {
   );
 }
 
-function Switch({ checked, disabled, onChange }) {
+function Switch({ checked, disabled, onChange }: { checked: boolean; disabled?: boolean; onChange: (checked: boolean) => void }) {
   return (
     <button
       role="switch"
@@ -586,8 +613,10 @@ function Switch({ checked, disabled, onChange }) {
   );
 }
 
-function Notice({ icon: Icon, tone, children }) {
-  const tones = {
+type Tone = 'blue' | 'yellow' | 'green';
+
+function Notice({ icon: Icon, tone, children }: { icon: Icon; tone: Tone; children: ReactNode }) {
+  const tones: Record<Tone, string> = {
     blue: 'border-gk-blue/30 bg-gk-blue/10 [&>svg]:text-gk-blue',
     yellow: 'border-gk-yellow/30 bg-gk-yellow/10 [&>svg]:text-gk-yellow',
     green: 'border-gk-green/25 bg-gk-green/10 [&>svg]:text-gk-green',
