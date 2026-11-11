@@ -20,7 +20,7 @@ import {
   ShieldX,
   Undo2,
 } from 'lucide-react';
-import BranchPicker from './BranchPicker.jsx';
+import BranchPicker from './BranchPicker.tsx';
 import { isMod, kb } from '../lib/platform.ts';
 import { t, tj } from '../i18n/index.ts';
 

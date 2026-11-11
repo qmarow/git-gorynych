@@ -2,8 +2,38 @@ import { useEffect, useRef, useState } from 'react';
 import { Check, CloudDownload, FolderOpen, GitBranch, KeyRound, Link2, Loader2, RefreshCw, X } from 'lucide-react';
 import { Button, ErrorBox, Modal } from './Dialogs.tsx';
 import { t, tj } from '../i18n/index.ts';
+import type { ApiError, ApiResult } from '../platform/tauri.ts';
+import type { CloneProbe_Serialize, CloneProgressEvent_Serialize, CloneRequest_Deserialize, Cloned } from '../../crates/gorynych-tauri/bindings/commands.ts';
 
-const api = window.api;
+/** Каналы клонирования из `window.api.repo` */
+interface CloneApi {
+  repo: {
+    onCloneProgress?: (callback: (progress: CloneProgressEvent_Serialize) => void) => () => void;
+    cloneProbe: (url: string) => Promise<ApiResult<CloneProbe_Serialize>>;
+    clone: (options: CloneRequest_Deserialize) => Promise<ApiResult<Cloned>>;
+    cloneCancel: (id: string) => void;
+    openDialog: (title?: string) => Promise<string | null>;
+  };
+}
+
+const api = window.api as unknown as CloneApi | undefined;
+
+type Probe =
+  | { status: 'idle' }
+  | { status: 'loading'; url: string }
+  | { status: 'ok'; url: string; data: CloneProbe_Serialize }
+  | { status: 'error'; url: string; error: ApiError };
+
+type Job = { id: string | null; phase: string; percent: number | null; phasePercent?: number | null; speed?: string | null; size?: string | null };
+
+/** Повтор после входа: окно авторизации ждёт его итог */
+type Retry = () => Promise<ApiResult<unknown> | undefined>;
+
+interface CloneDialogProps {
+  onClose: () => void;
+  onCloned: (cloned: Cloned) => void;
+  onAuth?: (url: string, error: ApiError | undefined, retry: Retry) => void;
+}
 
 function readLastParent() {
   try {
@@ -13,7 +43,7 @@ function readLastParent() {
   }
 }
 
-const nameFromUrl = (url) =>
+const nameFromUrl = (url: string) =>
   url
     .trim()
     .replace(/[\\/]+$/, '')
@@ -25,17 +55,17 @@ const nameFromUrl = (url) =>
 /**
  * Клонирование: адрес → проверка → куда положить → прогресс → открыть во вкладке.
  */
-export default function CloneDialog({ onClose, onCloned, onAuth }) {
+export default function CloneDialog({ onClose, onCloned, onAuth }: CloneDialogProps) {
   const [url, setUrl] = useState('');
-  const [probe, setProbe] = useState({ status: 'idle' });
+  const [probe, setProbe] = useState<Probe>({ status: 'idle' });
   const [branch, setBranch] = useState('');
   const [parent, setParent] = useState(readLastParent);
   const [name, setName] = useState('');
   const [nameTouched, setNameTouched] = useState(false);
   const [shallow, setShallow] = useState(false);
-  const [job, setJob] = useState(null); // { id, phase, percent, speed, size }
-  const [error, setError] = useState(null);
-  const jobId = useRef(null);
+  const [job, setJob] = useState<Job | null>(null); // { id, phase, percent, speed, size }
+  const [error, setError] = useState<ApiError | null>(null);
+  const jobId = useRef<string | null>(null);
 
   useEffect(() => {
     if (!nameTouched) setName(nameFromUrl(url));
@@ -55,7 +85,7 @@ export default function CloneDialog({ onClose, onCloned, onAuth }) {
     const target = url.trim();
     if (!target) return;
     setProbe({ status: 'loading', url: target });
-    const res = await api.repo.cloneProbe(target);
+    const res = await api!.repo.cloneProbe(target);
     if (res.ok) {
       setProbe({ status: 'ok', url: target, data: res.data });
       setBranch(res.data.defaultBranch ?? '');
@@ -67,9 +97,9 @@ export default function CloneDialog({ onClose, onCloned, onAuth }) {
   };
 
   // Повтор проверки адреса после ввода учётных данных → { ok, error } для окна авторизации
-  const retryProbe = (target) => async () => {
+  const retryProbe = (target: string) => async () => {
     setProbe({ status: 'loading', url: target });
-    const res = await api.repo.cloneProbe(target);
+    const res = await api!.repo.cloneProbe(target);
     if (res.ok) {
       setProbe({ status: 'ok', url: target, data: res.data });
       setBranch(res.data.defaultBranch ?? '');
@@ -78,11 +108,11 @@ export default function CloneDialog({ onClose, onCloned, onAuth }) {
   };
 
   const chooseParent = async () => {
-    const dir = await api.repo.openDialog(t('Куда сохранить репозиторий'));
+    const dir = await api!.repo.openDialog(t('Куда сохранить репозиторий'));
     if (dir) setParent(dir);
   };
 
-  const start = async () => {
+  const start = async (): Promise<ApiResult<Cloned> | undefined> => {
     if (!canStart) return;
     setError(null);
     const id = `clone-${Date.now()}`;
@@ -93,7 +123,7 @@ export default function CloneDialog({ onClose, onCloned, onAuth }) {
     } catch {
       /* не запомним папку — не страшно */
     }
-    const res = await api.repo.clone({
+    const res = await api!.repo.clone({
       id,
       url: url.trim(),
       parent,
@@ -112,7 +142,7 @@ export default function CloneDialog({ onClose, onCloned, onAuth }) {
   };
 
   const cancel = () => {
-    if (jobId.current) api.repo.cloneCancel(jobId.current);
+    if (jobId.current) api!.repo.cloneCancel(jobId.current);
   };
 
   const sep = parent.includes('\\') ? '\\' : '/';
@@ -169,7 +199,7 @@ export default function CloneDialog({ onClose, onCloned, onAuth }) {
       {probe.status === 'error' && probe.url === url.trim() && <ErrorBox error={probe.error} />}
       {onAuth && ((probe.status === 'error' && probe.url === url.trim() && probe.error.code === 'AUTH') || error?.code === 'AUTH') && (
         <Button
-          onClick={() => (error?.code === 'AUTH' ? onAuth(url.trim(), error, start) : onAuth(url.trim(), probe.error, retryProbe(url.trim())))}
+          onClick={() => (error?.code === 'AUTH' ? onAuth!(url.trim(), error, start) : onAuth!(url.trim(), (probe as { error?: ApiError }).error, retryProbe(url.trim())))}
           data-testid="clone-auth"
         >
           {tj('{0} Ввести учётные данные', [<KeyRound size={13} />])}</Button>

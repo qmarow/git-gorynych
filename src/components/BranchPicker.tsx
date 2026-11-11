@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState, type HTMLAttributes, type KeyboardEvent, type ReactNode } from 'react';
 import {
   AlertTriangle,
   ArrowDown,
@@ -13,11 +13,30 @@ import {
 } from 'lucide-react';
 import { relativeTime } from '../lib/format.ts';
 import { t, tj } from '../i18n/index.ts';
+import type { RepoData } from '../state/repoStore.ts';
+import type { LocalBranch_Serialize, RemoteBranch_Serialize } from '../../crates/gorynych-tauri/bindings/commands.ts';
+
+type Row =
+  | { kind: 'local'; key: string; branch: LocalBranch_Serialize }
+  | { kind: 'remote'; key: string; branch: RemoteBranch_Serialize }
+  | { kind: 'create'; key: string };
+
+/** Что переключить: локальную ветку или серверную (создаётся локальная и следит за ней) */
+export type CheckoutTarget = { branch: string } | { remoteBranch: { name: string; fullName: string } };
+
+interface BranchPickerProps {
+  repo: RepoData;
+  onClose: () => void;
+  onCheckout: (target: CheckoutTarget) => void;
+  onCreate: (name: string) => void;
+  onNewBranchDialog: () => void;
+  onLocate: (hash: string) => void;
+}
 
 // Имя ветки, которое git точно не примет — чтобы не предлагать «Создать» заведомо зря
 const INVALID_NAME = /(^[-./])|(\.\.)|([\s~^:?*[\\])|(@\{)|(\/$)|(\.lock$)|(\.$)/;
 
-function matches(name, query) {
+function matches(name: string, query: string): boolean {
   if (!query) return true;
   const n = name.toLowerCase();
   return query
@@ -27,7 +46,7 @@ function matches(name, query) {
     .every((part) => n.includes(part));
 }
 
-function Highlight({ text, query }) {
+function Highlight({ text, query }: { text: string; query: string }) {
   const q = query.trim().toLowerCase().split(/\s+/)[0];
   if (!q) return text;
   const i = text.toLowerCase().indexOf(q);
@@ -41,17 +60,17 @@ function Highlight({ text, query }) {
   );
 }
 
-const byDate = (a, b) => (b.date ?? '').localeCompare(a.date ?? '');
+const byDate = (a: { date?: string | null }, b: { date?: string | null }) => (b.date ?? '').localeCompare(a.date ?? '');
 
 /**
  * Выпадающий список веток: поиск, переключение (локальные и удалённые), создание новой.
  * Управление с клавиатуры: ↑/↓ — выбор, Enter — переключиться/создать, Esc — закрыть.
  */
-export default function BranchPicker({ repo, onClose, onCheckout, onCreate, onNewBranchDialog, onLocate }) {
+export default function BranchPicker({ repo, onClose, onCheckout, onCreate, onNewBranchDialog, onLocate }: BranchPickerProps) {
   const [query, setQuery] = useState('');
   const [active, setActive] = useState(0);
-  const inputRef = useRef(null);
-  const listRef = useRef(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+  const listRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => inputRef.current?.focus(), []);
 
@@ -78,9 +97,9 @@ export default function BranchPicker({ repo, onClose, onCheckout, onCreate, onNe
 
   // Плоский список строк для навигации стрелками
   const rows = useMemo(() => {
-    const list = [
-      ...locals.map((b) => ({ kind: 'local', key: `l:${b.name}`, branch: b })),
-      ...remotes.map((b) => ({ kind: 'remote', key: `r:${b.fullName}`, branch: b })),
+    const list: Row[] = [
+      ...locals.map((b): Row => ({ kind: 'local', key: `l:${b.name}`, branch: b })),
+      ...remotes.map((b): Row => ({ kind: 'remote', key: `r:${b.fullName}`, branch: b })),
     ];
     if (canCreate) list.push({ kind: 'create', key: 'create' });
     return list;
@@ -93,7 +112,7 @@ export default function BranchPicker({ repo, onClose, onCheckout, onCreate, onNe
     listRef.current?.querySelector(`[data-index="${active}"]`)?.scrollIntoView({ block: 'nearest' });
   }, [active]);
 
-  const choose = (row) => {
+  const choose = (row: Row | undefined) => {
     if (!row) return;
     const isCurrent = row.kind === 'local' && row.branch.name === repo.currentBranch;
     if (operation && !isCurrent) return; // переключение заблокировано незавершённой операцией
@@ -111,7 +130,7 @@ export default function BranchPicker({ repo, onClose, onCheckout, onCreate, onNe
     onClose();
   };
 
-  const onKeyDown = (e) => {
+  const onKeyDown = (e: KeyboardEvent<HTMLDivElement>) => {
     if (e.key === 'ArrowDown') {
       e.preventDefault();
       setActive((i) => Math.min(rows.length - 1, i + 1));
@@ -130,7 +149,7 @@ export default function BranchPicker({ repo, onClose, onCheckout, onCreate, onNe
 
   const switchBlocked = Boolean(operation);
   let index = -1;
-  const rowProps = (row) => {
+  const rowProps = (row: Row | undefined) => {
     index += 1;
     const i = index;
     return {
@@ -188,13 +207,13 @@ export default function BranchPicker({ repo, onClose, onCheckout, onCreate, onNe
               current={isCurrent}
               meta={
                 <>
-                  {b.ahead > 0 && (
+                  {b.ahead! > 0 && (
                     <span className="flex items-center text-gk-blue" title={t('Впереди {0} на {1}', b.upstream, b.ahead)}>
                       <ArrowUp size={11} />
                       {b.ahead}
                     </span>
                   )}
-                  {b.behind > 0 && (
+                  {b.behind! > 0 && (
                     <span className="flex items-center text-gk-yellow" title={t('Позади {0} на {1}', b.upstream, b.behind)}>
                       <ArrowDown size={11} />
                       {b.behind}
@@ -272,7 +291,7 @@ export default function BranchPicker({ repo, onClose, onCheckout, onCreate, onNe
   );
 }
 
-function SectionTitle({ children, count }) {
+function SectionTitle({ children, count }: { children: ReactNode; count: number }) {
   return (
     <div className="flex items-center gap-1.5 px-3 pb-1 pt-2 text-[10px] font-semibold uppercase tracking-wider text-gk-dim">
       {children}
@@ -281,7 +300,20 @@ function SectionTitle({ children, count }) {
   );
 }
 
-function Row({ icon, name, meta, date, current, active, disabled, onLocate, title, ...props }) {
+interface RowProps extends Omit<HTMLAttributes<HTMLDivElement>, 'title'> {
+  icon: ReactNode;
+  name: ReactNode;
+  meta?: ReactNode;
+  date?: string | null;
+  current?: boolean;
+  active: boolean;
+  disabled?: boolean;
+  onLocate?: () => void;
+  title?: string;
+  'data-index'?: number;
+}
+
+function Row({ icon, name, meta, date, current, active, disabled, onLocate, title, ...props }: RowProps) {
   return (
     <div
       {...props}

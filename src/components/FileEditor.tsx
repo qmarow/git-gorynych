@@ -1,5 +1,5 @@
-import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import { highlightLines } from '../lib/highlight.ts';
+import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react';
+import { highlightLines, type Token } from '../lib/highlight.ts';
 
 /**
  * Редактор файла рабочей копии в окне изменений: прозрачная textarea поверх подсвеченного текста, как CiEditor,
@@ -14,9 +14,9 @@ const OVERSCAN = 30; // строк сверху и снизу от видимо�
 const HIGHLIGHT_DELAY = 150; // мс после последней правки: подсветка всего файла не мешает набору
 
 /** Единица отступа файла: табуляция, если строки начинаются с неё чаще, иначе самый частый шаг пробелов (2 или 4). */
-export function detectIndent(text) {
+export function detectIndent(text: string): string {
   let tabs = 0;
-  const steps = new Map();
+  const steps = new Map<number, number>();
   let prev = 0;
   for (const line of text.split('\n', 5000)) {
     if (!line.trim()) continue;
@@ -24,7 +24,7 @@ export function detectIndent(text) {
       tabs++;
       continue;
     }
-    const n = /^ */.exec(line)[0].length;
+    const n = /^ */.exec(line)![0].length;
     const step = Math.abs(n - prev);
     if (step === 2 || step === 4) steps.set(step, (steps.get(step) ?? 0) + 1);
     prev = n;
@@ -34,10 +34,19 @@ export function detectIndent(text) {
   return (steps.get(4) ?? 0) > (steps.get(2) ?? 0) ? '    ' : '  ';
 }
 
-export default function FileEditor({ value, onChange, lang, onSave, onCaret }) {
-  const taRef = useRef(null);
-  const layerRef = useRef(null);
-  const gutterRef = useRef(null);
+interface FileEditorProps {
+  value: string;
+  onChange: (text: string) => void;
+  /** Язык highlight.js; null — без подсветки */
+  lang?: string | null;
+  onSave?: () => void;
+  onCaret?: (caret: { line: number; column: number }) => void;
+}
+
+export default function FileEditor({ value, onChange, lang, onSave, onCaret }: FileEditorProps) {
+  const taRef = useRef<HTMLTextAreaElement>(null);
+  const layerRef = useRef<HTMLDivElement>(null);
+  const gutterRef = useRef<HTMLDivElement>(null);
   const [view, setView] = useState({ top: 0, height: 600 });
   const [activeLine, setActiveLine] = useState(1);
   const lines = useMemo(() => value.split('\n'), [value]);
@@ -45,7 +54,7 @@ export default function FileEditor({ value, onChange, lang, onSave, onCaret }) {
   const [indent] = useState(() => detectIndent(value));
 
   // Подсветка — с задержкой после набора; строки, изменённые после неё, рисуются без цвета, пока она не обновится
-  const [tokens, setTokens] = useState(null);
+  const [tokens, setTokens] = useState<Token[][] | null>(null);
   useEffect(() => {
     if (!lang) {
       setTokens(null);
@@ -86,8 +95,8 @@ export default function FileEditor({ value, onChange, lang, onSave, onCaret }) {
   };
 
   // Заменить диапазон с сохранением истории отмены браузера; без execCommand — напрямую
-  const replace = (start, end, text, selStart, selEnd) => {
-    const ta = taRef.current;
+  const replace = (start: number, end: number, text: string, selStart?: number, selEnd?: number) => {
+    const ta = taRef.current!;
     ta.focus();
     ta.setSelectionRange(start, end);
     const ok = document.execCommand?.('insertText', false, text);
@@ -99,8 +108,8 @@ export default function FileEditor({ value, onChange, lang, onSave, onCaret }) {
     if (selStart !== undefined) ta.setSelectionRange(selStart, selEnd ?? selStart);
   };
 
-  const onKeyDown = (e) => {
-    const ta = taRef.current;
+  const onKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
+    const ta = taRef.current!;
     const { selectionStart: s, selectionEnd: en, value: v } = ta;
     if ((e.ctrlKey || e.metaKey) && e.code === 'KeyS') {
       e.preventDefault();
@@ -128,14 +137,14 @@ export default function FileEditor({ value, onChange, lang, onSave, onCaret }) {
     }
     if (e.key === 'Enter' && !e.ctrlKey && !e.altKey && !e.metaKey) {
       e.preventDefault();
-      replace(s, en, `\n${/^[ \t]*/.exec(v.slice(lineStart, s))[0]}`);
+      replace(s, en, `\n${/^[ \t]*/.exec(v.slice(lineStart, s))![0]}`);
     }
   };
 
   // Видимые строки
   const first = Math.max(0, Math.floor(view.top / LINE_H) - OVERSCAN);
   const last = Math.min(lines.length, Math.ceil((view.top + view.height) / LINE_H) + OVERSCAN);
-  const visible = [];
+  const visible: number[] = [];
   for (let i = first; i < last; i++) visible.push(i);
   const gutterWidth = `${Math.max(3, String(lines.length).length) + 2}ch`;
 
@@ -183,7 +192,7 @@ export default function FileEditor({ value, onChange, lang, onSave, onCaret }) {
   );
 }
 
-const Line = memo(function Line({ index, text, tokens, active }) {
+const Line = memo(function Line({ index, text, tokens, active }: { index: number; text: string; tokens: Token[] | undefined; active: boolean }) {
   // Токены от прежней версии текста не годятся, если строка уже другая
   const fits = tokens && tokens.reduce((n, tok) => n + tok.text.length, 0) === text.length;
   return (
@@ -191,7 +200,7 @@ const Line = memo(function Line({ index, text, tokens, active }) {
       style={{ position: 'absolute', top: 8 + index * LINE_H, height: LINE_H, lineHeight: `${LINE_H}px` }}
       className={`min-w-full whitespace-pre pl-3 pr-8 text-gk-text/90 ${active ? 'bg-gk-fg/[0.035]' : ''}`}
     >
-      {fits ? tokens.map((tok, k) => (tok.cls ? <span key={k} className={tok.cls}>{tok.text}</span> : tok.text)) : text || ' '}
+      {fits ? tokens!.map((tok, k) => (tok.cls ? <span key={k} className={tok.cls}>{tok.text}</span> : tok.text)) : text || ' '}
     </div>
   );
 });

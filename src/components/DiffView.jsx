@@ -6,7 +6,7 @@ import { detectLanguage, findAll, highlightHunks, languageName, layerLine, searc
 import { isMod, kb } from '../lib/platform.ts';
 import { readable } from '../lib/scheme.ts';
 import { t as tr, tj } from '../i18n/index.ts';
-import FileEditor from './FileEditor.jsx';
+import FileEditor from './FileEditor.tsx';
 import ChangeRuler from './ChangeRuler.tsx';
 import { ConfirmDialog } from './Dialogs.tsx';
 
