@@ -10,7 +10,7 @@ const [oldDir, repo, ...names] = process.argv.slice(2);
 const esbuild = createRequire(path.join(repo, 'package.json'))('esbuild');
 // Импорты других компонентов переводятся по очереди: расширение в пути не считается отличием
 const compile = (file, loader) =>
-  esbuild.transformSync(fs.readFileSync(file, 'utf8'), { loader, jsx: 'automatic', format: 'esm' }).code.replace(/(\/components\/[\w/]+)\.(jsx|tsx)'/g, "$1'");
+  esbuild.transformSync(fs.readFileSync(file, 'utf8'), { loader, jsx: 'automatic', format: 'esm' }).code.replace(/(["']\.{1,2}\/[^"']*?)\.(jsx|tsx)(["'])/g, '$1$3');
 let n = 0;
 for (const name of names) {
   const a = compile(path.join(oldDir, 'components', `${name}.jsx`), 'jsx');

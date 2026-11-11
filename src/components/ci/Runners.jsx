@@ -25,7 +25,7 @@ import {
   Trash2,
 } from 'lucide-react';
 import { relativeTime } from '../../lib/format.ts';
-import { Button, ErrorBox, Modal } from '../Dialogs.jsx';
+import { Button, ErrorBox, Modal } from '../Dialogs.tsx';
 import { ActionButton, ChipsInput, ConfirmAction, ErrorNote, IconBtn, Loading, SegButton, Toggle, usePolling } from './common.jsx';
 import { t, tj, locale } from '../../i18n/index.ts';
 

@@ -19,7 +19,7 @@ import {
   ShieldCheck,
   User,
 } from 'lucide-react';
-import { Button, ErrorBox, Modal } from './Dialogs.jsx';
+import { Button, ErrorBox, Modal } from './Dialogs.tsx';
 import { t as tr, tj, locale } from '../i18n/index.ts';
 
 export const plural = (n, one, few, many) => {

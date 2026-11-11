@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { KeyRound, Loader2, Lock, Pencil, Plus, Save, Trash2, Variable } from 'lucide-react';
 import { relativeTime } from '../../lib/format.ts';
-import { Button, ErrorBox, Modal } from '../Dialogs.jsx';
+import { Button, ErrorBox, Modal } from '../Dialogs.tsx';
 import { ActionButton, ConfirmAction, ErrorNote, Loading, Toggle } from './common.jsx';
 import { t, tj } from '../../i18n/index.ts';
 

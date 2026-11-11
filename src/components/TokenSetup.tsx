@@ -1,8 +1,8 @@
 import { AlertTriangle, Link2, Loader2, LogIn, ShieldCheck } from 'lucide-react';
-import { Button } from './Dialogs.jsx';
+import { Button } from './Dialogs.tsx';
 import { t as tr, tj, locale } from '../i18n/index.ts';
 
-const SCOPE_LABELS = {
+const SCOPE_LABELS: Record<string, string> = {
   api: tr('просмотр и действия'),
   read_api: tr('только просмотр'),
 };
@@ -11,11 +11,22 @@ const SCOPE_LABELS = {
  * Пайплайны CI/CD работают от авторизации репозитория — той же, что для Pull и Push. Отдельного входа нет:
  * здесь только видно, работает ли она для пайплайнов, и кнопка открыть окно авторизации репозитория.
  */
-export function CiAuth({ forge, onEditLogin }) {
+/** Состояние авторизации CI/CD из `cicd:status` / `gitlab:status` (поле `token`) */
+export interface CiToken {
+  configured?: boolean;
+  source?: string;
+  pending?: boolean;
+  user?: { name?: string | null; username?: string | null } | null;
+  scopes?: string[] | null;
+  expiresAt?: string | null;
+  repoLogin?: { reason: string } | null;
+}
+
+export function CiAuth({ forge, onEditLogin }: { forge: { host?: string; token?: CiToken | null } | null | undefined; onEditLogin?: () => void }) {
   if (!forge) {
     return <p className="text-[13px] text-gk-muted">{tr('У репозитория нет remote — авторизовать нечего.')}</p>;
   }
-  const t = forge.token ?? {};
+  const t: CiToken = forge.token ?? {};
   const host = forge.host;
 
   if (t.configured) {

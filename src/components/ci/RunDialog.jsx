@@ -2,7 +2,7 @@
 // переменные с описанием из .gitlab-ci.yml, custom-пайплайны Bitbucket и свои KEY=VALUE.
 import { useEffect, useMemo, useState } from 'react';
 import { GitBranch, Loader2, Play, Plus, Trash2, Zap } from 'lucide-react';
-import { Button, ErrorBox, Modal } from '../Dialogs.jsx';
+import { Button, ErrorBox, Modal } from '../Dialogs.tsx';
 import { Toggle } from './common.jsx';
 import { t as tr, tj } from '../../i18n/index.ts';
 

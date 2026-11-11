@@ -109,7 +109,7 @@ import {
   RenameBranchDialog,
   SwitchToDialog,
   TagDialog,
-} from './components/Dialogs.jsx';
+} from './components/Dialogs.tsx';
 import { t as tr, tj, locale } from './i18n/index.ts';
 import { repoStore, useRepoStore } from './state/repoStore.ts';
 

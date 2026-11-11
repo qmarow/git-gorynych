@@ -1,7 +1,7 @@
 import { getLanguage } from '../i18n/index.ts';
 import { useEffect, useState } from 'react';
 import { AlertTriangle, Archive, Check, CloudUpload, History, Info, Loader2, ShieldCheck } from 'lucide-react';
-import { Button, ErrorBox, Modal } from './Dialogs.jsx';
+import { Button, ErrorBox, Modal } from './Dialogs.tsx';
 import { fullDate, relativeTime } from '../lib/format.ts';
 import { t, tj } from '../i18n/index.ts';
 

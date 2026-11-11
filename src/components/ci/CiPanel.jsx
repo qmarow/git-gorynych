@@ -21,7 +21,7 @@ import {
   Zap,
 } from 'lucide-react';
 import { relativeTime } from '../../lib/format.ts';
-import { CiAuth } from '../TokenSetup.jsx';
+import { CiAuth } from '../TokenSetup.tsx';
 import GitLabVariables from './GitLabVariables.jsx';
 import GitLabSchedules from './GitLabSchedules.jsx';
 import JobLog from './JobLog.jsx';

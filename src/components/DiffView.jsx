@@ -8,7 +8,7 @@ import { readable } from '../lib/scheme.ts';
 import { t as tr, tj } from '../i18n/index.ts';
 import FileEditor from './FileEditor.jsx';
 import ChangeRuler from './ChangeRuler.tsx';
-import { ConfirmDialog } from './Dialogs.jsx';
+import { ConfirmDialog } from './Dialogs.tsx';
 
 const writePref = (key, on) => {
   try {

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, type ButtonHTMLAttributes, type ComponentType, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import {
   AlertTriangle,
@@ -21,16 +21,36 @@ import {
   Tag,
   Trash2,
   X,
+  type LucideIcon,
 } from 'lucide-react';
 import { kb } from '../lib/platform.ts';
 import { t as tr, tj } from '../i18n/index.ts';
 
+/** Ошибка в форме `GitError.toJSON()` (у части окон — только `message`) */
+export interface DialogError {
+  code?: string;
+  message?: string;
+  hint?: string | null;
+  details?: string;
+  data?: unknown;
+}
+
+interface ModalProps {
+  title: ReactNode;
+  icon?: ComponentType<{ size?: number; className?: string }>;
+  iconClass?: string;
+  onClose: () => void;
+  children?: ReactNode;
+  footer?: ReactNode;
+  width?: number;
+}
+
 /* =================== Базовое модальное окно =================== */
 
-export function Modal({ title, icon: Icon, iconClass = 'text-gk-blue', onClose, children, footer, width = 460 }) {
+export function Modal({ title, icon: Icon, iconClass = 'text-gk-blue', onClose, children, footer, width = 460 }: ModalProps) {
   useEffect(() => {
     // Esc закрывает только это окно: помечаем событие, чтобы панели под окном (CI/CD, diff) не закрылись следом
-    const onKey = (e) => {
+    const onKey = (e: KeyboardEvent) => {
       if (e.key !== 'Escape' || e.defaultPrevented) return;
       e.preventDefault();
       onClose();
@@ -62,8 +82,10 @@ export function Modal({ title, icon: Icon, iconClass = 'text-gk-blue', onClose, 
   );
 }
 
-export function Button({ variant = 'default', className = '', ...props }) {
-  const styles = {
+export type ButtonVariant = 'default' | 'primary' | 'blue' | 'danger';
+
+export function Button({ variant = 'default', className = '', ...props }: ButtonHTMLAttributes<HTMLButtonElement> & { variant?: ButtonVariant }) {
+  const styles: Record<ButtonVariant, string> = {
     default: 'bg-gk-hover text-gk-text hover:bg-gk-fg/10',
     primary: 'bg-gk-green text-gk-ink font-semibold shadow-lg shadow-gk-green/20 hover:brightness-110',
     blue: 'bg-gk-blue text-white font-semibold hover:brightness-110',
@@ -77,7 +99,7 @@ export function Button({ variant = 'default', className = '', ...props }) {
   );
 }
 
-function Details({ text }) {
+function Details({ text }: { text?: string | null }) {
   const [open, setOpen] = useState(false);
   if (!text) return null;
   return (
@@ -93,7 +115,7 @@ function Details({ text }) {
   );
 }
 
-export function ErrorBox({ error }) {
+export function ErrorBox({ error }: { error: DialogError | null | undefined }) {
   if (!error) return null;
   return (
     <div className="space-y-2 rounded-md border border-gk-red/30 bg-gk-red/10 p-3">
@@ -109,8 +131,8 @@ export function ErrorBox({ error }) {
 
 /* =================== Ошибка авторизации / доступа =================== */
 
-const ERROR_ICONS = { AUTH: KeyRound, FORBIDDEN: Lock, PROTECTED: ShieldAlert, HOOK_DECLINED: ShieldAlert };
-const ERROR_TITLES = {
+const ERROR_ICONS: Record<string, LucideIcon> = { AUTH: KeyRound, FORBIDDEN: Lock, PROTECTED: ShieldAlert, HOOK_DECLINED: ShieldAlert };
+const ERROR_TITLES: Record<string, string> = {
   AUTH: tr('Требуется авторизация'),
   FORBIDDEN: tr('Нет прав на запись'),
   PROTECTED: tr('Ветка защищена'),
@@ -119,11 +141,11 @@ const ERROR_TITLES = {
   HOST_KEY: tr('SSH: неизвестный сервер'),
 };
 
-export function ErrorDialog({ action, error, onClose, onCheckAccess }) {
+export function ErrorDialog({ action, error, onClose, onCheckAccess }: { action: ReactNode; error: DialogError; onClose: () => void; onCheckAccess?: () => void }) {
   return (
     <Modal
-      title={`${action}: ${ERROR_TITLES[error.code] ?? tr('ошибка')}`}
-      icon={ERROR_ICONS[error.code] ?? AlertTriangle}
+      title={`${action}: ${ERROR_TITLES[error.code!] ?? tr('ошибка')}`}
+      icon={ERROR_ICONS[error.code!] ?? AlertTriangle}
       iconClass="text-gk-red"
       onClose={onClose}
       footer={
@@ -144,7 +166,7 @@ export function ErrorDialog({ action, error, onClose, onCheckAccess }) {
 
 /* =================== Состояние доступа к remote =================== */
 
-function StatusRow({ label, state, note }) {
+function StatusRow({ label, state, note }: { label: ReactNode; state: boolean | null | undefined; note?: ReactNode }) {
   const view =
     state === true
       ? { icon: <Check size={14} className="text-gk-green" />, text: tr('есть'), cls: 'text-gk-green' }
@@ -161,7 +183,26 @@ function StatusRow({ label, state, note }) {
   );
 }
 
-export function AccessDialog({ access, onClose, onRecheck, onCredentials }) {
+/** Проверка доступа к remote (`repo:access`): ход проверки и её итог */
+export interface AccessState {
+  status?: string;
+  error?: DialogError | null;
+  data?: {
+    remote?: string;
+    protocol?: string;
+    url?: string;
+    branch?: string | null;
+    targetRef?: string | null;
+    canRead?: boolean | null;
+    canWrite?: boolean | null;
+    branchExists?: boolean | null;
+    diverged?: boolean;
+    error?: DialogError | null;
+    writeError?: DialogError | null;
+  } | null;
+}
+
+export function AccessDialog({ access, onClose, onRecheck, onCredentials }: { access: AccessState | null; onClose: () => void; onRecheck: () => void; onCredentials?: () => void }) {
   const checking = access?.status === 'checking';
   const data = access?.data;
   const error = access?.error ?? data?.error ?? data?.writeError ?? null;
@@ -243,7 +284,7 @@ export function AccessDialog({ access, onClose, onRecheck, onCredentials }) {
 
 /* =================== Push отклонён: remote ушёл вперёд =================== */
 
-export function PushRejectedDialog({ branch, remote, onClose, onPull, onForce }) {
+export function PushRejectedDialog({ branch, remote, onClose, onPull, onForce }: { branch: string; remote: string; onClose: () => void; onPull: () => void; onForce: () => void }) {
   const [confirm, setConfirm] = useState(false);
   return (
     <Modal
@@ -282,7 +323,7 @@ export function PushRejectedDialog({ branch, remote, onClose, onPull, onForce })
 
 /* =================== Подтверждение =================== */
 
-export function ConfirmDialog({ title, children, confirmLabel = tr('Подтвердить'), danger = false, onConfirm, onClose }) {
+export function ConfirmDialog({ title, children, confirmLabel = tr('Подтвердить'), danger = false, onConfirm, onClose }: { title: ReactNode; children?: ReactNode; confirmLabel?: ReactNode; danger?: boolean; onConfirm: () => void; onClose: () => void }) {
   return (
     <Modal
       title={title}
@@ -311,7 +352,7 @@ export function ConfirmDialog({ title, children, confirmLabel = tr('Подтве
 
 /* =================== Удаление ветки на сервере =================== */
 
-export function DeleteRemoteDialog({ remote, branch, locals = [], busy, error, onConfirm, onClose }) {
+export function DeleteRemoteDialog({ remote, branch, locals = [], busy, error, onConfirm, onClose }: { remote: string; branch: string; locals?: string[]; busy?: boolean; error?: DialogError | null; onConfirm: () => void; onClose: () => void }) {
   const close = () => !busy && onClose();
   return (
     <Modal
@@ -356,11 +397,11 @@ export function DeleteRemoteDialog({ remote, branch, locals = [], busy, error, o
 
 /* =================== Создание тега =================== */
 
-export function TagDialog({ hash, label, busy, error, onClose, onSubmit }) {
+export function TagDialog({ hash, label, busy, error, onClose, onSubmit }: { hash: string; label: ReactNode; busy?: boolean; error?: DialogError | null; onClose: () => void; onSubmit: (tag: { name: string; hash: string; message: string }) => void }) {
   const [name, setName] = useState('');
   const [annotated, setAnnotated] = useState(false);
   const [message, setMessage] = useState('');
-  const inputRef = useRef(null);
+  const inputRef = useRef<HTMLInputElement>(null);
   useEffect(() => inputRef.current?.focus(), []);
 
   const valid = name.trim() && (!annotated || message.trim());
@@ -410,7 +451,15 @@ export function TagDialog({ hash, label, busy, error, onClose, onSubmit }) {
 /* =================== Создание ветки =================== */
 
 // Типы веток git flow: приписка, от какой ветки создаётся, пример имени
-export const FLOW_TYPES = [
+export interface FlowType {
+  id: string;
+  label: string;
+  hint: string;
+  base: 'develop' | 'master';
+  placeholder: string;
+}
+
+export const FLOW_TYPES: FlowType[] = [
   { id: 'feature', label: 'feature', hint: tr('новая функциональность'), base: 'develop', placeholder: 'login-form' },
   { id: 'bugfix', label: 'bugfix', hint: tr('исправление ошибки до релиза'), base: 'develop', placeholder: 'crash-on-save' },
   { id: 'release', label: 'release', hint: tr('подготовка релиза'), base: 'develop', placeholder: '1.4.0' },
@@ -431,19 +480,44 @@ const readPrefType = () => {
  * её берут из настроек git flow репозитория (git flow init), если они есть. Подсказывает, от какой ветки создавать.
  * branches — [{ name, hash }] локальные и remote-ветки (для «создать от develop / main»).
  */
-export function BranchDialog({ startHash, startLabel, busy, error, onClose, onSubmit, branches = [], flow = null }) {
+/** Настройки git flow репозитория (`repo:gitflow-config`) */
+export interface GitFlowConfig {
+  configured?: boolean;
+  develop?: string | null;
+  master?: string | null;
+  prefixes?: Record<string, string>;
+}
+
+export interface BranchRef {
+  name: string;
+  hash: string;
+  remote?: boolean;
+}
+
+interface BranchDialogProps {
+  startHash: string;
+  startLabel: ReactNode;
+  busy?: boolean;
+  error?: DialogError | null;
+  onClose: () => void;
+  onSubmit: (branch: { name: string; start: string; checkout: boolean }) => void;
+  branches?: BranchRef[];
+  flow?: GitFlowConfig | null;
+}
+
+export function BranchDialog({ startHash, startLabel, busy, error, onClose, onSubmit, branches = [], flow = null }: BranchDialogProps) {
   const [type, setTypeRaw] = useState(() => {
     const t = readPrefType();
     return t === NO_PREFIX || FLOW_TYPES.some((x) => x.id === t) ? t : 'feature';
   });
   const [name, setName] = useState('');
   const [checkout, setCheckout] = useState(true);
-  const [base, setBase] = useState(null); // { name, hash } — выбранная основа вместо коммита из графа
-  const inputRef = useRef(null);
+  const [base, setBase] = useState<BranchRef | null>(null); // { name, hash } — выбранная основа вместо коммита из графа
+  const inputRef = useRef<HTMLInputElement>(null);
   useEffect(() => inputRef.current?.focus(), []);
 
-  const prefixOf = (id) => (id === NO_PREFIX ? '' : flow?.prefixes?.[id] ?? `${id}/`);
-  const setType = (id) => {
+  const prefixOf = (id: string) => (id === NO_PREFIX ? '' : flow?.prefixes?.[id] ?? `${id}/`);
+  const setType = (id: string) => {
     setTypeRaw(id);
     setBase(null);
     try {
@@ -454,7 +528,7 @@ export function BranchDialog({ startHash, startLabel, busy, error, onClose, onSu
     requestAnimationFrame(() => inputRef.current?.focus());
   };
   // Вставили имя уже с припиской («feature/x» или «hotfix/1.2.1») — переключаем тип, приписку убираем из поля
-  const onNameChange = (raw) => {
+  const onNameChange = (raw: string) => {
     let v = raw.replace(/\s/g, '-');
     for (const t of FLOW_TYPES) {
       const p = prefixOf(t.id);
@@ -473,8 +547,8 @@ export function BranchDialog({ startHash, startLabel, busy, error, onClose, onSu
 
   // Основа по git flow: develop для feature/bugfix/release, master (main) для hotfix/support.
   // Передаём хэш, а не имя: от origin/develop новая ветка иначе начала бы следить за develop
-  const find = (names) => {
-    for (const n of names.filter(Boolean)) {
+  const find = (names: (string | null | undefined)[]) => {
+    for (const n of names.filter(Boolean) as string[]) {
       const b = branches.find((x) => x.name === n) ?? branches.find((x) => x.name.replace(/^[^/]+\//, '') === n && x.remote);
       if (b) return b;
     }
@@ -597,7 +671,17 @@ export function BranchDialog({ startHash, startLabel, busy, error, onClose, onSu
  * На коммите несколько веток — выбрать, на какую переключиться.
  * Веток нет — предупредить о detached HEAD и предложить сначала создать ветку.
  */
-export function SwitchToDialog({ node, locals = [], remotes = [], onBranch, onCreateBranch, onDetached, onClose }) {
+interface SwitchToProps {
+  node: { hash: string; message?: ReactNode };
+  locals?: { name: string }[];
+  remotes?: { name: string }[];
+  onBranch: (ref: { name: string }) => void;
+  onCreateBranch: () => void;
+  onDetached: () => void;
+  onClose: () => void;
+}
+
+export function SwitchToDialog({ node, locals = [], remotes = [], onBranch, onCreateBranch, onDetached, onClose }: SwitchToProps) {
   const short = node.hash.slice(0, 7);
   const none = !locals.length && !remotes.length;
   // Remote-ветки, у которых уже есть локальная с тем же именем на этом коммите, не дублируем
@@ -657,9 +741,9 @@ export function SwitchToDialog({ node, locals = [], remotes = [], onBranch, onCr
 
 /* =================== Переименование ветки =================== */
 
-export function RenameBranchDialog({ from, upstream, busy, error, onClose, onSubmit }) {
+export function RenameBranchDialog({ from, upstream, busy, error, onClose, onSubmit }: { from: string; upstream?: string | null; busy?: boolean; error?: DialogError | null; onClose: () => void; onSubmit: (name: string) => void }) {
   const [name, setName] = useState(from);
-  const inputRef = useRef(null);
+  const inputRef = useRef<HTMLInputElement>(null);
   useEffect(() => {
     inputRef.current?.focus();
     inputRef.current?.select();
@@ -702,22 +786,36 @@ export function RenameBranchDialog({ from, upstream, busy, error, onClose, onSub
 
 /* =================== Checkout с незакоммиченными изменениями =================== */
 
-const WIP_STATUS = { M: ['M', '#f2ca33'], A: ['A', '#3cf0a0'], D: ['D', '#f25d5d'], R: ['R', '#2f9bff'], U: ['U', '#ff8c3a'] };
+const WIP_STATUS: Record<string, [string, string]> = { M: ['M', '#f2ca33'], A: ['A', '#3cf0a0'], D: ['D', '#f25d5d'], R: ['R', '#2f9bff'], U: ['U', '#ff8c3a'] };
 
 /**
  * Что сделать с незакоммиченными изменениями перед переключением ветки (как в GitKraken):
  * спрятать (вернутся при возврате), перенести в новую ветку или выбросить.
  * wip — данные WIP_CONFLICT из main-процесса: { from, to, files, list, untracked, overlap, conflicted, detached }
  */
-export function CheckoutWipDialog({ wip, busy, onChoose, onClose }) {
+/** Данные `WIP_CONFLICT` из `actions::inspect_wip` */
+export interface WipConflict {
+  from?: string | null;
+  to: string;
+  files: number;
+  list?: { path: string; status: string; untracked?: boolean; staged?: boolean }[];
+  untracked?: number;
+  conflicted?: string[];
+  overlap?: string[];
+  detached?: boolean;
+}
+
+export type WipChoice = 'stash' | 'merge' | 'force';
+
+export function CheckoutWipDialog({ wip, busy, onChoose, onClose }: { wip: WipConflict; busy?: boolean; onChoose: (choice: WipChoice, remember: boolean) => void; onClose: () => void }) {
   const overlap = wip.overlap ?? [];
   const blocked = (wip.conflicted ?? []).length > 0;
   // Рекомендация: без пересечений — перенести (как обычный git switch), с пересечениями — спрятать
-  const recommended = blocked ? 'force' : overlap.length ? 'stash' : 'merge';
-  const [choice, setChoice] = useState(recommended);
+  const recommended: WipChoice = blocked ? 'force' : overlap.length ? 'stash' : 'merge';
+  const [choice, setChoice] = useState<WipChoice>(recommended);
   const [remember, setRemember] = useState(false);
   const from = wip.from ?? 'detached HEAD';
-  const options = [
+  const options: { id: WipChoice; icon: LucideIcon; title: string; term: string; text: string; disabled?: string | null; tone: string; danger?: boolean }[] = [
     {
       id: 'stash',
       icon: Archive,
@@ -750,7 +848,7 @@ export function CheckoutWipDialog({ wip, busy, onChoose, onClose }) {
       danger: true,
     },
   ];
-  const submit = (id = choice) => !busy && onChoose(id, remember && id !== 'force');
+  const submit = (id: WipChoice = choice) => !busy && onChoose(id, remember && id !== 'force');
   return (
     <Modal
       title={tr('Переключиться на {0}', wip.to)}
@@ -786,7 +884,7 @@ export function CheckoutWipDialog({ wip, busy, onChoose, onClose }) {
               </div>
             );
           })}
-          {wip.files > (wip.list ?? []).length && <div className="py-0.5 font-sans text-gk-dim">{tj('… и ещё {0}', [wip.files - wip.list.length])}</div>}
+          {wip.files > (wip.list ?? []).length && <div className="py-0.5 font-sans text-gk-dim">{tj('… и ещё {0}', [wip.files - wip.list!.length])}</div>}
         </div>
         <div className="space-y-1.5" role="radiogroup">
           {options.map((o) => {
