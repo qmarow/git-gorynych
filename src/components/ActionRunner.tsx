@@ -1,15 +1,28 @@
 import { useEffect, useState } from 'react';
 import { Check, CircleX, Loader2, CircleMinus, Play, RotateCcw, WandSparkles, X } from 'lucide-react';
-import { ACTION_ICONS, STEP_ICONS } from './ActionBuilder.jsx';
+import { ACTION_ICONS, STEP_ICONS } from './ActionBuilder.tsx';
 import { STEP_TYPES, slugify } from '../lib/actions.ts';
 import { t as tr, tj } from '../i18n/index.ts';
+import type { ActionInput, CustomAction, StepTypeId } from '../lib/actions.ts';
+
+export type RunStepStatus = 'pending' | 'running' | 'done' | 'failed' | 'skipped';
+
+/** Ход выполнения действия (состояние `actionRun` в App) */
+export interface ActionRun {
+  action: CustomAction;
+  steps: { id: string; type: string; label: string; status: RunStepStatus; note?: string | null }[];
+  error?: { message: string; hint?: string | null } | null;
+  finished?: boolean;
+  /** Итог после успешного запуска */
+  summary?: string | null;
+}
 
 /**
  * Ход выполнения действия: шаги со статусами; при ошибке — причина и «Повторить с этого шага».
  * run: { action, steps: [{ id, type, label, status: 'pending'|'running'|'done'|'failed'|'skipped', note }], error, finished }
  */
-export function RunnerCard({ run, onClose, onRetry }) {
-  const Icon = ACTION_ICONS[run.action.icon] ?? WandSparkles;
+export function RunnerCard({ run, onClose, onRetry }: { run: ActionRun; onClose: () => void; onRetry: (fromStep: number) => void }) {
+  const Icon = ACTION_ICONS[run.action.icon!] ?? WandSparkles;
   const failed = run.steps.findIndex((s) => s.status === 'failed');
   const doneCount = run.steps.filter((s) => s.status === 'done' || s.status === 'skipped').length;
   const running = !run.finished;
@@ -93,13 +106,13 @@ export function RunnerCard({ run, onClose, onRetry }) {
 }
 
 /** Перед запуском: значения для {input:…} и/или подтверждение */
-export function RunDialog({ action, inputs, branches, onRun, onClose }) {
-  const [values, setValues] = useState(() => Object.fromEntries(inputs.map((x) => [x.label, ''])));
-  const Icon = ACTION_ICONS[action.icon] ?? WandSparkles;
+export function RunDialog({ action, inputs, branches, onRun, onClose }: { action: CustomAction; inputs: ActionInput[]; branches: string[]; onRun: (values: Record<string, string>) => void; onClose: () => void }) {
+  const [values, setValues] = useState<Record<string, string>>(() => Object.fromEntries(inputs.map((x) => [x.label, ''])));
+  const Icon = ACTION_ICONS[action.icon!] ?? WandSparkles;
   const ready = inputs.every((x) => values[x.label].trim());
 
   useEffect(() => {
-    const onKey = (e) => e.key === 'Escape' && onClose();
+    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && onClose();
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, [onClose]);
@@ -124,7 +137,7 @@ export function RunDialog({ action, inputs, branches, onRun, onClose }) {
           <ol className="space-y-0.5 text-[12px] text-gk-muted">
             {action.steps.map((s, i) => (
               <li key={s.id}>
-                {i + 1}. {STEP_TYPES[s.type]?.describe(s.params)}
+                {i + 1}. {STEP_TYPES[s.type as StepTypeId]?.describe(s.params)}
               </li>
             ))}
           </ol>

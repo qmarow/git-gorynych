@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState, type ButtonHTMLAttributes, type DragEvent, type ReactNode } from 'react';
 import {
   AlertTriangle,
   ArrowDown,
@@ -46,11 +46,22 @@ import {
   validateAction,
 } from '../lib/actions.ts';
 import { t as tr, tj } from '../i18n/index.ts';
+import type { LucideIcon } from 'lucide-react';
+import type { ActionStep, ActionTemplate, CustomAction, StepParams, StepTypeId } from '../lib/actions.ts';
+
+interface ActionBuilderProps {
+  actions: CustomAction[];
+  branches: string[];
+  initialId?: string | null;
+  onChange: (actions: CustomAction[]) => void;
+  onRun: (action: CustomAction) => void;
+  onClose: () => void;
+}
 
 // Иконки, которые можно выбрать для действия (имя → компонент)
-export const ACTION_ICONS = { Zap, Rocket, Send, RefreshCw, Download, GitBranch, GitMerge, GitPullRequest, Layers, Sparkles, Wrench, Star, Flag, Trash2, WandSparkles, Play };
+export const ACTION_ICONS: Record<string, LucideIcon> = { Zap, Rocket, Send, RefreshCw, Download, GitBranch, GitMerge, GitPullRequest, Layers, Sparkles, Wrench, Star, Flag, Trash2, WandSparkles, Play };
 
-export const STEP_ICONS = {
+export const STEP_ICONS: Record<string, LucideIcon> = {
   fetch: RefreshCw,
   pull: ArrowDownToLine,
   push: ArrowUpFromLine,
@@ -70,33 +81,33 @@ export const STEP_ICONS = {
 /**
  * Конструктор действий: список действий слева, редактор цепочки шагов справа. Сохраняется сразу.
  */
-export default function ActionBuilder({ actions, branches, initialId, onChange, onRun, onClose }) {
-  const [selectedId, setSelectedId] = useState(initialId ?? actions[0]?.id ?? null);
+export default function ActionBuilder({ actions, branches, initialId, onChange, onRun, onClose }: ActionBuilderProps) {
+  const [selectedId, setSelectedId] = useState<string | null>(initialId ?? actions[0]?.id ?? null);
   const [palette, setPalette] = useState(false);
   const selected = actions.find((a) => a.id === selectedId) ?? null;
 
   useEffect(() => {
-    const onKey = (e) => {
+    const onKey = (e: KeyboardEvent) => {
       if (e.key !== 'Escape') return;
       if (palette) setPalette(false);
-      else if (!e.target?.dataset?.hotkey) onClose();
+      else if (!(e.target as HTMLElement | null)?.dataset?.hotkey) onClose();
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, [onClose, palette]);
 
-  const update = (patch) => onChange(actions.map((a) => (a.id === selectedId ? { ...a, ...patch } : a)));
-  const updateStep = (stepId, patch) => update({ steps: selected.steps.map((s) => (s.id === stepId ? { ...s, ...patch } : s)) });
-  const moveStep = (i, dir) => {
+  const update = (patch: Partial<CustomAction>) => onChange(actions.map((a) => (a.id === selectedId ? { ...a, ...patch } : a)));
+  const updateStep = (stepId: string, patch: Partial<ActionStep>) => update({ steps: selected!.steps.map((s) => (s.id === stepId ? { ...s, ...patch } : s)) });
+  const moveStep = (i: number, dir: number) => {
     const to = i + dir;
-    if (to < 0 || to >= selected.steps.length) return;
-    const steps = [...selected.steps];
+    if (to < 0 || to >= selected!.steps.length) return;
+    const steps = [...selected!.steps];
     [steps[i], steps[to]] = [steps[to], steps[i]];
     update({ steps });
   };
 
-  const create = (base) => {
-    const a = { id: uid(), name: tr('Новое действие'), icon: 'Zap', steps: [], hotkey: null, toolbar: true, ...(base ?? {}) };
+  const create = (base?: Partial<CustomAction>) => {
+    const a: CustomAction = { id: uid(), name: tr('Новое действие'), icon: 'Zap', steps: [], hotkey: null, toolbar: true, ...(base ?? {}) };
     onChange([...actions, a]);
     setSelectedId(a.id);
     if (!base) setPalette(true);
@@ -113,7 +124,7 @@ export default function ActionBuilder({ actions, branches, initialId, onChange, 
           <div className="min-h-0 flex-1 overflow-y-auto px-2">
             {actions.length > 0 && <div className="px-2 pb-1 text-[10.5px] font-semibold uppercase tracking-wider text-gk-dim">{tr('Мои действия')}</div>}
             {actions.map((a) => {
-              const Icon = ACTION_ICONS[a.icon] ?? Zap;
+              const Icon = ACTION_ICONS[a.icon!] ?? Zap;
               const bad = validateAction(a).length > 0;
               return (
                 <button
@@ -186,7 +197,7 @@ export default function ActionBuilder({ actions, branches, initialId, onChange, 
   );
 }
 
-function EmptyState({ onCreate, onTemplate }) {
+function EmptyState({ onCreate, onTemplate }: { onCreate: () => void; onTemplate: (template: ActionTemplate) => void }) {
   return (
     <div className="flex flex-1 flex-col items-center justify-center gap-4 px-10 text-center">
       <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-gk-green/10">
@@ -211,13 +222,27 @@ function EmptyState({ onCreate, onTemplate }) {
   );
 }
 
-function Editor({ action: a, actions, branches, palette, setPalette, onUpdate, onUpdateStep, onMoveStep, onDuplicate, onDelete, onRun }) {
+interface EditorProps {
+  action: CustomAction;
+  actions: CustomAction[];
+  branches: string[];
+  palette: boolean;
+  setPalette: (open: boolean) => void;
+  onUpdate: (patch: Partial<CustomAction>) => void;
+  onUpdateStep: (stepId: string, patch: Partial<ActionStep>) => void;
+  onMoveStep: (index: number, dir: number) => void;
+  onDuplicate: () => void;
+  onDelete: () => void;
+  onRun: () => void;
+}
+
+function Editor({ action: a, actions, branches, palette, setPalette, onUpdate, onUpdateStep, onMoveStep, onDuplicate, onDelete, onRun }: EditorProps) {
   const [armDelete, setArmDelete] = useState(false);
   const [iconsOpen, setIconsOpen] = useState(false);
   const problems = validateAction(a);
   const inputs = useMemo(() => inputsOf(a), [a]);
-  const Icon = ACTION_ICONS[a.icon] ?? Zap;
-  const [dragIndex, setDragIndex] = useState(null);
+  const Icon = ACTION_ICONS[a.icon!] ?? Zap;
+  const [dragIndex, setDragIndex] = useState<number | null>(null);
 
   return (
     <>
@@ -261,7 +286,7 @@ function Editor({ action: a, actions, branches, palette, setPalette, onUpdate, o
         <div className="mt-4 grid grid-cols-[1fr_1fr] gap-3">
           <HotkeyField action={a} actions={actions} onChange={(hotkey) => onUpdate({ hotkey })} />
           <div className="space-y-2 pt-0.5">
-            <Check2 checked={a.toolbar} onChange={(v) => onUpdate({ toolbar: v })}>
+            <Check2 checked={a.toolbar as boolean} onChange={(v) => onUpdate({ toolbar: v })}>
               {tr('Кнопка на панели сверху')}</Check2>
             <Check2 checked={Boolean(a.confirm)} onChange={(v) => onUpdate({ confirm: v })}>
               {tr('Спрашивать подтверждение перед запуском')}</Check2>
@@ -368,8 +393,22 @@ function Editor({ action: a, actions, branches, palette, setPalette, onUpdate, o
   );
 }
 
-function StepCard({ step, index, count, branches, dragging, onDragStart, onDragEnd, onDropOn, onChange, onMove, onRemove }) {
-  const t = STEP_TYPES[step.type];
+interface StepCardProps {
+  step: ActionStep;
+  index: number;
+  count: number;
+  branches: string[];
+  dragging: boolean;
+  onDragStart: (e: DragEvent<HTMLDivElement>) => void;
+  onDragEnd: () => void;
+  onDropOn: () => void;
+  onChange: (params: StepParams) => void;
+  onMove: (dir: number) => void;
+  onRemove: () => void;
+}
+
+function StepCard({ step, index, count, branches, dragging, onDragStart, onDragEnd, onDropOn, onChange, onMove, onRemove }: StepCardProps) {
+  const t = STEP_TYPES[step.type as StepTypeId];
   const Icon = STEP_ICONS[step.type] ?? Zap;
   const [over, setOver] = useState(false);
   if (!t) return null;
@@ -424,8 +463,8 @@ function StepCard({ step, index, count, branches, dragging, onDragStart, onDragE
               ) : f.type === 'select' ? (
                 <label key={f.key} className="block">
                   <span className="mb-0.5 block text-[11px] text-gk-muted">{f.label}</span>
-                  <select value={step.params[f.key] ?? f.def} onChange={(e) => onChange({ [f.key]: e.target.value })} className={inputCls}>
-                    {f.options.map(([v, l]) => (
+                  <select value={(step.params[f.key] ?? f.def) as string} onChange={(e) => onChange({ [f.key]: e.target.value })} className={inputCls}>
+                    {f.options!.map(([v, l]) => (
                       <option key={v} value={v}>
                         {l}
                       </option>
@@ -436,7 +475,7 @@ function StepCard({ step, index, count, branches, dragging, onDragStart, onDragE
                 <label key={f.key} className={`block ${f.key === 'command' || f.key === 'text' || f.key === 'message' || f.key === 'title' ? 'col-span-2' : ''}`}>
                   <span className="mb-0.5 block text-[11px] text-gk-muted">{f.label}</span>
                   <input
-                    value={step.params[f.key] ?? ''}
+                    value={(step.params[f.key] ?? '') as string}
                     onChange={(e) => onChange({ [f.key]: e.target.value })}
                     placeholder={f.placeholder}
                     list={f.type === 'branch' ? 'action-branches' : undefined}
@@ -462,7 +501,7 @@ function StepCard({ step, index, count, branches, dragging, onDragStart, onDragE
   );
 }
 
-function StepPalette({ onPick, onClose }) {
+function StepPalette({ onPick, onClose }: { onPick: (type: StepTypeId) => void; onClose: () => void }) {
   return (
     <div className="relative mt-1 animate-pop-in rounded-lg border border-gk-blue/40 bg-gk-panel-2 p-3 shadow-xl">
       <div className="mb-2 flex items-center">
@@ -481,7 +520,7 @@ function StepPalette({ onPick, onClose }) {
                 return (
                   <button
                     key={type}
-                    onClick={() => onPick(type)}
+                    onClick={() => onPick(type as StepTypeId)}
                     title={t.hint}
                     className="flex w-full items-center gap-1.5 rounded px-1.5 py-1 text-left text-[12px] text-gk-text hover:bg-gk-blue/15"
                   >
@@ -497,10 +536,10 @@ function StepPalette({ onPick, onClose }) {
   );
 }
 
-function HotkeyField({ action, actions, onChange }) {
+function HotkeyField({ action, actions, onChange }: { action: CustomAction; actions: CustomAction[]; onChange: (hotkey: string | null) => void }) {
   const [recording, setRecording] = useState(false);
-  const [pending, setPending] = useState(null);
-  const ref = useRef(null);
+  const [pending, setPending] = useState<string | null>(null);
+  const ref = useRef<HTMLButtonElement>(null);
   const problem = hotkeyProblem(pending ?? action.hotkey, actions, action.id);
   return (
     <div>
@@ -561,7 +600,7 @@ function HotkeyField({ action, actions, onChange }) {
   );
 }
 
-function Check2({ checked, onChange, children }) {
+function Check2({ checked, onChange, children }: { checked: boolean; onChange: (checked: boolean) => void; children: ReactNode }) {
   return (
     <label className="flex cursor-pointer items-center gap-2 text-[12.5px] text-gk-text">
       <span
@@ -577,7 +616,7 @@ function Check2({ checked, onChange, children }) {
   );
 }
 
-function SmallBtn({ children, danger, ...props }) {
+function SmallBtn({ children, danger, ...props }: ButtonHTMLAttributes<HTMLButtonElement> & { danger?: boolean }) {
   return (
     <button
       type="button"
