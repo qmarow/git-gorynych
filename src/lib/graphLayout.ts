@@ -56,6 +56,8 @@ export interface LayoutCommit {
   hash: string;
   parents: readonly string[];
   wip?: boolean;
+  /** Строка stash (`graphStash.ts`): линия к её коммиту пунктирная, как у WIP */
+  stash?: unknown;
 }
 
 export type GraphNode<T extends LayoutCommit> = T & { row: number; lane: number };
@@ -102,6 +104,7 @@ function takeFreeLane(lanes: (string | null)[]): number {
  * перемежаются по времени) — тогда мерджи короткие и колонки быстро освобождаются.
  */
 export function layoutGraph<T extends LayoutCommit>(commits: readonly T[]): GraphLayout<T> {
+  if (commits.some((c) => c.stash)) return layoutWithStashes(commits);
   const lanes: (string | null)[] = [];
   const pending: PendingEdge[] = [];
   let laneCount = 1;
@@ -159,12 +162,52 @@ export function layoutGraph<T extends LayoutCommit>(commits: readonly T[]): Grap
       travel: p.travel,
       minRow: from.row,
       maxRow: to.row,
-      dashed: Boolean(from.wip),
+      dashed: Boolean(from.wip || from.stash),
       color: laneColor(p.travel),
     });
   }
 
   return { nodes, edges, laneCount };
+}
+
+/**
+ * Раскладка со строками stash (`graphStash.ts`), как в GitKraken: коммиты раскладываются как обычно (stash не сдвигает
+ * ветки), затем каждый stash получает первую дорожку правее своего коммита, свободную на всём пути от строки stash до
+ * коммита: там нет ни узла, ни вертикали чужого ребра, ни другого stash. Пунктир идёт вниз по этой дорожке и у коммита
+ * поворачивает к нему.
+ */
+function layoutWithStashes<T extends LayoutCommit>(commits: readonly T[]): GraphLayout<T> {
+  const base = layoutGraph(commits.filter((c) => !c.stash));
+  const rowOf = new Map(commits.map((c, i) => [c.hash, i]));
+  const byHash = new Map(base.nodes.map((n): [string, GraphNode<T>] => [n.hash, { ...n, row: rowOf.get(n.hash)! }]));
+  const edges: GraphEdge<T>[] = base.edges.map((e) => {
+    const from = byHash.get(e.from.hash)!;
+    const to = byHash.get(e.to.hash)!;
+    return { ...e, from, to, minRow: from.row, maxRow: to.row };
+  });
+  const nodes = [...byHash.values()];
+  const side: { lane: number; top: number; bottom: number }[] = [];
+  const busy = (lane: number, top: number, bottom: number) =>
+    nodes.some((n) => n.lane === lane && n.row >= top && n.row <= bottom) ||
+    edges.some((e) => e.travel === lane && e.maxRow > top && e.minRow < bottom) ||
+    side.some((x) => x.lane === lane && x.bottom >= top && x.top <= bottom);
+
+  let laneCount = base.laneCount;
+  const out = commits.map((commit, row): GraphNode<T> => {
+    if (!commit.stash) return byHash.get(commit.hash)!;
+    const target = byHash.get(commit.parents[0]);
+    let lane = target ? target.lane + 1 : 0;
+    const bottom = target?.row ?? row;
+    while (busy(lane, row, bottom)) lane++;
+    side.push({ lane, top: row, bottom });
+    laneCount = Math.max(laneCount, lane + 1);
+    const node: GraphNode<T> = { ...commit, row, lane };
+    if (target) {
+      edges.push({ id: `${commit.hash}->${target.hash}`, from: node, to: target, travel: lane, minRow: row, maxRow: target.row, dashed: true, color: laneColor(lane) });
+    }
+    return node;
+  });
+  return { nodes: out, edges, laneCount };
 }
 
 /** Ребру для пути нужны только положения концов и дорожка. */

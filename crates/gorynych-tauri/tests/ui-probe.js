@@ -23,12 +23,31 @@ window.__GORYNYCH_PROBE__ = async (initial) => {
   const fullFilePref = localStorage.getItem('diff.fullFile');
   localStorage.setItem('probe.saved', 'сохранено');
   // Исключение сценария — в отчёт, иначе тест ждёт до таймаута без объяснений
+  // Stash — пока в центре граф, а не окно изменений; потом выбор возвращается на WIP
+  const stash = graph && fullFilePref === null ? await stashScenario(waitFor).catch((e) => ({ probeError: String(e?.stack ?? e) })) : null;
   const editor = graph && fullFilePref === null ? await editorScenario(invoke, waitFor, sleep).catch((e) => ({ probeError: String(e?.stack ?? e) })) : null;
   // Запись уходит в базу пачкой через 400 мс
   await sleep(1000);
-  const report = { ...initial, graph, seeded, fullFilePref, editor, errors: [...(window.__gorynychErrors || [])], text: graph ? '' : text().slice(0, 3000) };
+  const report = { ...initial, graph, seeded, fullFilePref, editor, stash, errors: [...(window.__gorynychErrors || [])], text: graph ? '' : text().slice(0, 3000) };
   await invoke('frontend_ready', { report: JSON.stringify(report) });
 };
+
+// Stash в графе (как в GitKraken): строка между WIP и коммитом, на котором его сделали, квадратный узел; клик — детали stash
+async function stashScenario(waitFor) {
+  const row = await waitFor(() => document.querySelector('[data-testid="graph-stash"]'), 5000);
+  if (!row) return { found: false };
+  const top = (el) => el.getBoundingClientRect().top;
+  const message = (text) => [...document.querySelectorAll('[data-col="message"]')].find((el) => el.textContent.includes(text));
+  const base = message('Начало');
+  const wip = message('// WIP');
+  const node = Boolean(document.querySelector('[data-testid="graph-svg"] [data-node="stash"]'));
+  const dashed = document.querySelectorAll('[data-testid="graph-svg"] path[stroke-dasharray]').length;
+  row.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, button: 0 }));
+  const panel = Boolean(await waitFor(() => document.querySelector('[data-testid="stash-panel"]'), 5000));
+  wip?.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, button: 0 }));
+  await waitFor(() => !document.querySelector('[data-testid="stash-panel"]'), 5000);
+  return { found: true, label: row.textContent, between: Boolean(base && wip && top(wip) < top(row) && top(row) < top(base)), node, dashed: dashed >= 2, panel };
+}
 
 // Окно изменений: файл открывается кликом в списке «Неиндексированные файлы»
 async function editorScenario(invoke, waitFor, sleep) {

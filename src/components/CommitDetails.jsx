@@ -347,7 +347,7 @@ function StashPanel({ stash, details, busy, activeFile, onOpenFile, onAction, on
 
   return (
     <>
-      <div className="flex h-9 shrink-0 items-center gap-2 border-b border-gk-border px-3 text-xs text-gk-muted">
+      <div data-testid="stash-panel" className="flex h-9 shrink-0 items-center gap-2 border-b border-gk-border px-3 text-xs text-gk-muted">
         <Archive size={14} className="text-gk-yellow" />
         <span className="font-mono text-gk-text">{stash.id}</span>
         {branch && <span className="truncate">{tj('на ветке {0}', [branch])}</span>}

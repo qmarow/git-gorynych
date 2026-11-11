@@ -138,6 +138,9 @@ fn real_interface_opens_repository_on_the_compatibility_layer() {
     fs::write(repo.join("другой.txt"), "раз\n").unwrap();
     git(&repo, &["add", "-A"]);
     git(&repo, &["commit", "-q", "-m", "Начало"]);
+    // Stash на коммите «Начало»: в графе он встаёт строкой между WIP и коммитом
+    fs::write(repo.join("другой.txt"), "спрятано\n").unwrap();
+    git(&repo, &["stash", "push", "-q", "-m", "проба стэша"]);
     // Изменённые файлы: зонд открывает `файл.txt` в окне изменений, включает «Весь файл», правит и сохраняет, а на `другой.txt`
     // переходит кликом в списке посреди правки, чтобы проверить черновик (tests/ui-probe.js)
     fs::write(repo.join("файл.txt"), lines(true)).unwrap();
@@ -162,6 +165,11 @@ fn real_interface_opens_repository_on_the_compatibility_layer() {
         "окно изменений: {report}"
     );
     assert!(fs::read_to_string(repo.join("файл.txt")).unwrap().contains("строка 2 из окна\n"));
+    assert_eq!(
+        report["stash"],
+        json!({ "found": true, "label": "Stashпроба стэша", "between": true, "node": true, "dashed": true, "panel": true }),
+        "stash в графе: {report}"
+    );
 
     // Новый профиль WebView: `localStorage` пуст и заполняется из базы
     // Процессы WebView2 отпускают профиль не сразу после выхода приложения

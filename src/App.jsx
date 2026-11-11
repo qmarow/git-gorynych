@@ -112,6 +112,7 @@ import {
 } from './components/Dialogs.tsx';
 import { t as tr, tj, locale } from './i18n/index.ts';
 import { repoStore, useRepoStore } from './state/repoStore.ts';
+import { withStashes } from './lib/graphStash.ts';
 
 const api = window.api;
 
@@ -1962,7 +1963,7 @@ export default function App() {
     });
   }, []);
 
-  const openMenu = (node, x, y) => setMenu({ x, y, items: node.wip ? buildWipMenu() : buildCommitMenu(node) });
+  const openMenu = (node, x, y) => setMenu({ x, y, items: node.wip ? buildWipMenu() : node.stash ? buildStashMenu(node.stash) : buildCommitMenu(node) });
   const closeMenu = useCallback(() => setMenu(null), []);
   const closeDiff = useCallback(() => setDiffTarget(null), []);
 
@@ -2222,9 +2223,11 @@ export default function App() {
     [],
   );
 
+  // Граф: WIP сверху, stash — строками над коммитами, на которых их сделали (как в GitKraken)
   const allCommits = useMemo(() => {
     if (!repo) return [];
-    if (repo.wipFiles.length === 0) return repo.commits;
+    const commits = withStashes(repo.commits, repo.stashes, (st) => describeStash(st).title);
+    if (repo.wipFiles.length === 0) return commits;
     const wip = {
       hash: 'WIP',
       wip: true,
@@ -2232,7 +2235,7 @@ export default function App() {
       message: '// WIP',
       refs: [],
     };
-    return [wip, ...repo.commits];
+    return [wip, ...commits];
   }, [repo]);
 
   const commitsBySha = useMemo(() => new Map((repo?.commits ?? []).map((c) => [c.hash, c])), [repo?.commits]);
@@ -2241,7 +2244,7 @@ export default function App() {
     repo && selectedHash?.startsWith('stash:') ? repo.stashes.find((st) => `stash:${st.hash}` === selectedHash) ?? null : null;
   const selected = selectedStash
     ? { ...selectedStash, isStash: true, key: selectedHash }
-    : allCommits.find((c) => c.hash === selectedHash) ?? null;
+    : allCommits.find((c) => c.hash === selectedHash && !c.stash) ?? null;
   const selectedKey = selected ? selected.key ?? selected.hash : null;
 
   // Файлы выбранного коммита или stash подгружаем лениво
@@ -2543,7 +2546,7 @@ export default function App() {
   //  - локальной нет, есть одна remote — создать локальную отслеживающую (git switch --track);
   //  - веток несколько или ни одной — спросить (выбор ветки / «Создать ветку здесь» / detached)
   const activateCommit = (node) => {
-    if (node.wip || busyRef.current) return null;
+    if (node.wip || node.stash || busyRef.current) return null;
     const cur = repo.currentBranch;
     const locals = node.refs.filter((r) => r.type === 'local');
     if (locals.some((r) => r.name === cur)) return null; // уже на этой ветке

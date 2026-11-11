@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { flushSync } from 'react-dom';
-import { Check, Copy, FileSearch, Pencil, SlidersHorizontal } from 'lucide-react';
+import { Archive, Check, Copy, FileSearch, Pencil, SlidersHorizontal } from 'lucide-react';
 import { RefKindIcon, RefsPopover, refKindLabel, useHoverPopover } from './RefBadge.tsx';
 import { edgePath, fitMetrics, graphWidth, laneColor, laneX, layoutGraph, metricsFor, rowY } from '../lib/graphLayout.ts';
 import { StatusIcon, statusInfo } from './PipelineStatus.tsx';
@@ -42,7 +42,7 @@ const monoFont = () => getComputedStyle(document.documentElement).getPropertyVal
 function measureColumn(id, sample, gv) {
   const sans = sansFont();
   const mono = monoFont();
-  const real = sample.filter((n) => !n.wip);
+  const real = sample.filter((n) => !n.wip && !n.stash);
   if (id === 'refs') {
     const labelFont = `500 ${gv.density === 'compact' ? 11.5 : 12}px ${sans}`;
     let best = 0;
@@ -440,7 +440,7 @@ export default function CommitGraph({
               onDropOnBranch?.(locals.map((name) => ({ name, hash: node.hash })), e.clientX, e.clientY, payload);
             }}
             onSelect={(e) => {
-              if (isMod(e) && onCompare && !node.wip) onCompare(node.hash);
+              if (isMod(e) && onCompare && !node.wip && !node.stash) onCompare(node.hash);
               else onSelect(node.hash);
             }}
             onDoubleClick={() => onActivate?.(node)}
@@ -709,7 +709,15 @@ function Row({
             style={{ borderColor: color, width: cols.message, height: m.rowH - 8 }}
             className="relative flex shrink-0 items-center overflow-hidden border-l-[3px] px-3"
           >
-            {node.wip ? (
+            {node.stash ? (
+              <span className="flex min-w-0 items-center gap-2 text-gk-muted" data-testid="graph-stash" data-tip={node.description}>
+                <span className="flex shrink-0 items-center gap-1 rounded bg-gk-fg/[0.07] border border-dashed border-gk-fg/30 px-1.5 text-[11px] text-gk-text">
+                  <Archive size={11} />
+                  Stash
+                </span>
+                <span className="truncate italic">{node.message}</span>
+              </span>
+            ) : node.wip ? (
               <span className="flex min-w-0 items-center gap-2 italic text-gk-muted">
                 <span className="truncate">{node.message}</span>
                 <span className="flex shrink-0 items-center gap-1 rounded-full bg-gk-fg/10 px-2 py-0.5 text-[11px] not-italic text-gk-text">
@@ -756,7 +764,9 @@ function Row({
       case 'sha':
         return (
           <div key={id} data-col="sha" style={{ width: cols.sha }} className="relative flex shrink-0 items-center overflow-hidden px-2.5">
-            {!node.wip && (
+            {node.stash ? (
+              <span className="truncate px-1 font-mono text-[12px] text-gk-dim">{node.stash.id}</span>
+            ) : !node.wip && (
               <button
                 onMouseDown={(e) => e.stopPropagation()}
                 onDoubleClick={(e) => e.stopPropagation()}
@@ -780,10 +790,10 @@ function Row({
             key={id}
             data-col="author"
             style={{ width: cols.author }}
-            data-tip={node.wip ? undefined : `${node.author.name} <${node.author.email}>`}
+            data-tip={node.wip || node.stash ? undefined : `${node.author.name} <${node.author.email}>`}
             className={`relative flex shrink-0 items-center overflow-hidden px-3 text-gk-text/90 ${compact ? 'text-[12.5px]' : 'text-[13.5px]'}`}
           >
-            {!node.wip && <span className="truncate">{node.author.name}</span>}
+            {!node.wip && !node.stash && <span className="truncate">{node.author.name}</span>}
           </div>
         );
       case 'date':
@@ -809,7 +819,7 @@ function Row({
       onMouseEnter={onHover}
       onContextMenu={onContextMenu}
       onDoubleClick={onDoubleClick}
-      draggable={!node.wip}
+      draggable={!node.wip && !node.stash}
       onDragStart={(e) =>
         onDragStartRef(e, { kind: 'commit', hash: node.hash, label: `${node.hash.slice(0, 7)} ${node.message}`, message: node.message })
       }
@@ -1020,6 +1030,23 @@ function Node({ node, m, dots, selected, hovered, dim, intro, delay }) {
   const color = laneColor(node.lane);
   const cls = `graph-node ${intro ? 'is-intro' : ''} ${hovered ? 'is-hover' : ''}`;
   const style = { ...(intro ? { animationDelay: delay } : null), opacity: dim && !selected ? 0.3 : 1, transition: 'opacity 150ms' };
+
+  // Stash — пунктирный квадрат с «коробкой» внутри (как в GitKraken)
+  if (node.stash) {
+    const h = dots ? m.dotR + 1.5 : m.nodeR - 2;
+    return (
+      <g className={cls} style={style} data-node="stash">
+        {selected && <rect x={x - h - 2.5} y={y - h - 2.5} width={(h + 2.5) * 2} height={(h + 2.5) * 2} rx={4} fill="none" stroke={color} strokeWidth={1.5} />}
+        <rect x={x - h} y={y - h} width={h * 2} height={h * 2} rx={3} style={{ fill: 'var(--gk-solid)' }} stroke={color} strokeWidth={2} strokeDasharray={dots ? '2 2' : '3 2.5'} />
+        {!dots && (
+          <g stroke={color} strokeWidth={1.6} fill="none" strokeLinecap="round" strokeLinejoin="round">
+            <rect x={x - h * 0.5} y={y - h * 0.45} width={h} height={h * 0.32} rx={0.8} />
+            <path d={`M ${x - h * 0.4} ${y - h * 0.13} V ${y + h * 0.5} H ${x + h * 0.4} V ${y - h * 0.13} M ${x - h * 0.15} ${y + h * 0.12} H ${x + h * 0.15}`} />
+          </g>
+        )}
+      </g>
+    );
+  }
 
   if (node.wip) {
     const r = dots ? m.dotR + 1.5 : m.nodeR - 1;
