@@ -1,8 +1,75 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useState, type FormEvent, type ReactNode } from 'react';
 import { ChevronDown, ChevronRight, Loader2, Plus, Save, Trash2, X } from 'lucide-react';
 import { t, tj } from '../../i18n/index.ts';
 
-const WHEN_OPTIONS = [
+/** Правило rules, которое форма умеет править (только if/when/allow_failure) */
+interface RuleRow {
+  if: string;
+  when: string;
+  allow_failure?: boolean;
+}
+
+/** Скрипт задания: строки и унаследован ли он */
+interface Script {
+  lines: string[];
+  inherited?: boolean;
+}
+
+/** Задание GitLab из загрузчика CI (`gorynych-ci-linter::load`): то, что читает форма */
+export interface FormJob {
+  id?: string;
+  name: string;
+  stage?: string;
+  /** Ключи, заданные в самом задании (не унаследованные) */
+  own?: string[];
+  image?: string | null;
+  imageInherited?: string | null;
+  script?: Script | null;
+  scriptRaw?: string[] | null;
+  beforeScript?: Script | null;
+  afterScript?: Script | null;
+  when?: string | null;
+  allowFailure?: boolean;
+  needsRaw?: string[] | null;
+  tags?: string[] | null;
+  environment?: { name?: string } | null;
+  timeout?: string | number | null;
+  rulesRaw?: RuleRow[] | null;
+  rulesEditable?: boolean;
+}
+
+interface FormState {
+  name: string;
+  stage: string;
+  image: string;
+  script: string;
+  before_script: string;
+  after_script: string;
+  when: string;
+  allow_failure: boolean;
+  needs: string[] | null;
+  tags: string;
+  environment: string;
+  timeout: string | number;
+  rules: RuleRow[];
+}
+
+/** Операция правки файла (`gorynych-ci-linter::edit::ops`) */
+export type EditOp = Record<string, unknown> & { type: string };
+
+interface JobFormProps {
+  job?: FormJob | null;
+  stages: string[];
+  allJobs: { name: string }[];
+  mode: 'create' | 'edit';
+  presetStage?: string | null;
+  busy?: boolean;
+  onSubmit: (ops: EditOp[], name?: string) => void;
+  onDelete: () => void;
+  onCancel: () => void;
+}
+
+const WHEN_OPTIONS: [string, string][] = [
   ['on_success', t('Если предыдущие этапы успешны (по умолчанию)')],
   ['manual', t('Вручную — кнопкой в GitLab')],
   ['always', t('Всегда, даже если что-то упало')],
@@ -10,7 +77,7 @@ const WHEN_OPTIONS = [
   ['delayed', t('С задержкой')],
   ['never', t('Не запускать')],
 ];
-const RULE_WHEN = [
+const RULE_WHEN: [string, string][] = [
   ['on_success', t('запускать')],
   ['manual', t('вручную')],
   ['always', t('всегда')],
@@ -18,8 +85,8 @@ const RULE_WHEN = [
   ['delayed', t('с задержкой')],
 ];
 
-const lines = (v) => (v ?? []).join('\n');
-const splitList = (v) =>
+const lines = (v: string[] | null | undefined) => (v ?? []).join('\n');
+const splitList = (v: unknown) =>
   String(v ?? '')
     .split(/[,\n]/)
     .map((x) => x.trim())
@@ -29,10 +96,10 @@ const splitList = (v) =>
  * Форма задания GitLab CI: создание и правка без ручного YAML.
  * Пустое поле = «как унаследовано» (из default, extends или глобальных настроек).
  */
-export default function JobForm({ job, stages, allJobs, mode, presetStage, busy, onSubmit, onDelete, onCancel }) {
+export default function JobForm({ job, stages, allJobs, mode, presetStage, busy, onSubmit, onDelete, onCancel }: JobFormProps) {
   const own = new Set(job?.own ?? []);
   const initial = useMemo(
-    () => ({
+    (): FormState => ({
       name: job?.name ?? '',
       stage: job?.stage ?? presetStage ?? stages[0] ?? 'test',
       image: own.has('image') ? job?.image ?? '' : '',
@@ -53,7 +120,7 @@ export default function JobForm({ job, stages, allJobs, mode, presetStage, busy,
   const [f, setF] = useState(initial);
   const [extra, setExtra] = useState(Boolean(initial.before_script || initial.after_script || initial.timeout));
   const [armDelete, setArmDelete] = useState(false);
-  const set = (patch) => setF((v) => ({ ...v, ...patch }));
+  const set = (patch: Partial<FormState>) => setF((v) => ({ ...v, ...patch }));
 
   const rulesEditable = mode === 'create' || job?.rulesEditable !== false;
   const otherJobs = allJobs.filter((j) => j.name !== job?.name).map((j) => j.name);
@@ -61,8 +128,8 @@ export default function JobForm({ job, stages, allJobs, mode, presetStage, busy,
 
   // Что поменялось — только эти поля и записываем в файл
   const changes = () => {
-    const out = {};
-    const cmp = (key, value, initValue, toYaml) => {
+    const out: Record<string, unknown> = {};
+    const cmp = <V,>(key: string, value: V, initValue: V, toYaml: (v: V) => unknown) => {
       if (JSON.stringify(value) !== JSON.stringify(initValue)) out[key] = toYaml(value);
     };
     cmp('stage', f.stage, initial.stage, (v) => v.trim());
@@ -80,7 +147,7 @@ export default function JobForm({ job, stages, allJobs, mode, presetStage, busy,
     return out;
   };
 
-  const submit = (e) => {
+  const submit = (e?: FormEvent) => {
     e?.preventDefault();
     if (!f.name.trim()) return;
     if (mode === 'create') {
@@ -96,15 +163,15 @@ export default function JobForm({ job, stages, allJobs, mode, presetStage, busy,
       ]);
       return;
     }
-    const ops = [];
+    const ops: EditOp[] = [];
     const name = f.name.trim();
-    if (name !== job.name) ops.push({ type: 'renameJob', from: job.name, to: name });
+    if (name !== job!.name) ops.push({ type: 'renameJob', from: job!.name, to: name });
     const fields = changes();
     if (Object.keys(fields).length) ops.push({ type: 'setJob', name, fields });
     onSubmit(ops, name);
   };
 
-  const inherited = (label, value) => (value ? t('унаследовано: {0}', value) : label);
+  const inherited = (label: string, value: unknown) => (value ? t('унаследовано: {0}', value) : label);
 
   return (
     <form onSubmit={submit} className="flex min-h-0 flex-1 flex-col">
@@ -178,7 +245,7 @@ export default function JobForm({ job, stages, allJobs, mode, presetStage, busy,
               f.needs.map((n) => (
                 <span key={n} className="flex items-center gap-1 rounded bg-gk-blue/15 px-1.5 py-0.5 font-mono text-[11px] text-gk-blue">
                   {n}
-                  <button type="button" onClick={() => set({ needs: f.needs.filter((x) => x !== n) })} className="hover:text-gk-strong">
+                  <button type="button" onClick={() => set({ needs: f.needs!.filter((x) => x !== n) })} className="hover:text-gk-strong">
                     <X size={10} />
                   </button>
                 </span>
@@ -331,7 +398,7 @@ export default function JobForm({ job, stages, allJobs, mode, presetStage, busy,
 const inputCls =
   'w-full rounded-md bg-gk-bg px-2.5 py-1.5 text-[12.5px] text-gk-text outline-none ring-1 ring-gk-border placeholder:text-gk-dim focus:ring-gk-blue';
 
-function Field({ label, children }) {
+function Field({ label, children }: { label: ReactNode; children: ReactNode }) {
   return (
     <div>
       <div className="mb-1 text-[11px] font-medium text-gk-muted">{label}</div>

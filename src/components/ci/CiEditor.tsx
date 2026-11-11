@@ -1,4 +1,4 @@
-import { memo, useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { memo, useCallback, useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent } from 'react';
 import { highlight } from '../../lib/syntax.tsx';
 import { describeCron } from '../../lib/cron.ts';
 import { t } from '../../i18n/index.ts';
@@ -6,13 +6,42 @@ import { t } from '../../i18n/index.ts';
 const LINE_H = 20; // px — одинаковая высота строки у подсветки, номеров и textarea
 const INDENT = '  ';
 
-const escapeRe = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+/** Подсказка меток раннера под курсором */
+interface Suggest {
+  items: string[];
+  index: number;
+  start: number;
+  prefix: string;
+  top: number;
+  left: number;
+}
+
+/** Отметка строки: текст ошибки или { text, tone } */
+type LineMark = string | { text: string; tone?: 'red' | 'yellow' };
+
+interface CiEditorProps {
+  value: string;
+  onChange: (text: string) => void;
+  lang: string | null | undefined;
+  /** Номер строки → отметка ошибки или предупреждения */
+  errors?: Map<number, LineMark> | null;
+  /** Переход к строке: `n` меняется на каждый переход */
+  jump?: { line: number; n: number } | null;
+  onSave?: () => void;
+  readOnly?: boolean;
+  /** Ключи меток раннера (`tags`, `runs-on`) и метки живых раннеров */
+  completions?: { keys: string[]; labels: string[] } | null;
+  onCaret?: (pos: number) => void;
+  cronTz?: string;
+}
+
+const escapeRe = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
 /**
  * Где курсор: внутри значения ключа с метками раннера (tags: [..], runs-on: …, или элемент списка под ними).
  * → { prefix, start } — начало набираемого слова в тексте; null — не там
  */
-export function tagContext(text, pos, keys) {
+export function tagContext(text: string, pos: number, keys: readonly string[] | null | undefined): { prefix: string; start: number } | null {
   if (!keys?.length) return null;
   const lineStart = text.lastIndexOf('\n', pos - 1) + 1;
   const before = text.slice(lineStart, pos);
@@ -26,7 +55,7 @@ export function tagContext(text, pos, keys) {
   const above = text.slice(0, lineStart).split('\n').reverse();
   for (const l of above) {
     if (!l.trim() || /^\s*#/.test(l)) continue;
-    const ind = /^\s*/.exec(l)[0].length;
+    const ind = /^\s*/.exec(l)![0].length;
     if (ind < indent || (ind === indent && !/^\s*-/.test(l))) return new RegExp(`^\\s*(?:-\\s+)?(?:${k})\\s*:\\s*$`).test(l) ? { prefix: item[2], start: pos - item[2].length } : null;
     if (ind === indent && /^\s*-/.test(l)) continue;
   }
@@ -38,13 +67,13 @@ export function tagContext(text, pos, keys) {
  * Tab / Shift+Tab — отступ, Enter — сохраняет отступ (и добавляет после «:»), Ctrl+/ — комментарий.
  * completions: { keys, labels } — подсказка меток живых раннеров после tags: / runs-on:. Рядом с cron — расшифровка.
  */
-export default function CiEditor({ value, onChange, lang, errors, jump, onSave, readOnly = false, completions = null, onCaret, cronTz = 'UTC' }) {
-  const taRef = useRef(null);
-  const layerRef = useRef(null);
-  const gutterRef = useRef(null);
-  const measureRef = useRef(null);
+export default function CiEditor({ value, onChange, lang, errors, jump, onSave, readOnly = false, completions = null, onCaret, cronTz = 'UTC' }: CiEditorProps) {
+  const taRef = useRef<HTMLTextAreaElement>(null);
+  const layerRef = useRef<HTMLDivElement>(null);
+  const gutterRef = useRef<HTMLDivElement>(null);
+  const measureRef = useRef<HTMLSpanElement>(null);
   const [activeLine, setActiveLine] = useState(1);
-  const [suggest, setSuggest] = useState(null); // { items, index, start, prefix, top, left }
+  const [suggest, setSuggest] = useState<Suggest | null>(null); // { items, index, start, prefix, top, left }
   const lines = value.split('\n');
 
   // Прокрутка textarea двигает подсветку и номера строк
@@ -75,10 +104,10 @@ export default function CiEditor({ value, onChange, lang, errors, jump, onSave, 
     if (!items.length) return setSuggest(null);
     const lineIdx = ta.value.slice(0, ctx.start).split('\n').length - 1;
     const col = ctx.start - (ta.value.lastIndexOf('\n', ctx.start - 1) + 1);
-    const cw = measureRef.current?.getBoundingClientRect().width / 10 || 7.5;
+    const cw = measureRef.current?.getBoundingClientRect().width! / 10 || 7.5;
     setSuggest((s) => ({ items, index: s && s.start === ctx.start ? Math.min(s.index, items.length - 1) : 0, start: ctx.start, prefix: ctx.prefix, top: 8 + (lineIdx + 1) * LINE_H - ta.scrollTop, left: 12 + col * cw - ta.scrollLeft }));
   };
-  const accept = (label) => {
+  const accept = (label: string) => {
     const ta = taRef.current;
     if (!ta || !suggest) return;
     const end = ta.selectionStart;
@@ -101,8 +130,8 @@ export default function CiEditor({ value, onChange, lang, errors, jump, onSave, 
 
   // Заменить выделенный диапазон и поставить курсор — с поддержкой Ctrl+Z в textarea
   const replace = useCallback(
-    (start, end, text, selStart, selEnd) => {
-      const ta = taRef.current;
+    (start: number, end: number, text: string, selStart?: number, selEnd?: number) => {
+      const ta = taRef.current!;
       ta.focus();
       ta.setSelectionRange(start, end);
       // execCommand сохраняет историю отмены браузера; если недоступен — меняем значение напрямую
@@ -118,14 +147,14 @@ export default function CiEditor({ value, onChange, lang, errors, jump, onSave, 
     [onChange],
   );
 
-  const onKeyDown = (e) => {
-    const ta = taRef.current;
+  const onKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
+    const ta = taRef.current!;
     const { selectionStart: s, selectionEnd: en, value: v } = ta;
     if (suggest) {
       if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
         e.preventDefault();
         const d = e.key === 'ArrowDown' ? 1 : -1;
-        setSuggest((x) => ({ ...x, index: (x.index + d + x.items.length) % x.items.length }));
+        setSuggest((x) => ({ ...x!, index: (x!.index + d + x!.items.length) % x!.items.length }));
         return;
       }
       if (e.key === 'Enter' || e.key === 'Tab') {
@@ -170,7 +199,7 @@ export default function CiEditor({ value, onChange, lang, errors, jump, onSave, 
     if (e.key === 'Enter' && !e.ctrlKey && !e.altKey) {
       e.preventDefault();
       const line = v.slice(lineStart, s);
-      let indent = /^\s*/.exec(line)[0];
+      let indent = /^\s*/.exec(line)![0];
       const trimmed = line.trimEnd();
       // После «key:» — на уровень глубже; в списке «- » продолжаем отступ элемента
       if (/:\s*$/.test(trimmed) || /:\s*[|>][-+]?\s*$/.test(trimmed)) indent += INDENT;
@@ -190,7 +219,7 @@ export default function CiEditor({ value, onChange, lang, errors, jump, onSave, 
         .map((l) => {
           if (!l.trim()) return l;
           if (allCommented) return l.replace(new RegExp(`^(\\s*)${marker === '#' ? '#' : '\\/\\/'} ?`), '$1');
-          const ind = /^\s*/.exec(l)[0];
+          const ind = /^\s*/.exec(l)![0];
           return `${ind}${marker} ${l.slice(ind.length)}`;
         })
         .join('\n');
@@ -198,7 +227,7 @@ export default function CiEditor({ value, onChange, lang, errors, jump, onSave, 
     }
   };
 
-  const errorLines = errors ?? new Map();
+  const errorLines = errors ?? new Map<number, LineMark>();
 
   return (
     <div className="relative flex min-h-0 flex-1 overflow-hidden bg-[color-mix(in_srgb,var(--gk-base)_70%,transparent)] font-mono text-[12.5px]">
@@ -235,7 +264,7 @@ export default function CiEditor({ value, onChange, lang, errors, jump, onSave, 
               lang={lang}
               cronTz={cronTz}
               active={i + 1 === activeLine}
-              error={errorLines.has(i + 1) ? (errorLines.get(i + 1)?.tone === 'yellow' ? 'yellow' : 'red') : null}
+              error={errorLines.has(i + 1) ? ((errorLines.get(i + 1) as { tone?: string } | undefined)?.tone === 'yellow' ? 'yellow' : 'red') : null}
               jumped={jump?.line === i + 1}
             />
           ))}
@@ -301,7 +330,7 @@ export default function CiEditor({ value, onChange, lang, errors, jump, onSave, 
 // «- cron: '0 3 * * *'» → расшифровка по-русски серым текстом после строки
 const CRON_LINE = /^\s*-?\s*cron\s*:\s*["']?([^"'#]+?)["']?\s*(?:#.*)?$/;
 
-const Line = memo(function Line({ text, lang, active, error, jumped, cronTz }) {
+const Line = memo(function Line({ text, lang, active, error, jumped, cronTz }: { text: string; lang: string | null | undefined; active: boolean; error?: 'yellow' | 'red' | null; jumped: boolean; cronTz: string }) {
   const cron = lang === 'yaml' ? CRON_LINE.exec(text) : null;
   const human = cron ? describeCron(cron[1].trim()) : null;
   return (
