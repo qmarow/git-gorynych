@@ -111,8 +111,23 @@ import {
   TagDialog,
 } from './components/Dialogs.jsx';
 import { t as tr, tj, locale } from './i18n/index.ts';
+import { repoStore, useRepoStore } from './state/repoStore.ts';
 
 const api = window.api;
+
+// Сеттеры хранилища стабильны: функции созданы один раз вместе с ним
+const { setSelectedHash, setFilesByHash, setLoadError } = repoStore.getState();
+// Всегда текущие значения хранилища (раньше — useRef, обновлявшийся при отрисовке)
+const repoRef = {
+  get current() {
+    return repoStore.getState().repo;
+  },
+};
+const activeRef = {
+  get current() {
+    return repoStore.getState().activePath;
+  },
+};
 
 // Ошибки, которые показываем модальным окном с подсказкой, а не всплывашкой
 // Пустые вкладки («Новая вкладка») — path с этим префиксом вместо пути к репозиторию
@@ -174,15 +189,17 @@ function readPullMode() {
 }
 
 export default function App() {
-  const [repo, setRepo] = useState(null);
-  const [loading, setLoading] = useState(false);
-  const [loadingLabel, setLoadingLabel] = useState('');
+  // Состояние репозитория — в хранилище `state/repoStore.ts`
+  const repo = useRepoStore((s) => s.repo);
+  const loading = useRepoStore((s) => s.loading);
+  const loadingLabel = useRepoStore((s) => s.loadingLabel);
+  const loadError = useRepoStore((s) => s.loadError);
+  const selectedHash = useRepoStore((s) => s.selectedHash);
+  const filesByHash = useRepoStore((s) => s.filesByHash);
+  const activePath = useRepoStore((s) => s.activePath);
   const [booting, setBooting] = useState(true);
   const [sidebarW, setSidebarW, saveSidebarW] = useStoredWidth('panel.sidebar', 256, 170, 480);
   const [detailsW, setDetailsW, saveDetailsW] = useStoredWidth('panel.details', 300, 250, 680);
-  const [loadError, setLoadError] = useState(null);
-  const [selectedHash, setSelectedHash] = useState(null);
-  const [filesByHash, setFilesByHash] = useState({});
   const [busyAction, setBusyAction] = useState(null);
   const [busyText, setBusyText] = useState(null); // текст оверлея для долгих операций (checkout, pull…)
   const [toasts, setToasts] = useState([]);
@@ -280,20 +297,12 @@ export default function App() {
 
   // Вкладки: [{ path, name }], активная — по path
   const [tabs, setTabs] = useState([]);
-  const [activePath, setActivePath] = useState(null);
   const tabsLoaded = useRef(false);
 
-  const repoRef = useRef(null);
   const busyRef = useRef(false);
-  const loadSeq = useRef(0);
-  const activeRef = useRef(null);
-  const tabCache = useRef(new Map()); // path -> { repo, selectedHash, filesByHash }
-  const selectedRef = useRef(null);
-  const filesRef = useRef({});
-  repoRef.current = repo;
-  activeRef.current = activePath;
-  selectedRef.current = selectedHash;
-  filesRef.current = filesByHash;
+
+  // Загрузка показала другой репозиторий — права доступа проверяются заново
+  useEffect(() => repoStore.getState().onSwitch(() => setAccess(null)), []);
 
   /* ---------- Уведомления ---------- */
 
@@ -309,77 +318,16 @@ export default function App() {
 
   /* ---------- Загрузка репозитория ---------- */
 
-  // Загрузка: побеждает последний запрос, устаревшие ответы только кладутся в кэш вкладки
-  const loadRepo = useCallback(async (dir, { silent = false } = {}) => {
-    if (!api) {
-      setLoadError({ message: tr('window.api недоступен — запустите приложение через Electron (npm run electron:dev).') });
-      return null;
-    }
-    const seq = ++loadSeq.current;
-    if (!silent) {
-      setLoading(true);
-      setLoadingLabel(dir);
-    }
-
-    // Прежний ответ для той же папки: его отпечаток графа позволяет 2.0 не перечитывать историю (`commitsUnchanged`).
-    // Коммиты берутся именно из него — отпечаток описывает ровно их, даже если состояние с тех пор обновлялось
-    const base = repoRef.current?.path === dir ? repoRef.current : tabCache.current.get(dir)?.repo;
-    const known = base?.path === dir ? base.graphFingerprint : undefined;
-    const res = await api.repo.load(dir, known ? { known } : undefined);
-    const stale = seq !== loadSeq.current;
-    if (!stale) setLoading(false);
-
-    if (!res.ok) {
-      if (!silent && !stale) setLoadError(res.error);
-      return null;
-    }
-
-    // Тот же массив коммитов — граф и поиск не пересчитываются (зависят от `repo.commits`)
-    const data = res.data.commitsUnchanged ? { ...res.data, commits: base.commits, truncated: base.truncated } : res.data;
-    const cached = tabCache.current.get(data.path);
-    tabCache.current.set(data.path, { ...(cached ?? {}), repo: data });
-    if (stale || (activeRef.current && activeRef.current !== data.path && silent)) return data;
-
-    const samePath = repoRef.current?.path === data.path;
-    if (!samePath) {
-      setFilesByHash({});
-      setAccess(null);
-    }
-    setRepo(data);
-    setLoadError(null);
-
-    setSelectedHash((prev) => {
-      const keep =
-        samePath &&
-        prev &&
-        ((prev === 'WIP' && data.wipFiles.length > 0) ||
-          (prev.startsWith('stash:') && data.stashes.some((st) => `stash:${st.hash}` === prev)) ||
-          data.commits.some((c) => c.hash === prev));
-      if (keep) return prev;
-      return data.wipFiles.length > 0 ? 'WIP' : data.headHash;
-    });
-    return data;
-  }, []);
+  // Загрузка: побеждает последний запрос, устаревшие ответы только кладутся в кэш вкладки (`repoStore.load`)
+  const loadRepo = repoStore.getState().load;
 
   /* ---------- Вкладки ---------- */
 
-  const rememberActiveTab = () => {
-    const current = repoRef.current;
-    if (!current) return;
-    tabCache.current.set(current.path, {
-      repo: current,
-      selectedHash: selectedRef.current,
-      filesByHash: filesRef.current,
-    });
-  };
+  const rememberActiveTab = () => repoStore.getState().rememberActive();
 
   // Пустая вкладка («Новая вкладка») или ни одной: репозитория нет, показываем стартовую страницу
   const showBlank = (path) => {
-    loadSeq.current++; // отменяем ответы на ещё идущие загрузки
-    setActivePath(path);
-    activeRef.current = path;
-    setRepo(null);
-    repoRef.current = null;
+    repoStore.getState().showBlank(path); // заодно отменяет ответы на ещё идущие загрузки
     setDiffTarget(null);
     setCiView(null);
     setCompareView(null);
@@ -388,8 +336,6 @@ export default function App() {
     setCompareMark(null);
     setMenu(null);
     setAccess(null);
-    setSelectedHash(null);
-    setLoading(false);
   };
 
   // «+» рядом с вкладками и Ctrl+T — новая вкладка со списком репозиториев
@@ -415,19 +361,8 @@ export default function App() {
     setCompareMark(null);
     setMenu(null);
     setAccess(null);
-    setActivePath(path);
-    activeRef.current = path;
-    const cached = tabCache.current.get(path);
-    if (cached?.repo) {
-      // Мгновенно показываем сохранённое состояние, затем тихо обновляем
-      repoRef.current = cached.repo;
-      setRepo(cached.repo);
-      setSelectedHash(cached.selectedHash ?? (cached.repo.wipFiles.length ? 'WIP' : cached.repo.headHash));
-      setFilesByHash(cached.filesByHash ?? {});
-      loadRepo(path, { silent: true });
-    } else {
-      loadRepo(path);
-    }
+    // Мгновенно показываем сохранённое состояние, затем тихо обновляем
+    repoStore.getState().showCached(path);
   };
 
   const openTab = async (dir) => {
@@ -443,15 +378,14 @@ export default function App() {
       if (replacing && t.some((x) => x.path === replacing)) return t.map((x) => (x.path === replacing ? entry : x));
       return [...t, entry];
     });
-    setActivePath(data.path);
-    activeRef.current = data.path;
+    repoStore.getState().setActivePath(data.path);
   };
 
   const closeTab = (path) => {
     const index = tabs.findIndex((t) => t.path === path);
     if (index === -1) return;
     const rest = tabs.filter((t) => t.path !== path);
-    tabCache.current.delete(path);
+    repoStore.getState().forgetTab(path);
     setTabs(rest);
     if (path !== activePath) return;
     if (rest.length) {
@@ -487,8 +421,7 @@ export default function App() {
         if (!alive) return;
         setTabs(saved.tabs.map((path) => ({ path, name: path.split(/[\\/]/).filter(Boolean).pop() ?? path })));
         if (saved.active) {
-          setActivePath(saved.active);
-          activeRef.current = saved.active;
+          repoStore.getState().setActivePath(saved.active);
           await loadRepo(saved.active);
         }
       } finally {
@@ -728,7 +661,7 @@ export default function App() {
     if (!r || !api?.cicd) return;
     const cur = r.localBranches?.find((b) => b.name === r.currentBranch);
     const st = await api.cicd.status(r.path, { remote: cur?.upstreamRemote });
-    if (st?.ok) setRepo((x) => (x && x.path === r.path ? { ...x, forge: st.data } : x));
+    if (st?.ok) repoStore.getState().patchRepo((x) => (x && x.path === r.path ? { ...x, forge: st.data } : x));
   }, []);
 
   /**
@@ -2213,7 +2146,7 @@ export default function App() {
   }, [pipelineKey]);
 
   const onForgeChanged = useCallback((next) => {
-    setRepo((r) => (r ? { ...r, forge: next } : r));
+    repoStore.getState().patchRepo((r) => (r ? { ...r, forge: next } : r));
   }, []);
 
   // Токен входа репозитория проверяется в фоне — пока идёт проверка, перечитываем состояние
@@ -2875,16 +2808,7 @@ export default function App() {
         }
         const res = await api.repo.status(ev.path);
         if (!res.ok || repoRef.current?.path !== res.data.path) return;
-        setRepo((r) => {
-          if (!r || r.path !== res.data.path) return r;
-          const ci = res.data.ci ?? r.ci;
-          const same =
-            r.operation === res.data.operation &&
-            JSON.stringify(r.wipFiles) === JSON.stringify(res.data.wipFiles) &&
-            JSON.stringify(r.ci) === JSON.stringify(ci);
-          if (same) return r; // ничего не поменялось — не перерисовываем
-          return { ...r, wipFiles: res.data.wipFiles, operation: res.data.operation, ci };
-        });
+        repoStore.getState().applyStatus(res.data); // ничего не поменялось — repo тот же, без перерисовки
       };
       refreshTimer.current = setTimeout(tick, 30);
     });
