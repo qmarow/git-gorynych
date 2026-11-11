@@ -1,11 +1,39 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, type ButtonHTMLAttributes, type ReactNode } from 'react';
 import { Copy, FolderGit2, Loader2, Minus, Plus, Square, X } from 'lucide-react';
 import AppLogo from './AppLogo.tsx';
 import { IS_MAC, kb } from '../lib/platform.ts';
 import { t as tr } from '../i18n/index.ts';
 
+/** Вкладка: репозиторий или «Новая вкладка» (`isNew`, путь — `new-tab:…`) */
+export interface TabInfo {
+  path: string;
+  name: string;
+  isNew?: boolean;
+}
+
+/** `window.api.window` из `preload.cjs` / `platform/tauri.ts` */
+interface WindowApi {
+  isMaximized: () => Promise<boolean>;
+  onMaximizedChange: (callback: (maximized: boolean) => void) => () => void;
+  toggleMaximize: () => void;
+  minimize: () => void;
+  close: () => void;
+}
+
+interface TitleBarProps {
+  tabs: TabInfo[];
+  activePath: string | null;
+  loadingPath: string | null;
+  onSelectTab: (path: string) => void;
+  onCloseTab: (path: string) => void;
+  onOpenRepository?: () => void;
+  onNewTab?: () => void;
+  /** Имя меню (`File`, `Edit`…) и точка под кнопкой */
+  onMenu?: (name: string, x: number, y: number) => void;
+}
+
 // Подписи — по-русски, ключи — имена меню в App (appMenus)
-const MENU = [
+const MENU: [string, string][] = [
   ['File', tr('Файл')],
   ['Edit', tr('Правка')],
   ['View', tr('Вид')],
@@ -17,9 +45,9 @@ const MENU = [
  * Заголовок окна: меню, вкладки репозиториев, кнопки окна.
  * macOS: меню — в системной строке меню, кнопки окна — нативный «светофор» слева (под него отступ).
  */
-export default function TitleBar({ tabs, activePath, loadingPath, onSelectTab, onCloseTab, onOpenRepository, onNewTab, onMenu }) {
+export default function TitleBar({ tabs, activePath, loadingPath, onSelectTab, onCloseTab, onOpenRepository, onNewTab, onMenu }: TitleBarProps) {
   const [maximized, setMaximized] = useState(false);
-  const win = window.api?.window;
+  const win = window.api?.window as WindowApi | undefined;
 
   useEffect(() => {
     if (!win) return undefined;
@@ -102,7 +130,7 @@ export default function TitleBar({ tabs, activePath, loadingPath, onSelectTab, o
   );
 }
 
-function Tab({ tab, active, loading, onSelect, onClose }) {
+function Tab({ tab, active, loading, onSelect, onClose }: { tab: TabInfo; active: boolean; loading?: boolean; onSelect: () => void; onClose: () => void }) {
   return (
     <div
       role="tab"
@@ -146,7 +174,7 @@ function Tab({ tab, active, loading, onSelect, onClose }) {
   );
 }
 
-function WindowButton({ children, danger, ...props }) {
+function WindowButton({ children, danger, ...props }: ButtonHTMLAttributes<HTMLButtonElement> & { children: ReactNode; danger?: boolean }) {
   return (
     <button
       {...props}

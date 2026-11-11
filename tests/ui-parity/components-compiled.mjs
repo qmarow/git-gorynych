@@ -13,7 +13,9 @@ const compile = (file, loader) =>
   esbuild.transformSync(fs.readFileSync(file, 'utf8'), { loader, jsx: 'automatic', format: 'esm' }).code.replace(/(["']\.{1,2}\/[^"']*?)\.(jsx|tsx)(["'])/g, '$1$3');
 let n = 0;
 for (const name of names) {
-  const a = compile(path.join(oldDir, 'components', `${name}.jsx`), 'jsx');
+  // Обе копии — как TypeScript: он убирает неиспользуемые импорты, и это не считается отличием (импорт без единого
+  // используемого имени пропал бы целиком — у компонентов таких побочных импортов нет)
+  const a = compile(path.join(oldDir, 'components', `${name}.jsx`), 'tsx');
   const b = compile(path.join(repo, 'src', 'components', `${name}.tsx`), 'tsx');
   if (a !== b) {
     const al = a.split('\n');

@@ -1,23 +1,49 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, type ButtonHTMLAttributes, type ComponentType, type ReactNode } from 'react';
 import { BookOpen, CloudDownload, FolderGit2, FolderOpen, Keyboard, Link2, Loader2, Plus, Search, Settings, X } from 'lucide-react';
 import AppLogo from './AppLogo.tsx';
 import { relativeTime } from '../lib/format.ts';
 import { kb } from '../lib/platform.ts';
 import { t, tj } from '../i18n/index.ts';
 
-const api = typeof window !== 'undefined' ? window.api : null;
+/** Недавний репозиторий (`recent:list`) */
+interface RecentRepo {
+  path: string;
+  name: string;
+  openedAt?: string | null;
+}
+
+/** `window.api.recent` */
+interface RecentApi {
+  recent?: { list?: () => Promise<unknown>; remove: (dir: string) => Promise<unknown> };
+}
+
+const api = (typeof window !== 'undefined' ? window.api : null) as RecentApi | null | undefined;
+
+interface NewTabPageProps {
+  loading?: boolean;
+  loadingPath?: string | null;
+  openPaths?: string[];
+  onOpen: () => void;
+  onOpenPath: (path: string) => void;
+  onClone: () => void;
+  onCreate: () => void;
+  onConnect: () => void;
+  onGuide: () => void;
+  onShortcuts: () => void;
+  onSettings: () => void;
+}
 
 /**
  * Страница «Новая вкладка» — как в GitKraken: слева репозитории (Открыть / Клонировать / Создать и недавние),
  * справа — коротко о возможностях и ссылки на справку. Клик по недавнему открывает его в этой же вкладке.
  */
-export default function NewTabPage({ loading, loadingPath, openPaths = [], onOpen, onOpenPath, onClone, onCreate, onConnect, onGuide, onShortcuts, onSettings }) {
-  const [recent, setRecent] = useState(null);
+export default function NewTabPage({ loading, loadingPath, openPaths = [], onOpen, onOpenPath, onClone, onCreate, onConnect, onGuide, onShortcuts, onSettings }: NewTabPageProps) {
+  const [recent, setRecent] = useState<RecentRepo[] | null>(null);
   const [query, setQuery] = useState('');
 
   useEffect(() => {
     let alive = true;
-    (api?.recent?.list?.() ?? Promise.resolve([])).then((list) => alive && setRecent(Array.isArray(list) ? list : []));
+    (api?.recent?.list?.() ?? Promise.resolve([])).then((list) => alive && setRecent(Array.isArray(list) ? (list as RecentRepo[]) : []));
     return () => {
       alive = false;
     };
@@ -29,12 +55,12 @@ export default function NewTabPage({ loading, loadingPath, openPaths = [], onOpe
     return q ? recent.filter((r) => r.name.toLowerCase().includes(q) || r.path.toLowerCase().includes(q)) : recent;
   }, [recent, query]);
 
-  const forget = async (dir) => {
+  const forget = async (dir: string) => {
     setRecent((list) => list?.filter((r) => r.path !== dir) ?? list);
     await api?.recent?.remove(dir);
   };
 
-  const isOpen = (dir) => openPaths.some((p) => p.toLowerCase() === dir.toLowerCase());
+  const isOpen = (dir: string) => openPaths.some((p) => p.toLowerCase() === dir.toLowerCase());
 
   return (
     <div className="flex min-h-0 flex-1 animate-fade-in bg-gk-bg/80" data-testid="new-tab-page">
@@ -143,7 +169,7 @@ export default function NewTabPage({ loading, loadingPath, openPaths = [], onOpe
   );
 }
 
-function ActionButton({ icon: Icon, label, hint, subtle, ...props }) {
+function ActionButton({ icon: Icon, label, hint, subtle, ...props }: ButtonHTMLAttributes<HTMLButtonElement> & { icon: ComponentType<{ size?: number; className?: string }>; label: ReactNode; hint?: string; subtle?: boolean }) {
   return (
     <button
       {...props}

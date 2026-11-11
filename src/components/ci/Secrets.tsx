@@ -1,17 +1,41 @@
 // Секреты и переменные репозитория (GitHub Actions, Gitea/Forgejo, Bitbucket): список, создание и обновление через API.
 // Значения секретов сервер не отдаёт — их можно только задать заново.
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useState, type ComponentType, type ReactNode } from 'react';
 import { KeyRound, Loader2, Lock, Pencil, Plus, Save, Trash2, Variable } from 'lucide-react';
 import { relativeTime } from '../../lib/format.ts';
 import { Button, ErrorBox, Modal } from '../Dialogs.tsx';
-import { ActionButton, ConfirmAction, ErrorNote, Loading, Toggle } from './common.jsx';
+import { ActionButton, ConfirmAction, ErrorNote, Loading, Toggle } from './common.tsx';
 import { t, tj } from '../../i18n/index.ts';
+import type { ApiError, ApiResult } from '../../platform/tauri.ts';
+import type { CiSecretVariable_Serialize, RemoteOptions_Deserialize } from '../../../crates/gorynych-tauri/bindings/commands.ts';
 
-const api = window.api;
+type Secret = CiSecretVariable_Serialize;
+type Notify = (toast: { type: string; title: ReactNode; hint?: ReactNode }) => void;
 
-export default function Secrets({ repoPath, opts, caps, providerLabel, notify }) {
-  const [state, setState] = useState({ loading: true, data: null, error: null });
-  const [form, setForm] = useState(null);
+/** Каналы `cicd:secrets`, `cicd:secret-save`, `cicd:secret-delete` */
+interface SecretsApi {
+  cicd: {
+    secrets: (dir: string, opts: unknown) => Promise<ApiResult<{ secrets: Secret[] }>>;
+    deleteSecret: (dir: string, secret: Secret, opts: unknown) => Promise<ApiResult<unknown>>;
+    saveSecret: (dir: string, body: { key: string; value: string; secret: boolean; original: Secret | null | undefined }, opts: unknown) => Promise<ApiResult<unknown>>;
+  };
+}
+
+const api = window.api as unknown as SecretsApi;
+
+interface SecretsProps {
+  repoPath: string;
+  opts: RemoteOptions_Deserialize | null | undefined;
+  caps?: unknown;
+  providerLabel: ReactNode;
+  notify?: Notify;
+}
+
+type FormState = { original: Secret | null; secret: boolean };
+
+export default function Secrets({ repoPath, opts, caps, providerLabel, notify }: SecretsProps) {
+  const [state, setState] = useState<{ loading: boolean; data: { secrets: Secret[] } | null; error: ApiError | null }>({ loading: true, data: null, error: null });
+  const [form, setForm] = useState<FormState | null>(null);
 
   const load = useCallback(async () => {
     const res = await api.cicd.secrets(repoPath, opts);
@@ -21,7 +45,7 @@ export default function Secrets({ repoPath, opts, caps, providerLabel, notify })
     load();
   }, [load]);
 
-  const remove = async (s) => {
+  const remove = async (s: Secret) => {
     const res = await api.cicd.deleteSecret(repoPath, s, opts);
     if (!res.ok) notify?.({ type: 'error', title: res.error.message, hint: res.error.hint });
     else notify?.({ type: 'success', title: s.secret ? t('Секрет {0} удалён', s.key) : t('Переменная {0} удалена', s.key) });
@@ -30,7 +54,7 @@ export default function Secrets({ repoPath, opts, caps, providerLabel, notify })
 
   if (state.loading) return <Loading text={t('Загружаем секреты и переменные…')} />;
   if (state.error) return <ErrorNote error={state.error} />;
-  const list = state.data.secrets;
+  const list = state.data!.secrets;
   const secrets = list.filter((s) => s.secret);
   const variables = list.filter((s) => !s.secret);
 
@@ -62,7 +86,7 @@ export default function Secrets({ repoPath, opts, caps, providerLabel, notify })
   );
 }
 
-function Group({ title, icon: Icon, items, empty, onEdit, onDelete }) {
+function Group({ title, icon: Icon, items, empty, onEdit, onDelete }: { title: ReactNode; icon: ComponentType<{ size?: number; className?: string }>; items: Secret[]; empty: ReactNode; onEdit: (s: Secret) => void; onDelete: (s: Secret) => void }) {
   return (
     <div className="mb-4">
       <div className="mb-1.5 flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wider text-gk-dim">
@@ -90,13 +114,13 @@ function Group({ title, icon: Icon, items, empty, onEdit, onDelete }) {
   );
 }
 
-function SecretForm({ initial, repoPath, opts, onClose, onSaved }) {
+function SecretForm({ initial, repoPath, opts, onClose, onSaved }: { initial: FormState; caps?: unknown; repoPath: string; opts: SecretsProps['opts']; onClose: () => void; onSaved: (key: string, secret: boolean) => void }) {
   const o = initial.original;
   const [key, setKey] = useState(o?.key ?? '');
   const [value, setValue] = useState(o && !o.secret ? o.value ?? '' : '');
   const [secret, setSecret] = useState(initial.secret);
   const [busy, setBusy] = useState(false);
-  const [error, setError] = useState(null);
+  const [error, setError] = useState<ApiError | null>(null);
   const valid = /^[A-Za-z_][A-Za-z0-9_]*$/.test(key) && (value.length > 0 || !secret);
 
   const save = async () => {

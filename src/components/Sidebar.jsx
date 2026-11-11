@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { StatusIcon, statusInfo } from './PipelineStatus.tsx';
 import { hasRefDrag, readRefDrag, startRefDrag } from '../lib/dnd.ts';
-import { SyncBadges } from './BranchSync.jsx';
+import { SyncBadges } from './BranchSync.tsx';
 import { kb } from '../lib/platform.ts';
 import { RefKindIcon } from './RefBadge.tsx';
 import { describeStash, shortAgo } from '../lib/stashName.ts';

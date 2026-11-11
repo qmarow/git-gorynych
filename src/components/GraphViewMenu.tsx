@@ -1,14 +1,23 @@
-import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
 import { Check, GripVertical, Lock, RotateCcw } from 'lucide-react';
-import { COLUMNS, DATE_FORMAT_OPTIONS, DENSITY_OPTIONS, NODE_STYLE_OPTIONS, columnById } from '../lib/graphView.ts';
+import { DATE_FORMAT_OPTIONS, DENSITY_OPTIONS, NODE_STYLE_OPTIONS, columnById, type Column, type GraphView, type GraphViewPatch, type ViewOption } from '../lib/graphView.ts';
 import { t, tj } from '../i18n/index.ts';
 
 /**
  * Меню настройки вида таблицы коммитов: правый клик по шапке или значок в её правом углу.
  * Переключатели применяются сразу, меню остаётся открытым — можно поменять несколько вещей подряд.
  */
-export default function GraphViewMenu({ x, y, view, onChange, onResetLayout, onClose }) {
-  const ref = useRef(null);
+interface GraphViewMenuProps {
+  x: number;
+  y: number;
+  view: GraphView;
+  onChange: (patch: GraphViewPatch) => void;
+  onResetLayout: () => void;
+  onClose: () => void;
+}
+
+export default function GraphViewMenu({ x, y, view, onChange, onResetLayout, onClose }: GraphViewMenuProps) {
+  const ref = useRef<HTMLDivElement>(null);
   const [pos, setPos] = useState({ left: x, top: y });
 
   // Не даём меню вылезти за край окна
@@ -23,8 +32,8 @@ export default function GraphViewMenu({ x, y, view, onChange, onResetLayout, onC
   }, [x, y]);
 
   useEffect(() => {
-    const onDown = (e) => !ref.current?.contains(e.target) && onClose();
-    const onKey = (e) => e.key === 'Escape' && onClose();
+    const onDown = (e: MouseEvent) => !ref.current?.contains(e.target as Node) && onClose();
+    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && onClose();
     window.addEventListener('mousedown', onDown);
     window.addEventListener('keydown', onKey);
     window.addEventListener('blur', onClose);
@@ -37,11 +46,11 @@ export default function GraphViewMenu({ x, y, view, onChange, onResetLayout, onC
     };
   }, [onClose]);
 
-  const toggle = (id) =>
+  const toggle = (id: Column['id']) =>
     onChange((v) => ({ hidden: v.hidden.includes(id) ? v.hidden.filter((h) => h !== id) : [...v.hidden, id] }));
 
   // Колонки — в текущем порядке, как в шапке
-  const ordered = view.order.map(columnById).filter(Boolean);
+  const ordered = view.order.map(columnById).filter(Boolean) as Column[];
 
   return (
     <div
@@ -104,13 +113,13 @@ export default function GraphViewMenu({ x, y, view, onChange, onResetLayout, onC
   );
 }
 
-const Header = ({ children }) => (
+const Header = ({ children }: { children: ReactNode }) => (
   <div className="px-3 pb-1 pt-2 text-[10px] font-semibold uppercase tracking-wider text-gk-dim">{children}</div>
 );
 const Separator = () => <div className="my-1 h-px bg-gk-border" />;
 
 /** Выбор одного варианта: строки-радиокнопки с подсказкой справа */
-function Segmented({ options, value, onPick }) {
+function Segmented<Id extends string>({ options, value, onPick }: { options: readonly ViewOption<Id>[]; value: Id; onPick: (id: Id) => void }) {
   return (
     <div role="radiogroup" className="pb-1">
       {options.map((o) => {

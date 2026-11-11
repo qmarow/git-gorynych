@@ -4,38 +4,57 @@ import { useMemo, useState } from 'react';
 import { Hand } from 'lucide-react';
 import { tj } from '../../i18n/index.ts';
 
+/** Задание из схемы пайплайна (загрузчики `gorynych-ci-linter::load` или ответ провайдера) */
+export interface DagJob {
+  id: string;
+  name: string;
+  jobId?: string | null;
+  stage?: string;
+  manual?: boolean;
+  needs?: { job: string }[] | null;
+}
+
+export interface DagPipeline {
+  stages: { name: string; jobs: DagJob[] }[];
+  /** false — задание без needs не ждёт предыдущий этап (GitHub, Bitbucket…) */
+  implicitStages?: boolean;
+}
+
+type Placed = DagJob & { si: number };
+type Dep = { from: Placed; implicit: boolean };
+
 const W = 188;
 const H = 46;
 const GX = 64;
 const GY = 12;
 
-function layout(pipeline) {
+function layout(pipeline: DagPipeline) {
   const stages = pipeline.stages.filter((s) => !s.name.startsWith('.'));
   const jobs = stages.flatMap((s, si) => s.jobs.map((j) => ({ ...j, si })));
-  const byRef = new Map();
+  const byRef = new Map<string, Placed>();
   for (const j of jobs) {
     byRef.set(j.name, j);
     if (j.jobId) byRef.set(j.jobId, j);
     byRef.set(j.id, j);
   }
-  const level = new Map();
-  const deps = new Map(); // id → [{ from, implicit }]
-  const visiting = new Set();
-  const prevStageJobs = (si) => {
+  const level = new Map<string, number>();
+  const deps = new Map<string, Dep[]>(); // id → [{ from, implicit }]
+  const visiting = new Set<string>();
+  const prevStageJobs = (si: number) => {
     for (let k = si - 1; k >= 0; k--) {
       const list = jobs.filter((x) => x.si === k);
       if (list.length) return list;
     }
     return [];
   };
-  const visit = (j) => {
-    if (level.has(j.id)) return level.get(j.id);
+  const visit = (j: Placed): number => {
+    if (level.has(j.id)) return level.get(j.id)!;
     if (visiting.has(j.id)) return 0;
     visiting.add(j.id);
     let lv = 0;
-    let d = [];
+    let d: Dep[] = [];
     if (j.needs) {
-      d = j.needs.map((n) => byRef.get(n.job)).filter(Boolean).map((from) => ({ from, implicit: false }));
+      d = (j.needs.map((n) => byRef.get(n.job)).filter(Boolean) as Placed[]).map((from) => ({ from, implicit: false }));
     } else if (pipeline.implicitStages !== false) {
       d = prevStageJobs(j.si).map((from) => ({ from, implicit: true }));
     }
@@ -46,28 +65,28 @@ function layout(pipeline) {
     return lv;
   };
   jobs.forEach(visit);
-  const columns = [];
+  const columns: Placed[][] = [];
   for (const j of jobs) {
-    const lv = level.get(j.id);
+    const lv = level.get(j.id)!;
     (columns[lv] ??= []).push(j);
   }
-  const pos = new Map();
+  const pos = new Map<string, { x: number; y: number }>();
   columns.forEach((col, ci) => col?.forEach((j, ri) => pos.set(j.id, { x: ci * (W + GX), y: ri * (H + GY) })));
   const rows = Math.max(1, ...columns.map((c) => c?.length ?? 0));
   return { jobs, columns, pos, deps, width: columns.length * (W + GX) - GX, height: rows * (H + GY) - GY };
 }
 
-export default function DagView({ pipeline, selectedJob, onSelectJob, jobIssues }) {
-  const [hover, setHover] = useState(null);
+export default function DagView({ pipeline, selectedJob, onSelectJob, jobIssues }: { pipeline: DagPipeline; selectedJob?: string | null; onSelectJob: (id: string) => void; jobIssues?: (job: DagJob) => { severity: string }[] }) {
+  const [hover, setHover] = useState<string | null>(null);
   const g = useMemo(() => layout(pipeline), [pipeline]);
   const focus = hover ?? selectedJob;
   // Цепочка выбранного задания: что ему нужно и что ждёт его
   const related = useMemo(() => {
     if (!focus) return null;
-    const up = new Set();
-    const down = new Set();
-    const walkUp = (id) => (g.deps.get(id) ?? []).forEach(({ from }) => !up.has(from.id) && (up.add(from.id), walkUp(from.id)));
-    const walkDown = (id) => g.jobs.forEach((j) => (g.deps.get(j.id) ?? []).some((d) => d.from.id === id) && !down.has(j.id) && (down.add(j.id), walkDown(j.id)));
+    const up = new Set<string>();
+    const down = new Set<string>();
+    const walkUp = (id: string): void => (g.deps.get(id) ?? []).forEach(({ from }) => !up.has(from.id) && (up.add(from.id), walkUp(from.id)));
+    const walkDown = (id: string): void => g.jobs.forEach((j) => (g.deps.get(j.id) ?? []).some((d) => d.from.id === id) && !down.has(j.id) && (down.add(j.id), walkDown(j.id)));
     walkUp(focus);
     walkDown(focus);
     return { up, down };
@@ -118,7 +137,7 @@ export default function DagView({ pipeline, selectedJob, onSelectJob, jobIssues 
           )}
         </svg>
         {g.jobs.map((j) => {
-          const p = g.pos.get(j.id);
+          const p = g.pos.get(j.id)!;
           const issues = jobIssues?.(j) ?? [];
           const bad = issues.some((i) => i.severity === 'error');
           const warn = !bad && issues.some((i) => i.severity === 'warning');

@@ -52,7 +52,7 @@ import {
   Pencil,
 } from 'lucide-react';
 import ContextMenu from './components/ContextMenu.tsx';
-import TitleBar from './components/TitleBar.jsx';
+import TitleBar from './components/TitleBar.tsx';
 import Toolbar from './components/Toolbar.jsx';
 import Sidebar from './components/Sidebar.jsx';
 import CommitGraph from './components/CommitGraph.jsx';
@@ -83,16 +83,16 @@ import {
   syncScheme,
 } from './lib/appearance.ts';
 import { ACTIVE_STATUSES } from './components/PipelineStatus.tsx';
-import StatusBar from './components/StatusBar.jsx';
+import StatusBar from './components/StatusBar.tsx';
 import { IS_MAC, isMod, kb, openFolderLabel, openTerminalLabel } from './lib/platform.ts';
 import { DEFAULT_SYNC_MODE, SYNC_MODES, nextDelay, resetSyncStatus, setSyncStatus } from './lib/syncStatus.ts';
 import InitRepoDialog, { plural } from './components/InitRepoDialog.jsx';
 import CloneDialog from './components/CloneDialog.jsx';
 import AuthDialog from './components/AuthDialog.jsx';
-import NewTabPage from './components/NewTabPage.jsx';
+import NewTabPage from './components/NewTabPage.tsx';
 import { describeStash } from './lib/stashName.ts';
-import RevertToDialog from './components/RevertToDialog.jsx';
-import SearchBar, { EMPTY_FILTER, isFilterActive, matchCommit } from './components/SearchBar.jsx';
+import RevertToDialog from './components/RevertToDialog.tsx';
+import SearchBar, { EMPTY_FILTER, isFilterActive, matchCommit } from './components/SearchBar.tsx';
 import { GraphLoader, LoadingOverlay, Splash } from './components/Loader.tsx';
 import AppLogo from './components/AppLogo.tsx';
 import { ResizeHandle, useStoredWidth } from './components/Resizer.tsx';

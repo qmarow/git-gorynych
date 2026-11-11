@@ -3,11 +3,45 @@ import { openFolderLabel, openTerminalLabel } from '../lib/platform.ts';
 import { fullDate, relativeTime } from '../lib/format.ts';
 import { BACKGROUND_SEC, syncModeById, useSyncStatus } from '../lib/syncStatus.ts';
 import { ACTIVE_STATUSES, StatusIcon, statusInfo } from './PipelineStatus.tsx';
-import { Duration } from './ci/common.jsx';
+import { Duration } from './ci/common.tsx';
 import { t as tr, tj, locale } from '../i18n/index.ts';
+import type { RepoData } from '../state/repoStore.ts';
+
+/** Автообновление: слежение за папкой и фоновая проверка сервера (состояние из App) */
+export interface SyncState {
+  enabled: boolean;
+  mode: string;
+  fetching?: boolean;
+  error?: string | null;
+  lastFetch?: string | null;
+  onToggle: () => void;
+  onSettings?: () => void;
+  onFetchNow: () => void;
+}
+
+/** Последний пайплайн текущей ветки (модель `PipelineRun` из gorynych-cicd) */
+interface PipelineBrief {
+  id: string | number;
+  number?: string | number | null;
+  status: string;
+  name?: string | null;
+  startedAt?: string | null;
+}
+
+interface StatusBarProps {
+  repo: RepoData;
+  onJumpToHead: () => void;
+  sync?: SyncState | null;
+  onOpenFolder?: (() => void) | null;
+  onOpenTerminal?: (() => void) | null;
+  onPathMenu?: ((x: number, y: number) => void) | null;
+  pipeline?: PipelineBrief | null;
+  pipelineLabel?: string | null;
+  onOpenPipeline?: (pipeline: PipelineBrief) => void;
+}
 
 // Строка состояния: текущая ветка и активный коммит (HEAD). Клик — перейти к HEAD в графе.
-export default function StatusBar({ repo, onJumpToHead, sync, onOpenFolder, onOpenTerminal, onPathMenu, pipeline = null, pipelineLabel = null, onOpenPipeline }) {
+export default function StatusBar({ repo, onJumpToHead, sync, onOpenFolder, onOpenTerminal, onPathMenu, pipeline = null, pipelineLabel = null, onOpenPipeline }: StatusBarProps) {
   const head = repo.commits.find((c) => c.hash === repo.headHash) ?? null;
   const branch = repo.localBranches.find((b) => b.name === repo.currentBranch) ?? null;
 
@@ -29,15 +63,15 @@ export default function StatusBar({ repo, onJumpToHead, sync, onOpenFolder, onOp
         <span className="shrink-0">{tr('Нет коммитов')}</span>
       )}
 
-      {branch && (branch.ahead > 0 || branch.behind > 0) && (
+      {branch && (branch.ahead! > 0 || branch.behind! > 0) && (
         <span className="flex shrink-0 items-center gap-2" title={tr('Относительно upstream')}>
-          {branch.ahead > 0 && (
+          {branch.ahead! > 0 && (
             <span className="flex items-center text-gk-green" title={tr('Неотправленных коммитов: {0}', branch.ahead)}>
               <ArrowUp size={11} />
               {branch.ahead}
             </span>
           )}
-          {branch.behind > 0 && (
+          {branch.behind! > 0 && (
             <span className="flex items-center text-gk-blue" title={tr('Придут при Pull: {0}', branch.behind)}>
               <ArrowDown size={11} />
               {branch.behind}
@@ -133,10 +167,10 @@ export default function StatusBar({ repo, onJumpToHead, sync, onOpenFolder, onOp
   );
 }
 
-const clock = (t) => new Date(t).toLocaleTimeString(locale(), { hour: '2-digit', minute: '2-digit', second: '2-digit' });
-const VIA = { api: 'GitLab API (ETag)', 'ls-remote': 'git ls-remote', 'api+ls-remote': tr('GitLab API и git ls-remote') };
+const clock = (t: number) => new Date(t).toLocaleTimeString(locale(), { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+const VIA: Record<string, string> = { api: 'GitLab API (ETag)', 'ls-remote': 'git ls-remote', 'api+ls-remote': tr('GitLab API и git ls-remote') };
 
-function SyncControls({ sync, hasRemotes }) {
+function SyncControls({ sync, hasRemotes }: { sync: SyncState; hasRemotes: boolean }) {
   const st = useSyncStatus();
   const mode = syncModeById(sync.mode);
   const retryIn = st.retryAt ? Math.max(1, Math.round((st.retryAt - Date.now()) / 1000)) : null;

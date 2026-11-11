@@ -27,9 +27,9 @@ import GitLabSchedules from './GitLabSchedules.jsx';
 import JobLog from './JobLog.jsx';
 import RunDialog from './RunDialog.jsx';
 import Runners from './Runners.jsx';
-import Secrets from './Secrets.jsx';
+import Secrets from './Secrets.tsx';
 import { ACTIVE_STATUSES, SOURCE_LABELS, StatusIcon, StatusPill, statusInfo } from '../PipelineStatus.tsx';
-import { ActionButton, ConfirmAction, Duration, ErrorNote, IconBtn, ListSkeleton, SegButton, formatSize, usePolling } from './common.jsx';
+import { ActionButton, ConfirmAction, Duration, ErrorNote, IconBtn, ListSkeleton, SegButton, formatSize, usePolling } from './common.tsx';
 import { t as tr, tj } from '../../i18n/index.ts';
 
 const api = window.api;

@@ -1,11 +1,33 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState, type ButtonHTMLAttributes, type ReactNode } from 'react';
 import { CalendarDays, ChevronDown, ChevronUp, FileSearch, Loader2, Search, User, X } from 'lucide-react';
 import { avatarColor, initials } from '../lib/format.ts';
 import { t as tr, tj } from '../i18n/index.ts';
 
-export const EMPTY_FILTER = { query: '', authors: [], period: 'all', from: '', to: '' };
+export type Period = 'all' | 'today' | '7d' | '30d' | 'range';
 
-const PERIODS = [
+/** Фильтр графа: текст, авторы, период (`from`/`to` — даты YYYY-MM-DD для «Период…») */
+export interface CommitFilter {
+  query: string;
+  authors: string[];
+  period: Period;
+  from: string;
+  to: string;
+}
+
+/** То, что фильтру нужно от строки графа (коммит, WIP или stash) */
+export interface FilterableCommit {
+  wip?: boolean;
+  hash: string;
+  message?: string;
+  description?: string;
+  date?: string;
+  author?: { name?: string; email?: string } | null;
+  refs?: { name: string }[];
+}
+
+export const EMPTY_FILTER: CommitFilter = { query: '', authors: [], period: 'all', from: '', to: '' };
+
+const PERIODS: { id: Period; label: string }[] = [
   { id: 'all', label: tr('Всё время') },
   { id: 'today', label: tr('Сегодня') },
   { id: '7d', label: tr('7 дней') },
@@ -13,12 +35,12 @@ const PERIODS = [
   { id: 'range', label: tr('Период…') },
 ];
 
-export function isFilterActive(f) {
+export function isFilterActive(f: CommitFilter): boolean {
   return Boolean(f.query.trim() || f.authors.length || f.period !== 'all');
 }
 
 // Совпадает ли коммит с фильтром: текст (сообщение, описание, SHA, автор, ветки/теги), авторы, даты
-export function matchCommit(c, f) {
+export function matchCommit(c: FilterableCommit, f: CommitFilter): boolean {
   if (c.wip) return false;
   const q = f.query.trim().toLowerCase();
   if (q) {
@@ -28,9 +50,9 @@ export function matchCommit(c, f) {
       .toLowerCase();
     if (!q.split(/\s+/).every((word) => hay.includes(word))) return false;
   }
-  if (f.authors.length && !f.authors.includes(c.author?.name)) return false;
+  if (f.authors.length && !f.authors.includes(c.author?.name as string)) return false;
   if (f.period !== 'all') {
-    const t = new Date(c.date).getTime();
+    const t = new Date(c.date as string).getTime();
     const now = Date.now();
     const startOfDay = new Date();
     startOfDay.setHours(0, 0, 0, 0);
@@ -45,29 +67,54 @@ export function matchCommit(c, f) {
   return true;
 }
 
-export default function SearchBar({ commits, filter, onChange, matches, current, onPrev, onNext, onClose, totalLoaded, truncated, inFiles = false, onToggleInFiles, content = null }) {
-  const inputRef = useRef(null);
+/** Поиск по изменениям файлов (`repo:search-content`): ход и итог */
+interface ContentSearch {
+  loading: boolean;
+  error: { message?: ReactNode; hint?: string | null } | null;
+  commits: number;
+  partial?: boolean;
+  truncated?: boolean;
+}
+
+interface SearchBarProps {
+  commits: readonly FilterableCommit[];
+  filter: CommitFilter;
+  onChange: (filter: CommitFilter) => void;
+  matches: readonly unknown[];
+  current: number;
+  onPrev: () => void;
+  onNext: () => void;
+  onClose: () => void;
+  totalLoaded: number;
+  truncated?: boolean;
+  inFiles?: boolean;
+  onToggleInFiles?: () => void;
+  content?: ContentSearch | null;
+}
+
+export default function SearchBar({ commits, filter, onChange, matches, current, onPrev, onNext, onClose, totalLoaded, truncated, inFiles = false, onToggleInFiles, content = null }: SearchBarProps) {
+  const inputRef = useRef<HTMLInputElement>(null);
   const [authorsOpen, setAuthorsOpen] = useState(false);
   const [authorQuery, setAuthorQuery] = useState('');
-  const authorsRef = useRef(null);
+  const authorsRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => inputRef.current?.focus(), []);
   useEffect(() => {
     if (!authorsOpen) return undefined;
-    const close = (e) => !authorsRef.current?.contains(e.target) && setAuthorsOpen(false);
+    const close = (e: MouseEvent) => !authorsRef.current?.contains(e.target as Node) && setAuthorsOpen(false);
     window.addEventListener('mousedown', close);
     return () => window.removeEventListener('mousedown', close);
   }, [authorsOpen]);
 
   // Авторы с количеством коммитов
   const authors = useMemo(() => {
-    const map = new Map();
+    const map = new Map<string, number>();
     for (const c of commits) if (!c.wip && c.author?.name) map.set(c.author.name, (map.get(c.author.name) ?? 0) + 1);
     return [...map].sort((a, b) => b[1] - a[1]);
   }, [commits]);
 
-  const set = (patch) => onChange({ ...filter, ...patch });
-  const toggleAuthor = (name) =>
+  const set = (patch: Partial<CommitFilter>) => onChange({ ...filter, ...patch });
+  const toggleAuthor = (name: string) =>
     set({ authors: filter.authors.includes(name) ? filter.authors.filter((a) => a !== name) : [...filter.authors, name] });
 
   const active = isFilterActive(filter);
@@ -239,7 +286,7 @@ export default function SearchBar({ commits, filter, onChange, matches, current,
   );
 }
 
-function IconBtn({ children, disabled, ...props }) {
+function IconBtn({ children, disabled, ...props }: ButtonHTMLAttributes<HTMLButtonElement>) {
   return (
     <button
       {...props}

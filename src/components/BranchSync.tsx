@@ -4,6 +4,38 @@ import { ArrowDown, ArrowDownToLine, ArrowUp, ArrowUpFromLine, Loader2 } from 'l
 import { relativeTime } from '../lib/format.ts';
 import { useHoverPopover } from './RefBadge.tsx';
 import { t, tj } from '../i18n/index.ts';
+import type { LocalBranch_Serialize } from '../../crates/gorynych-tauri/bindings/commands.ts';
+
+type Branch = Pick<LocalBranch_Serialize, 'name' | 'hash' | 'gone' | 'ahead' | 'behind'> & { upstream?: string | null };
+type Direction = 'in' | 'out';
+
+/** Коммит списка «придут при Pull» / «уйдут при Push» (`repo:branch-log`) */
+interface LogCommit {
+  hash: string;
+  short: string;
+  subject: string;
+  author: string;
+  date: string;
+}
+
+interface BranchLog {
+  commits: LogCommit[];
+  total: number;
+}
+
+export interface SyncActions {
+  update?: (name: string) => void;
+  push?: () => void;
+  log?: (name: string, direction: Direction) => Promise<{ ok: boolean; data?: BranchLog; error?: { message?: string } } | null | undefined>;
+  select?: (hash: string) => void;
+}
+
+interface BadgeProps {
+  branch: Branch;
+  current?: boolean;
+  busy?: boolean;
+  actions?: SyncActions;
+}
 
 /**
  * Бейджи синхронизации ветки в списке Local:
@@ -11,11 +43,11 @@ import { t, tj } from '../i18n/index.ts';
  * Наведение на ↓/↑ — список этих коммитов; при наведении на строку — кнопка Update (Pull).
  * actions: { update(name), push(), log(name, direction), select(hash) }
  */
-export function SyncBadges({ branch, current, busy, actions }) {
-  const canUpdate = branch.behind > 0 && !branch.gone && (current || branch.ahead === 0);
+export function SyncBadges({ branch, current, busy, actions }: BadgeProps) {
+  const canUpdate = branch.behind! > 0 && !branch.gone && (current || branch.ahead === 0);
   return (
     <span className="flex shrink-0 items-center gap-1">
-      {branch.behind > 0 && !branch.gone && (
+      {branch.behind! > 0 && !branch.gone && (
         <span
           role="button"
           tabIndex={-1}
@@ -36,15 +68,15 @@ export function SyncBadges({ branch, current, busy, actions }) {
           gone
         </span>
       )}
-      {branch.behind > 0 && !branch.gone && <CountBadge branch={branch} direction="in" current={current} busy={busy} actions={actions} />}
-      {branch.ahead > 0 && !branch.gone && <CountBadge branch={branch} direction="out" current={current} busy={busy} actions={actions} />}
+      {branch.behind! > 0 && !branch.gone && <CountBadge branch={branch} direction="in" current={current} busy={busy} actions={actions} />}
+      {branch.ahead! > 0 && !branch.gone && <CountBadge branch={branch} direction="out" current={current} busy={busy} actions={actions} />}
     </span>
   );
 }
 
-function CountBadge({ branch, direction, current, busy, actions }) {
+function CountBadge({ branch, direction, current, busy, actions }: BadgeProps & { direction: Direction }) {
   const pop = useHoverPopover();
-  const ref = useRef(null);
+  const ref = useRef<HTMLSpanElement>(null);
   const incoming = direction === 'in';
   const n = incoming ? branch.behind : branch.ahead;
   return (
@@ -81,14 +113,14 @@ function CountBadge({ branch, direction, current, busy, actions }) {
 }
 
 // Кэш списков: ветка|направление|хэш ветки|хэш upstream не изменились — тот же ответ
-const logCache = new Map();
+const logCache = new Map<string, BranchLog>();
 
-function CommitsPopover({ anchor, branch, direction, current, busy, actions, onEnter, onLeave, onDone }) {
+function CommitsPopover({ anchor, branch, direction, current, busy, actions, onEnter, onLeave, onDone }: BadgeProps & { anchor: HTMLElement | null; direction: Direction; onEnter: () => void; onLeave: () => void; onDone: () => void }) {
   const incoming = direction === 'in';
   const key = `${branch.name}|${direction}|${branch.hash}|${branch.behind}|${branch.ahead}`;
-  const [data, setData] = useState(() => logCache.get(key) ?? null);
-  const [error, setError] = useState(null);
-  const box = useRef(null);
+  const [data, setData] = useState<BranchLog | null>(() => logCache.get(key) ?? null);
+  const [error, setError] = useState<string | null>(null);
+  const box = useRef<HTMLDivElement>(null);
   const [pos, setPos] = useState({ left: -9999, top: -9999 });
 
   useEffect(() => {
@@ -97,9 +129,9 @@ function CommitsPopover({ anchor, branch, direction, current, busy, actions, onE
     actions.log(branch.name, direction).then((res) => {
       if (!alive) return;
       if (res?.ok) {
-        logCache.set(key, res.data);
-        if (logCache.size > 100) logCache.delete(logCache.keys().next().value);
-        setData(res.data);
+        logCache.set(key, res.data!);
+        if (logCache.size > 100) logCache.delete(logCache.keys().next().value!);
+        setData(res.data!);
       } else setError(res?.error?.message ?? t('Не удалось получить список коммитов'));
     });
     return () => {

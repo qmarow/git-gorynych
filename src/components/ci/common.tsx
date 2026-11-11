@@ -1,16 +1,18 @@
 // Общие мелочи панелей CI/CD: опрос, ошибки, кнопки, живой таймер, размер файла
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, type ButtonHTMLAttributes, type ComponentType, type DependencyList, type ReactNode } from 'react';
 import { AlertTriangle, Loader2 } from 'lucide-react';
 import { formatDuration } from '../PipelineStatus.tsx';
 import { t as tr, locale } from '../../i18n/index.ts';
 
+type Icon = ComponentType<{ size?: number; className?: string }>;
+
 /** Повторяем запрос с интервалом, пока окно видимо; delay может меняться, 0 — не опрашивать */
-export function usePolling(fn, delay, deps) {
+export function usePolling(fn: () => unknown, delay: number | null | undefined | false, deps: DependencyList): void {
   const fnRef = useRef(fn);
   fnRef.current = fn;
   useEffect(() => {
     if (!delay) return undefined;
-    let timer = null;
+    let timer: ReturnType<typeof setTimeout> | undefined = null!;
     let alive = true;
     const tick = async () => {
       if (!alive) return;
@@ -27,7 +29,7 @@ export function usePolling(fn, delay, deps) {
 }
 
 /** Текущее время, обновляется раз в секунду (для живого таймера) */
-export function useNow(active) {
+export function useNow(active: boolean): number {
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
     if (!active) return undefined;
@@ -38,7 +40,7 @@ export function useNow(active) {
 }
 
 /** Длительность: у идущего — тикает от startedAt, у завершённого — итог */
-export function Duration({ startedAt, duration, running, className = '', prefix = '' }) {
+export function Duration({ startedAt, duration, running, className = '', prefix = '' }: { startedAt?: string | null; duration?: number | null; running?: boolean; className?: string; prefix?: ReactNode }) {
   const now = useNow(Boolean(running && startedAt));
   let sec = duration;
   if (running && startedAt) sec = Math.max(0, (now - new Date(startedAt).getTime()) / 1000);
@@ -52,16 +54,16 @@ export function Duration({ startedAt, duration, running, className = '', prefix 
   );
 }
 
-export function formatSize(bytes) {
+export function formatSize(bytes: number | null | undefined): string {
   if (bytes == null) return '';
   if (bytes < 1024) return tr('{0} Б', bytes);
-  const num = (n, digits) => n.toLocaleString(locale(), { maximumFractionDigits: digits, minimumFractionDigits: digits });
+  const num = (n: number, digits: number) => n.toLocaleString(locale(), { maximumFractionDigits: digits, minimumFractionDigits: digits });
   if (bytes < 1024 * 1024) return tr('{0} КБ', num(bytes / 1024, bytes < 10240 ? 1 : 0));
   if (bytes < 1024 ** 3) return tr('{0} МБ', num(bytes / 1024 / 1024, 1));
   return tr('{0} ГБ', num(bytes / 1024 ** 3, 2));
 }
 
-export function ErrorNote({ error, className = 'm-4' }) {
+export function ErrorNote({ error, className = 'm-4' }: { error: { message?: ReactNode; hint?: ReactNode } | null | undefined; className?: string }) {
   if (!error) return null;
   return (
     <div className={`${className} rounded-lg border border-gk-red/30 bg-gk-red/10 px-3 py-2.5 text-[12px]`} data-testid="ci-error">
@@ -73,7 +75,7 @@ export function ErrorNote({ error, className = 'm-4' }) {
   );
 }
 
-export function Loading({ text }) {
+export function Loading({ text }: { text?: ReactNode }) {
   return (
     <div className="flex flex-1 items-center justify-center gap-2 p-6 text-[13px] text-gk-muted">
       <Loader2 size={14} className="animate-spin" /> {text}
@@ -93,7 +95,7 @@ export function ListSkeleton() {
   ));
 }
 
-export function SegButton({ active, children, ...props }) {
+export function SegButton({ active, children, ...props }: ButtonHTMLAttributes<HTMLButtonElement> & { active?: boolean }) {
   return (
     <button
       {...props}
@@ -109,8 +111,10 @@ export function SegButton({ active, children, ...props }) {
 /**
  * Кнопка действия. why — почему недоступно (провайдер не умеет): кнопка выключена, причина — в подсказке.
  */
-export function ActionButton({ icon: Icon, busy, children, why, tone = 'default', ...props }) {
-  const tones = {
+export type Tone = 'default' | 'green' | 'red' | 'blue';
+
+export function ActionButton({ icon: Icon, busy, children, why, tone = 'default', ...props }: ButtonHTMLAttributes<HTMLButtonElement> & { icon?: Icon; busy?: boolean; why?: string | null; tone?: Tone; 'data-tip'?: string; 'data-testid'?: string }) {
+  const tones: Record<Tone, string> = {
     default: 'bg-gk-hover text-gk-text enabled:hover:bg-gk-fg/10',
     green: 'bg-gk-green/15 text-gk-green enabled:hover:bg-gk-green/25',
     red: 'bg-gk-red/12 text-gk-red enabled:hover:bg-gk-red/20',
@@ -129,7 +133,7 @@ export function ActionButton({ icon: Icon, busy, children, why, tone = 'default'
   );
 }
 
-export function ConfirmAction({ icon, busy, label, confirmLabel, onConfirm, why, testid, tone }) {
+export function ConfirmAction({ icon, busy, label, confirmLabel, onConfirm, why, testid, tone }: { icon?: Icon; busy?: boolean; label: ReactNode; confirmLabel: ReactNode; onConfirm: () => void; why?: string | null; testid?: string; tone?: Tone }) {
   const [armed, setArmed] = useState(false);
   useEffect(() => {
     if (!armed) return undefined;
@@ -156,7 +160,7 @@ export function ConfirmAction({ icon, busy, label, confirmLabel, onConfirm, why,
   );
 }
 
-export function IconBtn({ children, active, title, ...props }) {
+export function IconBtn({ children, active, title, ...props }: ButtonHTMLAttributes<HTMLButtonElement> & { active?: boolean; title?: string }) {
   return (
     <button
       {...props}
@@ -172,7 +176,7 @@ export function IconBtn({ children, active, title, ...props }) {
 }
 
 /** Поле-тумблер (чекбокс в стиле приложения) */
-export function Toggle({ checked, onChange, label, hint, disabled, why, testid }) {
+export function Toggle({ checked, onChange, label, hint, disabled, why, testid }: { checked: boolean; onChange: (checked: boolean) => void; label: ReactNode; hint?: ReactNode; disabled?: boolean; why?: string | null; testid?: string }) {
   return (
     <label className={`flex items-start gap-2.5 ${disabled || why ? 'opacity-50' : 'cursor-pointer'}`} data-tip={why || undefined} data-testid={testid}>
       <button
@@ -194,12 +198,12 @@ export function Toggle({ checked, onChange, label, hint, disabled, why, testid }
 }
 
 /** Ввод тегов чипсами: Enter, запятая или пробел — добавить, Backspace — убрать последний */
-export function ChipsInput({ value, onChange, suggestions = [], placeholder = tr('тег'), locked = [], disabled, testid }) {
+export function ChipsInput({ value, onChange, suggestions = [], placeholder = tr('тег'), locked = [], disabled, testid }: { value: string[]; onChange: (value: string[]) => void; suggestions?: readonly unknown[]; placeholder?: string; locked?: string[]; disabled?: boolean; testid?: string }) {
   const [text, setText] = useState('');
   const [focus, setFocus] = useState(false);
   const [open, setOpen] = useState(false); // список подсказок: открыт, пока печатают; после добавления тега — закрыт
   const lockedSet = new Set(locked.map((l) => l.toLowerCase()));
-  const add = (raw) => {
+  const add = (raw: unknown) => {
     const parts = String(raw)
       .split(/[,\s]+/)
       .map((t) => t.trim())
@@ -211,7 +215,7 @@ export function ChipsInput({ value, onChange, suggestions = [], placeholder = tr
     setText('');
     setOpen(false);
   };
-  const shown = [];
+  const shown: string[] = [];
   for (const s of suggestions) {
     const low = String(s).toLowerCase();
     if (shown.length >= 8 || shown.some((x) => x.toLowerCase() === low) || value.some((v) => v.toLowerCase() === low) || !low.includes(text.toLowerCase())) continue;
@@ -301,6 +305,6 @@ export function ChipsInput({ value, onChange, suggestions = [], placeholder = tr
   );
 }
 
-export function Center({ children, className = '' }) {
+export function Center({ children, className = '' }: { children?: ReactNode; className?: string }) {
   return <div className={`flex flex-1 items-center justify-center gap-2 p-6 text-center text-[13px] text-gk-muted ${className}`}>{children}</div>;
 }

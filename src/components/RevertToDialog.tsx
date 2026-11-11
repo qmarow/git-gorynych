@@ -4,10 +4,29 @@ import { AlertTriangle, Archive, Check, CloudUpload, History, Info, Loader2, Shi
 import { Button, ErrorBox, Modal } from './Dialogs.tsx';
 import { fullDate, relativeTime } from '../lib/format.ts';
 import { t, tj } from '../i18n/index.ts';
+import type { ApiError, ApiResult } from '../platform/tauri.ts';
+import type { ComponentType, ReactNode } from 'react';
+import type { CommitAuthor } from '../../crates/gorynych-tauri/bindings/commands.ts';
 
-const api = window.api;
+/** Предпросмотр `revertToPreview` (gorynych-git::actions) */
+interface RevertPreview {
+  identical: boolean;
+  branch?: string | null;
+  filesChanged: number;
+  insertions: number;
+  deletions: number;
+  ancestor: boolean;
+  count: number;
+  commits: { hash: string; message: string; author: string }[];
+  pushedCount: number;
+  dirtyCount: number;
+  collisions: string[];
+  hasUpstream: boolean;
+}
 
-const plural = (n, one, few, many) => {
+const api = window.api as { repo: { action: (dir: string, name: string, payload: unknown) => Promise<ApiResult<RevertPreview>> } };
+
+const plural = (n: number, one: string, few: string, many: string) => {
   if (getLanguage() !== 'ru') return n === 1 ? one : many; // в английском две формы: one и many (few = many)
   const m10 = n % 10;
   const m100 = n % 100;
@@ -20,9 +39,19 @@ const plural = (n, one, few, many) => {
  * «Вернуть проект к этому коммиту»: предпросмотр → подтверждение.
  * Создаёт один новый коммит, файлы становятся как в выбранном коммите; история не переписывается.
  */
-export default function RevertToDialog({ repoPath, commit, busy, onClose, onConfirm, onStashFirst }) {
-  const [preview, setPreview] = useState(null);
-  const [error, setError] = useState(null);
+interface RevertToProps {
+  repoPath: string;
+  commit: { hash: string; message: string; date: string; author?: CommitAuthor | null };
+  busy?: boolean;
+  onClose: () => void;
+  onConfirm: (options: { push: boolean }) => void;
+  /** Спрятать изменения в stash; true — получилось */
+  onStashFirst: () => Promise<boolean>;
+}
+
+export default function RevertToDialog({ repoPath, commit, busy, onClose, onConfirm, onStashFirst }: RevertToProps) {
+  const [preview, setPreview] = useState<RevertPreview | null>(null);
+  const [error, setError] = useState<ApiError | null>(null);
   const [push, setPush] = useState(false);
   const [reload, setReload] = useState(0);
 
@@ -152,8 +181,10 @@ export default function RevertToDialog({ repoPath, commit, busy, onClose, onConf
   );
 }
 
-function Note({ icon: Icon, tone, children }) {
-  const tones = {
+type Tone = 'blue' | 'yellow' | 'green';
+
+function Note({ icon: Icon, tone, children }: { icon: ComponentType<{ size?: number; className?: string }>; tone: Tone; children: ReactNode }) {
+  const tones: Record<Tone, string> = {
     blue: 'border-gk-blue/30 bg-gk-blue/10 [&>svg]:text-gk-blue',
     yellow: 'border-gk-yellow/30 bg-gk-yellow/10 [&>svg]:text-gk-yellow',
     green: 'border-gk-green/25 bg-gk-green/10 [&>svg]:text-gk-green',

@@ -31,7 +31,7 @@ import {
 import { relativeTime } from '../lib/format.ts';
 import { highlight } from '../lib/syntax.tsx';
 import CiPanel from './ci/CiPanel.jsx';
-import DagView from './ci/DagView.jsx';
+import DagView from './ci/DagView.tsx';
 import { describeCron } from '../lib/cron.ts';
 import { TAG_KEYS, snippetsFor } from '../lib/ciSnippets.ts';
 import CiEditor from './ci/CiEditor.jsx';
