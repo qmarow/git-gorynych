@@ -67,7 +67,7 @@ export const commits = [
       { type: 'remote', name: 'origin/develop' },
     ],
     files: [
-      { path: 'src/components/Sidebar.jsx', status: 'A', additions: 142, deletions: 0 },
+      { path: 'src/components/Sidebar.tsx', status: 'A', additions: 142, deletions: 0 },
       { path: 'src/App.jsx', status: 'M', additions: 8, deletions: 2 },
     ],
   },
@@ -82,7 +82,7 @@ export const commits = [
       { type: 'local', name: 'feature/sidebar' },
       { type: 'remote', name: 'origin/feature/sidebar' },
     ],
-    files: [{ path: 'src/components/Sidebar.jsx', status: 'M', additions: 37, deletions: 9 }],
+    files: [{ path: 'src/components/Sidebar.tsx', status: 'M', additions: 37, deletions: 9 }],
   },
   {
     hash: '7b2e10ac93f1',
@@ -103,7 +103,7 @@ export const commits = [
     date: h(8),
     refs: [],
     files: [
-      { path: 'src/components/Sidebar.jsx', status: 'M', additions: 21, deletions: 3 },
+      { path: 'src/components/Sidebar.tsx', status: 'M', additions: 21, deletions: 3 },
       { path: 'src/data/mockRepo.js', status: 'M', additions: 6, deletions: 0 },
     ],
   },

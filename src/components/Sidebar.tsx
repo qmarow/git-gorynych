@@ -1,9 +1,9 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState, type ComponentType, type DragEvent, type HTMLAttributes, type ReactNode } from 'react';
 import { StatusIcon, statusInfo } from './PipelineStatus.tsx';
-import { hasRefDrag, readRefDrag, startRefDrag } from '../lib/dnd.ts';
-import { SyncBadges } from './BranchSync.tsx';
+import { hasRefDrag, readRefDrag, startRefDrag, type RefDragPayload } from '../lib/dnd.ts';
+import { SyncBadges, type SyncActions } from './BranchSync.tsx';
 import { kb } from '../lib/platform.ts';
-import { RefKindIcon } from './RefBadge.tsx';
+import { RefKindIcon, type RefActions, type RefItem } from './RefBadge.tsx';
 import { describeStash, shortAgo } from '../lib/stashName.ts';
 import { fullDate, relativeTime } from '../lib/format.ts';
 import {
@@ -24,11 +24,42 @@ import {
   Workflow,
 } from 'lucide-react';
 import { t as tr, tj } from '../i18n/index.ts';
+import type { RepoData } from '../state/repoStore.ts';
+import type { CheckoutTarget } from './BranchPicker.tsx';
+import type { ForgeStatus_Serialize, LocalBranch_Serialize, Remote_Serialize, Stash_Serialize } from '../../crates/gorynych-tauri/bindings/commands.ts';
 
-const PROVIDER_SHORT = { gitlab: 'GitLab', github: 'GitHub', gitea: 'Gitea', bitbucket: 'Bitbucket' };
-const PROVIDER_DOT = { gitlab: '#fc6d26', github: '#8b949e', gitea: '#609926', bitbucket: '#2684ff' };
+type Icon = ComponentType<{ size?: number; className?: string }>;
+type BranchLike = { name: string; hash: string };
+/** Действия с ветками: меню, синхронизация, удаление на сервере (готовит App) */
+export type SidebarRefActions = RefActions & Omit<SyncActions, 'select'> & { deleteRemote?: (fullName: string) => void };
+type DragProps = (payload: RefDragPayload) => HTMLAttributes<HTMLDivElement>;
+type MenuProps = (ref: RefItem) => HTMLAttributes<HTMLDivElement>;
+type Folders = ReturnType<typeof useFolders>;
 
-const CI_COLORS = {
+interface SidebarProps {
+  repo: RepoData;
+  selectedHash: string | null;
+  onSelect: (hash: string) => void;
+  onCheckout: (target: CheckoutTarget) => void;
+  onStashMenu?: (stash: Stash_Serialize, x: number, y: number) => void;
+  onOpenCi?: (file: string) => void;
+  activeCiFile?: string | null;
+  forge?: ForgeStatus_Serialize | null;
+  branchPipeline?: { id: unknown; number?: unknown; status: string } | null;
+  pipelinesError?: { message?: string } | null;
+  pipelinesActive?: boolean;
+  onOpenPipelines?: () => void;
+  dragSource?: RefDragPayload | null;
+  onDragSource?: (payload: RefDragPayload | null) => void;
+  onDropOnBranch?: (targets: BranchLike[], x: number, y: number, payload: RefDragPayload) => void;
+  refActions?: SidebarRefActions;
+  busy?: boolean;
+}
+
+const PROVIDER_SHORT: Record<string, string> = { gitlab: 'GitLab', github: 'GitHub', gitea: 'Gitea', bitbucket: 'Bitbucket' };
+const PROVIDER_DOT: Record<string, string> = { gitlab: '#fc6d26', github: '#8b949e', gitea: '#609926', bitbucket: '#2684ff' };
+
+const CI_COLORS: Record<string, string> = {
   gitlab: '#fc6d26',
   github: '#8b9cff',
   gitea: '#609926',
@@ -60,22 +91,22 @@ export default function Sidebar({
   onDropOnBranch,
   refActions,
   busy,
-}) {
+}: SidebarProps) {
   // Перетаскивание: ветки можно тащить (на другие ветки — слить, перемотать, rebase), локальные ветки принимают
-  const [dropName, setDropName] = useState(null);
+  const [dropName, setDropName] = useState<string | null>(null);
   useEffect(() => {
     if (!dragSource) setDropName(null);
   }, [dragSource]);
-  const dragProps = (payload) => ({
+  const dragProps: DragProps = (payload) => ({
     draggable: true,
-    onDragStart: (e) => {
+    onDragStart: (e: DragEvent<HTMLDivElement>) => {
       startRefDrag(e, payload);
       onDragSource?.(payload);
     },
     onDragEnd: () => onDragSource?.(null),
   });
-  const dropProps = (branch) => ({
-    onDragOver: (e) => {
+  const dropProps = (branch: BranchLike) => ({
+    onDragOver: (e: DragEvent<HTMLDivElement>) => {
       if (!hasRefDrag(e) || !dragSource) return;
       if ((dragSource.kind === 'branch' && dragSource.name === branch.name) || dragSource.hash === branch.hash) return;
       e.preventDefault();
@@ -83,7 +114,7 @@ export default function Sidebar({
       if (dropName !== branch.name) setDropName(branch.name);
     },
     onDragLeave: () => setDropName((n) => (n === branch.name ? null : n)),
-    onDrop: (e) => {
+    onDrop: (e: DragEvent<HTMLDivElement>) => {
       e.preventDefault();
       setDropName(null);
       const payload = readRefDrag(e);
@@ -92,7 +123,7 @@ export default function Sidebar({
     },
   });
   const [filter, setFilter] = useState('');
-  const filterRef = useRef(null);
+  const filterRef = useRef<HTMLInputElement>(null);
   // Ctrl+Alt+F (⌘⌥F на macOS) — сюда
   useEffect(() => {
     const focus = () => {
@@ -102,31 +133,31 @@ export default function Sidebar({
     window.addEventListener('gitidea:focus-filter', focus);
     return () => window.removeEventListener('gitidea:focus-filter', focus);
   }, []);
-  const match = (name) => name.toLowerCase().includes(filter.toLowerCase());
+  const match = (name: string) => name.toLowerCase().includes(filter.toLowerCase());
   const folders = useFolders();
   // Правки, спрятанные «умным переключением» под именем ветки
-  const autoStash = (msg) => /(?:gorynych|gitidea)-auto: (.+)$/.exec(msg ?? '')?.[1]?.trim() ?? null;
-  const waiting = new Map();
-  const waitingAt = new Map(); // ветка → когда спрятано последний раз
+  const autoStash = (msg: string | null | undefined) => /(?:gorynych|gitidea)-auto: (.+)$/.exec(msg ?? '')?.[1]?.trim() ?? null;
+  const waiting = new Map<string, number>();
+  const waitingAt = new Map<string, string>(); // ветка → когда спрятано последний раз
   for (const st of repo.stashes) {
     const ab = autoStash(st.message);
-    if (ab && st.date && !(waitingAt.get(ab) > st.date)) waitingAt.set(ab, st.date);
+    if (ab && st.date && !(waitingAt.get(ab)! > st.date)) waitingAt.set(ab, st.date);
     const b = autoStash(st.message);
     if (b) waiting.set(b, (waiting.get(b) ?? 0) + 1);
   }
   const remoteCount = repo.remotes.reduce((n, r) => n + r.branches.length, 0);
   // Где какая ветка: серверные хэши и какие локальные ветки за ними следят
   const remoteHash = new Map(repo.remotes.flatMap((r) => r.branches.map((b) => [b.fullName, b.hash])));
-  const trackedBy = new Map();
+  const trackedBy = new Map<string, LocalBranch_Serialize>();
   for (const b of repo.localBranches) if (b.upstream) trackedBy.set(b.upstream, b);
-  const syncedLocal = (b) => Boolean(b.upstream && !b.gone && remoteHash.get(b.upstream) === b.hash);
-  const menuProps = (ref) => ({
+  const syncedLocal = (b: LocalBranch_Serialize) => Boolean(b.upstream && !b.gone && remoteHash.get(b.upstream) === b.hash);
+  const menuProps: MenuProps = (ref) => ({
     onContextMenu: (e) => {
       e.preventDefault();
       refActions?.menu?.(ref, e.clientX, e.clientY);
     },
   });
-  const syncActions = { update: refActions?.update, push: refActions?.push, log: refActions?.log, select: onSelect };
+  const syncActions: SyncActions = { update: refActions?.update, push: refActions?.push, log: refActions?.log, select: onSelect };
   const ciSystems = repo.ci ?? [];
   const ciCount = ciSystems.reduce((n, s) => n + s.files.length, 0);
 
@@ -208,7 +239,7 @@ export default function Sidebar({
                 <span className="ml-auto flex items-center gap-1.5 text-[11px] text-gk-muted">
                   {waiting.has(branch.name) && (
                     <span
-                      data-tip={tr('Спрятанные правки ветки {0}{1}{2}\nВернутся сами, когда вы переключитесь на эту ветку (stash «{3}» с пометкой «авто»)', branch.name, waiting.get(branch.name) > 1 ? ` (${waiting.get(branch.name)})` : '', waitingAt.get(branch.name) ? ` · ${relativeTime(waitingAt.get(branch.name))}` : '', branch.name)}
+                      data-tip={tr('Спрятанные правки ветки {0}{1}{2}\nВернутся сами, когда вы переключитесь на эту ветку (stash «{3}» с пометкой «авто»)', branch.name, waiting.get(branch.name)! > 1 ? ` (${waiting.get(branch.name)})` : '', waitingAt.get(branch.name) ? ` · ${relativeTime(waitingAt.get(branch.name)!)}` : '', branch.name)}
                       data-testid="waiting-stash"
                       className="flex items-center text-gk-yellow/90"
                     >
@@ -315,7 +346,7 @@ export default function Sidebar({
                 <StatusIcon status={branchPipeline.status} size={13} />
               ) : (
                 <span className="flex h-[13px] w-[13px] shrink-0 items-center justify-center">
-                  <span className={`h-2 w-2 rounded-full ${pipelinesError ? 'bg-gk-red' : ''}`} style={pipelinesError ? undefined : { backgroundColor: PROVIDER_DOT[forge.provider] ?? '#8b93a7' }} />
+                  <span className={`h-2 w-2 rounded-full ${pipelinesError ? 'bg-gk-red' : ''}`} style={pipelinesError ? undefined : { backgroundColor: PROVIDER_DOT[forge.provider!] ?? '#8b93a7' }} />
                 </span>
               ), <span className="truncate" />, <span className={`ml-auto shrink-0 truncate text-[11px] ${forge.provider && forge.token?.configured ? 'text-gk-dim' : 'text-gk-blue'}`} />, !forge.provider ? tr('настроить') : !forge.token?.configured ? tr('авторизовать') : pipelinesError ? tr('ошибка') : PROVIDER_SHORT[forge.provider]])}
             </Item>
@@ -331,7 +362,7 @@ export default function Sidebar({
   );
 }
 
-function Section({ title, icon: Icon, count, children }) {
+function Section({ title, icon: Icon, count, children }: { title: ReactNode; icon: Icon; count: number; children: ReactNode }) {
   const [open, setOpen] = useState(true);
   return (
     <section className="mb-1">
@@ -359,8 +390,8 @@ function Section({ title, icon: Icon, count, children }) {
  * Свой скролл у каждого раздела: длинный список веток или тегов не выталкивает остальные разделы.
  * Тени сверху и снизу подсказывают, что список можно прокрутить.
  */
-function ScrollArea({ children }) {
-  const ref = useRef(null);
+function ScrollArea({ children }: { children: ReactNode }) {
+  const ref = useRef<HTMLDivElement>(null);
   const [edges, setEdges] = useState({ top: false, bottom: false });
 
   const update = useCallback(() => {
@@ -405,7 +436,7 @@ function ScrollArea({ children }) {
   );
 }
 
-function RemoteGroup({ remote, match, dragProps, menuProps, trackedBy, onDeleteRemote, folders, filtering, selectedHash, onSelect, onCheckout }) {
+function RemoteGroup({ remote, match, dragProps, menuProps, trackedBy, onDeleteRemote, folders, filtering, selectedHash, onSelect, onCheckout }: { remote: Remote_Serialize; match: (name: string) => boolean; dragProps: DragProps; menuProps: MenuProps; trackedBy: Map<string, LocalBranch_Serialize>; onDeleteRemote?: (fullName: string) => void; folders: Folders; filtering: boolean; selectedHash: string | null; onSelect: (hash: string) => void; onCheckout: (target: CheckoutTarget) => void }) {
   const key = `remote:${remote.name}`;
   const open = filtering || !folders.isCollapsed(key);
   return (
@@ -430,9 +461,9 @@ function RemoteGroup({ remote, match, dragProps, menuProps, trackedBy, onDeleteR
               {...dragProps({ kind: 'remote', name: branch.fullName, hash: branch.hash, label: branch.fullName })}
               {...menuProps({ type: 'remote', name: branch.fullName })}
               title={tr('{0} — на сервере{1}\nДвойной клик — checkout, правый клик — действия', branch.fullName, trackedBy.get(branch.fullName)
-                  ? trackedBy.get(branch.fullName).hash === branch.hash
-                    ? tr('\nЛокальная {0} на том же коммите', trackedBy.get(branch.fullName).name)
-                    : tr('\nЛокальная {0} отличается', trackedBy.get(branch.fullName).name)
+                  ? trackedBy.get(branch.fullName)!.hash === branch.hash
+                    ? tr('\nЛокальная {0} на том же коммите', trackedBy.get(branch.fullName)!.name)
+                    : tr('\nЛокальная {0} отличается', trackedBy.get(branch.fullName)!.name)
                   : tr('\nЛокальной копии нет'))}
               selected={branch.hash === selectedHash}
               onClick={() => onSelect(branch.hash)}
@@ -466,7 +497,7 @@ function RemoteGroup({ remote, match, dragProps, menuProps, trackedBy, onDeleteR
 const FOLDERS_KEY = 'sidebar.collapsedFolders';
 const GROUPING_KEY = 'sidebar.groupBranches';
 
-function readJson(key, fallback) {
+function readJson<T>(key: string, fallback: T): T {
   try {
     const v = localStorage.getItem(key);
     return v === null ? fallback : JSON.parse(v);
@@ -475,7 +506,7 @@ function readJson(key, fallback) {
   }
 }
 
-function writeJson(key, value) {
+function writeJson(key: string, value: unknown): void {
   try {
     localStorage.setItem(key, JSON.stringify(value));
   } catch {
@@ -485,12 +516,12 @@ function writeJson(key, value) {
 
 // Свёрнутые папки и режим группировки запоминаются между запусками
 function useFolders() {
-  const [collapsed, setCollapsed] = useState(() => new Set(readJson(FOLDERS_KEY, [])));
-  const [grouping, setGrouping] = useState(() => readJson(GROUPING_KEY, true) !== false);
+  const [collapsed, setCollapsed] = useState(() => new Set<string>(readJson<string[]>(FOLDERS_KEY, [])));
+  const [grouping, setGrouping] = useState(() => readJson<unknown>(GROUPING_KEY, true) !== false);
   return {
     grouping,
-    isCollapsed: (key) => collapsed.has(key),
-    toggle: (key) =>
+    isCollapsed: (key: string) => collapsed.has(key),
+    toggle: (key: string) =>
       setCollapsed((prev) => {
         const next = new Set(prev);
         if (next.has(key)) next.delete(key);
@@ -507,23 +538,23 @@ function useFolders() {
 }
 
 // Ветки без «/» — сверху, затем папки по алфавиту; внутри папки — остаток имени после «/»
-export function groupBranches(branches) {
-  const plain = [];
-  const map = new Map();
+export function groupBranches<B extends { name: string }>(branches: readonly B[]): { plain: B[]; folders: { name: string; items: { branch: B; label: string }[] }[] } {
+  const plain: B[] = [];
+  const map = new Map<string, { branch: B; label: string }[]>();
   for (const b of branches) {
     const i = b.name.indexOf('/');
     if (i <= 0 || i === b.name.length - 1) plain.push(b);
     else {
       const folder = b.name.slice(0, i);
       if (!map.has(folder)) map.set(folder, []);
-      map.get(folder).push({ branch: b, label: b.name.slice(i + 1) });
+      map.get(folder)!.push({ branch: b, label: b.name.slice(i + 1) });
     }
   }
   const folders = [...map.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([name, items]) => ({ name, items }));
   return { plain, folders };
 }
 
-function BranchTree({ branches, folderKey, folders, filtering, depth, isCurrent, renderBranch }) {
+function BranchTree<B extends { name: string }>({ branches, folderKey, folders, filtering, depth, isCurrent, renderBranch }: { branches: B[]; folderKey: string; folders: Folders; filtering: boolean; depth: number; isCurrent?: (b: B) => boolean; renderBranch: (branch: B, label: string, depth: number) => ReactNode }): ReactNode {
   if (!folders.grouping) return branches.map((b) => renderBranch(b, b.name, depth));
   const { plain, folders: groups } = groupBranches(branches);
   return (
@@ -552,7 +583,7 @@ function BranchTree({ branches, folderKey, folders, filtering, depth, isCurrent,
 
 // title превращается в data-tip: длинные подсказки (сообщения stash, ветки) показывает TooltipLayer —
 // с переносом строк и без обрезания краем окна
-function Item({ children, current, selected, indent, depth, dropTarget, title, ...props }) {
+function Item({ children, current, selected, indent, depth, dropTarget, title, ...props }: Omit<HTMLAttributes<HTMLDivElement>, 'title'> & { current?: boolean; selected?: boolean; indent?: boolean; depth?: number; dropTarget?: boolean; title?: string }) {
   const state = dropTarget
     ? 'bg-gk-green/15 text-gk-text outline-dashed outline-2 -outline-offset-2 outline-gk-green'
     : selected
@@ -575,7 +606,7 @@ function Item({ children, current, selected, indent, depth, dropTarget, title, .
   );
 }
 
-function Empty({ children }) {
+function Empty({ children }: { children: ReactNode }) {
   return <div className="py-1 pl-8 text-xs italic text-gk-dim">{children}</div>;
 }
 
@@ -583,7 +614,7 @@ function Empty({ children }) {
  * Иконка серверной ветки: всегда облако (папка — только для группировки по «/»).
  * Цвет — есть ли у неё локальная копия: зелёная — на том же коммите, жёлтая — локальная отличается, серая — локальной нет.
  */
-function RemoteIcon({ tracker, hash }) {
+function RemoteIcon({ tracker, hash }: { tracker: BranchLike | undefined; hash: string }) {
   const state = !tracker ? 'none' : tracker.hash === hash ? 'synced' : 'diverged';
   const cls = state === 'synced' ? 'text-gk-green/80' : state === 'diverged' ? 'text-gk-yellow/80' : 'text-gk-dim';
   return (
