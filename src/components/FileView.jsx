@@ -15,7 +15,7 @@ import {
 import DiffView from './DiffView.jsx';
 import { FILE_STATUS, avatarColor, initials, plural, relativeTime } from '../lib/format.ts';
 import { detectLanguage, highlightLines } from '../lib/highlight.ts';
-import { TokenText } from './CodeText.jsx';
+import { TokenText } from './CodeText.tsx';
 import { readable } from '../lib/scheme.ts';
 import { kb } from '../lib/platform.ts';
 import { t as tr, tj, locale } from '../i18n/index.ts';

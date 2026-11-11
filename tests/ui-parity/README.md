@@ -65,3 +65,20 @@ node tests/ui-parity/repo-store.mjs $PWD
 
 Проверено заведомыми поломками хранилища (9 штук: отмена загрузок, тихая загрузка чужой вкладки, сохранение выделения,
 `truncated`, ошибка тихой загрузки, сравнение `ci`, сброс `filesByHash`, `onSwitch`, выделение из кэша) — каждую сверка ловит.
+
+## Компоненты (`src/components/*.tsx`)
+
+Компонент, переведённый только типами, сверяется по скомпилированному JS: `components-compiled.mjs` прогоняет старый `.jsx` и
+новый `.tsx` через esbuild (как Vite) и требует совпадения до символа. Расширение в импортах других компонентов не считается
+отличием. Правка поведения при переводе (даже `null` → `undefined`) сверку роняет.
+
+```powershell
+$old = "$env:TEMP\ui-old-c"
+New-Item -ItemType Directory -Force "$old\components" | Out-Null
+foreach ($n in 'Toasts','CodeText','Resizer','AppLogo','Loader','TooltipLayer') { cmd /c "git show <коммит>~:src/components/$n.jsx > `"$old\components\$n.jsx`"" }
+node tests/ui-parity/components-compiled.mjs $old $PWD Toasts CodeText Resizer AppLogo Loader TooltipLayer
+```
+
+| Компоненты | Коммит перевода |
+|---|---|
+| `Toasts`, `CodeText`, `Resizer`, `AppLogo`, `Loader`, `TooltipLayer` | см. `git log -- src/components/Toasts.tsx` |

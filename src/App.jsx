@@ -57,8 +57,8 @@ import Toolbar from './components/Toolbar.jsx';
 import Sidebar from './components/Sidebar.jsx';
 import CommitGraph from './components/CommitGraph.jsx';
 import CommitDetails from './components/CommitDetails.jsx';
-import Toasts from './components/Toasts.jsx';
-import TooltipLayer from './components/TooltipLayer.jsx';
+import Toasts from './components/Toasts.tsx';
+import TooltipLayer from './components/TooltipLayer.tsx';
 import DiffView from './components/DiffView.jsx';
 import ConflictView from './components/ConflictView.jsx';
 import CiView from './components/CiView.jsx';
@@ -93,9 +93,9 @@ import NewTabPage from './components/NewTabPage.jsx';
 import { describeStash } from './lib/stashName.ts';
 import RevertToDialog from './components/RevertToDialog.jsx';
 import SearchBar, { EMPTY_FILTER, isFilterActive, matchCommit } from './components/SearchBar.jsx';
-import { GraphLoader, LoadingOverlay, Splash } from './components/Loader.jsx';
-import AppLogo from './components/AppLogo.jsx';
-import { ResizeHandle, useStoredWidth } from './components/Resizer.jsx';
+import { GraphLoader, LoadingOverlay, Splash } from './components/Loader.tsx';
+import AppLogo from './components/AppLogo.tsx';
+import { ResizeHandle, useStoredWidth } from './components/Resizer.tsx';
 import {
   AccessDialog,
   BranchDialog,

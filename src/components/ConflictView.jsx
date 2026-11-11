@@ -19,7 +19,7 @@ import {
   Trash2,
   X,
 } from 'lucide-react';
-import { CodeLang, HighlightedLines, TokenText, useLineTokens } from './CodeText.jsx';
+import { CodeLang, HighlightedLines, TokenText, useLineTokens } from './CodeText.tsx';
 import { detectLanguage } from '../lib/highlight.ts';
 import { isMod, kb } from '../lib/platform.ts';
 import { readable } from '../lib/scheme.ts';

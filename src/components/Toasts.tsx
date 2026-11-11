@@ -1,15 +1,26 @@
-import { useState } from 'react';
-import { AlertTriangle, CheckCircle2, ChevronDown, ChevronRight, Info, X } from 'lucide-react';
+import { useState, type ReactNode } from 'react';
+import { AlertTriangle, CheckCircle2, ChevronDown, ChevronRight, Info, X, type LucideIcon } from 'lucide-react';
 import { kb } from '../lib/platform.ts';
 import { tj } from '../i18n/index.ts';
 
-const STYLES = {
+export type ToastType = 'success' | 'error' | 'info';
+
+export interface ToastData {
+  id: string;
+  type?: ToastType | string;
+  title: ReactNode;
+  hint?: ReactNode;
+  details?: ReactNode;
+  action?: { label: ReactNode; onClick: () => void };
+}
+
+const STYLES: Record<ToastType, { icon: LucideIcon; accent: string; bar: string }> = {
   success: { icon: CheckCircle2, accent: 'text-gk-green', bar: 'bg-gk-green' },
   error: { icon: AlertTriangle, accent: 'text-gk-red', bar: 'bg-gk-red' },
   info: { icon: Info, accent: 'text-gk-blue', bar: 'bg-gk-blue' },
 };
 
-export default function Toasts({ toasts, onClose }) {
+export default function Toasts({ toasts, onClose }: { toasts: readonly ToastData[]; onClose: (id: string) => void }) {
   return (
     <div className="pointer-events-none fixed bottom-4 left-4 z-50 flex w-96 max-w-[calc(100vw-2rem)] flex-col gap-2">
       {toasts.map((toast) => (
@@ -19,9 +30,9 @@ export default function Toasts({ toasts, onClose }) {
   );
 }
 
-function Toast({ toast, onClose }) {
+function Toast({ toast, onClose }: { toast: ToastData; onClose: () => void }) {
   const [open, setOpen] = useState(false);
-  const { icon: Icon, accent, bar } = STYLES[toast.type] ?? STYLES.info;
+  const { icon: Icon, accent, bar } = STYLES[toast.type as ToastType] ?? STYLES.info;
   return (
     <div className="glass-strong pointer-events-auto relative animate-slide-in-left overflow-hidden rounded-lg border border-gk-border bg-gk-panel-2">
       <span className={`absolute inset-y-0 left-0 w-1 ${bar}`} />
@@ -33,7 +44,7 @@ function Toast({ toast, onClose }) {
           {toast.action && (
             <button
               onClick={() => {
-                toast.action.onClick();
+                toast.action!.onClick();
                 onClose();
               }}
               data-testid="toast-action"

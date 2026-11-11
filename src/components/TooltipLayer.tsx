@@ -13,12 +13,20 @@ const SHOW_DELAY = 450;
 const GAP = 12;
 const MARGIN = 8;
 
+interface Tip {
+  text: string;
+  x: number;
+  y: number;
+  el: Element;
+  wide: boolean;
+}
+
 export default function TooltipLayer() {
-  const [tip, setTip] = useState(null); // { text, x, y }
-  const timer = useRef(null);
-  const current = useRef(null);
-  const box = useRef(null);
-  const [pos, setPos] = useState(null);
+  const [tip, setTip] = useState<Tip | null>(null);
+  const timer = useRef<ReturnType<typeof setTimeout> | undefined>(null!); // null, как в 1.x: clearTimeout его принимает
+  const current = useRef<Element | null>(null);
+  const box = useRef<HTMLDivElement | null>(null);
+  const [pos, setPos] = useState<{ left: number; top: number } | null>(null);
 
   useEffect(() => {
     const hide = () => {
@@ -26,7 +34,7 @@ export default function TooltipLayer() {
       current.current = null;
       setTip(null);
     };
-    const over = (e) => {
+    const over = (e: MouseEvent) => {
       const el = e.target instanceof Element ? e.target.closest('[data-tip]') : null;
       if (el === current.current) return;
       hide();
@@ -39,7 +47,7 @@ export default function TooltipLayer() {
       const { clientX: x, clientY: y } = e;
       timer.current = setTimeout(() => setTip({ text: kb(text), x, y, el, wide: el.hasAttribute('data-tip-wide') }), SHOW_DELAY);
     };
-    const move = (e) => {
+    const move = (e: MouseEvent) => {
       // Пока подсказка не показана — она появится у последней позиции курсора
       if (current.current && !box.current) {
         clearTimeout(timer.current);
@@ -48,7 +56,7 @@ export default function TooltipLayer() {
         timer.current = setTimeout(() => setTip({ text: kb(el.getAttribute('data-tip') ?? ''), x, y, el, wide: el.hasAttribute('data-tip-wide') }), SHOW_DELAY);
       }
     };
-    const out = (e) => {
+    const out = (e: MouseEvent) => {
       if (!current.current) return;
       if (e.relatedTarget instanceof Node && current.current.contains(e.relatedTarget)) return;
       hide();

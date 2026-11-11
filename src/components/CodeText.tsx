@@ -1,18 +1,18 @@
-import { Fragment, createContext, useContext, useMemo } from 'react';
-import { highlightLines } from '../lib/highlight.ts';
+import { Fragment, createContext, useContext, useMemo, type ReactNode } from 'react';
+import { highlightLines, type Token } from '../lib/highlight.ts';
 
 // Язык кода для вложенных компонентов (редактор конфликтов) — чтобы не передавать его через каждый уровень
-export const CodeLang = createContext(null);
+export const CodeLang = createContext<string | null>(null);
 
 /** Токены одной строки: цветные — в span, остальное — текстом */
-export function TokenText({ tokens, text }) {
+export function TokenText({ tokens, text }: { tokens: readonly Token[] | null | undefined; text?: string | null }): ReactNode {
   if (!tokens) return text || ' ';
   if (!tokens.length) return ' ';
   return tokens.map((t, k) => (t.cls ? <span key={k} className={t.cls}>{t.text}</span> : <Fragment key={k}>{t.text}</Fragment>));
 }
 
 /** Несколько строк кода с подсветкой синтаксиса (для <pre>): язык — из пропса или из CodeLang */
-export function HighlightedLines({ lines, lang }) {
+export function HighlightedLines({ lines, lang }: { lines: readonly string[]; lang?: string | null }): ReactNode {
   const ctx = useContext(CodeLang);
   const language = lang ?? ctx;
   const key = lines.join('\n');
@@ -28,7 +28,7 @@ export function HighlightedLines({ lines, lang }) {
 }
 
 /** Токены для набора строк (по одной строке на элемент) — для списков с чекбоксами */
-export function useLineTokens(lines, lang) {
+export function useLineTokens(lines: readonly string[], lang?: string | null): Token[][] | null {
   const ctx = useContext(CodeLang);
   const language = lang ?? ctx;
   const key = lines.join('\n');

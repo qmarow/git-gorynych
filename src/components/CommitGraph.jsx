@@ -5,7 +5,7 @@ import { RefKindIcon, RefsPopover, refKindLabel, useHoverPopover } from './RefBa
 import { edgePath, fitMetrics, graphWidth, laneColor, laneX, layoutGraph, metricsFor, rowY } from '../lib/graphLayout.ts';
 import { StatusIcon, statusInfo } from './PipelineStatus.jsx';
 import { fullDate, initials, relativeTime, shortDate } from '../lib/format.ts';
-import { ResizeHandle, useStoredWidth } from './Resizer.jsx';
+import { ResizeHandle, useStoredWidth } from './Resizer.tsx';
 import { avatarUrl, isFailed, markFailed } from '../lib/avatars.ts';
 import { hasRefDrag, readRefDrag, startRefDrag } from '../lib/dnd.ts';
 import { isMod, kb } from '../lib/platform.ts';

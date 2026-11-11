@@ -1,5 +1,5 @@
 // Знак GitIdea: ветка Git и «идея» — светящийся узел. Тот же рисунок, что в иконке приложения (build/icon.svg).
-export default function AppLogo({ size = 18, plate = true, className = '' }) {
+export default function AppLogo({ size = 18, plate = true, className = '' }: { size?: number; plate?: boolean; className?: string }) {
   return (
     <svg width={size} height={size} viewBox="0 0 1024 1024" className={className} aria-hidden="true">
       <defs>

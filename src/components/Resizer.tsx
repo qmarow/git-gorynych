@@ -1,11 +1,14 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { t } from '../i18n/index.ts';
 
+/** `[ширина, задать (вернёт итог с учётом пределов), запомнить, задана ли пользователем]` */
+export type StoredWidth = [number, (value: number | null) => number, (value: number | null) => void, boolean];
+
 /**
  * Ширина, которая запоминается между запусками (localStorage).
  * null — «по умолчанию» (например, авто-ширина графа).
  */
-export function useStoredWidth(key, fallback, min, max) {
+export function useStoredWidth(key: string, fallback: number, min: number, max: number): StoredWidth {
   // Задавал ли пользователь ширину сам (иначе можно подобрать её по содержимому)
   const [stored, setStored] = useState(() => {
     try {
@@ -27,7 +30,7 @@ export function useStoredWidth(key, fallback, min, max) {
   });
 
   const setWidth = useCallback(
-    (value) => {
+    (value: number | null) => {
       const next = value === null ? fallback : Math.round(Math.min(max, Math.max(min, value)));
       setWidthState(next);
       setStored(value !== null);
@@ -37,7 +40,7 @@ export function useStoredWidth(key, fallback, min, max) {
   );
 
   const persist = useCallback(
-    (value) => {
+    (value: number | null) => {
       try {
         localStorage.setItem(`width:${key}`, value === null ? 'auto' : String(value));
       } catch {
@@ -51,25 +54,36 @@ export function useStoredWidth(key, fallback, min, max) {
   return [width, setWidth, persist, stored];
 }
 
+interface ResizeHandleProps {
+  width: number;
+  /** Новая ширина при перетаскивании; возвращает итог (с учётом пределов) */
+  onResize: (width: number) => number | undefined;
+  onCommit?: (width: number) => void;
+  onReset?: () => void;
+  direction?: 1 | -1;
+  className?: string;
+  title?: string;
+}
+
 /**
  * Ручка для перетаскивания границы.
  * direction = 1 — тянем правую границу (вправо = шире), -1 — левую (влево = шире).
  */
-export function ResizeHandle({ width, onResize, onCommit, onReset, direction = 1, className = '', title }) {
-  const drag = useRef(null);
+export function ResizeHandle({ width, onResize, onCommit, onReset, direction = 1, className = '', title }: ResizeHandleProps) {
+  const drag = useRef<{ startX: number; startWidth: number; last: number | undefined } | null>(null);
   const [active, setActive] = useState(false);
 
   useEffect(() => {
     if (!active) return undefined;
-    const move = (e) => {
-      const { startX, startWidth } = drag.current;
-      drag.current.last = onResize(startWidth + (e.clientX - startX) * direction);
+    const move = (e: MouseEvent) => {
+      const { startX, startWidth } = drag.current!;
+      drag.current!.last = onResize(startWidth + (e.clientX - startX) * direction);
     };
     const up = () => {
       setActive(false);
       document.body.style.cursor = '';
       document.body.classList.remove('is-resizing');
-      onCommit?.(drag.current.last ?? width);
+      onCommit?.(drag.current!.last ?? width);
     };
     window.addEventListener('mousemove', move);
     window.addEventListener('mouseup', up);
