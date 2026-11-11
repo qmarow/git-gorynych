@@ -1,5 +1,5 @@
 import { getLanguage } from '../../i18n/index.ts';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState, type ComponentType, type ReactNode } from 'react';
 import {
   AlertTriangle,
   ArrowRight,
@@ -23,23 +23,37 @@ import {
   Wrench,
 } from 'lucide-react';
 import { t, tj } from '../../i18n/index.ts';
+import type { CiCheckStats, CiCheck_Serialize, CiIssue_Serialize, CiScenarioJob_Serialize, CiScenario_Serialize, CiSeverity } from '../../../crates/gorynych-tauri/bindings/commands.ts';
 
-export const SEVERITY = {
+type Issue = CiIssue_Serialize;
+type Icon = ComponentType<{ size?: number; className?: string }>;
+
+interface SeverityStyle {
+  label: string;
+  one: string;
+  icon: Icon;
+  text: string;
+  bg: string;
+  ring: string;
+  dot: string;
+}
+
+export const SEVERITY: Record<CiSeverity, SeverityStyle> = {
   error: { label: t('Ошибки'), one: t('ошибка'), icon: CircleX, text: 'text-gk-red', bg: 'bg-gk-red/10', ring: 'ring-gk-red/30', dot: 'bg-gk-red' },
   warning: { label: t('Предупреждения'), one: t('предупреждение'), icon: AlertTriangle, text: 'text-gk-yellow', bg: 'bg-gk-yellow/10', ring: 'ring-gk-yellow/30', dot: 'bg-gk-yellow' },
   info: { label: t('Советы'), one: t('совет'), icon: Info, text: 'text-gk-blue', bg: 'bg-gk-blue/10', ring: 'ring-gk-blue/25', dot: 'bg-gk-blue' },
 };
-const ORDER = ['error', 'warning', 'info'];
+const ORDER: CiSeverity[] = ['error', 'warning', 'info'];
 
-export const issueKey = (i) => `${i.id}|${i.file}|${i.line}|${i.title}`;
+export const issueKey = (i: Pick<Issue, 'id' | 'file' | 'line' | 'title'>) => `${i.id}|${i.file}|${i.line}|${i.title}`;
 
-const plural = (n, one, few, many) => {
+const plural = (n: number, one: string, few: string, many: string) => {
   if (getLanguage() !== 'ru') return n === 1 ? one : many; // в английском две формы: one и many (few = many)
   const m10 = n % 10;
   const m100 = n % 100;
   return m10 === 1 && m100 !== 11 ? one : m10 >= 2 && m10 <= 4 && (m100 < 12 || m100 > 14) ? few : many;
 };
-export const countText = (stats) =>
+export const countText = (stats: Partial<CiCheckStats>) =>
   [
     stats.error && `${stats.error} ${plural(stats.error, t('ошибка'), t('ошибки'), t('ошибок'))}`,
     stats.warning && `${stats.warning} ${plural(stats.warning, t('предупреждение'), t('предупреждения'), t('предупреждений'))}`,
@@ -48,15 +62,25 @@ export const countText = (stats) =>
     .filter(Boolean)
     .join(' · ');
 
-const SCENARIO_ICONS = { 'push-default': GitBranch, 'push-branch': GitBranch, mr: GitMerge, tag: Tag, schedule: CalendarClock, web: MousePointerClick };
+const SCENARIO_ICONS: Record<string, Icon> = { 'push-default': GitBranch, 'push-branch': GitBranch, mr: GitMerge, tag: Tag, schedule: CalendarClock, web: MousePointerClick };
 
 /**
  * Вкладка «Проверка»: что в конфигурации CI/CD сломается, когда, как это будет выглядеть, почему и как исправить.
  */
-export default function CheckView({ check, systemTitle, draft, onShowLine, onSelectJob, focus }) {
-  const [filter, setFilter] = useState('all');
-  const [open, setOpen] = useState(() => new Set());
-  const listRef = useRef(null);
+interface CheckViewProps {
+  check: CiCheck_Serialize | null | undefined;
+  systemTitle: ReactNode;
+  draft?: boolean;
+  onShowLine: (file: string, line: number | null) => void;
+  onSelectJob?: (job: string) => void;
+  /** Проблема, к которой перейти: `key` — `issueKey` */
+  focus?: { key: string } | null;
+}
+
+export default function CheckView({ check, systemTitle, draft, onShowLine, onSelectJob, focus }: CheckViewProps) {
+  const [filter, setFilter] = useState<CiSeverity | 'all'>('all');
+  const [open, setOpen] = useState(() => new Set<string>());
+  const listRef = useRef<HTMLDivElement>(null);
   const issues = check?.issues ?? [];
   const stats = check?.stats ?? { error: 0, warning: 0, info: 0 };
 
@@ -75,7 +99,7 @@ export default function CheckView({ check, systemTitle, draft, onShowLine, onSel
   if (!check) {
     return <div className="flex flex-1 items-center justify-center text-[13px] text-gk-muted">{t('Проверка конфигурации недоступна для этого файла')}</div>;
   }
-  const toggle = (key) =>
+  const toggle = (key: string) =>
     setOpen((s) => {
       const n = new Set(s);
       n.has(key) ? n.delete(key) : n.add(key);
@@ -166,13 +190,13 @@ export default function CheckView({ check, systemTitle, draft, onShowLine, onSel
           );
         })}
 
-        {check.scenarios?.length > 0 && <Scenarios scenarios={check.scenarios} issues={issues} defaultBranch={check.defaultBranch} />}
+        {check.scenarios?.length! > 0 && <Scenarios scenarios={check.scenarios} issues={issues} defaultBranch={check.defaultBranch} />}
       </div>
     </div>
   );
 }
 
-function FilterChip({ active, onClick, children, testid }) {
+function FilterChip({ active, onClick, children, testid }: { active: boolean; onClick: () => void; children: ReactNode; testid?: string }) {
   return (
     <button
       data-testid={testid}
@@ -186,7 +210,7 @@ function FilterChip({ active, onClick, children, testid }) {
   );
 }
 
-function IssueRow({ issue, open, focused, onToggle, onShowLine, onSelectJob }) {
+function IssueRow({ issue, open, focused, onToggle, onShowLine, onSelectJob }: { issue: Issue; open: boolean; focused: boolean; onToggle: () => void } & Pick<CheckViewProps, 'onShowLine' | 'onSelectJob'>) {
   const S = SEVERITY[issue.severity] ?? SEVERITY.warning;
   return (
     <div
@@ -234,7 +258,7 @@ function IssueRow({ issue, open, focused, onToggle, onShowLine, onSelectJob }) {
             {issue.file && (
               <button
                 data-testid="issue-show-line"
-                onClick={() => onShowLine(issue.file, issue.line)}
+                onClick={() => onShowLine(issue.file!, issue.line)}
                 className="flex items-center gap-1 rounded-md bg-gk-blue/15 px-2 py-1 text-[12px] text-gk-blue transition-colors hover:bg-gk-blue/25"
               >
                 {tj('{0} Показать в файле{1}', [<FileCode size={12} />, issue.line ? t(' · строка {0}', issue.line) : ''])}
@@ -242,7 +266,7 @@ function IssueRow({ issue, open, focused, onToggle, onShowLine, onSelectJob }) {
             )}
             {issue.job && onSelectJob && (
               <button
-                onClick={() => onSelectJob(issue.job)}
+                onClick={() => onSelectJob(issue.job!)}
                 className="flex items-center gap-1 rounded-md px-2 py-1 text-[12px] text-gk-muted transition-colors hover:bg-gk-hover hover:text-gk-text"
               >
                 {tj('Задание «{0}» на схеме {1}', [issue.job, <ArrowRight size={11} />])}
@@ -258,7 +282,7 @@ function IssueRow({ issue, open, focused, onToggle, onShowLine, onSelectJob }) {
   );
 }
 
-function Part({ icon: Icon, label, tone = 'text-gk-dim', children }) {
+function Part({ icon: Icon, label, tone = 'text-gk-dim', children }: { icon: Icon; label: ReactNode; tone?: string; children: ReactNode }) {
   return (
     <div className="min-w-0">
       <div className={`mb-0.5 flex items-center gap-1 text-[10.5px] font-semibold uppercase tracking-wider ${tone}`}>
@@ -271,8 +295,8 @@ function Part({ icon: Icon, label, tone = 'text-gk-dim', children }) {
 
 /* ---------- Прогон событий ---------- */
 
-function Scenarios({ scenarios, issues }) {
-  const [open, setOpen] = useState(null);
+function Scenarios({ scenarios, issues }: { scenarios: CiScenario_Serialize[]; issues: Issue[]; defaultBranch?: string | null }) {
+  const [open, setOpen] = useState<string | null>(null);
   return (
     <section data-testid="check-scenarios" className="space-y-1.5 pt-2">
       <div className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wider text-gk-dim">
@@ -335,9 +359,9 @@ function Scenarios({ scenarios, issues }) {
                       : t('Пайплайн: {0} — {1}', s.created ? t('создаётся') : t('не создаётся'), s.reason)}
                   </div>
                   {s.jobs.length > 0 && (
-                    <JobList title={t('Попадут в пайплайн')} jobs={s.jobs} tone="text-gk-green" />
+                    <JobList title={t('Попадут в пайплайн')} jobs={s.jobs as ScenarioJobRow[]} tone="text-gk-green" />
                   )}
-                  {s.excluded.length > 0 && <JobList title={t('Не попадут')} jobs={s.excluded} tone="text-gk-dim" />}
+                  {s.excluded.length > 0 && <JobList title={t('Не попадут')} jobs={s.excluded as ScenarioJobRow[]} tone="text-gk-dim" />}
                   {s.problems.length > 0 && (
                     <div className="space-y-1 rounded-md bg-gk-red/[0.07] px-2.5 py-1.5 text-gk-red ring-1 ring-gk-red/25">
                       {s.problems.map((p, i) => (
@@ -357,7 +381,10 @@ function Scenarios({ scenarios, issues }) {
   );
 }
 
-function JobList({ title, jobs, tone }) {
+/** Задание сценария: попавшее в пайплайн (`CiScenarioJob`) или исключённое (только имя и причина) */
+type ScenarioJobRow = Pick<CiScenarioJob_Serialize, 'name' | 'why'> & { when?: string | null; uncertain?: string | null };
+
+function JobList({ title, jobs, tone }: { title: ReactNode; jobs: ScenarioJobRow[]; tone: string }) {
   return (
     <div>
       <div className={`mb-0.5 text-[10.5px] font-semibold uppercase tracking-wider ${tone}`}>{title}</div>
@@ -380,7 +407,7 @@ function JobList({ title, jobs, tone }) {
 }
 
 /** Полоса на схеме: главные проблемы и переход ко всем */
-export function CheckBanner({ check, onOpen }) {
+export function CheckBanner({ check, onOpen }: { check: CiCheck_Serialize | null | undefined; onOpen: (issue?: Issue) => void }) {
   if (!check) return null;
   const top = check.issues.filter((i) => i.severity !== 'info');
   if (!top.length) {

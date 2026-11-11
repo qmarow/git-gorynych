@@ -25,7 +25,7 @@ import {
 } from 'lucide-react';
 import { FILE_STATUS, avatarColor, fullDate, initials, plural, relativeTime } from '../lib/format.ts';
 import { describeStash } from '../lib/stashName.ts';
-import { GuardBanner } from './Guard.jsx';
+import { GuardBanner } from './Guard.tsx';
 import CommitForm from './CommitForm.jsx';
 import { readable } from '../lib/scheme.ts';
 import { t, tj } from '../i18n/index.ts';

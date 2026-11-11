@@ -19,7 +19,7 @@ import {
   toggleType,
 } from '../lib/commitMsg.ts';
 import { DEFAULT_COMMIT_PREFS, setCommitPrefs, useCommitPrefs } from '../lib/commitPrefs.ts';
-import { Switch } from './Guard.jsx';
+import { Switch } from './Guard.tsx';
 import { isMod, kb } from '../lib/platform.ts';
 import { plural } from '../lib/format.ts';
 import { readable } from '../lib/scheme.ts';

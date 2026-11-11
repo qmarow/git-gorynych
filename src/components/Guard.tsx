@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, type ComponentType, type ReactNode } from 'react';
 import {
   AlertTriangle,
   Ban,
@@ -16,18 +16,24 @@ import {
   Trash2,
   X,
 } from 'lucide-react';
-import { CATEGORY_LABELS, DEFAULT_GUARD, DEFAULT_RULES, EXCLUDE_SUGGESTIONS, LEVELS, levelOf, validatePattern } from '../lib/guardRules.ts';
+import { CATEGORY_LABELS, DEFAULT_GUARD, DEFAULT_RULES, EXCLUDE_SUGGESTIONS, LEVELS, levelOf, validatePattern, type GuardConfig, type GuardLevel, type GuardRule } from '../lib/guardRules.ts';
 import { plural } from '../lib/format.ts';
 import { t, tj } from '../i18n/index.ts';
+import type { GuardFinding_Serialize, GuardScan_Serialize } from '../../crates/gorynych-tauri/bindings/commands.ts';
 
-const TONE = {
+type Finding = GuardFinding_Serialize;
+type Tone = { chip: string; mark: string; icon: ComponentType<{ size?: number; className?: string }>; text: string };
+/** Правило в форме: у нового ещё нет id */
+type DraftRule = Omit<GuardRule, 'id'> & { id: string | null };
+
+const TONE: Record<string, Tone> = {
   secret: { chip: 'bg-gk-red/15 text-gk-red', mark: 'bg-gk-red/30 text-gk-strong', icon: KeyRound, text: 'text-gk-red' },
   debug: { chip: 'bg-gk-yellow/15 text-gk-yellow', mark: 'bg-gk-yellow/30 text-gk-strong', icon: AlertTriangle, text: 'text-gk-yellow' },
   other: { chip: 'bg-gk-blue/15 text-gk-blue', mark: 'bg-gk-blue/30 text-gk-strong', icon: ShieldAlert, text: 'text-gk-blue' },
 };
 
-export function summarize(findings) {
-  const by = new Map();
+export function summarize(findings: readonly Pick<Finding, 'label'>[]): string {
+  const by = new Map<string | undefined, number>();
   for (const f of findings) by.set(f.label, (by.get(f.label) ?? 0) + 1);
   return [...by.entries()].map(([label, n]) => (n > 1 ? `${label} ×${n}` : label)).join(', ');
 }
@@ -36,7 +42,7 @@ export function summarize(findings) {
  * Строка состояния проверки над кнопкой Commit: находки (жёлтая/красная плашка) или «чисто»,
  * плюс быстрые переключатели: выключить для этого репозитория, открыть настройки.
  */
-export function GuardBanner({ result, state, onOpen, onToggleRepo, onSettings }) {
+export function GuardBanner({ result, state, onOpen, onToggleRepo, onSettings }: { result: GuardScan_Serialize | null | undefined; state: 'on' | 'off' | 'repo-off'; onOpen: () => void; onToggleRepo: () => void; onSettings: () => void }) {
   // state: 'on' | 'off' (выключено везде) | 'repo-off' (выключено для этого репозитория)
   if (state !== 'on') {
     return (
@@ -91,7 +97,7 @@ export function GuardBanner({ result, state, onOpen, onToggleRepo, onSettings })
   );
 }
 
-function QuickButtons({ onToggleRepo, onSettings }) {
+function QuickButtons({ onToggleRepo, onSettings }: { onToggleRepo: () => void; onSettings: () => void }) {
   return (
     <span className="flex shrink-0 items-center opacity-0 transition-opacity group-hover:opacity-100">
       <button onClick={onToggleRepo} title={t('Выключить проверку для этого репозитория')} className="rounded p-1 text-gk-dim hover:bg-gk-fg/10 hover:text-gk-text">
@@ -105,12 +111,12 @@ function QuickButtons({ onToggleRepo, onSettings }) {
 }
 
 /** Список находок. mode: 'commit' — перед коммитом, 'view' — просто посмотреть */
-export function GuardDialog({ result, mode, onCancel, onCommitAnyway, onOpenFile, onSettings }) {
+export function GuardDialog({ result, mode, onCancel, onCommitAnyway, onOpenFile, onSettings }: { result: GuardScan_Serialize; mode: 'commit' | 'view'; onCancel: () => void; onCommitAnyway?: () => void; onOpenFile?: (file: string, line: number) => void; onSettings: () => void }) {
   const groups = useMemo(() => {
-    const m = new Map();
+    const m = new Map<string, Finding[]>();
     for (const f of result.findings) {
       if (!m.has(f.file)) m.set(f.file, []);
-      m.get(f.file).push(f);
+      m.get(f.file)!.push(f);
     }
     return [...m.entries()];
   }, [result]);
@@ -118,7 +124,7 @@ export function GuardDialog({ result, mode, onCancel, onCommitAnyway, onOpenFile
   const blocked = result.findings.filter((f) => f.level === 'block');
 
   useEffect(() => {
-    const onKey = (e) => e.key === 'Escape' && onCancel();
+    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && onCancel();
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, [onCancel]);
@@ -207,13 +213,13 @@ export function GuardDialog({ result, mode, onCancel, onCommitAnyway, onOpenFile
 
 /* ---------------- Настройки ---------------- */
 
-export function GuardSettings({ cfg, onChange, repoPath }) {
-  const [editing, setEditing] = useState(null);
-  const setLevel = (id, level) => onChange({ ...cfg, levels: { ...cfg.levels, [id]: level } });
-  const setCategory = (rules, level) => onChange({ ...cfg, levels: { ...cfg.levels, ...Object.fromEntries(rules.map((r) => [r.id, level])) } });
+export function GuardSettings({ cfg, onChange, repoPath }: { cfg: GuardConfig; onChange: (cfg: GuardConfig) => void; repoPath?: string | null }) {
+  const [editing, setEditing] = useState<DraftRule | null>(null);
+  const setLevel = (id: string, level: GuardLevel | string) => onChange({ ...cfg, levels: { ...cfg.levels, [id]: level } });
+  const setCategory = (rules: readonly GuardRule[], level: GuardLevel | string) => onChange({ ...cfg, levels: { ...cfg.levels, ...Object.fromEntries(rules.map((r) => [r.id, level])) } });
   const repoOff = repoPath && cfg.repoOff.includes(repoPath);
 
-  const groups = [
+  const groups: ['secret' | 'debug', GuardRule[]][] = [
     ['secret', DEFAULT_RULES.filter((r) => r.category === 'secret')],
     ['debug', DEFAULT_RULES.filter((r) => r.category === 'debug')],
   ];
@@ -324,7 +330,7 @@ export function GuardSettings({ cfg, onChange, repoPath }) {
   );
 }
 
-function CategoryHeader({ title, rules, cfg, onSetAll }) {
+function CategoryHeader({ title, rules, cfg, onSetAll }: { title: ReactNode; rules: GuardRule[]; cfg: GuardConfig; onSetAll: (level: GuardLevel) => void }) {
   const levels = new Set(rules.map((r) => levelOf(cfg, r)));
   const same = levels.size === 1 ? [...levels][0] : null;
   return (
@@ -334,8 +340,8 @@ function CategoryHeader({ title, rules, cfg, onSetAll }) {
   );
 }
 
-function LevelPicker({ value, onChange, small }) {
-  const cls = { off: 'bg-gk-fg/15 text-gk-text', warn: 'bg-gk-yellow/20 text-gk-yellow', block: 'bg-gk-red/20 text-gk-red' };
+function LevelPicker({ value, onChange, small }: { value: GuardLevel | string | null; onChange: (level: GuardLevel) => void; small?: boolean }) {
+  const cls: Record<string, string> = { off: 'bg-gk-fg/15 text-gk-text', warn: 'bg-gk-yellow/20 text-gk-yellow', block: 'bg-gk-red/20 text-gk-red' };
   return (
     <div className="flex shrink-0 overflow-hidden rounded-md ring-1 ring-gk-border">
       {LEVELS.map((l) => (
@@ -353,8 +359,8 @@ function LevelPicker({ value, onChange, small }) {
   );
 }
 
-function RuleRow({ rule, level, onLevel, onEdit, onDelete }) {
-  const tone = TONE[rule.category] ?? TONE.other;
+function RuleRow({ rule, level, onLevel, onEdit, onDelete }: { rule: GuardRule; level: GuardLevel | string; onLevel: (level: GuardLevel) => void; onEdit?: () => void; onDelete?: () => void }) {
+  const tone = TONE[rule.category!] ?? TONE.other;
   return (
     <div className={`group flex items-center gap-2.5 border-b border-gk-border/60 px-3 py-1.5 last:border-0 ${level === 'off' ? 'opacity-55' : ''}`}>
       <tone.icon size={12} className={`shrink-0 ${tone.text}`} />
@@ -384,9 +390,9 @@ function RuleRow({ rule, level, onLevel, onEdit, onDelete }) {
   );
 }
 
-function ExcludeEditor({ value, onChange }) {
+function ExcludeEditor({ value, onChange }: { value: string[]; onChange: (value: string[]) => void }) {
   const [draft, setDraft] = useState('');
-  const add = (g) => {
+  const add = (g: string) => {
     const v = g.trim();
     if (v && !value.includes(v)) onChange([...value, v]);
     setDraft('');
@@ -431,11 +437,11 @@ function ExcludeEditor({ value, onChange }) {
   );
 }
 
-function RuleForm({ rule, onSave, onCancel }) {
+function RuleForm({ rule, onSave, onCancel }: { rule: DraftRule; onSave: (rule: GuardRule) => void; onCancel: () => void }) {
   const [r, setR] = useState(rule);
   const [sample, setSample] = useState('');
   const error = r.pattern ? validatePattern(r.pattern, r.flags) : null;
-  let hit = null;
+  let hit: { start: number; end: number } | false | null = null;
   if (!error && r.pattern && sample) {
     try {
       const m = new RegExp(r.pattern, r.flags).exec(sample);
@@ -444,7 +450,7 @@ function RuleForm({ rule, onSave, onCancel }) {
       hit = null;
     }
   }
-  const set = (patch) => setR((x) => ({ ...x, ...patch }));
+  const set = (patch: Partial<DraftRule>) => setR((x) => ({ ...x, ...patch }));
   const valid = r.label.trim() && r.pattern && !error;
   return (
     <div className="animate-fade-in space-y-2.5 rounded-lg border border-gk-blue/40 bg-gk-blue/[0.04] p-3">
@@ -500,7 +506,7 @@ function RuleForm({ rule, onSave, onCancel }) {
   );
 }
 
-function Toggle({ checked, onChange, title, children }) {
+function Toggle({ checked, onChange, title, children }: { checked: boolean; onChange: (checked: boolean) => void; title: ReactNode; children: ReactNode }) {
   return (
     <label className="flex cursor-pointer items-start gap-3">
       <Switch checked={checked} onChange={onChange} />
@@ -512,7 +518,7 @@ function Toggle({ checked, onChange, title, children }) {
   );
 }
 
-function Field({ label, children }) {
+function Field({ label, children }: { label: ReactNode; children: ReactNode }) {
   return (
     <label className="block">
       <span className="mb-0.5 block text-[11px] text-gk-muted">{label}</span>
@@ -521,7 +527,7 @@ function Field({ label, children }) {
   );
 }
 
-export function Switch({ checked, onChange, small }) {
+export function Switch({ checked, onChange, small }: { checked: boolean; onChange: (checked: boolean) => void; small?: boolean }) {
   const w = small ? 26 : 32;
   const k = small ? 12 : 14;
   return (
