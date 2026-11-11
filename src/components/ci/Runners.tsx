@@ -1,6 +1,6 @@
 // Раннеры: парк (собственные и облачные), статусы в реальном времени, редактор (метки, пауза, настройки),
 // очистка неактивных, мастер подключения нового раннера и локальный Docker-раннер в один клик.
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
 import {
   Apple,
   Check,
@@ -28,10 +28,56 @@ import { relativeTime } from '../../lib/format.ts';
 import { Button, ErrorBox, Modal } from '../Dialogs.tsx';
 import { ActionButton, ChipsInput, ConfirmAction, ErrorNote, IconBtn, Loading, SegButton, Toggle, usePolling } from './common.tsx';
 import { t, tj, locale } from '../../i18n/index.ts';
+import type { ApiError, ApiResult } from '../../platform/tauri.ts';
+import type {
+  Capabilities_Serialize,
+  CiRunner_Serialize,
+  DockerStatus_Serialize,
+  LocalRunnerName,
+  LocalRunnerStarted,
+  LocalRunner_Serialize,
+  LocalRunners_Serialize,
+  PruneResult_Serialize,
+  RemoteOptions_Deserialize,
+  RunnerJob_Serialize,
+  RunnerRegistration_Serialize,
+  RunnersWithCaps_Serialize,
+} from '../../../crates/gorynych-tauri/bindings/commands.ts';
 
-const api = window.api;
+type Runner = CiRunner_Serialize;
+type Caps = Capabilities_Serialize;
+type Notify = (toast: { type: string; title: ReactNode; hint?: ReactNode }) => void;
+type LocalAction = (name: string) => Promise<ApiResult<LocalRunnerName>>;
 
-export const RUNNER_STATUS = {
+interface RunnersApi {
+  cicd: {
+    runners: (dir: string, opts: unknown) => Promise<ApiResult<RunnersWithCaps_Serialize>>;
+    localRunners: (dir: string, opts: unknown) => Promise<ApiResult<LocalRunners_Serialize>>;
+    pruneRunners: (dir: string, data: { ids: unknown[] }, opts: unknown) => Promise<ApiResult<PruneResult_Serialize>>;
+    updateRunner: (dir: string, data: { id: unknown; patch: Record<string, unknown> }, opts: unknown) => Promise<ApiResult<unknown>>;
+    deleteRunner: (dir: string, data: { id: unknown }, opts: unknown) => Promise<ApiResult<unknown>>;
+    registerRunner: (dir: string, data: { labels: string[]; name?: string; runUntagged: boolean }, opts: unknown) => Promise<ApiResult<RunnerRegistration_Serialize>>;
+    startLocalRunner: (dir: string, data: { labels: string[] }, opts: unknown) => Promise<ApiResult<LocalRunnerStarted>>;
+    resumeLocalRunner: LocalAction;
+    stopLocalRunner: LocalAction;
+  };
+}
+
+const api = window.api as unknown as RunnersApi;
+
+interface RunnersProps {
+  repoPath: string;
+  opts: RemoteOptions_Deserialize | null | undefined;
+  caps?: Caps | null;
+  provider: string;
+  providerLabel: ReactNode;
+  notify?: Notify;
+  onOpenJob?: (job: RunnerJob_Serialize) => void;
+  onInsertTags?: (runner: Runner) => void;
+  canInsert?: boolean;
+}
+
+export const RUNNER_STATUS: Record<string, { label: string; ru: string; dot: string; text: string }> = {
   online: { label: 'Online', ru: t('свободен'), dot: 'bg-gk-green shadow-[0_0_8px] shadow-gk-green/60', text: 'text-gk-green' },
   busy: { label: 'Busy', ru: t('занят'), dot: 'bg-gk-blue shadow-[0_0_8px] shadow-gk-blue/60 animate-pulse', text: 'text-gk-blue' },
   offline: { label: 'Offline', ru: t('не в сети'), dot: 'bg-gk-red', text: 'text-gk-red' },
@@ -39,7 +85,7 @@ export const RUNNER_STATUS = {
 };
 
 /** Значок Windows — четыре окна (в наборе иконок брендов нет) */
-function WindowsIcon({ size = 13 }) {
+function WindowsIcon({ size = 13 }: { size?: number }) {
   return (
     <svg width={size} height={size} viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
       <path d="M1 2.6l5.7-.8v5.5H1zM7.5 1.7L15 .7v6.6H7.5zM1 8.2h5.7v5.5L1 12.9zM7.5 8.2H15v6.6l-7.5-1z" />
@@ -47,25 +93,25 @@ function WindowsIcon({ size = 13 }) {
   );
 }
 
-export function OsIcon({ os, size = 13 }) {
+export function OsIcon({ os, size = 13 }: { os: string | null | undefined; size?: number }) {
   if (os === 'windows') return <WindowsIcon size={size} />;
   if (os === 'macos') return <Apple size={size} />;
   if (os === 'docker') return <Container size={size} />;
   if (os === 'linux') return <Terminal size={size} />;
   return <Monitor size={size} />;
 }
-const OS_NAMES = { linux: 'Linux', macos: 'macOS', windows: 'Windows', docker: 'Docker' };
+const OS_NAMES: Record<string, string> = { linux: 'Linux', macos: 'macOS', windows: 'Windows', docker: 'Docker' };
 
-const isOwn = (r) => !r.isShared && !r.virtual;
+const isOwn = (r: Runner) => !r.isShared && !r.virtual;
 
-export default function Runners({ repoPath, opts, caps, provider, providerLabel, notify, onOpenJob, onInsertTags, canInsert }) {
-  const [state, setState] = useState({ loading: true, data: null, error: null });
-  const [filter, setFilter] = useState('own');
+export default function Runners({ repoPath, opts, caps, provider, providerLabel, notify, onOpenJob, onInsertTags, canInsert }: RunnersProps) {
+  const [state, setState] = useState<{ loading: boolean; data: RunnersWithCaps_Serialize | null; error: ApiError | null }>({ loading: true, data: null, error: null });
+  const [filter, setFilter] = useState<'own' | 'shared' | 'all'>('own');
   const [query, setQuery] = useState('');
-  const [editing, setEditing] = useState(null);
+  const [editing, setEditing] = useState<Runner | null>(null);
   const [wizard, setWizard] = useState(false);
   const [pruning, setPruning] = useState(false);
-  const [local, setLocal] = useState(null);
+  const [local, setLocal] = useState<LocalRunners_Serialize | null>(null);
 
   const load = useCallback(async () => {
     const res = await api.cicd.runners(repoPath, opts);
@@ -85,7 +131,7 @@ export default function Runners({ repoPath, opts, caps, provider, providerLabel,
   usePolling(load, state.error && !state.data ? 0 : 10000, [load]);
 
   const runners = state.data?.runners ?? [];
-  const live = caps ?? state.data?.capabilities ?? {};
+  const live = (caps ?? state.data?.capabilities ?? {}) as Caps;
   const shown = useMemo(() => {
     const q = query.trim().toLowerCase();
     return runners
@@ -153,7 +199,7 @@ export default function Runners({ repoPath, opts, caps, provider, providerLabel,
 
       <div className="min-h-0 flex-1 overflow-y-auto p-3">
         {state.error && <div className="mb-2 text-[11px] text-gk-yellow">{tj('Не удалось обновить: {0}', [state.error.message])}</div>}
-        {local?.runners?.length > 0 && <LocalRunners list={local.runners} onChanged={loadLocal} notify={notify} />}
+        {local?.runners?.length! > 0 && <LocalRunners list={local!.runners} onChanged={loadLocal} notify={notify} />}
         {shown.length === 0 ? (
           <div className="rounded-lg border border-dashed border-gk-border p-6 text-center text-[13px] text-gk-dim" data-testid="runners-empty">
             {runners.length === 0
@@ -171,7 +217,7 @@ export default function Runners({ repoPath, opts, caps, provider, providerLabel,
                 index={i}
                 onOpen={() => setEditing(r)}
                 onOpenJob={onOpenJob}
-                onInsert={canInsert && r.labels.length ? () => onInsertTags(r) : null}
+                onInsert={canInsert && r.labels.length ? () => onInsertTags!(r) : null}
               />
             ))}
           </div>
@@ -211,7 +257,7 @@ export default function Runners({ repoPath, opts, caps, provider, providerLabel,
   );
 }
 
-function StatusBadge({ runner, onOpenJob }) {
+function StatusBadge({ runner, onOpenJob }: { runner: Runner; onOpenJob?: RunnersProps['onOpenJob'] }) {
   const st = RUNNER_STATUS[runner.status] ?? RUNNER_STATUS.offline;
   return (
     <span className={`flex items-center gap-1.5 text-[11.5px] ${st.text}`} data-testid="runner-status" data-status={runner.status}>
@@ -226,7 +272,7 @@ function StatusBadge({ runner, onOpenJob }) {
           <button
             onClick={(e) => {
               e.stopPropagation();
-              onOpenJob?.(runner.currentJob);
+              onOpenJob?.(runner.currentJob!);
             }}
             data-testid="runner-job"
             className="max-w-[140px] truncate text-gk-blue hover:underline"
@@ -241,7 +287,7 @@ function StatusBadge({ runner, onOpenJob }) {
   );
 }
 
-function RunnerCard({ runner: r, index, onOpen, onOpenJob, onInsert }) {
+function RunnerCard({ runner: r, index, onOpen, onOpenJob, onInsert }: { runner: Runner; index: number; onOpen: () => void; onOpenJob?: RunnersProps['onOpenJob']; onInsert?: (() => void) | null }) {
   return (
     <div
       role="button"
@@ -254,7 +300,7 @@ function RunnerCard({ runner: r, index, onOpen, onOpenJob, onInsert }) {
       style={{ animationDelay: `${Math.min(index, 12) * 25}ms` }}
     >
       <div className="flex items-center gap-2">
-        <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-gk-fg/5 text-gk-muted" data-tip={OS_NAMES[r.os] ?? t('ОС неизвестна')}>
+        <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-gk-fg/5 text-gk-muted" data-tip={OS_NAMES[r.os!] ?? t('ОС неизвестна')}>
           <OsIcon os={r.os} />
         </span>
         <span className="min-w-0 flex-1 truncate text-[13px] font-medium text-gk-text" title={r.description ?? r.name}>
@@ -304,23 +350,23 @@ function RunnerCard({ runner: r, index, onOpen, onOpenJob, onInsert }) {
 
 /* =================== Редактор раннера =================== */
 
-function RunnerEditor({ runner, caps, provider, suggestions, repoPath, opts, notify, onClose, onChanged }) {
+function RunnerEditor({ runner, caps, provider, suggestions, repoPath, opts, notify, onClose, onChanged }: { runner: Runner; caps: Caps; provider: string; suggestions: string[]; repoPath: string; opts: RunnersProps['opts']; notify?: Notify; onClose: () => void; onChanged: () => void }) {
   const [labels, setLabels] = useState(runner.labels);
   const [paused, setPaused] = useState(runner.status === 'paused');
   const [untagged, setUntagged] = useState(Boolean(runner.runUntagged));
   const [locked, setLocked] = useState(Boolean(runner.locked));
   const [description, setDescription] = useState(runner.description ?? runner.name ?? '');
   const [timeout, setTimeoutMin] = useState(runner.maximumTimeout ? String(Math.round(runner.maximumTimeout / 60)) : '');
-  const [busy, setBusy] = useState(null);
-  const [error, setError] = useState(null);
+  const [busy, setBusy] = useState<string | null>(null);
+  const [error, setError] = useState<ApiError | null>(null);
 
   const readOnly = !runner.editable;
   const settingsWhy = readOnly ? t('Общий раннер меняет администратор сервера') : caps.canEditRunnerSettings ? null : caps.why?.canEditRunnerSettings ?? t('Недоступно');
   const labelsWhy = readOnly ? t('Общий раннер меняет администратор сервера') : caps.canEditRunnerLabels ? null : caps.why?.canEditRunnerLabels ?? t('Недоступно');
   const pauseWhy = readOnly ? t('Общий раннер меняет администратор сервера') : caps.canPauseRunner ? null : caps.why?.canPauseRunner ?? t('Недоступно');
 
-  const patch = {};
-  const same = (a, b) => a.length === b.length && a.every((x, i) => x === b[i]);
+  const patch: Record<string, unknown> = {};
+  const same = (a: string[], b: string[]) => a.length === b.length && a.every((x, i) => x === b[i]);
   if (!labelsWhy && !same(labels, runner.labels)) patch.labels = labels;
   if (!pauseWhy && paused !== (runner.status === 'paused')) patch.paused = paused;
   if (!settingsWhy) {
@@ -374,7 +420,7 @@ function RunnerEditor({ runner, caps, provider, suggestions, repoPath, opts, not
             </div>
           )}
           <Button onClick={onClose}>{t('Закрыть')}</Button>
-          <Button variant="primary" disabled={!dirty || busy} onClick={save} data-testid="runner-save">
+          <Button variant="primary" disabled={(!dirty || busy) as boolean} onClick={save} data-testid="runner-save">
             {tj('{0} Сохранить', [busy === 'save' ? <Loader2 size={13} className="animate-spin" /> : <Save size={13} />])}</Button>
         </>
       }
@@ -383,7 +429,7 @@ function RunnerEditor({ runner, caps, provider, suggestions, repoPath, opts, not
         <div className="flex items-center gap-2">
           <StatusBadge runner={runner} />
           <span className="ml-auto flex items-center gap-1 text-[11.5px] text-gk-dim">
-            <OsIcon os={runner.os} size={12} /> {OS_NAMES[runner.os] ?? '—'} {runner.architecture ?? ''} {runner.version ? `· v${runner.version}` : ''}
+            <OsIcon os={runner.os} size={12} /> {OS_NAMES[runner.os!] ?? '—'} {runner.architecture ?? ''} {runner.version ? `· v${runner.version}` : ''}
           </span>
         </div>
         {runner.virtual && <p className="text-[12px] text-gk-dim">{t('Облачный раннер провайдера — им управляет сам сервис.')}</p>}
@@ -439,7 +485,7 @@ function RunnerEditor({ runner, caps, provider, suggestions, repoPath, opts, not
 
 /* =================== Подключение нового раннера =================== */
 
-function CodeBlock({ text, testid }) {
+function CodeBlock({ text, testid }: { text: string; testid?: string }) {
   const [copied, setCopied] = useState(false);
   return (
     <div className="group relative" data-testid={testid}>
@@ -460,15 +506,15 @@ function CodeBlock({ text, testid }) {
   );
 }
 
-function RegisterWizard({ repoPath, opts, caps, provider, providerLabel, suggestions, notify, onClose, onLocalStarted }) {
-  const [labels, setLabels] = useState([]);
+function RegisterWizard({ repoPath, opts, caps, provider, providerLabel, suggestions, notify, onClose, onLocalStarted }: { repoPath: string; opts: RunnersProps['opts']; caps: Caps; provider: string; providerLabel: ReactNode; suggestions: string[]; notify?: Notify; onClose: () => void; onLocalStarted: () => void }) {
+  const [labels, setLabels] = useState<string[]>([]);
   const [name, setName] = useState('');
   const [untagged, setUntagged] = useState(false);
-  const [reg, setReg] = useState(null);
+  const [reg, setReg] = useState<RunnerRegistration_Serialize | null>(null);
   const [tab, setTab] = useState('docker');
-  const [busy, setBusy] = useState(null);
-  const [error, setError] = useState(null);
-  const [docker, setDocker] = useState(null);
+  const [busy, setBusy] = useState<string | null>(null);
+  const [error, setError] = useState<ApiError | null>(null);
+  const [docker, setDocker] = useState<DockerStatus_Serialize | null>(null);
 
   useEffect(() => {
     if (caps.localRunner) api.cicd.localRunners(repoPath, opts).then((res) => res.ok && setDocker(res.data.docker));
@@ -570,9 +616,9 @@ function RegisterWizard({ repoPath, opts, caps, provider, providerLabel, suggest
 
 /* =================== Локальные контейнеры =================== */
 
-function LocalRunners({ list, onChanged, notify }) {
-  const [busy, setBusy] = useState(null);
-  const act = async (fn, name, label) => {
+function LocalRunners({ list, onChanged, notify }: { list: LocalRunner_Serialize[]; onChanged: () => void; notify?: Notify }) {
+  const [busy, setBusy] = useState<string | null>(null);
+  const act = async (fn: LocalAction, name: string, label: string) => {
     setBusy(name);
     const res = await fn(name);
     setBusy(null);
@@ -591,11 +637,11 @@ function LocalRunners({ list, onChanged, notify }) {
           <span className="truncate text-[11px] text-gk-dim">{c.status}</span>
           {c.runnerLabels.length > 0 && <span className="truncate font-mono text-[10.5px] text-gk-blue">{c.runnerLabels.join(', ')}</span>}
           {c.state !== 'running' && (
-            <IconBtn title={t('Запустить')} onClick={() => act(api.cicd.resumeLocalRunner, c.name, t('Контейнер {0} запущен', c.name))}>
+            <IconBtn title={t('Запустить')} onClick={() => act(api.cicd.resumeLocalRunner, c.name!, t('Контейнер {0} запущен', c.name))}>
               {busy === c.name ? <Loader2 size={13} className="animate-spin" /> : <Play size={13} />}
             </IconBtn>
           )}
-          <IconBtn title={t('Остановить и удалить контейнер')} onClick={() => act(api.cicd.stopLocalRunner, c.name, t('Контейнер {0} остановлен и удалён', c.name))} data-testid="local-runner-stop">
+          <IconBtn title={t('Остановить и удалить контейнер')} onClick={() => act(api.cicd.stopLocalRunner, c.name!, t('Контейнер {0} остановлен и удалён', c.name))} data-testid="local-runner-stop">
             {busy === c.name ? <Loader2 size={13} className="animate-spin" /> : <Square size={13} />}
           </IconBtn>
         </div>

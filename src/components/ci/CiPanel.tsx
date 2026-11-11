@@ -1,6 +1,6 @@
 // Пайплайны CI/CD любого провайдера (GitLab, GitHub Actions, Gitea/Forgejo, Bitbucket) через единый слой api.cicd:
 // список и детали пайплайнов, задания и логи, артефакты, раннеры, секреты и переменные, расписания (GitLab), подключение.
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
 import {
   AlertTriangle,
   CalendarClock,
@@ -26,15 +26,75 @@ import GitLabVariables from './GitLabVariables.tsx';
 import GitLabSchedules from './GitLabSchedules.tsx';
 import JobLog from './JobLog.tsx';
 import RunDialog from './RunDialog.tsx';
-import Runners from './Runners.jsx';
+import Runners from './Runners.tsx';
 import Secrets from './Secrets.tsx';
 import { ACTIVE_STATUSES, SOURCE_LABELS, StatusIcon, StatusPill, statusInfo } from '../PipelineStatus.tsx';
 import { ActionButton, ConfirmAction, Duration, ErrorNote, IconBtn, ListSkeleton, SegButton, formatSize, usePolling } from './common.tsx';
 import { t as tr, tj } from '../../i18n/index.ts';
+import type { LucideIcon } from 'lucide-react';
+import type { ApiError, ApiResult } from '../../platform/tauri.ts';
+import type {
+  ActionResult_Serialize,
+  ArtifactSaved_Serialize,
+  Capabilities_Serialize,
+  CiArtifact_Serialize,
+  CiId,
+  CicdSettingsView_Serialize,
+  Commit_Serialize,
+  CiRunner_Serialize,
+  ForgeStatus_Serialize,
+  PipelineDetailWithCaps_Serialize,
+  PipelineJob_Serialize,
+  PipelineListWithCaps_Serialize,
+  RemoteOptions_Deserialize,
+  PipelineRun_Serialize,
+} from '../../../crates/gorynych-tauri/bindings/commands.ts';
 
-const api = window.api;
+type Caps = Capabilities_Serialize;
+/** Как в 1.x: интерфейс считает поля ответа заполненными (проверки на null в коде остаются как были) */
+type Present<T> = { [K in keyof T]-?: NonNullable<T[K]> };
+type Run = Present<PipelineRun_Serialize>;
+type Job = Present<PipelineJob_Serialize>;
+type Opts = RemoteOptions_Deserialize;
+type CommitsBySha = Map<string, Pick<Commit_Serialize, 'message'>>;
+type Notify = (toast: { type: string; title: ReactNode; hint?: ReactNode; action?: { label: ReactNode; onClick: () => void } }) => void;
+/** Действие с пайплайном или заданием: `pipeline.retry`, `job.play`… */
+type CiAction = { type: string; id: CiId | null };
 
-const PROVIDER_COLORS = { gitlab: '#fc6d26', github: '#8b949e', gitea: '#609926', bitbucket: '#2684ff' };
+interface CiPanelApi {
+  cicd: {
+    settings: (dir: string, opts: unknown) => Promise<ApiResult<CicdSettingsView_Serialize | null>>;
+    saveSettings: (dir: string, data: { provider: string; apiBase: string }, opts: unknown) => Promise<ApiResult<CicdSettingsView_Serialize | null>>;
+    pipelines: (dir: string, opts: unknown) => Promise<ApiResult<PipelineListWithCaps_Serialize>>;
+    pipeline: (dir: string, id: CiId | null, opts: unknown) => Promise<ApiResult<PipelineDetailWithCaps_Serialize>>;
+    action: (dir: string, action: CiAction, opts: unknown) => Promise<ApiResult<ActionResult_Serialize>>;
+    downloadArtifact: (dir: string, artifact: CiArtifact_Serialize, opts: unknown) => Promise<ApiResult<ArtifactSaved_Serialize>>;
+    showFile: (path: string) => void;
+  };
+  openExternal: (url: string) => void;
+}
+
+const api = window.api as unknown as CiPanelApi;
+
+interface CiPanelProps {
+  repoPath: string;
+  forge: ForgeStatus_Serialize | null | undefined;
+  remoteName?: string | null;
+  currentBranch?: string | null;
+  commitsBySha?: CommitsBySha;
+  initialPipelineId?: CiId | null;
+  focusFailed?: boolean;
+  onLocate?: (sha: string) => void;
+  onForgeChanged?: () => void;
+  onEditLogin?: () => void;
+  notify?: Notify;
+  branches?: (string | { name: string })[];
+  onInsertTags?: (runner: CiRunner_Serialize) => void;
+  canInsertTags?: boolean;
+  initialTab?: string | null;
+}
+
+const PROVIDER_COLORS: Record<string, string> = { gitlab: '#fc6d26', github: '#8b949e', gitea: '#609926', bitbucket: '#2684ff' };
 const PROVIDERS = [
   { id: '', label: tr('Определять автоматически') },
   { id: 'gitlab', label: 'GitLab CI (gitlab.com, Self-Managed)' },
@@ -59,11 +119,11 @@ export default function CiPanel({
   onInsertTags,
   canInsertTags,
   initialTab,
-}) {
+}: CiPanelProps) {
   const [tab, setTab] = useState(initialTab ?? 'pipelines');
-  const [jump, setJump] = useState(null); // { pipelineId, jobId }
-  const opts = useMemo(() => ({ remote: remoteName }), [remoteName]);
-  const caps = forge?.capabilities ?? {};
+  const [jump, setJump] = useState<{ pipelineId: CiId | null; jobId?: CiId | null; n: number } | null>(null); // { pipelineId, jobId }
+  const opts = useMemo((): Opts => ({ remote: remoteName }), [remoteName]);
+  const caps = (forge?.capabilities ?? {}) as Caps;
   const provider = forge?.provider ?? null;
   const label = forge?.label ?? 'CI/CD';
 
@@ -77,7 +137,7 @@ export default function CiPanel({
         <div className="w-full max-w-[560px] animate-slide-up space-y-5" data-testid="ci-setup">
           <div>
             <div className="mb-1 flex items-center gap-2">
-              <span className="h-2.5 w-2.5 rounded-full" style={{ background: PROVIDER_COLORS[provider] ?? '#8a92a2' }} />
+              <span className="h-2.5 w-2.5 rounded-full" style={{ background: PROVIDER_COLORS[provider!] ?? '#8a92a2' }} />
               <h3 className="text-[15px] font-semibold text-gk-strong">{provider ? tr('Пайплайны {0}', label) : tr('Пайплайны CI/CD')}</h3>
             </div>
             <p className="text-[13px] leading-relaxed text-gk-muted">
@@ -86,14 +146,14 @@ export default function CiPanel({
                 : tr('Не удалось определить, где выполняется CI этого репозитория. Укажите сервис и, для своего сервера, адрес API.')}
             </p>
           </div>
-          {provider && <CiAuth forge={forge} onEditLogin={onEditLogin} />}
+          {provider && <CiAuth forge={forge as Parameters<typeof CiAuth>[0]["forge"]} onEditLogin={onEditLogin} />}
           <CiSettings repoPath={repoPath} opts={opts} forge={forge} onSaved={onForgeChanged} notify={notify} compact={Boolean(provider)} />
         </div>
       </div>
     );
   }
 
-  const tabs = [
+  const tabs: { id: string; label: string; icon: LucideIcon; why?: string | null }[] = [
     { id: 'pipelines', label: tr('Пайплайны'), icon: Zap },
     { id: 'runners', label: tr('Раннеры'), icon: Server, why: caps.canListRunners ? null : caps.why?.canListRunners },
     { id: 'secrets', label: tr('Секреты и переменные'), icon: Variable, why: caps.canManageSecrets ? null : caps.why?.canManageSecrets ?? tr('Секреты видны только администраторам репозитория') },
@@ -125,7 +185,7 @@ export default function CiPanel({
         ))}
         <div className="flex-1" />
         <button
-          onClick={() => api.openExternal(forge.webUrl)}
+          onClick={() => api.openExternal(forge.webUrl!)}
           className="flex items-center gap-1 truncate rounded px-2 py-1 font-mono text-[11px] text-gk-dim hover:bg-gk-hover hover:text-gk-text"
           title={tr('Открыть репозиторий в {0}', label)}
         >
@@ -187,7 +247,7 @@ export default function CiPanel({
         <GitLabSchedules
           repoPath={repoPath}
           opts={opts}
-          branches={branches}
+          branches={branches as string[]}
           currentBranch={currentBranch}
           notify={notify}
           onOpenPipeline={(id) => {
@@ -199,7 +259,7 @@ export default function CiPanel({
       {tab === 'settings' && (
         <div className="min-h-0 flex-1 overflow-y-auto p-5">
           <div className="max-w-[560px] space-y-5">
-            <CiAuth forge={forge} onEditLogin={onEditLogin} />
+            <CiAuth forge={forge as Parameters<typeof CiAuth>[0]["forge"]} onEditLogin={onEditLogin} />
             <CiSettings repoPath={repoPath} opts={opts} forge={forge} onSaved={onForgeChanged} notify={notify} />
           </div>
         </div>
@@ -210,12 +270,12 @@ export default function CiPanel({
 
 /* =================== Подключение: провайдер и адрес API =================== */
 
-function CiSettings({ repoPath, opts, forge, onSaved, notify, compact }) {
-  const [data, setData] = useState(null);
+function CiSettings({ repoPath, opts, forge, onSaved, notify, compact }: { repoPath: string; opts: Opts; forge: CiPanelProps['forge']; onSaved?: () => void; notify?: Notify; compact?: boolean }) {
+  const [data, setData] = useState<CicdSettingsView_Serialize | null>(null);
   const [provider, setProvider] = useState('');
   const [apiBase, setApiBase] = useState('');
   const [busy, setBusy] = useState(false);
-  const [error, setError] = useState(null);
+  const [error, setError] = useState<ApiError | null>(null);
   const [open, setOpen] = useState(!compact);
 
   useEffect(() => {
@@ -287,10 +347,26 @@ function CiSettings({ repoPath, opts, forge, onSaved, notify, compact }) {
 
 /* =================== Пайплайны =================== */
 
-function PipelinesTab({ repoPath, opts, caps, provider, providerLabel, currentBranch, branches, commitsBySha, initialPipelineId, initialJobId, focusFailed, onLocate, notify }) {
+interface PipelinesTabProps {
+  repoPath: string;
+  opts: Opts;
+  caps: Caps;
+  provider: string;
+  providerLabel: string;
+  currentBranch?: string | null;
+  branches: (string | { name: string })[];
+  commitsBySha?: CommitsBySha;
+  initialPipelineId?: CiId | null;
+  initialJobId?: CiId | null;
+  focusFailed?: boolean;
+  onLocate?: (sha: string) => void;
+  notify?: Notify;
+}
+
+function PipelinesTab({ repoPath, opts, caps, provider, providerLabel, currentBranch, branches, commitsBySha, initialPipelineId, initialJobId, focusFailed, onLocate, notify }: PipelinesTabProps) {
   const [onlyBranch, setOnlyBranch] = useState(false);
-  const [list, setList] = useState({ loading: true, data: null, error: null });
-  const [selected, setSelected] = useState(initialPipelineId ?? null);
+  const [list, setList] = useState<{ loading: boolean; data: PipelineListWithCaps_Serialize | null; error: ApiError | null }>({ loading: true, data: null, error: null });
+  const [selected, setSelected] = useState<CiId | null>(initialPipelineId ?? null);
   const [refreshKey, setRefreshKey] = useState(0);
   const [runOpen, setRunOpen] = useState(false);
 
@@ -312,10 +388,10 @@ function PipelinesTab({ repoPath, opts, caps, provider, providerLabel, currentBr
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [load, refreshKey]);
 
-  const anyActive = list.data?.pipelines.some((p) => ACTIVE_STATUSES.has(p.status));
+  const anyActive = list.data?.pipelines.some((p) => ACTIVE_STATUSES.has(p.status!));
   usePolling(load, list.error ? 0 : anyActive ? 6000 : 30000, [load]);
 
-  const pipelines = list.data?.pipelines ?? [];
+  const pipelines = (list.data?.pipelines ?? []) as Run[];
   const live = list.data?.capabilities ?? caps;
 
   return (
@@ -325,7 +401,7 @@ function PipelinesTab({ repoPath, opts, caps, provider, providerLabel, currentBr
           <div className="flex overflow-hidden rounded ring-1 ring-gk-border">
             <SegButton active={!onlyBranch} onClick={() => setOnlyBranch(false)}>
               {tr('Все')}</SegButton>
-            <SegButton active={onlyBranch} onClick={() => setOnlyBranch(true)} disabled={!currentBranch} title={currentBranch}>
+            <SegButton active={onlyBranch} onClick={() => setOnlyBranch(true)} disabled={!currentBranch} title={currentBranch as string | undefined}>
               <GitBranch size={11} /> <span className="max-w-[110px] truncate">{currentBranch ?? tr('ветка')}</span>
             </SegButton>
           </div>
@@ -401,7 +477,7 @@ function PipelinesTab({ repoPath, opts, caps, provider, providerLabel, currentBr
           opts={opts}
           caps={live}
           providerLabel={providerLabel}
-          branches={branches.map((b) => b.name ?? b)}
+          branches={branches.map((b) => (b as { name: string }).name ?? b) as string[]}
           currentBranch={currentBranch}
           onClose={() => setRunOpen(false)}
           onStarted={(res, params) => {
@@ -419,10 +495,24 @@ function PipelinesTab({ repoPath, opts, caps, provider, providerLabel, currentBr
 
 /* =================== Детали пайплайна =================== */
 
-function PipelineDetail({ repoPath, opts, pipelineId, initialJobId, focusFailed, commitsBySha, providerLabel, onLocate, notify, onChanged, onOpenPipeline }) {
-  const [state, setState] = useState({ loading: true, data: null, error: null });
-  const [jobId, setJobId] = useState(initialJobId ?? null);
-  const [busy, setBusy] = useState(null);
+interface PipelineDetailProps {
+  repoPath: string;
+  opts: Opts;
+  pipelineId: CiId | null;
+  initialJobId?: CiId | null;
+  focusFailed?: boolean;
+  commitsBySha?: CommitsBySha;
+  providerLabel: string;
+  onLocate?: (sha: string) => void;
+  notify?: Notify;
+  onChanged?: () => void;
+  onOpenPipeline?: (id: CiId | null) => void;
+}
+
+function PipelineDetail({ repoPath, opts, pipelineId, initialJobId, focusFailed, commitsBySha, providerLabel, onLocate, notify, onChanged, onOpenPipeline }: PipelineDetailProps) {
+  const [state, setState] = useState<{ loading: boolean; data: PipelineDetailWithCaps_Serialize | null; error: ApiError | null }>({ loading: true, data: null, error: null });
+  const [jobId, setJobId] = useState<CiId | null>(initialJobId ?? null);
+  const [busy, setBusy] = useState<string | null>(null);
   const [focused, setFocused] = useState(false);
 
   const load = useCallback(async () => {
@@ -434,9 +524,9 @@ function PipelineDetail({ repoPath, opts, pipelineId, initialJobId, focusFailed,
     load();
   }, [load]);
 
-  const p = state.data?.pipeline;
-  const caps = state.data?.capabilities ?? {};
-  const jobs = useMemo(() => state.data?.stages.flatMap((s) => s.jobs) ?? [], [state.data]);
+  const p = state.data?.pipeline as Run;
+  const caps = (state.data?.capabilities ?? {}) as Caps;
+  const jobs = useMemo(() => (state.data?.stages.flatMap((s) => s.jobs) ?? []) as Job[], [state.data]);
   const active = p && (ACTIVE_STATUSES.has(p.status) || jobs.some((j) => ACTIVE_STATUSES.has(j.status)));
   usePolling(load, state.error ? 0 : active ? 4000 : 0, [load]);
 
@@ -449,7 +539,7 @@ function PipelineDetail({ repoPath, opts, pipelineId, initialJobId, focusFailed,
     if (failed) setJobId(failed.id);
   }, [focusFailed, focused, state.data, p, jobs]);
 
-  const act = async (action, label) => {
+  const act = async (action: CiAction, label: string) => {
     setBusy(`${action.type}:${action.id}`);
     const res = await api.cicd.action(repoPath, action, opts);
     setBusy(null);
@@ -463,13 +553,13 @@ function PipelineDetail({ repoPath, opts, pipelineId, initialJobId, focusFailed,
     return res.data;
   };
 
-  const download = async (a) => {
+  const download = async (a: CiArtifact_Serialize) => {
     setBusy(`artifact:${a.id}`);
     const res = await api.cicd.downloadArtifact(repoPath, a, opts);
     setBusy(null);
     if (!res.ok) return notify?.({ type: 'error', title: res.error.message, hint: res.error.hint });
     if (res.data.canceled) return;
-    notify?.({ type: 'success', title: tr('Артефакт {0} скачан', a.name), hint: res.data.path, action: { label: tr('Показать'), onClick: () => api.cicd.showFile(res.data.path) } });
+    notify?.({ type: 'success', title: tr('Артефакт {0} скачан', a.name), hint: res.data.path, action: { label: tr('Показать'), onClick: () => api.cicd.showFile(res.data.path!) } });
   };
 
   if (state.loading && !state.data) {
@@ -554,7 +644,7 @@ function PipelineDetail({ repoPath, opts, pipelineId, initialJobId, focusFailed,
               {p.source && <span>{SOURCE_LABELS[p.source] ?? p.source}</span>}
               <span title={p.createdAt}>{relativeTime(p.createdAt)}</span>
               <Duration startedAt={p.startedAt ?? p.createdAt} duration={p.duration} running={running} prefix="⏱ " />
-              {p.coverage != null && <span>{tj('покрытие {0}%', [p.coverage])}</span>}
+              {p.coverage != null && <span>{tj('покрытие {0}%', [p.coverage as number])}</span>}
             </div>
           </div>
 
@@ -562,7 +652,7 @@ function PipelineDetail({ repoPath, opts, pipelineId, initialJobId, focusFailed,
             <div className="rounded-lg border border-gk-red/30 bg-gk-red/10 px-3 py-2 text-[12px] text-gk-text">
               <div className="mb-1 flex items-center gap-1.5 font-semibold text-gk-red">
                 {tj('{0} Ошибка в конфигурации CI', [<AlertTriangle size={13} />])}</div>
-              {p.yamlErrors}
+              {p.yamlErrors as string}
             </div>
           )}
           {state.error && <div className="text-[11px] text-gk-yellow">{tj('Не удалось обновить: {0}', [state.error.message])}</div>}
@@ -583,11 +673,11 @@ function PipelineDetail({ repoPath, opts, pipelineId, initialJobId, focusFailed,
                       {stage.jobs.map((j) => (
                         <JobRow
                           key={j.id}
-                          job={j}
+                          job={j as Job}
                           caps={caps}
                           selected={jobId === j.id}
                           busy={busy}
-                          onOpen={() => (j.kind === 'bridge' ? j.downstream && api.openExternal(j.downstream.url) : setJobId(j.id))}
+                          onOpen={() => (j.kind === 'bridge' ? j.downstream && api.openExternal(j.downstream.url!) : setJobId(j.id))}
                           onAction={(type, label) => act({ type, id: j.id }, label)}
                         />
                       ))}
@@ -651,10 +741,10 @@ function PipelineDetail({ repoPath, opts, pipelineId, initialJobId, focusFailed,
   );
 }
 
-function JobRow({ job, caps, selected, busy, onOpen, onAction }) {
-  const isBusy = (type) => busy === `${type}:${job.id}`;
+function JobRow({ job, caps, selected, busy, onOpen, onAction }: { job: Job; caps: Caps; selected: boolean; busy: string | null; onOpen: () => void; onAction: (type: string, label: string) => void }) {
+  const isBusy = (type: string) => busy === `${type}:${job.id}`;
   const running = ACTIVE_STATUSES.has(job.status);
-  const actions = [];
+  const actions: { type: string; icon: LucideIcon; title: string; label: string }[] = [];
   if (job.kind === 'job') {
     if (job.status === 'manual' && caps.canPlayManualJob) actions.push({ type: 'job.play', icon: Play, title: tr('Запустить'), label: tr('Задание {0} запущено', job.name) });
     if (['failed', 'canceled', 'success'].includes(job.status) && caps.canRerunSingleJob) actions.push({ type: 'job.retry', icon: RotateCcw, title: tr('Перезапустить'), label: tr('Задание {0} перезапущено', job.name) });

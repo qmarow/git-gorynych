@@ -24,7 +24,7 @@ import { ACTIVE_STATUSES, FAILURE_REASONS, StatusPill } from '../PipelineStatus.
 import { ActionButton, Duration, ErrorNote, IconBtn, usePolling } from './common.tsx';
 import { t as tr, tj } from '../../i18n/index.ts';
 import type { ApiError, ApiResult } from '../../platform/tauri.ts';
-import type { Capabilities_Serialize, JobLog_Serialize, PipelineJob_Serialize, RemoteOptions_Deserialize } from '../../../crates/gorynych-tauri/bindings/commands.ts';
+import type { Capabilities_Serialize, CiId, JobLog_Serialize, PipelineJob_Serialize, RemoteOptions_Deserialize } from '../../../crates/gorynych-tauri/bindings/commands.ts';
 
 interface JobLogApi {
   cicd: { jobLog: (dir: string, jobId: unknown, opts: unknown) => Promise<ApiResult<JobLog_Serialize>> };
@@ -46,6 +46,8 @@ interface JobLogProps {
   /** Действие с заданием (`job.play`, `job.retry`, `job.cancel`) и текст уведомления об успехе */
   onAction: (action: string, success: string) => void;
   providerLabel?: string | null;
+  /** Передаётся панелью CI/CD, лог задания им пока не пользуется */
+  onOpenPipeline?: (id: CiId | null) => void;
 }
 
 /** Все строки дерева по порядку, с путём из секций (чтобы раскрыть их при переходе к строке) */

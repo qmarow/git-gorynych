@@ -30,7 +30,7 @@ import {
 } from 'lucide-react';
 import { relativeTime } from '../lib/format.ts';
 import { highlight } from '../lib/syntax.tsx';
-import CiPanel from './ci/CiPanel.jsx';
+import CiPanel from './ci/CiPanel.tsx';
 import DagView from './ci/DagView.tsx';
 import { describeCron } from '../lib/cron.ts';
 import { TAG_KEYS, snippetsFor } from '../lib/ciSnippets.ts';
