@@ -1,18 +1,42 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useState, type ComponentType, type FormEvent, type ReactNode } from 'react';
 import { AlertTriangle, Copy, Eye, EyeOff, FileText, Loader2, Lock, Pencil, Plus, Save, Trash2, Variable, X } from 'lucide-react';
 import { t, tj } from '../../i18n/index.ts';
+import type { ApiError, ApiResult } from '../../platform/tauri.ts';
+import type { GlVariableList_Serialize, GlVariableOriginal_Deserialize, GlVariableSave_Deserialize, GlVariableValue_Serialize, GlVariable_Serialize, RemoteOptions_Deserialize } from '../../../crates/gorynych-tauri/bindings/commands.ts';
 
-const api = window.api;
+type GlVar = GlVariable_Serialize;
+/** Значение, показанное по глазу: ответ сервера, ошибка или идёт запрос */
+type Revealed = (GlVariableValue_Serialize & { error?: undefined }) | { error: string; hidden?: undefined; value?: undefined } | 'loading';
+/** Начальные данные формы: переменная из списка и, если уже показано, её значение */
+type FormInitial = Partial<GlVar> & { value?: string | null };
+
+interface VariablesApi {
+  gitlab: {
+    variables: (dir: string, opts: unknown) => Promise<ApiResult<GlVariableList_Serialize>>;
+    variableValue: (dir: string, ref: GlVariableOriginal_Deserialize, opts: unknown) => Promise<ApiResult<GlVariableValue_Serialize>>;
+    deleteVariable: (dir: string, ref: GlVariableOriginal_Deserialize, opts: unknown) => Promise<ApiResult<unknown>>;
+    saveVariable: (dir: string, data: GlVariableSave_Deserialize, opts: unknown) => Promise<ApiResult<unknown>>;
+  };
+}
+
+const api = window.api as unknown as VariablesApi;
+
+interface VariablesProps {
+  repoPath: string;
+  opts: RemoteOptions_Deserialize | null | undefined;
+  canWrite?: boolean;
+  notify?: (toast: { type: string; title: ReactNode; hint?: ReactNode }) => void;
+}
 
 /**
  * Переменные CI/CD проекта в GitLab: просмотр, добавление, изменение, удаление.
  * Значения запрашиваются по одному и только по явному действию.
  */
-export default function GitLabVariables({ repoPath, opts, canWrite, notify }) {
-  const [state, setState] = useState({ loading: true, data: null, error: null });
-  const [revealed, setRevealed] = useState({}); // key|scope -> { value, hidden } | 'loading'
-  const [form, setForm] = useState(null); // { original: {key, scope} | null, initial }
-  const [armDelete, setArmDelete] = useState(null);
+export default function GitLabVariables({ repoPath, opts, canWrite, notify }: VariablesProps) {
+  const [state, setState] = useState<{ loading: boolean; data: GlVariableList_Serialize | null; error: ApiError | null }>({ loading: true, data: null, error: null });
+  const [revealed, setRevealed] = useState<Record<string, Revealed>>({}); // key|scope -> { value, hidden } | 'loading'
+  const [form, setForm] = useState<{ original: GlVariableOriginal_Deserialize | null; initial: FormInitial | null } | null>(null); // { original: {key, scope} | null, initial }
+  const [armDelete, setArmDelete] = useState<string | null>(null);
 
   const load = useCallback(() => {
     api.gitlab.variables(repoPath, opts).then((res) =>
@@ -21,7 +45,7 @@ export default function GitLabVariables({ repoPath, opts, canWrite, notify }) {
   }, [repoPath, opts]);
   useEffect(load, [load]);
 
-  const reveal = async (v) => {
+  const reveal = async (v: GlVar) => {
     const id = `${v.key}|${v.scope}`;
     if (revealed[id] && revealed[id] !== 'loading') {
       setRevealed((r) => {
@@ -36,7 +60,7 @@ export default function GitLabVariables({ repoPath, opts, canWrite, notify }) {
     setRevealed((r) => ({ ...r, [id]: res.ok ? res.data : { error: res.error.message } }));
   };
 
-  const remove = async (v) => {
+  const remove = async (v: GlVar) => {
     const id = `${v.key}|${v.scope}`;
     if (armDelete !== id) {
       setArmDelete(id);
@@ -63,7 +87,7 @@ export default function GitLabVariables({ repoPath, opts, canWrite, notify }) {
       </div>
     );
   }
-  const vars = state.data.variables;
+  const vars = state.data!.variables;
 
   return (
     <div className="min-h-0 flex-1 overflow-y-auto p-4">
@@ -124,7 +148,7 @@ export default function GitLabVariables({ repoPath, opts, canWrite, notify }) {
                     </button>
                   )}
                   {r && r !== 'loading' && !r.error && !r.hidden && (
-                    <button onClick={() => navigator.clipboard?.writeText(r.value)} title={t('Скопировать')} className="shrink-0 rounded p-1 text-gk-dim hover:bg-gk-hover hover:text-gk-text">
+                    <button onClick={() => navigator.clipboard?.writeText(r.value!)} title={t('Скопировать')} className="shrink-0 rounded p-1 text-gk-dim hover:bg-gk-hover hover:text-gk-text">
                       <Copy size={12} />
                     </button>
                   )}
@@ -184,7 +208,7 @@ export default function GitLabVariables({ repoPath, opts, canWrite, notify }) {
 
 const GRID = 'grid grid-cols-[minmax(150px,1.2fr)_minmax(180px,2fr)_100px_minmax(130px,1fr)_56px] gap-3';
 
-function VariableForm({ repoPath, opts, original, initial, onClose, onSaved }) {
+function VariableForm({ repoPath, opts, original, initial, onClose, onSaved }: Pick<VariablesProps, 'repoPath' | 'opts'> & { original: GlVariableOriginal_Deserialize | null; initial: FormInitial | null; onClose: () => void; onSaved: (message: string) => void }) {
   const editing = Boolean(original);
   const [v, setV] = useState({
     key: initial?.key ?? '',
@@ -201,22 +225,22 @@ function VariableForm({ repoPath, opts, original, initial, onClose, onSaved }) {
   const [valueTouched, setValueTouched] = useState(!editing || initial?.value !== undefined);
   const [showValue, setShowValue] = useState(!editing);
   const [busy, setBusy] = useState(false);
-  const [error, setError] = useState(null);
-  const set = (patch) => setV((x) => ({ ...x, ...patch }));
+  const [error, setError] = useState<ApiError | null>(null);
+  const set = (patch: Partial<typeof v>) => setV((x) => ({ ...x, ...patch }));
 
   useEffect(() => {
-    const onKey = (e) => e.key === 'Escape' && onClose();
+    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && onClose();
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, [onClose]);
 
   const maskProblem = v.masked && valueTouched && (v.value.length < 8 || /\s/.test(v.value) || /[^A-Za-z0-9@:.~\-_+/=]/.test(v.value));
 
-  const submit = async (e) => {
+  const submit = async (e: FormEvent) => {
     e.preventDefault();
     setBusy(true);
     setError(null);
-    const variable = { ...v, key: v.key.trim(), scope: v.scope.trim() || '*' };
+    const variable: Partial<typeof v> = { ...v, key: v.key.trim(), scope: v.scope.trim() || '*' };
     if (!valueTouched) delete variable.value;
     const res = await api.gitlab.saveVariable(repoPath, { original, variable }, opts);
     setBusy(false);
@@ -232,7 +256,7 @@ function VariableForm({ repoPath, opts, original, initial, onClose, onSaved }) {
       <form onSubmit={submit} className="glass-strong w-[520px] max-w-[calc(100vw-2rem)] animate-pop-in rounded-xl border border-gk-border bg-gk-panel-2">
         <div className="flex items-center gap-2 border-b border-gk-border px-4 py-3">
           <Variable size={16} className="text-gk-blue" />
-          <h2 className="flex-1 text-[14px] font-semibold text-gk-strong">{editing ? t('Переменная {0}', original.key) : t('Новая переменная')}</h2>
+          <h2 className="flex-1 text-[14px] font-semibold text-gk-strong">{editing ? t('Переменная {0}', original!.key) : t('Новая переменная')}</h2>
           <button type="button" onClick={onClose} className="rounded p-1 text-gk-dim hover:bg-gk-hover hover:text-gk-text">
             <X size={16} />
           </button>
@@ -308,7 +332,7 @@ function VariableForm({ repoPath, opts, original, initial, onClose, onSaved }) {
               {error.hint && <div className="mt-0.5 text-gk-muted">{error.hint}</div>}
             </div>
           )}
-          {editing && (original.key !== v.key || (original.scope ?? '*') !== (v.scope.trim() || '*')) && (
+          {editing && (original!.key !== v.key || (original!.scope ?? '*') !== (v.scope.trim() || '*')) && (
             <div className="text-[11px] text-gk-dim">{t('Имя или окружение изменились — GitLab создаст новую переменную и удалит старую.')}</div>
           )}
         </div>
@@ -331,7 +355,7 @@ function VariableForm({ repoPath, opts, original, initial, onClose, onSaved }) {
 const inputCls =
   'w-full rounded-md bg-gk-bg px-2.5 py-1.5 text-[12.5px] text-gk-text outline-none ring-1 ring-gk-border placeholder:text-gk-dim focus:ring-gk-blue';
 
-function Field({ label, children }) {
+function Field({ label, children }: { label: ReactNode; children: ReactNode }) {
   return (
     <div>
       <div className="mb-1 text-[11px] font-medium text-gk-muted">{label}</div>
@@ -340,7 +364,7 @@ function Field({ label, children }) {
   );
 }
 
-function Check({ checked, onChange, label, hint, disabled }) {
+function Check({ checked, onChange, label, hint, disabled }: { checked: boolean; onChange: (checked: boolean) => void; label: ReactNode; hint?: ReactNode; disabled?: boolean }) {
   return (
     <label className={`flex cursor-pointer items-start gap-2 ${disabled ? 'cursor-not-allowed opacity-50' : ''}`}>
       <input type="checkbox" checked={checked} disabled={disabled} onChange={(e) => onChange(e.target.checked)} className="mt-0.5 accent-[var(--color-gk-green)]" />
@@ -352,7 +376,7 @@ function Check({ checked, onChange, label, hint, disabled }) {
   );
 }
 
-function Flag({ children, title, icon: Icon }) {
+function Flag({ children, title, icon: Icon }: { children: ReactNode; title?: string; icon?: ComponentType<{ size?: number }> }) {
   return (
     <span title={title} className="flex items-center gap-0.5 rounded bg-gk-fg/5 px-1.5 text-[10px] text-gk-muted">
       {Icon && <Icon size={9} />}
@@ -361,6 +385,6 @@ function Flag({ children, title, icon: Icon }) {
   );
 }
 
-function Center({ children }) {
+function Center({ children }: { children: ReactNode }) {
   return <div className="flex flex-1 items-center justify-center gap-2 text-[13px] text-gk-muted">{children}</div>;
 }

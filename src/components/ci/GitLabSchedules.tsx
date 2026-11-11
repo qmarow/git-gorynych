@@ -1,17 +1,39 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useState, type ButtonHTMLAttributes, type FormEvent, type ReactNode } from 'react';
 import { CalendarClock, ExternalLink, Loader2, Pencil, Play, Plus, Save, Trash2, UserRoundCheck, X } from 'lucide-react';
 import { CRON_PRESETS, TIMEZONES, describeCron, localTimezone } from '../../lib/cron.ts';
 import { StatusIcon, statusInfo } from '../PipelineStatus.tsx';
 import { t, tj, locale } from '../../i18n/index.ts';
+import type { ApiError, ApiResult } from '../../platform/tauri.ts';
+import type { CiId, GlScheduleAction_Deserialize, GlScheduleInput_Deserialize, GlScheduleList_Serialize, GlSchedule_Serialize, RemoteOptions_Deserialize } from '../../../crates/gorynych-tauri/bindings/commands.ts';
 
-const api = window.api;
+type Schedule = GlSchedule_Serialize;
+
+interface SchedulesApi {
+  gitlab: {
+    schedules: (dir: string, opts: unknown) => Promise<ApiResult<GlScheduleList_Serialize>>;
+    scheduleAction: (dir: string, action: GlScheduleAction_Deserialize, opts: unknown) => Promise<ApiResult<unknown>>;
+    saveSchedule: (dir: string, schedule: GlScheduleInput_Deserialize, opts: unknown) => Promise<ApiResult<Schedule>>;
+  };
+  openExternal: (url: string) => void;
+}
+
+const api = window.api as unknown as SchedulesApi;
+
+interface SchedulesProps {
+  repoPath: string;
+  opts: RemoteOptions_Deserialize | null | undefined;
+  branches: string[];
+  currentBranch?: string | null;
+  notify?: (toast: { type: string; title: ReactNode; hint?: ReactNode }) => void;
+  onOpenPipeline?: (id: CiId) => void;
+}
 
 /** Расписания пайплайнов (Build → Pipeline schedules): список, создание, правка, запуск сейчас */
-export default function GitLabSchedules({ repoPath, opts, branches, currentBranch, notify, onOpenPipeline }) {
-  const [state, setState] = useState({ loading: true, data: null, error: null });
-  const [form, setForm] = useState(null); // { schedule | null }
-  const [busy, setBusy] = useState(null);
-  const [armDelete, setArmDelete] = useState(null);
+export default function GitLabSchedules({ repoPath, opts, branches, currentBranch, notify, onOpenPipeline }: SchedulesProps) {
+  const [state, setState] = useState<{ loading: boolean; data: GlScheduleList_Serialize | null; error: ApiError | null }>({ loading: true, data: null, error: null });
+  const [form, setForm] = useState<{ schedule: Schedule | null } | null>(null); // { schedule | null }
+  const [busy, setBusy] = useState<string | null>(null);
+  const [armDelete, setArmDelete] = useState<CiId | null>(null);
 
   const load = useCallback(() => {
     api.gitlab.schedules(repoPath, opts).then((res) =>
@@ -20,7 +42,7 @@ export default function GitLabSchedules({ repoPath, opts, branches, currentBranc
   }, [repoPath, opts]);
   useEffect(load, [load]);
 
-  const action = async (s, type, okText) => {
+  const action = async (s: Schedule, type: string, okText: string) => {
     if (type === 'delete' && armDelete !== s.id) {
       setArmDelete(s.id);
       setTimeout(() => setArmDelete((x) => (x === s.id ? null : x)), 4000);
@@ -35,7 +57,7 @@ export default function GitLabSchedules({ repoPath, opts, branches, currentBranc
     load();
   };
 
-  const toggleActive = async (s) => {
+  const toggleActive = async (s: Schedule) => {
     setBusy(`toggle:${s.id}`);
     const res = await api.gitlab.saveSchedule(repoPath, { ...s, active: !s.active }, opts);
     setBusy(null);
@@ -57,7 +79,7 @@ export default function GitLabSchedules({ repoPath, opts, branches, currentBranc
       </div>
     );
   }
-  const { schedules, canWrite, me } = state.data;
+  const { schedules, canWrite, me } = state.data!;
 
   return (
     <div className="min-h-0 flex-1 overflow-y-auto p-4">
@@ -106,7 +128,7 @@ export default function GitLabSchedules({ repoPath, opts, branches, currentBranc
                   </div>
                   {s.lastPipeline && (
                     <button
-                      onClick={() => onOpenPipeline?.(s.lastPipeline.id)}
+                      onClick={() => onOpenPipeline?.(s.lastPipeline!.id)}
                       title={t('Последний запуск: пайплайн #{0} — {1}', s.lastPipeline.id, statusInfo(s.lastPipeline.status).label)}
                       className="flex shrink-0 items-center gap-1 rounded px-1.5 py-1 text-[11px] text-gk-muted hover:bg-gk-hover"
                     >
@@ -118,7 +140,7 @@ export default function GitLabSchedules({ repoPath, opts, branches, currentBranc
                       {busy === `play:${s.id}` ? <Loader2 size={13} className="animate-spin" /> : <Play size={13} />}
                     </IconBtn>
                     {notMine && canWrite && (
-                      <IconBtn title={t('Стать владельцем (сейчас — @{0}). Нужно, чтобы менять расписание', s.owner.username)} onClick={() => action(s, 'own', t('Теперь вы владелец расписания'))}>
+                      <IconBtn title={t('Стать владельцем (сейчас — @{0}). Нужно, чтобы менять расписание', s.owner!.username)} onClick={() => action(s, 'own', t('Теперь вы владелец расписания'))}>
                         <UserRoundCheck size={13} />
                       </IconBtn>
                     )}
@@ -134,7 +156,7 @@ export default function GitLabSchedules({ repoPath, opts, branches, currentBranc
                       <Trash2 size={13} />
                     </IconBtn>
                     {s.webUrl && (
-                      <IconBtn title={t('Открыть в GitLab')} onClick={() => api.openExternal(s.webUrl)}>
+                      <IconBtn title={t('Открыть в GitLab')} onClick={() => api.openExternal(s.webUrl!)}>
                         <ExternalLink size={13} />
                       </IconBtn>
                     )}
@@ -165,7 +187,7 @@ export default function GitLabSchedules({ repoPath, opts, branches, currentBranc
   );
 }
 
-function futureTime(iso) {
+function futureTime(iso: string): string {
   const diff = new Date(iso).getTime() - Date.now();
   if (diff <= 0) return t('скоро');
   const min = Math.round(diff / 60000);
@@ -175,7 +197,7 @@ function futureTime(iso) {
   return new Date(iso).toLocaleDateString(locale(), { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
 }
 
-function ScheduleForm({ repoPath, opts, schedule, branches, currentBranch, onClose, onSaved }) {
+function ScheduleForm({ repoPath, opts, schedule, branches, currentBranch, onClose, onSaved }: Pick<SchedulesProps, 'repoPath' | 'opts' | 'branches' | 'currentBranch'> & { schedule: Schedule | null; onClose: () => void; onSaved: (message: string) => void }) {
   const editing = Boolean(schedule);
   const tz = localTimezone();
   const [s, setS] = useState({
@@ -186,18 +208,18 @@ function ScheduleForm({ repoPath, opts, schedule, branches, currentBranch, onClo
     active: schedule?.active ?? true,
   });
   const [busy, setBusy] = useState(false);
-  const [error, setError] = useState(null);
-  const set = (patch) => setS((x) => ({ ...x, ...patch }));
+  const [error, setError] = useState<ApiError | null>(null);
+  const set = (patch: Partial<typeof s>) => setS((x) => ({ ...x, ...patch }));
   const human = describeCron(s.cron);
   const cronValid = /^(\S+\s+){4}\S+$/.test(s.cron.trim());
 
   useEffect(() => {
-    const onKey = (e) => e.key === 'Escape' && onClose();
+    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && onClose();
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, [onClose]);
 
-  const submit = async (e) => {
+  const submit = async (e: FormEvent) => {
     e.preventDefault();
     setBusy(true);
     setError(null);
@@ -294,7 +316,7 @@ function ScheduleForm({ repoPath, opts, schedule, branches, currentBranch, onClo
 const inputCls =
   'w-full rounded-md bg-gk-bg px-2.5 py-1.5 text-[12.5px] text-gk-text outline-none ring-1 ring-gk-border placeholder:text-gk-dim focus:ring-gk-blue';
 
-function Field({ label, children }) {
+function Field({ label, children }: { label: ReactNode; children: ReactNode }) {
   return (
     <div>
       <div className="mb-1 text-[11px] font-medium text-gk-muted">{label}</div>
@@ -303,7 +325,7 @@ function Field({ label, children }) {
   );
 }
 
-function IconBtn({ children, danger, ...props }) {
+function IconBtn({ children, danger, ...props }: ButtonHTMLAttributes<HTMLButtonElement> & { danger?: boolean }) {
   return (
     <button
       type="button"
@@ -317,7 +339,7 @@ function IconBtn({ children, danger, ...props }) {
   );
 }
 
-function Toggle({ checked, onChange, disabled }) {
+function Toggle({ checked, onChange, disabled }: { checked: boolean; onChange: () => void; disabled?: boolean }) {
   return (
     <button
       type="button"

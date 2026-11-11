@@ -23,8 +23,8 @@ import {
 import { relativeTime } from '../lib/format.ts';
 import { parseLog } from '../lib/ansi.ts';
 import { CiAuth } from './TokenSetup.tsx';
-import GitLabVariables from './ci/GitLabVariables.jsx';
-import GitLabSchedules from './ci/GitLabSchedules.jsx';
+import GitLabVariables from './ci/GitLabVariables.tsx';
+import GitLabSchedules from './ci/GitLabSchedules.tsx';
 import {
   ACTIVE_STATUSES,
   FAILURE_REASONS,

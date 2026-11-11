@@ -22,8 +22,8 @@ import {
 } from 'lucide-react';
 import { relativeTime } from '../../lib/format.ts';
 import { CiAuth } from '../TokenSetup.tsx';
-import GitLabVariables from './GitLabVariables.jsx';
-import GitLabSchedules from './GitLabSchedules.jsx';
+import GitLabVariables from './GitLabVariables.tsx';
+import GitLabSchedules from './GitLabSchedules.tsx';
 import JobLog from './JobLog.tsx';
 import RunDialog from './RunDialog.tsx';
 import Runners from './Runners.jsx';
