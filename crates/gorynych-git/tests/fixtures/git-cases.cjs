@@ -2,6 +2,8 @@
 // В шагах {{rev:X}} заменяется хэшем из `git rev-parse X`. Даты в окружении фиксированы, поэтому хэши на обеих сторонах одинаковы.
 
 const commitAll = (message) => [['git', 'add', '-A'], ['git', 'commit', '-q', '-m', message]];
+// 40 строк «строка N», часть заменена: { номер: текст }
+const lines40 = (changed = {}) => Array.from({ length: 40 }, (_, i) => `${changed[i + 1] ?? `строка ${i + 1}`}\n`).join('');
 
 const history = [
   ['write', 'a.txt', 'один\nдва\nтри\n'],
@@ -123,6 +125,29 @@ const CASES = [
       { call: 'fileDiff', params: { mode: 'untracked', path: 'нет.txt' }, looseError: true },
       { call: 'stash', hash: 'плохой' },
       { call: 'stash' },
+    ],
+  },
+  {
+    // «Весь файл» в окне изменений: интерфейс общий, поэтому fullFile поддержан и в 1.x
+    name: 'diff на весь файл',
+    setup: [
+      ['write', 'long.txt', lines40()],
+      ...commitAll('Длинный'),
+      ['write', 'long.txt', lines40({ 20: 'правка 20' })],
+      ...commitAll('Правка'),
+      ['write', 'long.txt', lines40({ 10: '  строка 10', 20: 'правка 20', 30: 'правка 30' })],
+      ['git', 'add', '-A'],
+      ['write', 'long.txt', lines40({ 10: '  строка 10', 20: 'правка 20', 30: 'правка 30', 35: 'правка 35' })],
+    ],
+    steps: [
+      { call: 'fileDiff', params: { mode: 'commit', hash: '{{rev:HEAD}}', parent: '{{rev:HEAD~1}}', path: 'long.txt' } },
+      { call: 'fileDiff', params: { mode: 'commit', hash: '{{rev:HEAD}}', parent: '{{rev:HEAD~1}}', path: 'long.txt', fullFile: true } },
+      { call: 'fileDiff', params: { mode: 'commit', hash: '{{rev:HEAD~1}}', path: 'long.txt', fullFile: true } },
+      { call: 'fileDiff', params: { mode: 'staged', path: 'long.txt', fullFile: true } },
+      { call: 'fileDiff', params: { mode: 'staged', path: 'long.txt', fullFile: true, ignoreWhitespace: true } },
+      { call: 'fileDiff', params: { mode: 'unstaged', path: 'long.txt', fullFile: true } },
+      { call: 'fileDiff', params: { mode: 'unstaged', path: 'long.txt', fullFile: true, conflicted: true } },
+      { call: 'fileDiff', params: { mode: 'untracked', path: 'long.txt', fullFile: true } },
     ],
   },
   {

@@ -639,11 +639,12 @@ function safeRelative(root, rel) {
  *  - 'staged'    — индекс против HEAD;
  *  - 'untracked' — новый файл целиком.
  */
-async function getFileDiff(dir, { mode, hash, parent, path: filePath, oldPath, ignoreWhitespace = false, conflicted = false }) {
+async function getFileDiff(dir, { mode, hash, parent, path: filePath, oldPath, ignoreWhitespace = false, conflicted = false, fullFile = false }) {
   const root = await resolveRepoRoot(dir);
   safeRelative(root, filePath);
   if (oldPath) safeRelative(root, oldPath);
-  const ws = ignoreWhitespace ? ['--ignore-all-space'] : [];
+  // fullFile — весь файл одним фрагментом (как `FULL_CONTEXT` в gorynych-git::diff): интерфейс общий для 1.x и 2.0
+  const ws = [...(ignoreWhitespace ? ['--ignore-all-space'] : []), ...(fullFile ? ['--unified=1000000'] : [])];
   const paths = ['--', ...(oldPath && oldPath !== filePath ? [oldPath] : []), filePath];
 
   if (mode === 'untracked') {
