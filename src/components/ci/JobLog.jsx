@@ -20,7 +20,7 @@ import {
   X,
 } from 'lucide-react';
 import { parseLog } from '../../lib/ansi.ts';
-import { ACTIVE_STATUSES, FAILURE_REASONS, StatusPill } from '../PipelineStatus.jsx';
+import { ACTIVE_STATUSES, FAILURE_REASONS, StatusPill } from '../PipelineStatus.tsx';
 import { ActionButton, Duration, ErrorNote, IconBtn, usePolling } from './common.jsx';
 import { t as tr, tj } from '../../i18n/index.ts';
 

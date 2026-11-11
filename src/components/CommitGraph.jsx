@@ -1,9 +1,9 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { flushSync } from 'react-dom';
 import { Check, Copy, FileSearch, Pencil, SlidersHorizontal } from 'lucide-react';
-import { RefKindIcon, RefsPopover, refKindLabel, useHoverPopover } from './RefBadge.jsx';
+import { RefKindIcon, RefsPopover, refKindLabel, useHoverPopover } from './RefBadge.tsx';
 import { edgePath, fitMetrics, graphWidth, laneColor, laneX, layoutGraph, metricsFor, rowY } from '../lib/graphLayout.ts';
-import { StatusIcon, statusInfo } from './PipelineStatus.jsx';
+import { StatusIcon, statusInfo } from './PipelineStatus.tsx';
 import { fullDate, initials, relativeTime, shortDate } from '../lib/format.ts';
 import { ResizeHandle, useStoredWidth } from './Resizer.tsx';
 import { avatarUrl, isFailed, markFailed } from '../lib/avatars.ts';

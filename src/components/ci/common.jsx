@@ -1,7 +1,7 @@
 // Общие мелочи панелей CI/CD: опрос, ошибки, кнопки, живой таймер, размер файла
 import { useEffect, useRef, useState } from 'react';
 import { AlertTriangle, Loader2 } from 'lucide-react';
-import { formatDuration } from '../PipelineStatus.jsx';
+import { formatDuration } from '../PipelineStatus.tsx';
 import { t as tr, locale } from '../../i18n/index.ts';
 
 /** Повторяем запрос с интервалом, пока окно видимо; delay может меняться, 0 — не опрашивать */

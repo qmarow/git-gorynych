@@ -1,8 +1,14 @@
 // Статусы пайплайнов и заданий (GitLab, GitHub, Gitea, Bitbucket — после нормализации): иконки в духе GitLab, подписи, форматирование времени
+import type { ReactNode } from 'react';
 import { readable } from '../lib/scheme.ts';
 import { t } from '../i18n/index.ts';
 
-export const STATUS = {
+export interface StatusStyle {
+  label: string;
+  color: string;
+}
+
+export const STATUS: Record<string, StatusStyle> = {
   success: { label: t('успешно'), color: '#3cf0a0' },
   failed: { label: t('ошибка'), color: '#f25d5d' },
   running: { label: t('выполняется'), color: '#5aa2ff' },
@@ -20,7 +26,7 @@ export const STATUS = {
 
 export const ACTIVE_STATUSES = new Set(['running', 'pending', 'preparing', 'waiting_for_resource', 'created', 'canceling']);
 
-export const SOURCE_LABELS = {
+export const SOURCE_LABELS: Record<string, string> = {
   push: 'push',
   merge_request_event: 'merge request',
   schedule: t('по расписанию'),
@@ -44,7 +50,7 @@ export const SOURCE_LABELS = {
   commit: 'push',
 };
 
-export const FAILURE_REASONS = {
+export const FAILURE_REASONS: Record<string, string> = {
   script_failure: t('ошибка в скрипте (команда завершилась с ненулевым кодом)'),
   runner_system_failure: t('сбой раннера'),
   stuck_or_timeout_failure: t('превышено время ожидания'),
@@ -59,12 +65,12 @@ export const FAILURE_REASONS = {
   unknown_failure: t('неизвестная причина'),
 };
 
-export function statusInfo(status) {
-  const info = STATUS[status] ?? { label: status ?? '—', color: '#8b93a7' };
+export function statusInfo(status: string | null | undefined): StatusStyle {
+  const info = STATUS[status as string] ?? { label: status ?? '—', color: '#8b93a7' };
   return { ...info, color: readable(info.color) };
 }
 
-export function formatDuration(sec) {
+export function formatDuration(sec: number | null | undefined): string | null {
   if (sec == null || Number.isNaN(sec)) return null;
   const s = Math.round(sec);
   if (s < 60) return t('{0} с', s);
@@ -74,13 +80,13 @@ export function formatDuration(sec) {
 }
 
 /** Иконка статуса: круг с символом, «выполняется» — вращающееся кольцо */
-export function StatusIcon({ status, size = 16, className = '', title }) {
+export function StatusIcon({ status, size = 16, className = '', title }: { status: string | null | undefined; size?: number; className?: string; title?: string }) {
   const { color, label } = statusInfo(status);
   const common = { width: size, height: size, viewBox: '0 0 16 16', className: `shrink-0 ${className}` };
   const tip = title ?? label;
   const ring = <circle cx="8" cy="8" r="6.6" fill="none" stroke={color} strokeWidth="1.6" />;
 
-  let inner = null;
+  let inner: ReactNode = null;
   switch (status) {
     case 'success':
       inner = <path d="M5.1 8.2l2 2 3.8-4.1" fill="none" stroke={color} strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" />;
@@ -131,7 +137,7 @@ export function StatusIcon({ status, size = 16, className = '', title }) {
 }
 
 /** Статус-«таблетка» с подписью */
-export function StatusPill({ status, big }) {
+export function StatusPill({ status, big }: { status: string | null | undefined; big?: boolean }) {
   const { color, label } = statusInfo(status);
   return (
     <span

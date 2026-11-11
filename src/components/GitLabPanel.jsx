@@ -33,7 +33,7 @@ import {
   StatusPill,
   formatDuration,
   statusInfo,
-} from './PipelineStatus.jsx';
+} from './PipelineStatus.tsx';
 import { t as tr, tj } from '../i18n/index.ts';
 
 const api = window.api;

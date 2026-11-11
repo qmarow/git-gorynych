@@ -81,4 +81,5 @@ node tests/ui-parity/components-compiled.mjs $old $PWD Toasts CodeText Resizer A
 
 | Компоненты | Коммит перевода |
 |---|---|
-| `Toasts`, `CodeText`, `Resizer`, `AppLogo`, `Loader`, `TooltipLayer` | см. `git log -- src/components/Toasts.tsx` |
+| `Toasts`, `CodeText`, `Resizer`, `AppLogo`, `Loader`, `TooltipLayer` | `348133e` |
+| `ContextMenu`, `PipelineStatus`, `RefBadge` | см. `git log -- src/components/RefBadge.tsx` |

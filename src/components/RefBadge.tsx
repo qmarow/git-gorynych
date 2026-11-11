@@ -1,13 +1,37 @@
-import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { Check, Cloud, CloudOff, Laptop, LogIn, Tag } from 'lucide-react';
 import { t, tj } from '../i18n/index.ts';
+
+/** Ссылка коммита из графа: локальная или серверная ветка, тег */
+export interface RefItem {
+  type: string;
+  name: string;
+  [key: string]: unknown;
+}
+
+/** Ветки и тег с одним именем на коммите: локальная и серверная сливаются в одну строку */
+export interface RefGroup {
+  name: string;
+  head?: boolean;
+  local?: boolean;
+  remote?: boolean;
+  tag?: boolean;
+  all: RefItem[];
+  remoteName?: string;
+}
+
+export interface RefActions {
+  checkout?: (ref: RefItem) => void;
+  deleteRemote?: (fullName: string) => void;
+  menu?: (ref: RefItem, x: number, y: number) => void;
+}
 
 /**
  * Где живёт ветка: ноутбук — только у вас, облако — только на сервере,
  * ноутбук с облаком — локальная и серверная ветки на одном коммите (синхронизированы).
  */
-export function RefKindIcon({ local, remote, tag, size = 12, className = '' }) {
+export function RefKindIcon({ local, remote, tag, size = 12, className = '' }: { local?: boolean; remote?: boolean; tag?: boolean; size?: number; className?: string }) {
   // Локальная и серверная на одном коммите — две маленькие иконки рядом (ноутбук + облако), как в GitKraken.
   // Раньше облако накладывалось на ноутбук, и при размере 12px это читалось как папка.
   const label = tag ? t('тег') : local && remote ? t('локальная и на сервере') : remote ? t('на сервере') : t('локальная');
@@ -30,7 +54,7 @@ export function RefKindIcon({ local, remote, tag, size = 12, className = '' }) {
   );
 }
 
-export function refKindLabel(g) {
+export function refKindLabel(g: Pick<RefGroup, 'tag' | 'local' | 'remote' | 'remoteName'>): string {
   if (g.tag) return t('тег');
   if (g.local && g.remote) return t('локальная = {0}', g.remoteName ?? t('сервер'));
   if (g.remote) return t('на сервере');
@@ -42,8 +66,18 @@ export function refKindLabel(g) {
  * groups: [{ name, head, local, remote, tag, all: [ref], remoteName? }]
  * actions: { checkout(ref), deleteRemote(fullName), menu(ref, x, y) }
  */
-export function RefsPopover({ anchor, groups, color, currentBranch, actions, onEnter, onLeave }) {
-  const ref = useRef(null);
+interface RefsPopoverProps {
+  anchor: HTMLElement | null;
+  groups: RefGroup[];
+  color: string;
+  currentBranch: string | null;
+  actions?: RefActions;
+  onEnter?: () => void;
+  onLeave?: () => void;
+}
+
+export function RefsPopover({ anchor, groups, color, currentBranch, actions, onEnter, onLeave }: RefsPopoverProps) {
+  const ref = useRef<HTMLDivElement>(null);
   const [pos, setPos] = useState({ left: -9999, top: -9999 });
   useLayoutEffect(() => {
     if (!anchor || !ref.current) return;
@@ -83,7 +117,7 @@ export function RefsPopover({ anchor, groups, color, currentBranch, actions, onE
   );
 }
 
-function Header({ children, color }) {
+function Header({ children, color }: { children: ReactNode; color: string }) {
   return (
     <div className="flex items-center gap-1.5 px-3 pb-1 pt-1.5 text-[10px] font-semibold uppercase tracking-wider text-gk-dim">
       <span className="h-1.5 w-1.5 rounded-full" style={{ backgroundColor: color }} />
@@ -92,7 +126,7 @@ function Header({ children, color }) {
   );
 }
 
-function Row({ g, currentBranch, actions }) {
+function Row({ g, currentBranch, actions }: { g: RefGroup; currentBranch: string | null; actions?: RefActions }) {
   const localRef = g.all.find((r) => r.type === 'local');
   const remoteRef = g.all.find((r) => r.type === 'remote');
   const primary = localRef ?? remoteRef ?? g.all[0];
@@ -146,7 +180,7 @@ function Row({ g, currentBranch, actions }) {
 /** Наведение с задержкой: открыть через 120 мс, закрыть через 180 мс (успеваем перевести курсор в поповер) */
 export function useHoverPopover() {
   const [open, setOpen] = useState(false);
-  const timer = useRef(null);
+  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const clear = () => {
     if (timer.current) clearTimeout(timer.current);
     timer.current = null;

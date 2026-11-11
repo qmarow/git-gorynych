@@ -51,7 +51,7 @@ import {
   FolderSync,
   Pencil,
 } from 'lucide-react';
-import ContextMenu from './components/ContextMenu.jsx';
+import ContextMenu from './components/ContextMenu.tsx';
 import TitleBar from './components/TitleBar.jsx';
 import Toolbar from './components/Toolbar.jsx';
 import Sidebar from './components/Sidebar.jsx';
@@ -82,7 +82,7 @@ import {
   readCachedAppearance,
   syncScheme,
 } from './lib/appearance.ts';
-import { ACTIVE_STATUSES } from './components/PipelineStatus.jsx';
+import { ACTIVE_STATUSES } from './components/PipelineStatus.tsx';
 import StatusBar from './components/StatusBar.jsx';
 import { IS_MAC, isMod, kb, openFolderLabel, openTerminalLabel } from './lib/platform.ts';
 import { DEFAULT_SYNC_MODE, SYNC_MODES, nextDelay, resetSyncStatus, setSyncStatus } from './lib/syncStatus.ts';

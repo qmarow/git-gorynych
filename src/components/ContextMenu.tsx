@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState, type ComponentType, type ReactNode } from 'react';
 import { ChevronRight, Copy } from 'lucide-react';
 import { kb } from '../lib/platform.ts';
 import { t } from '../i18n/index.ts';
@@ -7,8 +7,35 @@ import { t } from '../i18n/index.ts';
  * Контекстное меню.
  * items: [{ label, icon, onClick, disabled, danger, hint, submenu: [...] } | { separator: true } | { header: 'текст' }]
  */
-export default function ContextMenu({ x, y, items, onClose }) {
-  const ref = useRef(null);
+export interface MenuItem {
+  label?: ReactNode;
+  icon?: ComponentType<{ size?: number; className?: string }>;
+  onClick?: () => void;
+  disabled?: boolean;
+  danger?: boolean;
+  hint?: ReactNode;
+  title?: string;
+  submenu?: MenuEntry[];
+  separator?: boolean;
+  header?: ReactNode;
+  /** Шапка с кодом (хэш коммита): клик копирует */
+  onCopy?: () => void;
+  copyTip?: string;
+  code?: ReactNode;
+}
+
+/** Пункт или пусто: скрытые пункты (`cond && {...}`) отбрасываются */
+export type MenuEntry = MenuItem | null | undefined | false;
+
+interface ContextMenuProps {
+  x: number;
+  y: number;
+  items: MenuEntry[];
+  onClose: () => void;
+}
+
+export default function ContextMenu({ x, y, items, onClose }: ContextMenuProps) {
+  const ref = useRef<HTMLDivElement>(null);
   const [pos, setPos] = useState({ left: x, top: y });
 
   // Не даём меню вылезти за край окна
@@ -23,8 +50,8 @@ export default function ContextMenu({ x, y, items, onClose }) {
   }, [x, y]);
 
   useEffect(() => {
-    const onDown = (e) => !ref.current?.contains(e.target) && onClose();
-    const onKey = (e) => e.key === 'Escape' && onClose();
+    const onDown = (e: MouseEvent) => !ref.current?.contains(e.target as Node) && onClose();
+    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && onClose();
     window.addEventListener('mousedown', onDown);
     window.addEventListener('keydown', onKey);
     window.addEventListener('blur', onClose);
@@ -53,24 +80,24 @@ export default function ContextMenu({ x, y, items, onClose }) {
  * Английский термин Git в конце названия — «Перенести коммит (Cherry-pick)», «Перебазировать … (Rebase)…» —
  * выносим в приглушённую колонку справа: название не обрезается, а термин остаётся виден.
  */
-export function splitTerm(label) {
+export function splitTerm(label: ReactNode): { label: ReactNode; term: string | null } {
   const m = /^(.*\S)\s*\(([A-Za-z][A-Za-z -]*)\)(…)?$/.exec(String(label ?? ''));
   return m ? { label: `${m[1]}${m[3] ?? ''}`, term: m[2] } : { label, term: null };
 }
 
 // Разделители по краям и подряд (после скрытых пунктов) не показываем
-function tidy(items) {
-  const out = [];
-  for (const item of items.filter(Boolean)) {
-    if (item.separator && (!out.length || out.at(-1).separator)) continue;
+function tidy(items: MenuEntry[]): MenuItem[] {
+  const out: MenuItem[] = [];
+  for (const item of items.filter(Boolean) as MenuItem[]) {
+    if (item.separator && (!out.length || out.at(-1)!.separator)) continue;
     out.push(item);
   }
-  while (out.length && out.at(-1).separator) out.pop();
+  while (out.length && out.at(-1)!.separator) out.pop();
   return out;
 }
 
-function MenuList({ items, onClose }) {
-  const [openIndex, setOpenIndex] = useState(null);
+function MenuList({ items, onClose }: { items: MenuEntry[]; onClose: () => void }) {
+  const [openIndex, setOpenIndex] = useState<number | null>(null);
   return (
     <div className="glass-strong min-w-60 max-w-[30rem] origin-top-left animate-pop-in rounded-lg border border-gk-border bg-gk-panel-2 py-1 text-[13px]">
       {tidy(items).map((item, i) => {
@@ -82,7 +109,7 @@ function MenuList({ items, onClose }) {
               key={i}
               onClick={() => {
                 onClose();
-                item.onCopy();
+                item.onCopy!();
               }}
               data-tip={item.copyTip ?? t('Скопировать')}
               data-testid="menu-header-copy"
@@ -116,9 +143,9 @@ function MenuList({ items, onClose }) {
   );
 }
 
-function MenuRow({ item, open, onHover, onClose }) {
-  const rowRef = useRef(null);
-  const [side, setSide] = useState('right');
+function MenuRow({ item, open, onHover, onClose }: { item: MenuItem; open: boolean; onHover: () => void; onClose: () => void }) {
+  const rowRef = useRef<HTMLDivElement>(null);
+  const [side, setSide] = useState<'left' | 'right'>('right');
   const Icon = item.icon;
   const { label, term } = splitTerm(item.label);
   const hint = item.hint ?? term;

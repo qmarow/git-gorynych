@@ -2,7 +2,7 @@ import { AlertTriangle, ArrowDown, ArrowUp, Crosshair, FolderGit2, GitBranch, Lo
 import { openFolderLabel, openTerminalLabel } from '../lib/platform.ts';
 import { fullDate, relativeTime } from '../lib/format.ts';
 import { BACKGROUND_SEC, syncModeById, useSyncStatus } from '../lib/syncStatus.ts';
-import { ACTIVE_STATUSES, StatusIcon, statusInfo } from './PipelineStatus.jsx';
+import { ACTIVE_STATUSES, StatusIcon, statusInfo } from './PipelineStatus.tsx';
 import { Duration } from './ci/common.jsx';
 import { t as tr, tj, locale } from '../i18n/index.ts';
 
