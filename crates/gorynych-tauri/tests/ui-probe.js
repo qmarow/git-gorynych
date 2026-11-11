@@ -22,7 +22,8 @@ window.__GORYNYCH_PROBE__ = async (initial) => {
   // Выбор «Весь файл» из прошлого запуска: второй запуск теста с новым профилем WebView получает его из SQLite
   const fullFilePref = localStorage.getItem('diff.fullFile');
   localStorage.setItem('probe.saved', 'сохранено');
-  const editor = graph && fullFilePref === null ? await editorScenario(invoke, waitFor, sleep) : null;
+  // Исключение сценария — в отчёт, иначе тест ждёт до таймаута без объяснений
+  const editor = graph && fullFilePref === null ? await editorScenario(invoke, waitFor, sleep).catch((e) => ({ probeError: String(e?.stack ?? e) })) : null;
   // Запись уходит в базу пачкой через 400 мс
   await sleep(1000);
   const report = { ...initial, graph, seeded, fullFilePref, editor, errors: [...(window.__gorynychErrors || [])], text: graph ? '' : text().slice(0, 3000) };
@@ -49,6 +50,17 @@ async function editorScenario(invoke, waitFor, sleep) {
   $('diff-full-file').click();
   const full = await waitFor(() => diffText().includes('строка 5') && diffText().includes('строка 40'), 10000);
   steps.push(['fullFile', Boolean(full), localStorage.getItem('diff.fullFile')]);
+
+  // Карта изменений у полосы прокрутки: одна отметка (строка 20 заменена) около середины файла, клик — переход к ней
+  const marks = await waitFor(() => {
+    const list = [...document.querySelectorAll('[data-testid="change-mark"]')];
+    return list.length ? list : null;
+  }, 5000);
+  const mark = marks?.[0];
+  const top = mark ? parseFloat(mark.style.top) : NaN;
+  mark?.click();
+  const jumped = await waitFor(() => /\b1 \/ 1\b/.test(document.body.innerText || ''), 3000);
+  steps.push(['ruler', marks?.length ?? 0, mark?.dataset.kind ?? null, top > 35 && top < 60, mark?.dataset.tip ?? null, Boolean(jumped)]);
 
   await waitFor(() => $('diff-edit') && !$('diff-edit').disabled, 10000);
   $('diff-edit').click();

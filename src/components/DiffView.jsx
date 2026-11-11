@@ -7,6 +7,7 @@ import { isMod, kb } from '../lib/platform.ts';
 import { readable } from '../lib/scheme.ts';
 import { t as tr, tj } from '../i18n/index.ts';
 import FileEditor from './FileEditor.jsx';
+import ChangeRuler from './ChangeRuler.tsx';
 import { ConfirmDialog } from './Dialogs.jsx';
 
 const writePref = (key, on) => {
@@ -168,13 +169,18 @@ export default function DiffView({
 
   useEffect(() => setCurrent(-1), [data]);
 
+  // Перейти к изменению с номером index: по центру окна и короткая вспышка (F7, кнопки, клик по карте изменений)
+  const goToChange = (index) => {
+    const block = scrollRef.current?.querySelectorAll('[data-change]')[index];
+    if (!block) return;
+    setCurrent(index);
+    block.scrollIntoView({ block: 'center', behavior: 'smooth' });
+    block.animate?.([{ backgroundColor: 'rgb(47 155 255 / 0.35)' }, { backgroundColor: 'transparent' }], { duration: 900 });
+  };
   const goChange = (dir) => {
-    const blocks = [...(scrollRef.current?.querySelectorAll('[data-change]') ?? [])];
-    if (!blocks.length) return;
-    const next = current === -1 ? (dir > 0 ? 0 : blocks.length - 1) : (current + dir + blocks.length) % blocks.length;
-    setCurrent(next);
-    blocks[next].scrollIntoView({ block: 'center', behavior: 'smooth' });
-    blocks[next].animate?.([{ backgroundColor: 'rgb(47 155 255 / 0.35)' }, { backgroundColor: 'transparent' }], { duration: 900 });
+    const count = scrollRef.current?.querySelectorAll('[data-change]').length ?? 0;
+    if (!count) return;
+    goToChange(current === -1 ? (dir > 0 ? 0 : count - 1) : (current + dir + count) % count);
   };
 
   const toggleInline = () =>
@@ -566,7 +572,8 @@ export default function DiffView({
           )}
         </div>
       ) : (
-      <div ref={scrollRef} className="min-h-0 flex-1 overflow-auto font-mono text-[12px] leading-5 [tab-size:4]">
+      <div className="flex min-h-0 flex-1">
+      <div ref={scrollRef} className="min-h-0 min-w-0 flex-1 overflow-auto font-mono text-[12px] leading-5 [tab-size:4]">
         {!data ? (
           <Placeholder>
             {tj('{0} Загрузка diff…', [<Loader2 size={15} className="animate-spin" />])}</Placeholder>
@@ -596,6 +603,8 @@ export default function DiffView({
           <div className="border-t border-gk-border px-4 py-2 font-sans text-xs text-gk-dim">
             {tr('Diff слишком большой — показана только часть строк')}</div>
         )}
+      </div>
+      {data?.hunks?.length > 0 && <ChangeRuler scrollRef={scrollRef} deps={[data, view, highlights]} current={current} onJump={goToChange} />}
       </div>
       )}
       {leaveGuard && (
@@ -655,7 +664,7 @@ export function UnifiedDiff({ hunks, highlights, hunkProps, markers, syntax, hit
 const UnifiedRow = memo(function UnifiedRow({ line, startsChange, mark, segs, tokens, hits, current }) {
   const s = LINE_STYLES[line.t];
   return (
-    <div className={`flex ${s.row} ${markerCls(mark)}`} data-change={startsChange ? '' : undefined} title={mark ? `Pre-commit Guard: ${mark.label}` : undefined}>
+    <div className={`flex ${s.row} ${markerCls(mark)}`} data-change={startsChange ? '' : undefined} data-chg={line.t === '+' || line.t === '-' ? line.t : undefined} title={mark ? `Pre-commit Guard: ${mark.label}` : undefined}>
       <span className={`w-12 shrink-0 select-none pr-2 text-right ${s.num}`}>{line.o ?? ''}</span>
       <span className={`w-12 shrink-0 select-none pr-2 text-right ${s.num}`}>{line.n ?? ''}</span>
       <span className={`w-5 shrink-0 select-none text-center ${s.sign}`}>{line.t === '\\' ? '' : line.t}</span>
@@ -733,7 +742,12 @@ function SplitDiff({ hunks, highlights, hunkProps, markers, syntax, hitsAt, curr
             const prev = rows[ri - 1];
             const startsChange = (isChange(row.left) || isChange(row.right)) && !(prev && (isChange(prev.left) || isChange(prev.right)));
             return (
-              <div key={ri} className="grid grid-cols-2" data-change={startsChange ? '' : undefined}>
+              <div
+                key={ri}
+                className="grid grid-cols-2"
+                data-change={startsChange ? '' : undefined}
+                data-chg={isChange(row.left) && isChange(row.right) ? 'm' : isChange(row.left) ? '-' : isChange(row.right) ? '+' : undefined}
+              >
                 <SplitCell
                   cell={row.left}
                   segs={row.left ? highlights?.[hi]?.get(row.left.idx) ?? null : null}

@@ -158,7 +158,7 @@ fn real_interface_opens_repository_on_the_compatibility_layer() {
     assert_eq!(editor["partial"], json!(true), "по умолчанию — только места изменений: {report}");
     assert_eq!(
         editor["steps"],
-        json!([["diff", true], ["fullFile", true, "1"], ["editor", true], ["save", true, true, true], ["back", true], ["draft", true, true, true, true]]),
+        json!([["diff", true], ["fullFile", true, "1"], ["ruler", 1, "mod", true, "Изменение 1 из 1: +1 −1", true], ["editor", true], ["save", true, true, true], ["back", true], ["draft", true, true, true, true]]),
         "окно изменений: {report}"
     );
     assert!(fs::read_to_string(repo.join("файл.txt")).unwrap().contains("строка 2 из окна\n"));
