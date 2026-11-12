@@ -87,7 +87,6 @@ import {
 import { ACTIVE_STATUSES } from './components/PipelineStatus.tsx';
 import StatusBar from './components/StatusBar.tsx';
 import { IS_MAC, isMod, kb, openFolderLabel, openTerminalLabel } from './lib/platform.ts';
-import { DEFAULT_SYNC_MODE, SYNC_MODES, nextDelay, resetSyncStatus, setSyncStatus } from './lib/syncStatus.ts';
 import InitRepoDialog, { plural } from './components/InitRepoDialog.tsx';
 import CloneDialog from './components/CloneDialog.tsx';
 import AuthDialog, { type AuthSubmit, type AuthTarget } from './components/AuthDialog.tsx';
@@ -117,8 +116,9 @@ import {
   type WipChoice,
   type WipConflict,
 } from './components/Dialogs.tsx';
-import { t as tr, tj, locale } from './i18n/index.ts';
+import { t as tr, tj } from './i18n/index.ts';
 import { repoStore, useRepoStore, type LoadError, type RepoData, type RepoStatus } from './state/repoStore.ts';
+import { gitBusy, syncStore, useSyncStore } from './state/syncStore.ts';
 import { withStashes, type StashData } from './lib/graphStash.ts';
 import type { RefDragPayload } from './lib/dnd.ts';
 import type { ActionOutput, ActionPayload, RepoActionName } from './state/repoActions.ts';
@@ -594,7 +594,7 @@ export default function App() {
   const [tabs, setTabs] = useState<Tab[]>([]);
   const tabsLoaded = useRef(false);
 
-  const busyRef = useRef(false);
+  const busyRef = gitBusy; // идёт действие пользователя (`state/syncStore.ts`)
 
   // Загрузка показала другой репозиторий — права доступа проверяются заново
   useEffect(() => repoStore.getState().onSwitch(() => setAccess(null)), []);
@@ -3040,14 +3040,11 @@ export default function App() {
 
   /* ---------- Автообновление ---------- */
 
-  const [autoSync, setAutoSync] = useState(() => readPref('autoSync', '1') === '1');
-  const [bgFetching, setBgFetching] = useState(false);
-  const [lastFetch, setLastFetch] = useState<string | null>(null);
-  const [fetchError, setFetchError] = useState<string | null>(null);
-  const bgFetchingRef = useRef(false);
-  const syncKick = useRef<(() => void) | null>(null); // «проверь сервер сейчас»
-  const syncFailures = useRef(0); // ошибок подряд — для паузы (backoff)
-  const refreshTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const autoSync = useSyncStore((s) => s.autoSync);
+  const syncMode = useSyncStore((s) => s.syncMode);
+  const bgFetching = useSyncStore((s) => s.bgFetching);
+  const lastFetch = useSyncStore((s) => s.lastFetch);
+  const fetchError = useSyncStore((s) => s.fetchError);
   const accessRef = useRef<AccessState | null>(null);
   accessRef.current = access;
 
@@ -3081,147 +3078,15 @@ export default function App() {
     });
   }, [notify]);
 
-  useEffect(() => {
-    if (!api?.repo.onChanged) return undefined;
-    let pendingFull = false;
-    return api.repo.onChanged((ev) => {
-      if (ev.path !== repoRef.current?.path) return;
-      // Изменилось что-то в .git (коммит, ветка, stash, fetch) — нужен полный перечит графа;
-      // изменились только рабочие файлы — достаточно быстрого git status
-      pendingFull = pendingFull || ev.git;
-      clearTimeout(refreshTimer.current!);
-      const tick = async () => {
-        // Во время операции не мешаем — после неё граф и так перезагрузится
-        if (busyRef.current) {
-          refreshTimer.current = setTimeout(tick, 400);
-          return;
-        }
-        if (repoRef.current?.path !== ev.path) return;
-        // Любое изменение на диске — повод заново проверить staged-изменения (плашка «подозрительное место»)
-        setFsTick((n) => n + 1);
-        if (pendingFull || !api.repo.status) {
-          pendingFull = false;
-          loadRepo(ev.path, { silent: true });
-          return;
-        }
-        const res = await api.repo.status(ev.path);
-        if (!res.ok || repoRef.current?.path !== res.data.path) return;
-        repoStore.getState().applyStatus(res.data); // ничего не поменялось — repo тот же, без перерисовки
-      };
-      refreshTimer.current = setTimeout(tick, 30);
-    });
-  }, [loadRepo]);
+  // Изменения на диске: быстрый git status или полный перечит графа
+  useEffect(() => syncStore.getState().watchChanges(() => setFsTick((n) => n + 1)), []);
 
-  // 2) Фоновый fetch: новые коммиты и ветки с сервера
-  const backgroundFetch = useCallback(
-    async (manual = false) => {
-      const current = repoRef.current;
-      if (!current || current.remotes.length === 0 || bgFetchingRef.current || busyRef.current) return;
-      bgFetchingRef.current = true;
-      setBgFetching(true);
-      const res = await api.repo.action(current.path, 'fetch', {});
-      bgFetchingRef.current = false;
-      setBgFetching(false);
-      if (res.ok) {
-        setLastFetch(new Date().toLocaleTimeString(locale(), { hour: '2-digit', minute: '2-digit' }));
-        setFetchError(null);
-        if (syncFailures.current) {
-          syncFailures.current = 0;
-          setSyncStatus({ error: null, failures: 0, retryAt: null, at: Date.now() });
-          syncKick.current?.();
-        }
-        if (repoRef.current?.path === current.path) loadRepo(current.path, { silent: true });
-      } else {
-        setFetchError(res.error.message);
-        if (manual) notify({ type: 'error', title: `Fetch: ${res.error.message}`, hint: res.error.hint });
-      }
-    },
-    [loadRepo, notify],
+  // 2) Фоновый fetch — `syncStore.backgroundFetch` (кнопка в строке состояния)
+  // 3) Лёгкая проверка сервера — `syncStore.startRemoteSync`
+  useEffect(
+    () => syncStore.getState().startRemoteSync(repo?.path, repo?.remotes.length ?? 0, () => accessRef.current),
+    [repo?.path, autoSync, repo?.remotes.length],
   );
-
-  // 3) Лёгкая проверка сервера: каждые 5–300 с в активном окне, 90 с в фоне, пауза после ошибок.
-  //    Рекурсивный setTimeout — следующий отсчёт начинается после завершения проверки.
-  //    Сервер не изменился — в .git ничего не пишется; изменился — fetch и перечит графа.
-  const [syncMode, setSyncMode] = useState(() => {
-    const v = readPref('syncMode', DEFAULT_SYNC_MODE);
-    return SYNC_MODES.some((m) => m.id === v) ? v : DEFAULT_SYNC_MODE;
-  });
-  const syncModeRef = useRef(syncMode);
-  syncModeRef.current = syncMode;
-
-  useEffect(() => {
-    setLastFetch(null);
-    setFetchError(null);
-    resetSyncStatus();
-    syncFailures.current = 0;
-    const path = repo?.path;
-    if (!autoSync || !path || repo!.remotes.length === 0 || !api?.repo.remoteCheck) return undefined;
-    let stopped = false;
-    let timer: ReturnType<typeof setTimeout> | null = null;
-    let dueAt = 0;
-    const focused = () => document.hasFocus() && document.visibilityState === 'visible';
-    const delay = (retryAfter?: number | null) => nextDelay({ mode: syncModeRef.current, focused: focused(), failures: syncFailures.current, retryAfter });
-    const schedule = (ms: number) => {
-      clearTimeout(timer!);
-      if (stopped) return;
-      dueAt = Date.now() + ms;
-      timer = setTimeout(tick, ms);
-    };
-    const tick = async () => {
-      if (stopped || repoRef.current?.path !== path) return;
-      // isGitBusy: идёт действие пользователя или ручной fetch — пропускаем тик, чтобы не столкнуться с index.lock
-      if (busyRef.current || bgFetchingRef.current) return schedule(2000);
-      // Доступ на чтение не подтверждён — фоновая проверка не должна вызывать окно входа
-      if (!accessRef.current?.data?.canRead) return schedule(accessRef.current?.status === 'checking' ? 2000 : delay());
-      bgFetchingRef.current = true;
-      const res = await api.repo.remoteCheck!(path);
-      bgFetchingRef.current = false;
-      if (stopped) return;
-      const data: Omit<Partial<LightCheck_Serialize>, 'error'> & { status: string; error?: { message?: string; code?: string } | null } = res.ok ? res.data : { status: 'error', error: res.error };
-      if (data.status === 'skipped') return schedule(2000);
-      if (data.status === 'error') {
-        // Без всплывающих ошибок: увеличиваем паузу 15 → 30 → 60 с → 5 мин до первого успеха
-        syncFailures.current += 1;
-        const ms = delay(data.retryAfter);
-        setSyncStatus({ error: data.error?.message ?? tr('Нет связи с сервером'), code: data.error?.code ?? null, failures: syncFailures.current, retryAt: Date.now() + ms, focused: focused() });
-        return schedule(ms);
-      }
-      syncFailures.current = 0;
-      setSyncStatus({ at: Date.now(), via: data.via, ms: data.ms, error: null, code: null, failures: 0, retryAt: null, focused: focused() });
-      if (data.fetched) {
-        setLastFetch(new Date().toLocaleTimeString(locale(), { hour: '2-digit', minute: '2-digit' }));
-        setFetchError(null);
-        if (repoRef.current?.path === path && !busyRef.current) loadRepo(path, { silent: true });
-      }
-      schedule(delay());
-    };
-    // Вернулись в окно после долгой паузы — проверяем сразу, не дожидаясь фонового интервала
-    const onFocus = () => {
-      setSyncStatus({ focused: focused() });
-      if (!stopped && focused() && syncFailures.current === 0 && dueAt - Date.now() > delay()) schedule(400);
-    };
-    syncKick.current = () => schedule(300);
-    window.addEventListener('focus', onFocus);
-    window.addEventListener('blur', onFocus);
-    document.addEventListener('visibilitychange', onFocus);
-    schedule(2500);
-    return () => {
-      stopped = true;
-      clearTimeout(timer!);
-      syncKick.current = null;
-      window.removeEventListener('focus', onFocus);
-      window.removeEventListener('blur', onFocus);
-      document.removeEventListener('visibilitychange', onFocus);
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [repo?.path, autoSync, repo?.remotes.length, loadRepo]);
-
-  const changeSyncMode = (mode: string) => {
-    setSyncMode(mode);
-    writePref('syncMode', mode);
-    syncFailures.current = 0;
-    syncKick.current?.();
-  };
 
   // CI/CD занимает центр (а не diff, конфликт, сравнение или rebase поверх него)
   const ciCentered = Boolean(ciView) && !(conflictPath || diffTarget || compareView || rebaseView || fileView);
@@ -3676,12 +3541,8 @@ export default function App() {
             fetching: bgFetching,
             lastFetch: lastFetch,
             error: fetchError,
-            onToggle: () =>
-              setAutoSync((v) => {
-                writePref('autoSync', v ? '0' : '1');
-                return !v;
-              }),
-            onFetchNow: () => backgroundFetch(true),
+            onToggle: () => syncStore.getState().setAutoSync(!syncStore.getState().autoSync),
+            onFetchNow: () => syncStore.getState().backgroundFetch(true, notify),
           }}
           onJumpToHead={() => {
             setDiffTarget(null);
@@ -3733,11 +3594,8 @@ export default function App() {
           sync={{
             enabled: autoSync,
             mode: syncMode,
-            onMode: changeSyncMode,
-            onToggle: (v) => {
-              setAutoSync(v);
-              writePref('autoSync', v ? '1' : '0');
-            },
+            onMode: syncStore.getState().changeSyncMode,
+            onToggle: syncStore.getState().setAutoSync,
           }}
           guard={guardCfg}
           onGuardChange={updateGuard}
