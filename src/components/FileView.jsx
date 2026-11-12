@@ -12,7 +12,7 @@ import {
   Space,
   X,
 } from 'lucide-react';
-import DiffView from './DiffView.jsx';
+import DiffView from './DiffView.tsx';
 import { FILE_STATUS, avatarColor, initials, plural, relativeTime } from '../lib/format.ts';
 import { detectLanguage, highlightLines } from '../lib/highlight.ts';
 import { TokenText } from './CodeText.tsx';

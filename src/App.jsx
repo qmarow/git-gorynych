@@ -59,7 +59,7 @@ import CommitGraph from './components/CommitGraph.jsx';
 import CommitDetails from './components/CommitDetails.tsx';
 import Toasts from './components/Toasts.tsx';
 import TooltipLayer from './components/TooltipLayer.tsx';
-import DiffView from './components/DiffView.jsx';
+import DiffView from './components/DiffView.tsx';
 import ConflictView from './components/ConflictView.tsx';
 import CiView from './components/CiView.jsx';
 import RebaseView from './components/RebaseView.tsx';

@@ -99,6 +99,7 @@ node tests/ui-parity/components-compiled.mjs $old $PWD Toasts CodeText Resizer A
 | `CommitForm`, `CommitDetails` | см. `git log -- src/components/CommitForm.tsx` |
 | `SettingsDialog` | см. `git log -- src/components/SettingsDialog.tsx` |
 | `AuthDialog` | см. `git log -- src/components/AuthDialog.tsx` |
+| `DiffView`, `ci/DraftTools` | см. `git log -- src/components/DiffView.tsx` |
 
 Неиспользуемые имена `noUnusedLocals`/`noUnusedParameters` не пропускают, поэтому при переводе они убираются, а для
 сверки та же правка делается в старой копии:

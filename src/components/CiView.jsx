@@ -36,7 +36,7 @@ import { describeCron } from '../lib/cron.ts';
 import { TAG_KEYS, snippetsFor } from '../lib/ciSnippets.ts';
 import CiEditor from './ci/CiEditor.tsx';
 import JobForm from './ci/JobForm.tsx';
-import { ChoiceDialog, DraftBar, DraftDiff, LintPanel } from './ci/DraftTools.jsx';
+import { ChoiceDialog, DraftBar, DraftDiff, LintPanel } from './ci/DraftTools.tsx';
 import CheckView, { CheckBanner, SEVERITY, issueKey } from './ci/CheckView.tsx';
 import { kb } from '../lib/platform.ts';
 import { readable } from '../lib/scheme.ts';

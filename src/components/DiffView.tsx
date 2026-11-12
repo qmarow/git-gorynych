@@ -1,16 +1,100 @@
-import { memo, useEffect, useMemo, useRef, useState } from 'react';
-import { ArrowDownToLine, ArrowUpToLine, CaseSensitive, ChevronDown, ChevronUp, CodeXml, Columns2, Diff, FileText, FoldVertical, Highlighter, Loader2, Pencil, Regex, Rows3, Save, Search, Space, UnfoldVertical, X } from 'lucide-react';
-import { FILE_STATUS } from '../lib/format.ts';
-import { inlineHighlights } from '../lib/inlineDiff.ts';
-import { detectLanguage, findAll, highlightHunks, languageName, layerLine, searchRegex } from '../lib/highlight.ts';
+import { memo, useEffect, useMemo, useRef, useState, type ButtonHTMLAttributes, type MouseEvent as ReactMouseEvent, type ReactNode, type RefObject } from 'react';
+import { ArrowDownToLine, ArrowUpToLine, CaseSensitive, ChevronDown, ChevronUp, CodeXml, Columns2, Diff, FileText, FoldVertical, Highlighter, Loader2, Pencil, Regex, Rows3, Save, Search, Space, UnfoldVertical, X, type LucideIcon } from 'lucide-react';
+import { FILE_STATUS, type FileStatusLetter } from '../lib/format.ts';
+import { inlineHighlights, type InlineHighlights, type Segment } from '../lib/inlineDiff.ts';
+import { detectLanguage, findAll, highlightHunks, languageName, layerLine, searchRegex, type Hit, type Token } from '../lib/highlight.ts';
 import { isMod, kb } from '../lib/platform.ts';
 import { readable } from '../lib/scheme.ts';
 import { t as tr, tj } from '../i18n/index.ts';
 import FileEditor from './FileEditor.tsx';
 import ChangeRuler from './ChangeRuler.tsx';
 import { ConfirmDialog } from './Dialogs.tsx';
+import type { CompareSearchJump } from './CompareView.tsx';
+import type { ApiError, ApiResult } from '../platform/tauri.ts';
+import type { DiffHunk_Serialize, DiffLine_Serialize, FileDiff_Serialize, GuardFinding_Serialize, WorktreeSaved, WorktreeText } from '../../crates/gorynych-tauri/bindings/commands.ts';
 
-const writePref = (key, on) => {
+type DiffLine = DiffLine_Serialize;
+type DiffHunk = DiffHunk_Serialize;
+
+/** Ответ `repo:file-diff` (App добавляет `mode`) или ошибка его загрузки */
+export type DiffData = Omit<Partial<FileDiff_Serialize>, 'hunks'> & { hunks: DiffHunk[]; mode?: string; error?: string };
+
+/** Какой файл показан (App: `diffTarget`) */
+export interface DiffTarget {
+  kind: string;
+  mode: string;
+  hash?: string;
+  parent?: string | null;
+  stashId?: string;
+  commitHash?: string;
+  file: { path: string; oldPath?: string | null; status: string; untracked?: boolean | null };
+  list: unknown[];
+  index: number;
+  search?: (CompareSearchJump & { nonce?: number }) | null;
+}
+
+/** Действие с фрагментом (stage, unstage, отменить…) */
+export interface HunkAction {
+  id: string;
+  label: string;
+  icon?: LucideIcon;
+  title?: string;
+  danger?: boolean;
+}
+
+/** Кнопка над файлом (история, blame, вернуть файл) */
+export interface FileAction {
+  label: string;
+  onClick: (e: ReactMouseEvent<HTMLButtonElement>) => void;
+  title?: string;
+  disabled?: boolean;
+  danger?: boolean;
+  icon?: LucideIcon;
+}
+
+/** Правка файла рабочей копии: чтение и запись (App: `editorFor`) */
+export interface DiffEditor {
+  key: string;
+  read: () => Promise<ApiResult<WorktreeText>>;
+  save: (text: string, baseHash: string | undefined) => Promise<ApiResult<WorktreeSaved>>;
+  saved?: () => void;
+}
+
+/** Состояние редактора: загрузка, ошибка открытия или открытый текст (`base` — последняя сохранённая версия) */
+interface EditState {
+  loading?: boolean;
+  loadError?: ApiError;
+  text?: string;
+  base?: string;
+  hash?: string;
+  eol?: string;
+  mixedEol?: boolean;
+  saving?: boolean;
+  error?: ApiError | null;
+  savedAt?: number;
+  restored?: boolean;
+}
+
+interface SearchState {
+  open: boolean;
+  query: string;
+  caseSensitive: boolean;
+  regex: boolean;
+  changedOnly: boolean;
+}
+
+type GuardMark = Pick<GuardFinding_Serialize, 'category' | 'label'>;
+/** Находки Pre-commit Guard по номеру добавленной строки */
+type Markers = Map<number | null, GuardMark> | null | undefined;
+type Syntax = Map<number, Token[]>[] | null;
+type HitsAt = (hi: number, li: number) => Hit[] | null;
+interface HunkProps {
+  actions: HunkAction[];
+  busy: string | null;
+  onRun: (action: HunkAction, hunk: DiffHunk, index: number) => void;
+}
+
+const writePref = (key: string, on: boolean) => {
   try {
     localStorage.setItem(key, on ? '1' : '0');
   } catch {
@@ -19,15 +103,15 @@ const writePref = (key, on) => {
 };
 
 // Поиск переносится между файлами: открыли следующий файл — строка поиска остаётся
-let lastSearch = null;
+let lastSearch: SearchState | null = null;
 
 // Несохранённые правки редактора, если окно изменений закрылось без вопроса (другой файл выбран в списке, сменилась вкладка):
 // ключ — editor.key (репозиторий и путь), значение — { text, hash } той версии, с которой начиналась правка.
 // При следующем открытии того же файла правки возвращаются; если файл с тех пор изменился, сохранение покажет CHANGED_ON_DISK
-const editDrafts = new Map();
+const editDrafts = new Map<string, { text: string; hash: string | undefined }>();
 const MAX_HITS = 5000;
 
-const readPref = (key, def) => {
+const readPref = (key: string, def: boolean) => {
   try {
     const v = localStorage.getItem(key);
     return v === null ? def : v === '1';
@@ -36,8 +120,8 @@ const readPref = (key, def) => {
   }
 };
 
-const MODE_LABELS = {
-  commit: (t) => (t.kind === 'compare' ? `${t.parent.slice(0, 7)} → ${t.hash.slice(0, 7)}` : t.kind === 'stash' ? (t.stashId ?? 'stash') : tr('коммит {0}', t.hash.slice(0, 7))),
+const MODE_LABELS: Record<string, (t: DiffTarget) => string> = {
+  commit: (t) => (t.kind === 'compare' ? `${t.parent!.slice(0, 7)} → ${t.hash!.slice(0, 7)}` : t.kind === 'stash' ? (t.stashId ?? 'stash') : tr('коммит {0}', t.hash!.slice(0, 7))),
   staged: () => 'staged',
   unstaged: () => 'unstaged',
   untracked: () => tr('новый файл'),
@@ -61,11 +145,29 @@ export default function DiffView({
   fullFile = false,
   onToggleFullFile,
   editor,
+}: {
+  target: DiffTarget;
+  data: DiffData | null;
+  view: string;
+  ignoreWhitespace: boolean;
+  onViewChange: (view: string) => void;
+  onToggleWhitespace: () => void;
+  onPrev?: (() => void) | null;
+  onNext?: (() => void) | null;
+  onClose: () => void;
+  hunkActions?: HunkAction[] | null;
+  onHunkAction: (id: string, hunk: DiffHunk) => unknown;
+  fileActions?: FileAction[];
+  guardMarkers?: Markers;
+  initialSearch?: DiffTarget['search'];
+  fullFile?: boolean;
+  onToggleFullFile?: () => void;
+  editor?: DiffEditor | null;
 }) {
-  const [hunkBusy, setHunkBusy] = useState(null);
+  const [hunkBusy, setHunkBusy] = useState<string | null>(null);
   // Действия с фрагментом (stage / отменить …) — только когда фрагменты считаются по точному тексту и не на весь файл
   const actions = ignoreWhitespace || fullFile ? null : hunkActions?.length ? hunkActions : null;
-  const runHunk = async (action, hunk, index) => {
+  const runHunk = async (action: HunkAction, hunk: DiffHunk, index: number) => {
     setHunkBusy(`${action.id}:${index}`);
     try {
       await onHunkAction(action.id, hunk);
@@ -73,69 +175,69 @@ export default function DiffView({
       setHunkBusy(null);
     }
   };
-  const hunkProps = actions ? { actions, busy: hunkBusy, onRun: runHunk } : null;
+  const hunkProps: HunkProps | null = actions ? { actions, busy: hunkBusy, onRun: runHunk } : null;
 
   /* ---------- Редактирование файла рабочей копии (нового в 2.0) ---------- */
   // edit: null — просмотр diff; { loading } — файл читается; { loadError } — не открылся;
   // { text, base, hash, eol, mixedEol, saving, error, savedAt } — открыт: base — текст последней сохранённой версии
-  const [edit, setEdit] = useState(null);
-  const [caret, setCaret] = useState(null);
-  const [leaveGuard, setLeaveGuard] = useState(null); // () => void — что сделать после «Закрыть без сохранения»
+  const [edit, setEdit] = useState<EditState | null>(null);
+  const [caret, setCaret] = useState<{ line: number; column: number } | null>(null);
+  const [leaveGuard, setLeaveGuard] = useState<(() => void) | null>(null); // () => void — что сделать после «Закрыть без сохранения»
   const editing = Boolean(edit);
-  const dirty = Boolean(edit && edit.text !== undefined && edit.text !== edit.base);
-  const opened = (file) => ({ text: file.text, base: file.text, hash: file.hash, eol: file.eol, mixedEol: file.mixedEol });
+  const dirty = Boolean(edit && edit!.text !== undefined && edit!.text !== edit!.base);
+  const opened = (file: WorktreeText): EditState => ({ text: file.text, base: file.text, hash: file.hash, eol: file.eol, mixedEol: file.mixedEol });
 
   const openEditor = async () => {
     setEdit({ loading: true });
-    const res = await editor.read();
+    const res = await editor!.read();
     if (!res.ok) {
       setEdit({ loadError: res.error });
       return;
     }
-    const draft = editDrafts.get(editor.key);
+    const draft = editDrafts.get(editor!.key);
     // Черновик с отпечатком своей исходной версии: base — текст на диске, поэтому правки видны как несохранённые
     setEdit(draft ? { ...opened(res.data), text: draft.text, hash: draft.hash, restored: true } : opened(res.data));
   };
   // Окно закрылось с несохранёнными правками — запомнить их; сохранили или закрыли без сохранения — забыть
-  const editRef = useRef(null);
+  const editRef = useRef<EditState | null>(null);
   editRef.current = edit;
   useEffect(
     () => () => {
       const e = editRef.current;
-      if (editor?.key && e && e.text !== undefined && e.text !== e.base) editDrafts.set(editor.key, { text: e.text, hash: e.hash });
+      if (editor?.key && e && e.text !== undefined && e.text !== e.base) editDrafts.set(editor!.key, { text: e.text, hash: e.hash });
     },
     [], // eslint-disable-line react-hooks/exhaustive-deps
   );
   const reloadEditor = async () => {
-    editDrafts.delete(editor.key);
-    const res = await editor.read();
+    editDrafts.delete(editor!.key);
+    const res = await editor!.read();
     setEdit((e) => (res.ok ? opened(res.data) : { ...e, error: res.error }));
   };
   // overwrite — «Сохранить поверх»: отпечаток берётся у того, что сейчас на диске
   const saveEditor = async (overwrite = false) => {
-    if (!edit || edit.text === undefined || edit.saving) return;
-    const text = edit.text;
-    let hash = edit.hash;
+    if (!edit || edit!.text === undefined || edit!.saving) return;
+    const text = edit!.text;
+    let hash = edit!.hash;
     setEdit((e) => ({ ...e, saving: true, error: null }));
     if (overwrite) {
-      const fresh = await editor.read();
+      const fresh = await editor!.read();
       if (!fresh.ok) {
         setEdit((e) => ({ ...e, saving: false, error: fresh.error }));
         return;
       }
       hash = fresh.data.hash;
     }
-    const res = await editor.save(text, hash);
+    const res = await editor!.save(text, hash);
     setEdit((e) => (res.ok ? { ...e, saving: false, error: null, hash: res.data.hash, base: text, savedAt: Date.now(), restored: false } : { ...e, saving: false, error: res.error }));
     if (res.ok) {
-      editDrafts.delete(editor.key);
-      editor.saved?.();
+      editDrafts.delete(editor!.key);
+      editor!.saved?.();
     }
   };
   // Несохранённые правки не теряются молча: закрыть редактор, перейти к другому файлу или закрыть diff — только после вопроса
-  const guarded = (fn) => (...args) => (dirty ? setLeaveGuard(() => () => fn(...args)) : fn(...args));
+  const guarded = <A extends unknown[]>(fn: (...args: A) => void) => (...args: A) => (dirty ? setLeaveGuard(() => () => fn(...args)) : fn(...args));
   const closeEditor = guarded(() => {
-    editDrafts.delete(editor.key);
+    editDrafts.delete(editor!.key);
     setEdit(null);
     setCaret(null);
   });
@@ -144,7 +246,7 @@ export default function DiffView({
   const next = onNext && guarded(onNext);
 
   const [inline, setInline] = useState(() => readPref('diff.inline', true));
-  const scrollRef = useRef(null);
+  const scrollRef = useRef<HTMLDivElement>(null);
   const [current, setCurrent] = useState(-1); // текущий фрагмент изменений для навигации
 
   // Подсветка изменений внутри строк — для каждого фрагмента (hunk) своя карта
@@ -170,14 +272,14 @@ export default function DiffView({
   useEffect(() => setCurrent(-1), [data]);
 
   // Перейти к изменению с номером index: по центру окна и короткая вспышка (F7, кнопки, клик по карте изменений)
-  const goToChange = (index) => {
+  const goToChange = (index: number) => {
     const block = scrollRef.current?.querySelectorAll('[data-change]')[index];
     if (!block) return;
     setCurrent(index);
     block.scrollIntoView({ block: 'center', behavior: 'smooth' });
     block.animate?.([{ backgroundColor: 'rgb(47 155 255 / 0.35)' }, { backgroundColor: 'transparent' }], { duration: 900 });
   };
-  const goChange = (dir) => {
+  const goChange = (dir: number) => {
     const count = scrollRef.current?.querySelectorAll('[data-change]').length ?? 0;
     if (!count) return;
     goToChange(current === -1 ? (dir > 0 ? 0 : count - 1) : (current + dir + count) % count);
@@ -192,7 +294,7 @@ export default function DiffView({
   /* ---------- Подсветка синтаксиса: сначала текст, цвета — следом (не задерживает открытие файла) ---------- */
   const [syntaxOn, setSyntaxOn] = useState(() => readPref('diff.syntax', true));
   const lang = useMemo(() => detectLanguage(target.file.path), [target.file.path]);
-  const [syntax, setSyntax] = useState(null);
+  const [syntax, setSyntax] = useState<Syntax>(null);
   useEffect(() => {
     setSyntax(null);
     if (!syntaxOn || !lang || !data?.hunks?.length) return undefined;
@@ -210,17 +312,17 @@ export default function DiffView({
     });
 
   /* ---------- Поиск в изменениях (Ctrl+F) ---------- */
-  const [search, setSearch] = useState(() => {
+  const [search, setSearch] = useState<SearchState>(() => {
     const init = initialSearch ?? (lastSearch?.open ? lastSearch : null);
     return { open: Boolean(init), query: init?.query ?? '', caseSensitive: Boolean(init?.caseSensitive), regex: Boolean(init?.regex), changedOnly: Boolean(init?.changedOnly) };
   });
   const [hitIndex, setHitIndex] = useState(0);
-  const jumpLine = useRef(initialSearch?.line ?? null); // открыли из поиска по сравнению — к этой строке
-  const searchInput = useRef(null);
+  const jumpLine = useRef<{ t: string; n: number | null; o: number | null } | null>(initialSearch?.line ?? null); // открыли из поиска по сравнению — к этой строке
+  const searchInput = useRef<HTMLInputElement>(null);
   useEffect(() => {
     lastSearch = search;
   }, [search]);
-  const patchSearch = (p) => setSearch((s) => ({ ...s, ...p }));
+  const patchSearch = (p: Partial<SearchState>) => setSearch((s) => ({ ...s, ...p }));
   const openSearch = () => {
     patchSearch({ open: true });
     requestAnimationFrame(() => {
@@ -231,11 +333,11 @@ export default function DiffView({
   const closeSearch = () => patchSearch({ open: false });
 
   const { re: searchRe, error: searchError } = useMemo(
-    () => (search.open ? searchRegex(search.query, search) : { re: null }),
+    () => (search.open ? searchRegex(search.query, search) : ({ re: null } as { re: null; error?: string })),
     [search],
   );
   const hits = useMemo(() => {
-    const out = [];
+    const out: { hi: number; li: number; start: number; end: number }[] = [];
     if (!searchRe || !data?.hunks) return out;
     outer: for (let hi = 0; hi < data.hunks.length; hi++) {
       const lines = data.hunks[hi].lines;
@@ -252,11 +354,11 @@ export default function DiffView({
   }, [searchRe, data, search.changedOnly]);
   // Совпадения по строкам: массивы стабильны между переходами — перерисовываются только две строки
   const hitsByLine = useMemo(() => {
-    const map = new Map();
+    const map = new Map<string, Hit[]>();
     hits.forEach((h, idx) => {
       const key = `${h.hi}:${h.li}`;
       if (!map.has(key)) map.set(key, []);
-      map.get(key).push({ start: h.start, end: h.end, idx });
+      map.get(key)!.push({ start: h.start, end: h.end, idx });
     });
     return map;
   }, [hits]);
@@ -291,13 +393,13 @@ export default function DiffView({
     return () => cancelAnimationFrame(frame);
   }, [hitIndex, hits, search.open, view]);
 
-  const stepHit = (dir) => hits.length && setHitIndex((i) => (i + dir + hits.length) % hits.length);
-  const hitsAt = (hi, li) => hitsByLine.get(`${hi}:${li}`) ?? null;
+  const stepHit = (dir: number) => hits.length && setHitIndex((i) => (i + dir + hits.length) % hits.length);
+  const hitsAt = (hi: number, li: number) => hitsByLine.get(`${hi}:${li}`) ?? null;
   const lineView = { syntax, hitsAt, current: search.open && hits.length ? hitIndex : null };
 
   // Ctrl+F — поиск в этом файле (а не по коммитам); перехватываем раньше общего обработчика окна
   useEffect(() => {
-    const onKey = (e) => {
+    const onKey = (e: KeyboardEvent) => {
       if (editing || document.querySelector('.fixed.inset-0')) return;
       const key = e.key.toLowerCase();
       if (isMod(e) && !e.altKey && !e.shiftKey && (key === 'f' || key === 'а')) {
@@ -316,7 +418,7 @@ export default function DiffView({
 
   // Esc — закрыть, Alt+↑/↓ — предыдущий/следующий файл, F7 / Shift+F7 — следующее/предыдущее изменение
   useEffect(() => {
-    const onKey = (e) => {
+    const onKey = (e: KeyboardEvent) => {
       if (document.querySelector('.fixed.inset-0')) return; // открыт диалог
       if (editing) {
         if (e.key === 'Escape' && !e.defaultPrevented) closeEditor();
@@ -341,7 +443,7 @@ export default function DiffView({
   const parts = file.path.split('/');
   const name = parts.pop();
   const dir = parts.join('/');
-  const raw = FILE_STATUS[file.status] ?? FILE_STATUS.M;
+  const raw = FILE_STATUS[file.status as FileStatusLetter] ?? FILE_STATUS.M;
   const status = { ...raw, color: readable(raw.color) };
 
   return (
@@ -448,15 +550,15 @@ export default function DiffView({
         {editor && (
           <button
             onClick={openEditor}
-            disabled={!data || Boolean(data.error) || data.binary || data.tooLarge}
+            disabled={(!data || Boolean(data.error) || data.binary || data.tooLarge) as boolean}
             data-testid="diff-edit"
-            data-draft={editDrafts.has(editor.key) ? '1' : undefined}
-            title={kb(editDrafts.has(editor.key) ? tr('В редакторе остались несохранённые правки этого файла — открыть их') : tr('Редактировать файл в рабочей папке (Ctrl+S — сохранить)'))}
+            data-draft={editDrafts.has(editor!.key) ? '1' : undefined}
+            title={kb(editDrafts.has(editor!.key) ? tr('В редакторе остались несохранённые правки этого файла — открыть их') : tr('Редактировать файл в рабочей папке (Ctrl+S — сохранить)'))}
             className={`ml-1 flex h-6 shrink-0 items-center gap-1 rounded px-2 text-[11.5px] ring-1 transition-colors disabled:opacity-40 ${
-              editDrafts.has(editor.key) ? 'text-gk-yellow ring-gk-yellow/50 enabled:hover:bg-gk-yellow/10' : 'text-gk-muted ring-gk-border enabled:hover:bg-gk-fg/10 enabled:hover:text-gk-text'
+              editDrafts.has(editor!.key) ? 'text-gk-yellow ring-gk-yellow/50 enabled:hover:bg-gk-yellow/10' : 'text-gk-muted ring-gk-border enabled:hover:bg-gk-fg/10 enabled:hover:text-gk-text'
             }`}
           >
-            <Pencil size={12} /> {editDrafts.has(editor.key) ? tr('Продолжить правку') : tr('Редактировать')}
+            <Pencil size={12} /> {editDrafts.has(editor!.key) ? tr('Продолжить правку') : tr('Редактировать')}
           </button>
         )}
         {changeCount > 0 && (
@@ -478,29 +580,29 @@ export default function DiffView({
         {editing && (
           <div className="ml-2 flex shrink-0 items-center gap-2 text-[11px]">
             {caret && <span className="text-gk-dim">{tr('Стр {0}, кол {1}', caret.line, caret.column)}</span>}
-            {edit.mixedEol && (
-              <span className="text-gk-yellow" title={tr('В файле есть и CRLF, и LF: при сохранении все строки получат {0}', edit.eol === '\r\n' ? 'CRLF' : 'LF')}>
+            {edit!.mixedEol && (
+              <span className="text-gk-yellow" title={tr('В файле есть и CRLF, и LF: при сохранении все строки получат {0}', edit!.eol === '\r\n' ? 'CRLF' : 'LF')}>
                 {tr('Смешанные окончания строк')}
               </span>
             )}
-            {edit.restored && (
+            {edit!.restored && (
               <span className="text-gk-blue" title={tr('Окно изменений закрылось, пока правки не были сохранены: они возвращены. «Закрыть редактор» без сохранения их отбросит.')}>
                 {tr('Правки восстановлены')}
               </span>
             )}
             {dirty ? (
               <span className="text-gk-yellow" data-testid="file-editor-dirty">{tr('Не сохранено')}</span>
-            ) : edit.savedAt ? (
+            ) : edit!.savedAt ? (
               <span className="text-gk-green" data-testid="file-editor-saved">{tr('Сохранено')}</span>
             ) : null}
             <button
               onClick={() => saveEditor()}
-              disabled={!dirty || edit.saving}
+              disabled={!dirty || edit!.saving}
               data-testid="file-editor-save"
               title={kb(tr('Сохранить (Ctrl+S)'))}
               className="flex h-6 items-center gap-1 rounded bg-gk-blue/20 px-2 text-[11.5px] text-gk-blue ring-1 ring-gk-blue/40 transition-colors enabled:hover:bg-gk-blue/30 disabled:opacity-40"
             >
-              {edit.saving ? <Loader2 size={12} className="animate-spin" /> : <Save size={12} />} {tr('Сохранить')}
+              {edit!.saving ? <Loader2 size={12} className="animate-spin" /> : <Save size={12} />} {tr('Сохранить')}
             </button>
             <button
               onClick={closeEditor}
@@ -517,10 +619,10 @@ export default function DiffView({
           <span className="mr-1 text-[11px] text-gk-dim">
             {target.index + 1} / {target.list.length}
           </span>
-          <IconBtn title={kb(tr('Предыдущий файл (Alt+↑)'))} disabled={!onPrev} onClick={prev}>
+          <IconBtn title={kb(tr('Предыдущий файл (Alt+↑)'))} disabled={!onPrev} onClick={prev!}>
             <ChevronUp size={15} />
           </IconBtn>
-          <IconBtn title={kb(tr('Следующий файл (Alt+↓)'))} disabled={!onNext} onClick={next}>
+          <IconBtn title={kb(tr('Следующий файл (Alt+↓)'))} disabled={!onNext} onClick={next!}>
             <ChevronDown size={15} />
           </IconBtn>
           <IconBtn title={tr('Закрыть (Esc)')} onClick={close}>
@@ -545,13 +647,13 @@ export default function DiffView({
 
       {editing ? (
         <div className="flex min-h-0 flex-1 flex-col">
-          {edit.error && (
+          {edit!.error && (
             <div data-testid="file-editor-error" className="flex shrink-0 items-center gap-2 border-b border-gk-red/30 bg-gk-red/10 px-3 py-1.5 text-xs text-gk-red">
               <span className="min-w-0 flex-1">
-                {edit.error.message}
-                {edit.error.hint ? ` ${edit.error.hint}` : ''}
+                {edit!.error.message}
+                {edit!.error.hint ? ` ${edit!.error.hint}` : ''}
               </span>
-              {edit.error.code === 'CHANGED_ON_DISK' && (
+              {edit!.error.code === 'CHANGED_ON_DISK' && (
                 <>
                   <button onClick={reloadEditor} className="rounded px-2 py-0.5 ring-1 ring-gk-red/40 hover:bg-gk-red/15">
                     {tr('Перечитать')}
@@ -563,12 +665,12 @@ export default function DiffView({
               )}
             </div>
           )}
-          {edit.loading ? (
+          {edit!.loading ? (
             <Placeholder>{tj('{0} Открываю файл…', [<Loader2 size={15} className="animate-spin" />])}</Placeholder>
-          ) : edit.loadError ? (
-            <Placeholder className="text-gk-red">{edit.loadError.message}</Placeholder>
+          ) : edit!.loadError ? (
+            <Placeholder className="text-gk-red">{edit!.loadError.message}</Placeholder>
           ) : (
-            <FileEditor value={edit.text} onChange={(text) => setEdit((e) => ({ ...e, text }))} lang={syntaxOn ? lang : null} onSave={() => saveEditor()} onCaret={setCaret} />
+            <FileEditor value={edit!.text!} onChange={(text) => setEdit((e) => ({ ...e, text }))} lang={syntaxOn ? lang : null} onSave={() => saveEditor()} onCaret={setCaret} />
           )}
         </div>
       ) : (
@@ -583,7 +685,7 @@ export default function DiffView({
           <Placeholder>
             {tj('{0} Бинарный файл — построчный diff недоступен', [<FileText size={15} />])}</Placeholder>
         ) : data.tooLarge ? (
-          <Placeholder>{tj('Файл слишком большой ({0} КБ) для просмотра', [Math.round(data.size / 1024)])}</Placeholder>
+          <Placeholder>{tj('Файл слишком большой ({0} КБ) для просмотра', [Math.round(data.size! / 1024)])}</Placeholder>
         ) : data.hunks.length === 0 ? (
           <Placeholder>
             {data.eolOnly
@@ -604,7 +706,7 @@ export default function DiffView({
             {tr('Diff слишком большой — показана только часть строк')}</div>
         )}
       </div>
-      {data?.hunks?.length > 0 && <ChangeRuler scrollRef={scrollRef} deps={[data, view, highlights]} current={current} onJump={goToChange} />}
+      {data?.hunks?.length! > 0 && <ChangeRuler scrollRef={scrollRef} deps={[data, view, highlights]} current={current} onJump={goToChange} />}
       </div>
       )}
       {leaveGuard && (
@@ -618,7 +720,7 @@ export default function DiffView({
 
 /* ---------- Unified ---------- */
 
-const LINE_STYLES = {
+const LINE_STYLES: Record<string, { row: string; num: string; sign: string }> = {
   '+': { row: 'bg-gk-green/[0.09]', num: 'bg-gk-green/[0.13] text-gk-green/70', sign: 'text-gk-green' },
   '-': { row: 'bg-gk-red/[0.10]', num: 'bg-gk-red/[0.15] text-gk-red/70', sign: 'text-gk-red' },
   ' ': { row: '', num: 'text-gk-dim', sign: 'text-gk-dim' },
@@ -626,23 +728,34 @@ const LINE_STYLES = {
 };
 
 // Строка с находкой Pre-commit Guard: жёлтая/красная метка слева и подсказка
-const markerOf = (markers, line) => (markers && line.t === '+' ? markers.get(line.n) : null);
-const markerCls = (m) => (m ? (m.category === 'secret' ? 'shadow-[inset_3px_0_0_rgb(242_93_93)]' : 'shadow-[inset_3px_0_0_rgb(242_202_51)]') : '');
+const markerOf = (markers: Markers, line: DiffLine) => (markers && line.t === '+' ? markers.get(line.n) : null);
+const markerCls = (m: GuardMark | null | undefined) => (m ? (m.category === 'secret' ? 'shadow-[inset_3px_0_0_rgb(242_93_93)]' : 'shadow-[inset_3px_0_0_rgb(242_202_51)]') : '');
 
 // Совпадения строки и номер текущего (если он в этой строке) — для мемоизированной строки
-const lineHits = (hitsAt, current, hi, li) => {
+const lineHits = (hitsAt: HitsAt | undefined, current: number | null, hi: number, li: number) => {
   const hits = hitsAt?.(hi, li) ?? null;
   return { hits, current: hits && current !== null && hits.some((h) => h.idx === current) ? current : null };
 };
 
-export function UnifiedDiff({ hunks, highlights, hunkProps, markers, syntax, hitsAt, current = null }) {
+/** Общие свойства Unified и Split */
+export interface DiffBodyProps {
+  hunks: DiffHunk[];
+  highlights: InlineHighlights[] | null;
+  hunkProps?: HunkProps | null;
+  markers?: Markers;
+  syntax?: Syntax;
+  hitsAt?: HitsAt;
+  current?: number | null;
+}
+
+export function UnifiedDiff({ hunks, highlights, hunkProps, markers, syntax, hitsAt, current = null }: DiffBodyProps) {
   return (
     <div className="min-w-max pb-6">
       {hunks.map((hunk, hi) => (
         <div key={hi} className="group/hunk">
           <HunkHeader hunk={hunk} index={hi} {...hunkProps} />
           {hunk.lines.map((line, li) => {
-            const startsChange = (line.t === '+' || line.t === '-') && !['+', '-'].includes(hunk.lines[li - 1]?.t);
+            const startsChange = (line.t === '+' || line.t === '-') && !['+', '-'].includes(hunk.lines[li - 1]?.t as string);
             return (
               <UnifiedRow
                 key={li}
@@ -661,7 +774,14 @@ export function UnifiedDiff({ hunks, highlights, hunkProps, markers, syntax, hit
   );
 }
 
-const UnifiedRow = memo(function UnifiedRow({ line, startsChange, mark, segs, tokens, hits, current }) {
+interface RowText {
+  segs: Segment[] | null;
+  tokens: Token[] | null;
+  hits?: Hit[] | null;
+  current?: number | null;
+}
+
+const UnifiedRow = memo(function UnifiedRow({ line, startsChange, mark, segs, tokens, hits, current }: RowText & { line: DiffLine; startsChange: boolean; mark: GuardMark | null | undefined }) {
   const s = LINE_STYLES[line.t];
   return (
     <div className={`flex ${s.row} ${markerCls(mark)}`} data-change={startsChange ? '' : undefined} data-chg={line.t === '+' || line.t === '-' ? line.t : undefined} title={mark ? `Pre-commit Guard: ${mark.label}` : undefined}>
@@ -679,8 +799,10 @@ const UnifiedRow = memo(function UnifiedRow({ line, startsChange, mark, segs, to
 
 // Сопоставляем удаления и добавления: похожие строки — друг напротив друга, контекст — в обе стороны.
 // pairs: Map индекс удалённой → индекс добавленной (из подсветки внутри строк); без неё — по порядку.
-function toSplitRows(lines, pairs) {
-  const rows = [];
+type Cell = { line: DiffLine; idx: number } | null;
+
+function toSplitRows(lines: DiffLine[], pairs: Map<number, number> | undefined) {
+  const rows: { left: Cell; right: Cell }[] = [];
   let i = 0;
   while (i < lines.length) {
     const line = lines[i];
@@ -689,8 +811,8 @@ function toSplitRows(lines, pairs) {
       i++;
       continue;
     }
-    const dels = [];
-    const adds = [];
+    const dels: number[] = [];
+    const adds: number[] = [];
     while (i < lines.length && lines[i].t === '-') dels.push(i++);
     while (i < lines.length && lines[i].t === '+') adds.push(i++);
     const paired = [...dels].filter((d) => pairs?.has(d));
@@ -706,7 +828,7 @@ function toSplitRows(lines, pairs) {
     }
     let a = 0;
     for (const d of dels) {
-      const target = pairs.get(d);
+      const target = pairs!.get(d);
       if (target === undefined) {
         rows.push({ left: { line: lines[d], idx: d }, right: null });
         continue;
@@ -727,7 +849,7 @@ function toSplitRows(lines, pairs) {
   return rows;
 }
 
-function SplitDiff({ hunks, highlights, hunkProps, markers, syntax, hitsAt, current = null }) {
+function SplitDiff({ hunks, highlights, hunkProps, markers, syntax, hitsAt, current = null }: DiffBodyProps) {
   const prepared = useMemo(
     () => hunks.map((h, hi) => ({ hunk: h, rows: toSplitRows(h.lines, highlights?.[hi]?.pairs) })),
     [hunks, highlights],
@@ -738,7 +860,7 @@ function SplitDiff({ hunks, highlights, hunkProps, markers, syntax, hitsAt, curr
         <div key={hi} className="group/hunk">
           <HunkHeader hunk={hunk} index={hi} {...hunkProps} />
           {rows.map((row, ri) => {
-            const isChange = (r) => r && (r.line.t === '+' || r.line.t === '-');
+            const isChange = (r: Cell) => r && (r.line.t === '+' || r.line.t === '-');
             const prev = rows[ri - 1];
             const startsChange = (isChange(row.left) || isChange(row.right)) && !(prev && (isChange(prev.left) || isChange(prev.right)));
             return (
@@ -773,7 +895,7 @@ function SplitDiff({ hunks, highlights, hunkProps, markers, syntax, hitsAt, curr
   );
 }
 
-const SplitCell = memo(function SplitCell({ cell, segs, tokens, hits = null, current = null, side, border, mark }) {
+const SplitCell = memo(function SplitCell({ cell, segs, tokens, hits = null, current = null, side, border, mark }: RowText & { cell: Cell; side: 'old' | 'new'; border?: boolean; mark?: GuardMark | null }) {
   if (!cell) {
     return <div className={`bg-gk-fg/[0.02] ${border ? 'border-l border-gk-border' : ''}`} />;
   }
@@ -797,7 +919,7 @@ const SplitCell = memo(function SplitCell({ cell, segs, tokens, hits = null, cur
 
 // Изменённые куски строки — яркой «маркерной» подложкой (цвет текста — от подсветки синтаксиса);
 // пробелы в изменении делаем видимыми. Совпадения поиска — жёлтым, текущее — оранжевым.
-const CHANGED = {
+const CHANGED: Record<string, string> = {
   '-': 'rounded-[2px] bg-gk-red/35 shadow-[inset_0_-1px_0_rgb(242_93_93/0.6)]',
   '+': 'rounded-[2px] bg-gk-green/30 shadow-[inset_0_-1px_0_rgb(60_240_160/0.6)]',
 };
@@ -806,7 +928,7 @@ const CHANGED = {
 const HIT = '!bg-gk-yellow/45';
 const HIT_CURRENT = '!bg-[#ff9632] !text-[#1b1300]';
 
-function LineText({ line, segs, tokens, hits, current }) {
+function LineText({ line, segs, tokens, hits, current }: RowText & { line: DiffLine }) {
   if (line.t === '\\') return line.text;
   if (!line.text) return ' ';
   if (!segs && !tokens && !hits) return line.text;
@@ -838,11 +960,23 @@ function LineText({ line, segs, tokens, hits, current }) {
 
 /* ---------- Поиск ---------- */
 
-function SearchBar({ inputRef, search, onChange, error, count, capped, index, onStep, onClose }) {
-  const opt = (key, Icon, title, testid) => (
+interface SearchBarProps {
+  inputRef: RefObject<HTMLInputElement | null>;
+  search: SearchState;
+  onChange: (patch: Partial<SearchState>) => void;
+  error: string | undefined;
+  count: number;
+  capped: boolean;
+  index: number;
+  onStep: (dir: number) => void;
+  onClose: () => void;
+}
+
+function SearchBar({ inputRef, search, onChange, error, count, capped, index, onStep, onClose }: SearchBarProps) {
+  const opt = (key: 'caseSensitive' | 'regex' | 'changedOnly', Icon: LucideIcon, title: string, testid: string) => (
     <button
       type="button"
-      onClick={() => onChange({ [key]: !search[key] })}
+      onClick={() => onChange({ [key]: !search[key] } as Partial<SearchState>)}
       aria-pressed={search[key]}
       title={title}
       data-testid={testid}
@@ -909,7 +1043,7 @@ function SearchBar({ inputRef, search, onChange, error, count, capped, index, on
 
 /* ---------- Общее ---------- */
 
-function HunkHeader({ hunk, index, actions, busy, onRun }) {
+function HunkHeader({ hunk, index, actions, busy, onRun }: { hunk: DiffHunk; index: number } & Partial<HunkProps>) {
   return (
     <div className="flex items-center border-y border-gk-border/60 bg-gk-blue/10 py-0.5 pl-3 text-[11px] text-gk-blue/90">
       <span className="sticky left-3 flex items-center gap-2">
@@ -922,7 +1056,7 @@ function HunkHeader({ hunk, index, actions, busy, onRun }) {
               key={a.id}
               disabled={Boolean(busy)}
               title={a.title}
-              onClick={() => onRun(a, hunk, index)}
+              onClick={() => onRun!(a, hunk, index)}
               className={`flex items-center gap-1 rounded px-1.5 py-px font-sans text-[11px] opacity-70 ring-1 transition group-hover/hunk:opacity-100 disabled:opacity-40 ${
                 a.danger ? 'text-gk-red ring-gk-red/30 hover:bg-gk-red/15' : 'text-gk-text ring-gk-border hover:bg-gk-fg/10'
               }`}
@@ -937,7 +1071,7 @@ function HunkHeader({ hunk, index, actions, busy, onRun }) {
   );
 }
 
-function Placeholder({ children, className = '' }) {
+function Placeholder({ children, className = '' }: { children?: ReactNode; className?: string }) {
   return (
     <div className={`flex h-full items-center justify-center gap-2 font-sans text-[13px] text-gk-muted ${className}`}>
       {children}
@@ -945,7 +1079,7 @@ function Placeholder({ children, className = '' }) {
   );
 }
 
-function ToggleButton({ active, children, className = '', ...props }) {
+function ToggleButton({ active, children, className = '', ...props }: ButtonHTMLAttributes<HTMLButtonElement> & { active?: boolean }) {
   return (
     <button
       {...props}
@@ -958,7 +1092,7 @@ function ToggleButton({ active, children, className = '', ...props }) {
   );
 }
 
-function IconBtn({ children, disabled, ...props }) {
+function IconBtn({ children, disabled, ...props }: ButtonHTMLAttributes<HTMLButtonElement>) {
   return (
     <button
       {...props}

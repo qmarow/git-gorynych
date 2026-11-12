@@ -1,15 +1,35 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, type ButtonHTMLAttributes, type ReactNode } from 'react';
 import { AlertTriangle, CheckCircle2, CircleX, FileDiff, Loader2, Save, ShieldCheck, X } from 'lucide-react';
-import { UnifiedDiff } from '../DiffView.jsx';
+import { UnifiedDiff } from '../DiffView.tsx';
 import { inlineHighlights } from '../../lib/inlineDiff.ts';
 import { detectLanguage, highlightHunks } from '../../lib/highlight.ts';
 import { kb } from '../../lib/platform.ts';
 import { t, tj } from '../../i18n/index.ts';
+import type { ApiError, ApiResult } from '../../platform/tauri.ts';
+import type { CiDraftDiff_Serialize, GlLintResult_Serialize } from '../../../crates/gorynych-tauri/bindings/commands.ts';
 
-const api = window.api;
+/** Diff черновика или ошибка его расчёта */
+type DraftItem = Partial<CiDraftDiff_Serialize> & { error?: ApiError };
+
+interface DraftApi {
+  repo: { ciDiff: (dir: string, draft: { path: string; content: string }) => Promise<ApiResult<CiDraftDiff_Serialize>> };
+}
+
+const api = window.api as unknown as DraftApi;
+
+interface DraftBarProps {
+  paths: string[];
+  saving: boolean;
+  onSave: () => void;
+  onDiscard: () => void;
+  onDiff: () => void;
+  onLint?: () => void;
+  linting?: boolean;
+  lintAvailable?: boolean;
+}
 
 /** Панель над редактором/схемой: есть несохранённые правки */
-export function DraftBar({ paths, saving, onSave, onDiscard, onDiff, onLint, linting, lintAvailable }) {
+export function DraftBar({ paths, saving, onSave, onDiscard, onDiff, onLint, linting, lintAvailable }: DraftBarProps) {
   return (
     <div className="flex shrink-0 animate-fade-in items-center gap-2 border-b border-gk-yellow/25 bg-gk-yellow/[0.07] px-3 py-1.5 text-[12px]">
       {tj('{0}<1>Не сохранено: <2>{3}</2><4>схема уже показывает черновик</4></1>{5}{6}{7}{8}', [<span className="h-2 w-2 shrink-0 rounded-full bg-gk-yellow shadow-[0_0_8px] shadow-gk-yellow/60" />, <span className="min-w-0 flex-1 truncate text-gk-text" />, <span className="font-mono text-gk-yellow" />, paths.join(', '), <span className="ml-2 text-gk-dim" />, lintAvailable && (
@@ -28,7 +48,7 @@ export function DraftBar({ paths, saving, onSave, onDiscard, onDiff, onLint, lin
   );
 }
 
-function BarButton({ children, ...props }) {
+function BarButton({ children, ...props }: ButtonHTMLAttributes<HTMLButtonElement>) {
   return (
     <button
       {...props}
@@ -40,8 +60,8 @@ function BarButton({ children, ...props }) {
 }
 
 /** Окно «что изменится»: diff файла на диске и черновика */
-export function DraftDiff({ repoPath, drafts, onClose, onSave, saving }) {
-  const [state, setState] = useState({ loading: true, items: [] });
+export function DraftDiff({ repoPath, drafts, onClose, onSave, saving }: { repoPath: string; drafts: Record<string, string>; onClose: () => void; onSave: () => void; saving: boolean }) {
+  const [state, setState] = useState<{ loading: boolean; items: DraftItem[] }>({ loading: true, items: [] });
   useEffect(() => {
     let alive = true;
     Promise.all(Object.entries(drafts).map(([path, content]) => api.repo.ciDiff(repoPath, { path, content }))).then((res) => {
@@ -53,7 +73,7 @@ export function DraftDiff({ repoPath, drafts, onClose, onSave, saving }) {
   }, [repoPath, drafts]);
 
   useEffect(() => {
-    const onKey = (e) => e.key === 'Escape' && onClose();
+    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && onClose();
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, [onClose]);
@@ -91,7 +111,7 @@ export function DraftDiff({ repoPath, drafts, onClose, onSave, saving }) {
   );
 }
 
-function DiffBlock({ item }) {
+function DiffBlock({ item }: { item: DraftItem }) {
   const highlights = useMemo(() => (item.hunks ? item.hunks.map((h) => inlineHighlights(h.lines)) : null), [item]);
   const syntax = useMemo(() => (item.hunks ? highlightHunks(item.hunks, detectLanguage(item.path)) : null), [item]);
   if (item.error) return <div className="p-4 font-sans text-[12.5px] text-gk-red">{item.error.message}</div>;
@@ -102,24 +122,24 @@ function DiffBlock({ item }) {
         <span className="text-gk-green">+{item.additions}</span>
         <span className="text-gk-red">−{item.deletions}</span>
       </div>
-      {item.hunks.length === 0 ? (
+      {item.hunks!.length === 0 ? (
         <div className="px-4 py-3 font-sans text-[12px] text-gk-dim">{t('Нет изменений')}</div>
       ) : (
-        <UnifiedDiff hunks={item.hunks} highlights={highlights} syntax={syntax} />
+        <UnifiedDiff hunks={item.hunks!} highlights={highlights} syntax={syntax} />
       )}
     </div>
   );
 }
 
 /** Результат GitLab CI Lint */
-export function LintPanel({ result, error, onClose, onShowJob }) {
+export function LintPanel({ result, error, onClose, onShowJob }: { result: GlLintResult_Serialize | null | undefined; error: ApiError | null | undefined; onClose: () => void; onShowJob?: (name: string | null) => void }) {
   if (!result && !error) return null;
   return (
     <div className={`shrink-0 animate-fade-in border-b px-4 py-2.5 text-[12px] ${error || !result?.valid ? 'border-gk-red/25 bg-gk-red/[0.06]' : 'border-gk-green/25 bg-gk-green/[0.06]'}`}>
       <div className="flex items-start gap-2">
         {error ? (
           <AlertTriangle size={14} className="mt-0.5 shrink-0 text-gk-yellow" />
-        ) : result.valid ? (
+        ) : result!.valid ? (
           <CheckCircle2 size={14} className="mt-0.5 shrink-0 text-gk-green" />
         ) : (
           <CircleX size={14} className="mt-0.5 shrink-0 text-gk-red" />
@@ -133,22 +153,22 @@ export function LintPanel({ result, error, onClose, onShowJob }) {
           ) : (
             <>
               <div className="font-medium text-gk-text">
-                {result.valid ? t('GitLab принял конфигурацию') : t('GitLab нашёл ошибки')}
-                {result.ref && <span className="ml-1.5 font-normal text-gk-muted">{tj('· для ветки {0}', [result.ref])}</span>}
+                {result!.valid ? t('GitLab принял конфигурацию') : t('GitLab нашёл ошибки')}
+                {result!.ref && <span className="ml-1.5 font-normal text-gk-muted">{tj('· для ветки {0}', [result!.ref])}</span>}
               </div>
-              {result.errors.map((e, i) => (
+              {result!.errors.map((e, i) => (
                 <div key={i} className="mt-1 text-gk-red">
                   {e}
                 </div>
               ))}
-              {result.warnings.map((w, i) => (
+              {result!.warnings.map((w, i) => (
                 <div key={`w${i}`} className="mt-1 text-gk-yellow">
                   {w}
                 </div>
               ))}
-              {result.valid && result.jobs.length > 0 && (
+              {result!.valid && result!.jobs.length > 0 && (
                 <div className="mt-1.5 flex flex-wrap items-center gap-1">
-                  {tj('<0>Запустятся:</0>{1}', [<span className="mr-1 text-gk-muted" />, result.jobs.map((j) => (
+                  {tj('<0>Запустятся:</0>{1}', [<span className="mr-1 text-gk-muted" />, result!.jobs.map((j) => (
                     <button
                       key={`${j.stage}:${j.name}`}
                       onClick={() => onShowJob?.(j.name)}
@@ -160,10 +180,10 @@ export function LintPanel({ result, error, onClose, onShowJob }) {
                   ))])}
                 </div>
               )}
-              {result.valid && result.jobs.length === 0 && <div className="mt-1 text-gk-muted">{t('Для этой ветки ни одно задание не запустится.')}</div>}
-              {result.includes.length > 0 && (
+              {result!.valid && result!.jobs.length === 0 && <div className="mt-1 text-gk-muted">{t('Для этой ветки ни одно задание не запустится.')}</div>}
+              {result!.includes.length > 0 && (
                 <div className="mt-1 text-[11px] text-gk-dim">
-                  {tj('Учтены подключаемые файлы: {0}', [result.includes.map((i) => i.location).join(', ')])}
+                  {tj('Учтены подключаемые файлы: {0}', [result!.includes.map((i) => i.location).join(', ')])}
                 </div>
               )}
             </>
@@ -178,9 +198,17 @@ export function LintPanel({ result, error, onClose, onShowJob }) {
 }
 
 /** Диалог при сохранении, если файл поменяли снаружи, и при закрытии с несохранёнными правками */
-export function ChoiceDialog({ title, text, choices, onClose }) {
+/** Кнопка выбора; `primary` — зелёная, `danger` — красная */
+export interface Choice {
+  label: string;
+  onClick: () => void;
+  primary?: boolean;
+  danger?: boolean;
+}
+
+export function ChoiceDialog({ title, text, choices, onClose }: { title: ReactNode; text: ReactNode; choices: Choice[]; onClose: () => void }) {
   useEffect(() => {
-    const onKey = (e) => e.key === 'Escape' && onClose();
+    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && onClose();
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, [onClose]);
