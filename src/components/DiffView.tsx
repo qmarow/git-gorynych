@@ -156,7 +156,7 @@ export default function DiffView({
   onNext?: (() => void) | null;
   onClose: () => void;
   hunkActions?: HunkAction[] | null;
-  onHunkAction: (id: string, hunk: DiffHunk) => unknown;
+  onHunkAction?: (id: string, hunk: DiffHunk) => unknown;
   fileActions?: FileAction[];
   guardMarkers?: Markers;
   initialSearch?: DiffTarget['search'];
@@ -170,7 +170,7 @@ export default function DiffView({
   const runHunk = async (action: HunkAction, hunk: DiffHunk, index: number) => {
     setHunkBusy(`${action.id}:${index}`);
     try {
-      await onHunkAction(action.id, hunk);
+      await onHunkAction!(action.id, hunk);
     } finally {
       setHunkBusy(null);
     }

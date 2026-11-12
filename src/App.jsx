@@ -64,7 +64,7 @@ import ConflictView from './components/ConflictView.tsx';
 import CiView from './components/CiView.jsx';
 import RebaseView from './components/RebaseView.tsx';
 import CompareView from './components/CompareView.tsx';
-import FileView from './components/FileView.jsx';
+import FileView from './components/FileView.tsx';
 import GuideDialog from './components/GuideDialog.tsx';
 import ActionBuilder, { ACTION_ICONS } from './components/ActionBuilder.tsx';
 import { RunDialog, RunnerCard } from './components/ActionRunner.tsx';

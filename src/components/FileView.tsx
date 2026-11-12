@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ButtonHTMLAttributes, type ReactNode } from 'react';
 import {
   ArrowLeft,
   CornerLeftUp,
@@ -11,18 +11,77 @@ import {
   RotateCcw,
   Space,
   X,
+  type LucideIcon,
 } from 'lucide-react';
-import DiffView from './DiffView.tsx';
-import { FILE_STATUS, avatarColor, initials, plural, relativeTime } from '../lib/format.ts';
+import DiffView, { type DiffData, type DiffTarget } from './DiffView.tsx';
+import { FILE_STATUS, avatarColor, initials, plural, relativeTime, type FileStatusLetter } from '../lib/format.ts';
 import { detectLanguage, highlightLines } from '../lib/highlight.ts';
 import { TokenText } from './CodeText.tsx';
 import { readable } from '../lib/scheme.ts';
 import { kb } from '../lib/platform.ts';
 import { t as tr, tj, locale } from '../i18n/index.ts';
+import type { ApiError, ApiResult } from '../platform/tauri.ts';
+import type {
+  BlameCommit_Serialize,
+  Blame_Serialize,
+  CommitInfo_Serialize,
+  FileDiff_Serialize,
+  FileHistory_Serialize,
+  HistoryCommit_Serialize,
+} from '../../crates/gorynych-tauri/bindings/commands.ts';
 
-const api = typeof window !== 'undefined' ? window.api : null;
+type HistoryCommit = HistoryCommit_Serialize;
 
-const readPref = (key, def) => {
+/** Шаг «Blame до коммита»: куда вернуться кнопкой «Назад» */
+interface BlameStep {
+  rev: string | null;
+  path: string;
+  line: number;
+  from: string;
+}
+
+/** Что показано (App: `fileView`) */
+export interface FileViewState {
+  path: string;
+  mode: 'history' | 'blame';
+  /** От какого коммита строить историю (null — HEAD) */
+  rev?: string | null;
+  focus?: string;
+  /** Версия для blame: null — рабочая папка, 'HEAD' или хэш */
+  blameRev?: string | null;
+  blamePath?: string | null;
+  blameStack?: BlameStep[];
+}
+
+type Notify = (toast: { type: string; title: ReactNode; hint?: ReactNode }) => void;
+
+/** Данные поповера: сведения о коммите, загрузка или ошибка */
+type CommitInfoState = Partial<CommitInfo_Serialize> & { loading?: boolean; error?: string };
+
+interface FileViewApi {
+  repo: {
+    fileHistory: (dir: string, params: { path: string; rev: string | null }) => Promise<ApiResult<FileHistory_Serialize>>;
+    fileDiff: (dir: string, params: Record<string, unknown>) => Promise<ApiResult<FileDiff_Serialize>>;
+    blame: (dir: string, params: { path: string; rev: string | null; ignoreWhitespace: boolean }) => Promise<ApiResult<Blame_Serialize>>;
+    commitInfo: (dir: string, params: { hash: string; path: string }) => Promise<ApiResult<CommitInfo_Serialize>>;
+  };
+}
+
+const api = (typeof window !== 'undefined' ? window.api : null) as FileViewApi | null;
+
+interface FileViewProps {
+  repoPath: string;
+  view: FileViewState;
+  hidden?: boolean;
+  onChange: (patch: Partial<FileViewState>) => void;
+  onClose: () => void;
+  onLocate: (hash: string) => void;
+  onRestore: (commit: HistoryCommit) => void;
+  isLoaded?: (hash: string) => boolean;
+  notify?: Notify;
+}
+
+const readPref = (key: string, def: string) => {
   try {
     const v = localStorage.getItem(key);
     return v === null ? def : v;
@@ -30,15 +89,15 @@ const readPref = (key, def) => {
     return def;
   }
 };
-const writePref = (key, v) => {
+const writePref = (key: string, v: string) => {
   try {
     localStorage.setItem(key, v);
   } catch {
     /* не страшно */
   }
 };
-const short = (h) => (h ? h.slice(0, 7) : '');
-const fullDateTime = (t) => new Date(t).toLocaleString(locale(), { day: '2-digit', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+const short = (h: string | null | undefined) => (h ? h.slice(0, 7) : '');
+const fullDateTime = (t: string | number) => new Date(t).toLocaleString(locale(), { day: '2-digit', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit' });
 
 /**
  * Файл целиком: «История файла (Log)» — коммиты, менявшие файл (и через переименования), с diff каждого и сравнением
@@ -47,7 +106,7 @@ const fullDateTime = (t) => new Date(t).toLocaleString(locale(), { day: '2-digit
  * view: { path, rev, mode: 'history' | 'blame', blameRev, blamePath, focus } — rev: от какого коммита строить историю (null — HEAD);
  * blameRev: версия для blame (null — рабочая папка, 'HEAD' или хэш).
  */
-export default function FileView({ repoPath, view, hidden, onChange, onClose, onLocate, onRestore, isLoaded, notify }) {
+export default function FileView({ repoPath, view, hidden, onChange, onClose, onLocate, onRestore, isLoaded, notify }: FileViewProps) {
   const mode = view.mode;
   const parts = view.path.split('/');
   const name = parts.pop();
@@ -91,7 +150,7 @@ export default function FileView({ repoPath, view, hidden, onChange, onClose, on
   );
 }
 
-function ModeTab({ active, onClick, icon: Icon, children, testid }) {
+function ModeTab({ active, onClick, icon: Icon, children, testid }: { active: boolean; onClick: () => void; icon: LucideIcon; children?: ReactNode; testid: string }) {
   return (
     <button
       onClick={onClick}
@@ -104,37 +163,39 @@ function ModeTab({ active, onClick, icon: Icon, children, testid }) {
   );
 }
 
-function Avatar({ name, size = 18 }) {
+function Avatar({ name, size = 18 }: { name: string | null | undefined; size?: number }) {
   return (
     <span
       style={{ backgroundColor: avatarColor(name ?? '?'), width: size, height: size, fontSize: Math.max(7, size * 0.42) }}
       className="flex shrink-0 items-center justify-center rounded-full font-bold text-white"
-      title={name}
+      title={name as string}
     >
       {initials(name ?? '?')}
     </span>
   );
 }
 
-function Center({ children, className = '' }) {
+function Center({ children, className = '' }: { children?: ReactNode; className?: string }) {
   return <div className={`flex flex-1 items-center justify-center gap-2 p-6 text-center text-[13px] text-gk-muted ${className}`}>{children}</div>;
 }
 
 /* =================== История файла =================== */
 
-function HistoryMode({ repoPath, view, onChange, onClose, onLocate, onRestore, hidden }) {
-  const [state, setState] = useState({ loading: true, data: null, error: null });
+type HistoryModeProps = Pick<FileViewProps, 'repoPath' | 'view' | 'onChange' | 'onClose' | 'onLocate' | 'onRestore' | 'hidden'>;
+
+function HistoryMode({ repoPath, view, onChange, onClose, onLocate, onRestore, hidden }: HistoryModeProps) {
+  const [state, setState] = useState<{ loading: boolean; data: FileHistory_Serialize | null; error: ApiError | null }>({ loading: true, data: null, error: null });
   const [sel, setSel] = useState(0); // выбранный коммит (индекс)
-  const [cmp, setCmp] = useState(null); // второй коммит для сравнения версий
+  const [cmp, setCmp] = useState<number | null>(null); // второй коммит для сравнения версий
   const [diffView, setDiffView] = useState(() => readPref('diffView', 'unified'));
   const [ignoreWs, setIgnoreWs] = useState(false);
-  const [loaded, setLoaded] = useState(null); // diff, загруженный отдельно: { key, data }
-  const listRef = useRef(null);
+  const [loaded, setLoaded] = useState<{ key: string | null; data: DiffData } | null>(null); // diff, загруженный отдельно: { key, data }
+  const listRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     let alive = true;
     setState({ loading: true, data: null, error: null });
-    api.repo.fileHistory(repoPath, { path: view.path, rev: view.rev ?? null }).then((res) => {
+    api!.repo.fileHistory(repoPath, { path: view.path, rev: view.rev ?? null }).then((res) => {
       if (!alive) return;
       if (!res.ok) return setState({ loading: false, data: null, error: res.error });
       setState({ loading: false, data: res.data, error: null });
@@ -150,20 +211,20 @@ function HistoryMode({ repoPath, view, onChange, onClose, onLocate, onRestore, h
   const cur = commits[sel] ?? null;
   const other = cmp != null ? commits[cmp] : null;
   // Сравнение: старая версия → новая (по порядку в истории)
-  const [older, newer] = other ? (cmp > sel ? [other, cur] : [cur, other]) : [null, cur];
+  const [older, newer] = other ? (cmp! > sel ? [other, cur] : [cur, other]) : [null, cur];
 
   // Что показать справа: diff коммита или разницу двух версий
-  const target = useMemo(() => {
+  const target = useMemo((): DiffTarget | null => {
     if (!cur) return null;
     const files = commits.map((c) => ({ path: c.path, oldPath: c.oldPath, status: c.status }));
     if (older) {
       return {
         kind: 'compare',
         mode: 'commit',
-        hash: newer.hash,
+        hash: newer!.hash,
         parent: older.hash,
-        commitHash: newer.hash,
-        file: { path: newer.path, oldPath: older.path !== newer.path ? older.path : null, status: newer.status === 'D' ? 'D' : older.path !== newer.path ? 'R' : 'M' },
+        commitHash: newer!.hash,
+        file: { path: newer!.path, oldPath: older.path !== newer!.path ? older.path : null, status: newer!.status === 'D' ? 'D' : older.path !== newer!.path ? 'R' : 'M' },
         list: files,
         index: sel,
       };
@@ -181,11 +242,11 @@ function HistoryMode({ repoPath, view, onChange, onClose, onLocate, onRestore, h
   }, [cur, older, newer, commits, sel]);
 
   const diffKey = target ? `${target.parent ?? 'root'}..${target.hash}:${target.file.path}:${ignoreWs ? 'w' : ''}` : null;
-  const preloaded = target && !older && !ignoreWs && cur?.diff ? { ...cur.diff, mode: 'commit' } : null;
+  const preloaded = target && !older && !ignoreWs && cur?.diff ? ({ ...cur.diff, mode: 'commit' } as DiffData) : null;
   useEffect(() => {
     if (!target || preloaded || loaded?.key === diffKey) return undefined;
     let alive = true;
-    api.repo
+    api!.repo
       .fileDiff(repoPath, {
         mode: 'commit',
         hash: target.hash,
@@ -195,7 +256,7 @@ function HistoryMode({ repoPath, view, onChange, onClose, onLocate, onRestore, h
         ignoreWhitespace: ignoreWs,
       })
       .then((res) => {
-        if (alive) setLoaded({ key: diffKey, data: res.ok ? { ...res.data, mode: 'commit' } : { error: res.error.message, path: target.file.path, mode: 'commit' } });
+        if (alive) setLoaded({ key: diffKey, data: res.ok ? { ...res.data, mode: 'commit' } : ({ error: res.error.message, path: target.file.path, mode: 'commit' } as DiffData) });
       });
     return () => {
       alive = false;
@@ -208,7 +269,7 @@ function HistoryMode({ repoPath, view, onChange, onClose, onLocate, onRestore, h
     listRef.current?.querySelector('[data-selected="true"]')?.scrollIntoView({ block: 'nearest' });
   }, [sel]);
 
-  const pick = (i, e) => {
+  const pick = (i: number, e?: { ctrlKey: boolean; metaKey: boolean; shiftKey: boolean }) => {
     if (e && (e.ctrlKey || e.metaKey || e.shiftKey)) {
       if (i !== sel) setCmp(i === cmp ? null : i);
       return;
@@ -228,7 +289,7 @@ function HistoryMode({ repoPath, view, onChange, onClose, onLocate, onRestore, h
     return <Center>{tj('У файла ещё нет истории: он не закоммичен{0}.', [view.rev ? tr(' в этой версии') : ''])}</Center>;
   }
 
-  const restoreTarget = newer ?? cur;
+  const restoreTarget = (newer ?? cur)!;
   return (
     <div className="flex min-h-0 flex-1">
       {/* Таймлайн коммитов файла */}
@@ -237,9 +298,9 @@ function HistoryMode({ repoPath, view, onChange, onClose, onLocate, onRestore, h
           <div className="flex items-center gap-1.5">
             <span data-testid="fh-count">
               {commits.length}
-              {state.data.truncated ? '+' : ''} {plural(commits.length, tr('коммит'), tr('коммита'), tr('коммитов'))}
+              {state.data!.truncated ? '+' : ''} {plural(commits.length, tr('коммит'), tr('коммита'), tr('коммитов'))}
             </span>
-            {state.data.renamed && <span className="rounded bg-gk-purple/15 px-1.5 text-[10.5px] text-gk-purple">{tr('с переименованиями')}</span>}
+            {state.data!.renamed && <span className="rounded bg-gk-purple/15 px-1.5 text-[10.5px] text-gk-purple">{tr('с переименованиями')}</span>}
             {view.rev && <span className="truncate text-gk-dim">{tj('до {0}', [short(view.rev)])}</span>}
           </div>
           <div className="mt-0.5 text-[11px] text-gk-dim">{kb(tr('Ctrl+клик — вторая версия для сравнения'))}</div>
@@ -248,7 +309,7 @@ function HistoryMode({ repoPath, view, onChange, onClose, onLocate, onRestore, h
           {commits.map((c, i) => {
             const isSel = i === sel;
             const isCmp = i === cmp;
-            const st = FILE_STATUS[c.status] ?? FILE_STATUS.M;
+            const st = FILE_STATUS[c.status as FileStatusLetter] ?? FILE_STATUS.M;
             return (
               <div
                 key={c.hash}
@@ -317,7 +378,7 @@ function HistoryMode({ repoPath, view, onChange, onClose, onLocate, onRestore, h
               </div>
             );
           })}
-          {state.data.truncated && <div className="px-3 py-2 text-[11px] text-gk-dim">{tj('Показаны последние {0} коммитов', [commits.length])}</div>}
+          {state.data!.truncated && <div className="px-3 py-2 text-[11px] text-gk-dim">{tj('Показаны последние {0} коммитов', [commits.length])}</div>}
         </div>
       </aside>
 
@@ -325,7 +386,7 @@ function HistoryMode({ repoPath, view, onChange, onClose, onLocate, onRestore, h
       <div className="flex min-w-0 flex-1 flex-col">
         {older && (
           <div data-testid="fh-compare-bar" className="flex shrink-0 items-center gap-2 border-b border-gk-border bg-gk-purple/[0.07] px-3 py-1.5 text-[12px] text-gk-muted">
-            {tj('{0}Сравнение версий: <1>A {2}</1> → <3>B {4}</3><5>({6} → {7})</5>{8}', [<GitCompareArrows size={13} className="text-gk-purple" />, <span className="font-mono text-gk-text" />, short(older.hash), <span className="font-mono text-gk-text" />, short(newer.hash), <span className="truncate text-gk-dim" />, relativeTime(older.date), relativeTime(newer.date), <button onClick={() => setCmp(null)} className="ml-auto text-gk-blue hover:underline">
+            {tj('{0}Сравнение версий: <1>A {2}</1> → <3>B {4}</3><5>({6} → {7})</5>{8}', [<GitCompareArrows size={13} className="text-gk-purple" />, <span className="font-mono text-gk-text" />, short(older.hash), <span className="font-mono text-gk-text" />, short(newer!.hash), <span className="truncate text-gk-dim" />, relativeTime(older.date), relativeTime(newer!.date), <button onClick={() => setCmp(null)} className="ml-auto text-gk-blue hover:underline">
               {tr('Обычный режим')}</button>])}
           </div>
         )}
@@ -375,23 +436,25 @@ function HistoryMode({ repoPath, view, onChange, onClose, onLocate, onRestore, h
 const ROW_H = 20;
 const OVERSCAN = 40;
 
-function BlameMode({ repoPath, view, onChange, onClose, onLocate, isLoaded, hidden, notify }) {
+type BlameModeProps = Pick<FileViewProps, 'repoPath' | 'view' | 'onChange' | 'onClose' | 'onLocate' | 'isLoaded' | 'hidden' | 'notify'>;
+
+function BlameMode({ repoPath, view, onChange, onClose, onLocate, isLoaded, hidden, notify }: BlameModeProps) {
   const rev = view.blameRev === undefined ? 'HEAD' : view.blameRev;
   const file = view.blamePath ?? view.path;
   const [ignoreWs, setIgnoreWs] = useState(() => readPref('blameIgnoreWs', '0') === '1');
-  const [state, setState] = useState({ loading: true, data: null, error: null });
-  const [hoverSha, setHoverSha] = useState(null);
-  const [pop, setPop] = useState(null); // { sha, top, left }
-  const [infos, setInfos] = useState({}); // sha → данные для поповера
-  const scrollRef = useRef(null);
+  const [state, setState] = useState<{ loading: boolean; data: Blame_Serialize | null; error: ApiError | null }>({ loading: true, data: null, error: null });
+  const [hoverSha, setHoverSha] = useState<string | null>(null);
+  const [pop, setPop] = useState<{ sha: string; top: number; left: number } | null>(null); // { sha, top, left }
+  const [infos, setInfos] = useState<Record<string, CommitInfoState>>({}); // sha → данные для поповера
+  const scrollRef = useRef<HTMLDivElement>(null);
   const [scroll, setScroll] = useState({ top: 0, height: 800 });
-  const popTimer = useRef(null);
+  const popTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const stack = view.blameStack ?? [];
 
   useEffect(() => {
     let alive = true;
     setState((s) => ({ loading: true, data: s.data, error: null }));
-    api.repo.blame(repoPath, { path: file, rev, ignoreWhitespace: ignoreWs }).then((res) => {
+    api!.repo.blame(repoPath, { path: file, rev, ignoreWhitespace: ignoreWs }).then((res) => {
       if (!alive) return;
       setState(res.ok ? { loading: false, data: res.data, error: null } : { loading: false, data: null, error: res.error });
       if (scrollRef.current) scrollRef.current.scrollTop = 0;
@@ -404,7 +467,7 @@ function BlameMode({ repoPath, view, onChange, onClose, onLocate, isLoaded, hidd
   // Esc — назад по «Blame до коммита», затем закрыть
   useEffect(() => {
     if (hidden) return undefined;
-    const onKey = (e) => {
+    const onKey = (e: KeyboardEvent) => {
       if (e.key !== 'Escape' || e.defaultPrevented || document.querySelector('.fixed.inset-0')) return;
       if (pop) setPop(null);
       else if (stack.length) back();
@@ -431,18 +494,18 @@ function BlameMode({ repoPath, view, onChange, onClose, onLocate, isLoaded, hidd
 
   // Блоки строк одного коммита и «возраст» коммитов для тепловой карты
   const { blockStart, heat } = useMemo(() => {
-    const starts = new Set();
+    const starts = new Set<number>();
     lines.forEach((l, i) => {
       if (i === 0 || lines[i - 1].sha !== l.sha) starts.add(i);
     });
     const times = Object.entries(data?.commits ?? {})
       .filter(([, c]) => !c.uncommitted && c.time)
-      .map(([sha, c]) => [sha, c.time])
+      .map(([sha, c]) => [sha, c.time] as [string, number])
       .sort((a, b) => b[1] - a[1]);
     const rank = new Map(times.map(([sha], i) => [sha, i]));
-    const map = new Map();
+    const map = new Map<string, number>();
     const n = Math.max(1, times.length - 1);
-    for (const [sha] of times) map.set(sha, 1 - rank.get(sha) / n); // 1 — самый свежий, 0 — самый старый
+    for (const [sha] of times) map.set(sha, 1 - rank.get(sha)! / n); // 1 — самый свежий, 0 — самый старый
     for (const [sha, c] of Object.entries(data?.commits ?? {})) if (c.uncommitted) map.set(sha, 1);
     return { blockStart: starts, heat: map };
   }, [data]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -451,34 +514,34 @@ function BlameMode({ repoPath, view, onChange, onClose, onLocate, isLoaded, hidd
   const last = Math.min(lines.length, Math.ceil((scroll.top + scroll.height) / ROW_H) + OVERSCAN);
 
   const loadInfo = useCallback(
-    (sha) => {
+    (sha: string) => {
       if (infos[sha] || /^0+$/.test(sha)) return;
       setInfos((m) => ({ ...m, [sha]: { loading: true } }));
-      api.repo.commitInfo(repoPath, { hash: sha, path: data?.commits?.[sha]?.filename ?? file }).then((res) => {
+      api!.repo.commitInfo(repoPath, { hash: sha, path: data?.commits?.[sha]?.filename ?? file }).then((res) => {
         setInfos((m) => ({ ...m, [sha]: res.ok ? res.data : { error: res.error.message } }));
       });
     },
     [infos, repoPath, data, file],
   );
 
-  const showPop = (sha, el) => {
-    clearTimeout(popTimer.current);
+  const showPop = (sha: string, el: HTMLElement) => {
+    clearTimeout(popTimer.current!);
     popTimer.current = setTimeout(() => {
       const box = scrollRef.current?.getBoundingClientRect();
       const r = el.getBoundingClientRect();
       if (!box) return;
-      setPop({ sha, top: r.top - box.top + scrollRef.current.scrollTop, left: 8 });
+      setPop({ sha, top: r.top - box.top + scrollRef.current!.scrollTop, left: 8 });
       loadInfo(sha);
     }, 350);
   };
   const hidePop = () => {
-    clearTimeout(popTimer.current);
+    clearTimeout(popTimer.current!);
     popTimer.current = setTimeout(() => setPop(null), 250);
   };
-  const keepPop = () => clearTimeout(popTimer.current);
+  const keepPop = () => clearTimeout(popTimer.current!);
 
-  const priorOf = (sha) => data?.commits?.[sha]?.previous ?? null;
-  const blamePrior = (sha) => {
+  const priorOf = (sha: string) => data?.commits?.[sha]?.previous ?? null;
+  const blamePrior = (sha: string) => {
     const prev = priorOf(sha);
     if (!prev) return;
     setPop(null);
@@ -489,7 +552,7 @@ function BlameMode({ repoPath, view, onChange, onClose, onLocate, isLoaded, hidd
     if (!prev) return;
     onChange({ blameRev: prev.rev, blamePath: prev.path, blameStack: stack.slice(0, -1) });
   };
-  const locate = (sha) => {
+  const locate = (sha: string) => {
     if (/^0+$/.test(sha)) return;
     if (isLoaded && !isLoaded(sha)) {
       notify?.({ type: 'info', title: tr('Коммита {0} нет в загруженной истории графа', short(sha)), hint: tr('Он старше загруженных коммитов или в другой ветке — сделайте Fetch или увеличьте историю') });
@@ -552,7 +615,7 @@ function BlameMode({ repoPath, view, onChange, onClose, onLocate, isLoaded, hidd
           <div style={{ height: lines.length * ROW_H }} className="relative min-w-max">
             {lines.slice(first, last).map((l, k) => {
               const i = first + k;
-              const c = data.commits[l.sha] ?? {};
+              const c = (data!.commits[l.sha] ?? {}) as Partial<BlameCommit_Serialize>;
               const start = blockStart.has(i);
               const h = heat.get(l.sha) ?? 0;
               const hot = hoverSha === l.sha;
@@ -577,7 +640,7 @@ function BlameMode({ repoPath, view, onChange, onClose, onLocate, isLoaded, hidd
                   >
                     <span
                       className="h-full w-[4px] shrink-0"
-                      title={uncommitted ? tr('Не закоммичено') : tr('Возраст: {0}', relativeTime(c.time))}
+                      title={uncommitted ? tr('Не закоммичено') : tr('Возраст: {0}', relativeTime(c.time!))}
                       style={{ background: `color-mix(in srgb, var(${uncommitted ? '--color-gk-green' : '--color-gk-yellow'}) ${Math.round(12 + h * 88)}%, transparent)` }}
                     />
                     {start ? (
@@ -589,7 +652,7 @@ function BlameMode({ repoPath, view, onChange, onClose, onLocate, isLoaded, hidd
                           <span className="min-w-0 flex-1 truncate" style={{ opacity: 0.55 + h * 0.45 }}>
                             <span className="text-gk-text">{c.author}</span> <span className="text-gk-dim">· {c.summary}</span>
                           </span>
-                          <span className="shrink-0 text-gk-dim">{relativeTime(c.time)}</span>
+                          <span className="shrink-0 text-gk-dim">{relativeTime(c.time!)}</span>
                           <button
                             onClick={() => locate(l.sha)}
                             data-testid="blame-hash"
@@ -635,7 +698,7 @@ function BlameMode({ repoPath, view, onChange, onClose, onLocate, isLoaded, hidd
                 <div className="min-w-0 flex-1">
                   <div className="font-medium text-gk-strong">{popCommit.author}</div>
                   <div className="text-[11px] text-gk-dim">
-                    {popCommit.email} · {fullDateTime(popCommit.time)}
+                    {popCommit.email} · {fullDateTime(popCommit.time!)}
                   </div>
                 </div>
                 <button onClick={() => locate(pop.sha)} className="font-mono text-[11px] text-gk-blue hover:underline" title={tr('Показать в графе')}>
@@ -685,7 +748,7 @@ function BlameMode({ repoPath, view, onChange, onClose, onLocate, isLoaded, hidd
   );
 }
 
-function PopBtn({ icon: Icon, children, testid, ...props }) {
+function PopBtn({ icon: Icon, children, testid, ...props }: ButtonHTMLAttributes<HTMLButtonElement> & { icon: LucideIcon; testid?: string }) {
   return (
     <button
       {...props}
