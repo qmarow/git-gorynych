@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode, type RefObject } from 'react';
 import { createPortal } from 'react-dom';
 import { AlertTriangle, Check, ChevronDown, CircleSlash, FileCode, LayoutTemplate, Pencil, Plus, RotateCcw, Save, Settings2, Ticket, Trash2, X } from 'lucide-react';
 import {
@@ -17,24 +17,43 @@ import {
   toggleBreaking,
   toggleTicket,
   toggleType,
+  type CommitTemplate,
+  type TicketFormat,
 } from '../lib/commitMsg.ts';
-import { DEFAULT_COMMIT_PREFS, setCommitPrefs, useCommitPrefs } from '../lib/commitPrefs.ts';
+import { DEFAULT_COMMIT_PREFS, setCommitPrefs, useCommitPrefs, type CommitPrefs } from '../lib/commitPrefs.ts';
 import { Switch } from './Guard.tsx';
 import { isMod, kb } from '../lib/platform.ts';
 import { plural } from '../lib/format.ts';
 import { readable } from '../lib/scheme.ts';
 import { t as tr, tj } from '../i18n/index.ts';
+import type { ApiResult } from '../platform/tauri.ts';
+import type { CommitTemplate_Serialize } from '../../crates/gorynych-tauri/bindings/commands.ts';
+
+/** `commit.template` из git config; под Electron 1.x канала может не быть */
+type GitTemplate = CommitTemplate_Serialize;
+type TemplateApi = { repo?: { commitTemplate?: (dir: string) => Promise<ApiResult<GitTemplate | null> | undefined> } } | undefined;
+
+/** Черновик сообщения; `auto` — то, что подставило приложение (пока совпадает, черновик «не тронут») */
+interface Draft {
+  summary: string;
+  description: string;
+  auto: { summary: string; description: string } | null;
+}
+type SetDraft = (next: Draft | ((prev: Draft) => Draft)) => void;
+
+/** Шаблон в редакторе: у нового ещё нет `id` */
+type TemplateDraft = { id?: string; name: string; body: string };
 
 /*
  * Черновик сообщения живёт вне компонента: панель WIP пересоздаётся при выборе другого коммита,
  * а набранный текст терять нельзя. Ключ — путь репозитория.
  */
-const drafts = new Map();
-const EMPTY = { summary: '', description: '', auto: null };
+const drafts = new Map<string, Draft>();
+const EMPTY: Draft = { summary: '', description: '', auto: null };
 
-function useDraft(key) {
+function useDraft(key: string): [Draft, SetDraft] {
   const [draft, setState] = useState(() => drafts.get(key) ?? EMPTY);
-  const set = (next) =>
+  const set: SetDraft = (next) =>
     setState((prev) => {
       const v = typeof next === 'function' ? next(prev) : next;
       drafts.set(key, v);
@@ -44,19 +63,29 @@ function useDraft(key) {
 }
 
 // Черновик не трогали — его можно пересобрать (сменилась ветка, подгрузился шаблон, поменяли настройки)
-const untouched = (d) => (!d.summary && !d.description) || (d.auto && d.summary === d.auto.summary && d.description === d.auto.description);
+const untouched = (d: Draft) => (!d.summary && !d.description) || (d.auto && d.summary === d.auto.summary && d.description === d.auto.description);
 
 const inputCls =
   'w-full rounded bg-gk-bg px-2.5 py-2 text-[13px] outline-none ring-1 ring-gk-border placeholder:text-gk-dim focus:ring-gk-blue';
 
-export default function CommitForm({ repoPath, branch, stagedFiles, busy, onCommit, banner, onOpenSettings }) {
+interface CommitFormProps {
+  repoPath: string;
+  branch: string | null;
+  stagedFiles: { path: string }[];
+  busy?: boolean;
+  onCommit: (summary: string, description: string) => Promise<boolean | undefined> | boolean | undefined;
+  banner?: ReactNode;
+  onOpenSettings?: () => void;
+}
+
+export default function CommitForm({ repoPath, branch, stagedFiles, busy, onCommit, banner, onOpenSettings }: CommitFormProps) {
   const prefs = useCommitPrefs();
   const [draft, setDraft] = useDraft(repoPath);
   const { summary, description } = draft;
-  const [gitTpl, setGitTpl] = useState(null);
-  const [pop, setPop] = useState(null); // { kind: 'scope'|'ticket'|'templates', anchor }
-  const summaryRef = useRef(null);
-  const descRef = useRef(null);
+  const [gitTpl, setGitTpl] = useState<GitTemplate | null>(null);
+  const [pop, setPop] = useState<{ kind: 'scope' | 'ticket' | 'templates'; anchor: HTMLElement } | null>(null); // { kind: 'scope'|'ticket'|'templates', anchor }
+  const summaryRef = useRef<HTMLInputElement>(null);
+  const descRef = useRef<HTMLTextAreaElement>(null);
 
   const ticket = useMemo(() => extractTicket(branch, prefs.ticketPattern), [branch, prefs.ticketPattern]);
   const parts = parseSummary(summary);
@@ -65,8 +94,8 @@ export default function CommitForm({ repoPath, branch, stagedFiles, busy, onComm
   const stagedPaths = useMemo(() => stagedFiles.map((f) => f.path), [stagedFiles]);
 
   const loadGitTemplate = () => {
-    if (!repoPath || !window.api?.repo?.commitTemplate) return;
-    window.api.repo.commitTemplate(repoPath).then((res) => {
+    if (!repoPath || !(window.api as TemplateApi)?.repo?.commitTemplate) return;
+    (window.api as TemplateApi)!.repo!.commitTemplate!(repoPath).then((res) => {
       if (res?.ok) setGitTpl(res.data ?? null);
     });
   };
@@ -88,7 +117,7 @@ export default function CommitForm({ repoPath, branch, stagedFiles, busy, onComm
   const subject = subjectOf(summary);
   const canCommit = !busy && stagedFiles.length > 0 && subject.length > 0;
 
-  const caretTo = (ref, pos) =>
+  const caretTo = (ref: RefObject<HTMLInputElement | HTMLTextAreaElement | null>, pos: number) =>
     requestAnimationFrame(() => {
       const el = ref.current;
       if (!el) return;
@@ -96,7 +125,7 @@ export default function CommitForm({ repoPath, branch, stagedFiles, busy, onComm
       el.setSelectionRange(pos, pos);
     });
 
-  const applySummary = (res) => {
+  const applySummary = (res: { summary: string; caret: number; description?: string }) => {
     setDraft((d) => ({ ...d, summary: res.summary, description: res.description ?? d.description }));
     caretTo(summaryRef, res.caret);
   };
@@ -107,7 +136,7 @@ export default function CommitForm({ repoPath, branch, stagedFiles, busy, onComm
     if (ok) setDraft(fresh());
   };
 
-  const insertTpl = (body) => {
+  const insertTpl = (body: string) => {
     const res = insertTemplate(description, fillTemplate(body, { ticket: ticket ?? '', branch: branch ?? '' }));
     setDraft((d) => ({ ...d, description: res.description }));
     setPop(null);
@@ -303,14 +332,14 @@ export default function CommitForm({ repoPath, branch, stagedFiles, busy, onComm
       {pop?.kind === 'ticket' && (
         <Popover anchor={pop.anchor} onClose={() => setPop(null)} width={290}>
           <TicketOptions
-            ticket={ticket}
+            ticket={ticket!}
             branch={branch}
             prefs={prefs}
             onFormat={(f) => {
               // Номер уже стоит — переставляем его в новом формате
               if (ticketOn) {
-                const off = toggleTicket(summary, description, ticket, prefs.ticketFormat);
-                const on = attachTicket(off.summary, off.description, ticket, f);
+                const off = toggleTicket(summary, description, ticket!, prefs.ticketFormat);
+                const on = attachTicket(off.summary, off.description, ticket!, f);
                 setDraft((d) => ({ ...d, summary: on.summary, description: on.description }));
               }
               setCommitPrefs({ ticketFormat: f });
@@ -337,13 +366,13 @@ export default function CommitForm({ repoPath, branch, stagedFiles, busy, onComm
   );
 }
 
-function Chip({ color, active, title, onClick, children }) {
+function Chip({ color, active, title, onClick, children }: { color: string; active: boolean; title: string; onClick: () => void; children?: ReactNode }) {
   return (
     <button
       onClick={onClick}
       title={title}
       aria-pressed={active}
-      style={active ? { backgroundColor: `${color}26`, color, boxShadow: `inset 0 0 0 1px ${color}66` } : { '--c': color }}
+      style={active ? { backgroundColor: `${color}26`, color, boxShadow: `inset 0 0 0 1px ${color}66` } : ({ '--c': color } as CSSProperties)}
       className={`h-[22px] rounded-md px-1.5 font-mono text-[11px] transition-colors ${
         active ? 'font-semibold' : 'text-gk-muted ring-1 ring-gk-border hover:bg-gk-fg/[0.04] hover:text-[var(--c)]'
       }`}
@@ -355,8 +384,8 @@ function Chip({ color, active, title, onClick, children }) {
 
 /* ---------------- Поповер ---------------- */
 
-function Popover({ anchor, onClose, width = 280, children }) {
-  const ref = useRef(null);
+function Popover({ anchor, onClose, width = 280, children }: { anchor: HTMLElement; onClose: () => void; width?: number; children?: ReactNode }) {
+  const ref = useRef<HTMLDivElement>(null);
   const [pos, setPos] = useState({ left: -9999, top: -9999 });
 
   useLayoutEffect(() => {
@@ -371,11 +400,11 @@ function Popover({ anchor, onClose, width = 280, children }) {
   });
 
   useEffect(() => {
-    const down = (e) => {
-      if (ref.current?.contains(e.target) || anchor?.contains(e.target)) return;
+    const down = (e: MouseEvent) => {
+      if (ref.current?.contains(e.target as Node) || anchor?.contains(e.target as Node)) return;
       onClose();
     };
-    const key = (e) => {
+    const key = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
         e.stopPropagation();
         onClose();
@@ -402,7 +431,7 @@ function Popover({ anchor, onClose, width = 280, children }) {
   );
 }
 
-function PopTitle({ children, right }) {
+function PopTitle({ children, right }: { children?: ReactNode; right?: ReactNode }) {
   return (
     <div className="flex items-center gap-2 px-3 pb-1 pt-2 text-[10px] font-semibold uppercase tracking-wider text-gk-dim">
       <span className="flex-1">{children}</span>
@@ -413,7 +442,7 @@ function PopTitle({ children, right }) {
 
 /* ---------------- Scope ---------------- */
 
-function ScopePicker({ value, suggestions, onPick }) {
+function ScopePicker({ value, suggestions, onPick }: { value: string; suggestions: string[]; onPick: (scope: string) => void }) {
   const [text, setText] = useState(value);
   return (
     <div className="pb-2">
@@ -461,7 +490,15 @@ function ScopePicker({ value, suggestions, onPick }) {
 
 /* ---------------- Номер задачи ---------------- */
 
-function TicketOptions({ ticket, branch, prefs, onFormat, onOpenSettings }) {
+interface TicketOptionsProps {
+  ticket: string;
+  branch: string | null;
+  prefs: CommitPrefs;
+  onFormat: (format: TicketFormat) => void;
+  onOpenSettings: () => void;
+}
+
+function TicketOptions({ ticket, branch, prefs, onFormat, onOpenSettings }: TicketOptionsProps) {
   return (
     <div className="pb-2">
       <PopTitle>
@@ -494,12 +531,20 @@ function TicketOptions({ ticket, branch, prefs, onFormat, onOpenSettings }) {
 
 /* ---------------- Шаблоны ---------------- */
 
-function TemplatesMenu({ prefs, gitTpl, ticket, description, onInsert }) {
-  const [edit, setEdit] = useState(null); // { id?, name, body }
+interface TemplatesMenuProps {
+  prefs: CommitPrefs;
+  gitTpl: GitTemplate | null;
+  ticket: string | null;
+  description: string;
+  onInsert: (body: string) => void;
+}
 
-  const save = (t) => {
+function TemplatesMenu({ prefs, gitTpl, ticket, description, onInsert }: TemplatesMenuProps) {
+  const [edit, setEdit] = useState<TemplateDraft | null>(null); // { id?, name, body }
+
+  const save = (t: TemplateDraft) => {
     const list = prefs.templates;
-    const next = t.id && list.some((x) => x.id === t.id) ? list.map((x) => (x.id === t.id ? { ...x, ...t } : x)) : [...list, { ...t, id: `tpl-${Date.now()}` }];
+    const next: CommitTemplate[] = t.id && list.some((x) => x.id === t.id) ? list.map((x) => (x.id === t.id ? { ...x, ...t } : x)) : [...list, { ...t, id: `tpl-${Date.now()}` }];
     setCommitPrefs({ templates: next });
     setEdit(null);
   };
@@ -585,7 +630,7 @@ function TemplatesMenu({ prefs, gitTpl, ticket, description, onInsert }) {
   );
 }
 
-function TemplateEditor({ value, onSave, onCancel, inline }) {
+function TemplateEditor({ value, onSave, onCancel, inline }: { value: TemplateDraft; onSave: (t: TemplateDraft) => void; onCancel: () => void; inline?: boolean }) {
   const [name, setName] = useState(value.name ?? '');
   const [body, setBody] = useState(value.body ?? '');
   const ok = name.trim() && body.trim();
@@ -625,29 +670,29 @@ function TemplateEditor({ value, onSave, onCancel, inline }) {
 
 /* ---------------- Настройки → Коммиты ---------------- */
 
-export function CommitSettings({ repoPath, branch }) {
+export function CommitSettings({ repoPath, branch }: { repoPath?: string | null; branch?: string | null }) {
   const prefs = useCommitPrefs();
-  const [gitTpl, setGitTpl] = useState(undefined);
+  const [gitTpl, setGitTpl] = useState<GitTemplate | null | undefined>(undefined);
   const [testBranch, setTestBranch] = useState(branch || 'feature/PROJ-123-login-form');
-  const [edit, setEdit] = useState(null);
+  const [edit, setEdit] = useState<TemplateDraft | null>(null);
 
   useEffect(() => {
-    if (!repoPath || !window.api?.repo?.commitTemplate) return setGitTpl(null);
-    window.api.repo.commitTemplate(repoPath).then((res) => setGitTpl(res?.ok ? (res.data ?? null) : null));
+    if (!repoPath || !(window.api as TemplateApi)?.repo?.commitTemplate) return setGitTpl(null);
+    (window.api as TemplateApi)!.repo!.commitTemplate!(repoPath).then((res) => setGitTpl(res?.ok ? (res.data ?? null) : null));
   }, [repoPath]);
 
-  let patternError = null;
+  let patternError: string | null = null;
   if (prefs.ticketPattern.trim()) {
     try {
       new RegExp(prefs.ticketPattern.trim());
     } catch (e) {
-      patternError = e.message;
+      patternError = (e as Error).message;
     }
   }
   const found = extractTicket(testBranch, prefs.ticketPattern);
   const sample = found ?? 'PROJ-123';
 
-  const saveTpl = (t) => {
+  const saveTpl = (t: TemplateDraft) => {
     const list = prefs.templates;
     setCommitPrefs({
       templates: t.id && list.some((x) => x.id === t.id) ? list.map((x) => (x.id === t.id ? { ...x, ...t } : x)) : [...list, { ...t, id: `tpl-${Date.now()}` }],
@@ -787,10 +832,10 @@ export function CommitSettings({ repoPath, branch }) {
   );
 }
 
-function H3({ children }) {
+function H3({ children }: { children?: ReactNode }) {
   return <h3 className="text-[11px] font-semibold uppercase tracking-wider text-gk-dim">{children}</h3>;
 }
 
-function Mono({ children }) {
+function Mono({ children }: { children?: ReactNode }) {
   return <code className="rounded bg-gk-fg/[0.06] px-1 font-mono text-[11.5px] text-gk-text">{children}</code>;
 }

@@ -1,9 +1,8 @@
-import { useState } from 'react';
+import { useState, type ButtonHTMLAttributes, type HTMLAttributes, type ReactNode } from 'react';
 import {
   AlertTriangle,
   Archive,
   ArchiveRestore,
-  ArrowRight,
   ArrowDownToLine,
   ChevronDown,
   ChevronRight,
@@ -12,7 +11,6 @@ import {
   FolderSync,
   FileText,
   GitCommitHorizontal,
-  History,
   List,
   ListTree,
   Loader2,
@@ -22,13 +20,95 @@ import {
   SquareCheck,
   SquareMinus,
   Trash2,
+  type LucideIcon,
 } from 'lucide-react';
-import { FILE_STATUS, avatarColor, fullDate, initials, plural, relativeTime } from '../lib/format.ts';
+import { FILE_STATUS, avatarColor, fullDate, initials, plural, relativeTime, type FileStatusLetter } from '../lib/format.ts';
 import { describeStash } from '../lib/stashName.ts';
 import { GuardBanner } from './Guard.tsx';
-import CommitForm from './CommitForm.jsx';
+import CommitForm from './CommitForm.tsx';
 import { readable } from '../lib/scheme.ts';
 import { t, tj } from '../i18n/index.ts';
+import type { RepoData } from '../state/repoStore.ts';
+import type {
+  CommitFile_Serialize,
+  Commit_Serialize,
+  GuardScan_Serialize,
+  HistoryLine_Serialize,
+  Stash_Serialize,
+  StashDetails_Serialize,
+} from '../../crates/gorynych-tauri/bindings/commands.ts';
+
+/** Файл в любом из списков панели: коммит, stash, рабочая копия */
+export interface RowFile {
+  path: string;
+  oldPath?: string | null;
+  status: string;
+  additions?: number | null;
+  deletions?: number | null;
+  moved?: boolean | null;
+  untracked?: boolean | null;
+}
+
+/** Выбранная строка графа (готовит App): коммит, stash или WIP */
+export type DetailsCommit = Commit_Serialize & { wip?: boolean; isStash?: boolean };
+export type DetailsStash = Stash_Serialize & { isStash: true; key?: string; wip?: undefined };
+export type WipRow = { hash: 'WIP'; wip: true; isStash?: undefined; parents: string[]; message: string; refs: [] };
+export type SelectedRow = DetailsCommit | DetailsStash | WipRow;
+
+/** Файлы коммита (`repo:commit-files`) или ошибка их загрузки; `undefined` — ещё грузятся */
+type CommitFiles = CommitFile_Serialize[] | { error: string };
+/** Файлы stash (`repo:stash-details`) или ошибка */
+type StashFiles = StashDetails_Serialize | { error: string };
+
+/** Совпадения поиска по графу в одном коммите (`repo:search-history`) */
+type HitLine = Omit<HistoryLine_Serialize, 'ranges'> & { ranges?: [number, number][] };
+export interface HitFile {
+  path: string;
+  oldPath: string | null;
+  status: string;
+  count: number;
+  lines: HitLine[];
+}
+export interface CommitHits {
+  hash: string;
+  files: HitFile[];
+  moreFiles: number;
+  count: number;
+}
+
+type FileKind = 'commit' | 'stash' | 'staged' | 'unstaged';
+type OpenFile = (file: RowFile, kind: FileKind, list: RowFile[]) => void;
+type FileMenu = (file: RowFile, kind: FileKind, list: RowFile[], x: number, y: number, extra?: { stash: DetailsStash; restore: () => void }) => void;
+type ActiveFile = { kind: string; path: string } | null | undefined;
+type GuardState = 'on' | 'off' | 'repo-off';
+
+interface CommitDetailsProps {
+  commit: SelectedRow | null;
+  files: CommitFiles | StashFiles | null | undefined;
+  repo: RepoData;
+  busy: boolean;
+  activeFile: ActiveFile;
+  onOpenFile: OpenFile;
+  onSelectCommit: (hash: string) => void;
+  onStage: (paths: 'all' | string[]) => void;
+  onUnstage: (paths: 'all' | string[]) => void;
+  onCommit: (summary: string, description: string) => Promise<boolean | undefined> | boolean | undefined;
+  onRevertTo?: (commit: DetailsCommit) => void;
+  onStashAction: (action: 'apply' | 'pop' | 'drop', stash: DetailsStash) => void;
+  onOpenConflict?: (path: string) => void;
+  activeConflict?: string | null;
+  onFileMenu?: FileMenu;
+  guardResult: GuardScan_Serialize | null | undefined;
+  guardState?: GuardState;
+  onGuardOpen: () => void;
+  onGuardToggleRepo: () => void;
+  onGuardSettings: () => void;
+  onStashRestore?: (list: RowFile[], stash: DetailsStash) => Promise<{ ok: boolean } | undefined> | undefined;
+  onCommitSettings?: () => void;
+  searchHits?: CommitHits | null;
+  searchQuery?: string;
+  onOpenSearchHit?: (hash: string, file: HitFile, line?: HitLine) => void;
+}
 
 export default function CommitDetails({
   commit,
@@ -56,7 +136,7 @@ export default function CommitDetails({
   searchHits = null, // поиск по графу: где в изменениях этого коммита найден текст
   searchQuery = '',
   onOpenSearchHit,
-}) {
+}: CommitDetailsProps) {
   return (
     <aside className="glass flex w-full min-w-0 flex-col border-l border-gk-border bg-gk-panel">
       {!commit ? (
@@ -64,8 +144,8 @@ export default function CommitDetails({
       ) : commit.isStash ? (
         <StashPanel
           key={commit.hash}
-          stash={commit}
-          details={files}
+          stash={commit as DetailsStash}
+          details={files as StashFiles | undefined}
           busy={busy}
           activeFile={activeFile}
           onOpenFile={onOpenFile}
@@ -96,8 +176,8 @@ export default function CommitDetails({
       ) : (
         <CommitPanel
           key={commit.hash}
-          commit={commit}
-          files={files}
+          commit={commit as DetailsCommit}
+          files={files as CommitFiles | undefined}
           activeFile={activeFile}
           onOpenFile={onOpenFile}
           onSelectCommit={onSelectCommit}
@@ -115,11 +195,25 @@ export default function CommitDetails({
 
 /* ---------- Выбран обычный коммит ---------- */
 
-function CommitPanel({ commit, files, activeFile, onOpenFile, onSelectCommit, onRevertTo, busy, onFileMenu, searchHits, searchQuery, onOpenSearchHit }) {
+interface CommitPanelProps {
+  commit: DetailsCommit;
+  files: CommitFiles | undefined;
+  activeFile: ActiveFile;
+  onOpenFile: OpenFile;
+  onSelectCommit: (hash: string) => void;
+  onRevertTo?: (commit: DetailsCommit) => void;
+  busy: boolean;
+  onFileMenu?: FileMenu;
+  searchHits: CommitHits | null;
+  searchQuery: string;
+  onOpenSearchHit?: (hash: string, file: HitFile, line?: HitLine) => void;
+}
+
+function CommitPanel({ commit, files, activeFile, onOpenFile, onSelectCommit, onRevertTo, busy, onFileMenu, searchHits, searchQuery, onOpenSearchHit }: CommitPanelProps) {
   const [treeView, setTreeView] = useState(false);
   const list = Array.isArray(files) ? files : [];
-  const hitByPath = new Map((searchHits?.files ?? []).map((f) => [f.path, f]));
-  const counts = list.reduce((acc, f) => ({ ...acc, [f.status]: (acc[f.status] ?? 0) + 1 }), {});
+  const hitByPath = new Map((searchHits?.files ?? []).map((f) => [f.path, f] as const));
+  const counts = list.reduce<Record<string, number>>((acc, f) => ({ ...acc, [f.status]: (acc[f.status] ?? 0) + 1 }), {});
 
   return (
     <>
@@ -200,7 +294,7 @@ function CommitPanel({ commit, files, activeFile, onOpenFile, onSelectCommit, on
 
       <div className="flex-1 overflow-y-auto py-1">
         {files === undefined && <FilesSkeleton />}
-        {files?.error && <div className="px-3 py-2 text-xs text-gk-red">{files.error}</div>}
+        {(files as { error?: string } | undefined)?.error && <div className="px-3 py-2 text-xs text-gk-red">{(files as { error: string }).error}</div>}
         {Array.isArray(files) && files.length === 0 && (
           <div className="px-3 py-2 text-xs italic text-gk-dim">{t('Нет изменённых файлов')}</div>
         )}
@@ -239,7 +333,7 @@ function CommitPanel({ commit, files, activeFile, onOpenFile, onSelectCommit, on
 
 /* ---------- Поиск по графу: где в изменениях найден текст ---------- */
 
-function SearchHits({ hits, query, onOpen }) {
+function SearchHits({ hits, query, onOpen }: { hits: CommitHits; query: string; onOpen: (file: HitFile, line?: HitLine) => void }) {
   const [open, setOpen] = useState(true);
   const files = hits.files ?? [];
   const totalFiles = files.length + (hits.moreFiles ?? 0);
@@ -292,9 +386,9 @@ function SearchHits({ hits, query, onOpen }) {
 }
 
 // Узкая панель: начало строки отрезаем так, чтобы совпадение было видно
-function Snippet({ line }) {
+function Snippet({ line }: { line: HitLine }) {
   const first = line.ranges?.[0]?.[0] ?? 0;
-  const lead = line.text.match(/^\s*/)[0].length;
+  const lead = line.text.match(/^\s*/)![0].length;
   const start = first > 18 ? first - 14 : lead;
   const ranges = (line.ranges ?? []).map(([a, b]) => [a - start, b - start]).filter(([a]) => a >= 0);
   return (
@@ -305,8 +399,8 @@ function Snippet({ line }) {
   );
 }
 
-function Highlighted({ text, ranges }) {
-  const out = [];
+function Highlighted({ text, ranges }: { text: string; ranges: number[][] }) {
+  const out: ReactNode[] = [];
   let at = 0;
   for (const [a, b] of ranges ?? []) {
     if (a > at) out.push(text.slice(at, a));
@@ -323,16 +417,27 @@ function Highlighted({ text, ranges }) {
 
 /* ---------- Выбран stash ---------- */
 
-function StashPanel({ stash, details, busy, activeFile, onOpenFile, onAction, onRestoreFiles, onFileMenu }) {
-  const files = Array.isArray(details?.files) ? details.files : [];
+interface StashPanelProps {
+  stash: DetailsStash;
+  details: StashFiles | undefined;
+  busy: boolean;
+  activeFile: ActiveFile;
+  onOpenFile: OpenFile;
+  onAction: CommitDetailsProps['onStashAction'];
+  onRestoreFiles?: CommitDetailsProps['onStashRestore'];
+  onFileMenu?: FileMenu;
+}
+
+function StashPanel({ stash, details, busy, activeFile, onOpenFile, onAction, onRestoreFiles, onFileMenu }: StashPanelProps) {
+  const files: RowFile[] = Array.isArray((details as StashDetails_Serialize | undefined)?.files) ? (details as StashDetails_Serialize).files : [];
   const described = describeStash(stash);
   const message = described.title;
   const branch = described.branch;
-  const keyOf = (f) => `${f.untracked ? 'u' : 't'}:${f.path}`;
-  const [picked, setPicked] = useState(() => new Set());
+  const keyOf = (f: RowFile) => `${f.untracked ? 'u' : 't'}:${f.path}`;
+  const [picked, setPicked] = useState(() => new Set<string>());
   const chosen = files.filter((f) => picked.has(keyOf(f)));
   const all = files.length > 0 && chosen.length === files.length;
-  const toggle = (f) =>
+  const toggle = (f: RowFile) =>
     setPicked((prev) => {
       const next = new Set(prev);
       const k = keyOf(f);
@@ -340,7 +445,7 @@ function StashPanel({ stash, details, busy, activeFile, onOpenFile, onAction, on
       else next.add(k);
       return next;
     });
-  const restore = async (list) => {
+  const restore = async (list: RowFile[]) => {
     const res = await onRestoreFiles?.(list, stash);
     if (res?.ok) setPicked(new Set());
   };
@@ -388,11 +493,11 @@ function StashPanel({ stash, details, busy, activeFile, onOpenFile, onAction, on
           <Checkbox
             checked={all}
             mixed={!all && chosen.length > 0}
-            onChange={() => setPicked(all ? new Set() : new Set(files.map(keyOf)))}
+            onChange={() => setPicked(all ? new Set<string>() : new Set(files.map(keyOf)))}
             title={all ? t('Снять выбор') : t('Выбрать все файлы')}
           />
         )}
-        {Array.isArray(details?.files) && (
+        {Array.isArray((details as StashDetails_Serialize | undefined)?.files) && (
           <span className="truncate">
             {chosen.length > 0 ? (
               <>
@@ -414,7 +519,7 @@ function StashPanel({ stash, details, busy, activeFile, onOpenFile, onAction, on
 
       <div className="flex-1 overflow-y-auto py-1">
         {details === undefined && <FilesSkeleton />}
-        {details?.error && <div className="px-3 py-2 text-xs text-gk-red">{details.error}</div>}
+        {(details as { error?: string } | undefined)?.error && <div className="px-3 py-2 text-xs text-gk-red">{(details as { error: string }).error}</div>}
         {files.length > 0 && chosen.length === 0 && (
           <div className="px-3 pb-1 pt-0.5 text-[11px] leading-snug text-gk-dim">{t('Отметьте файлы, чтобы восстановить только их, или наведите на файл.')}</div>
         )}
@@ -453,7 +558,7 @@ function StashPanel({ stash, details, busy, activeFile, onOpenFile, onAction, on
   );
 }
 
-function Checkbox({ checked, mixed, onChange, title }) {
+function Checkbox({ checked, mixed, onChange, title }: { checked: boolean; mixed?: boolean; onChange: () => void; title: string }) {
   const Icon = checked ? SquareCheck : mixed ? SquareMinus : Square;
   return (
     <button
@@ -473,7 +578,7 @@ function Checkbox({ checked, mixed, onChange, title }) {
   );
 }
 
-function StashButton({ icon: Icon, danger, accent, children, ...props }) {
+function StashButton({ icon: Icon, danger, accent, children, ...props }: ButtonHTMLAttributes<HTMLButtonElement> & { icon: LucideIcon; danger?: boolean; accent?: boolean }) {
   return (
     <button
       {...props}
@@ -507,14 +612,34 @@ function FilesSkeleton() {
 
 /* ---------- Строка WIP: настоящий стейджинг и коммит ---------- */
 
-function WipPanel({ repo, busy, activeFile, onOpenFile, onStage, onUnstage, onCommit, onOpenConflict, activeConflict, onFileMenu, guardResult, guardState, onGuardOpen, onGuardToggleRepo, onGuardSettings, onCommitSettings }) {
+type WipPanelProps = Pick<
+  CommitDetailsProps,
+  | 'repo'
+  | 'busy'
+  | 'activeFile'
+  | 'onOpenFile'
+  | 'onStage'
+  | 'onUnstage'
+  | 'onCommit'
+  | 'onOpenConflict'
+  | 'activeConflict'
+  | 'onFileMenu'
+  | 'guardResult'
+  | 'guardState'
+  | 'onGuardOpen'
+  | 'onGuardToggleRepo'
+  | 'onGuardSettings'
+  | 'onCommitSettings'
+>;
+
+function WipPanel({ repo, busy, activeFile, onOpenFile, onStage, onUnstage, onCommit, onOpenConflict, activeConflict, onFileMenu, guardResult, guardState, onGuardOpen, onGuardToggleRepo, onGuardSettings, onCommitSettings }: WipPanelProps) {
 
   // Конфликтные файлы — отдельной группой сверху, их нельзя просто застейджить
   const conflictFiles = repo.wipFiles.filter((f) => f.status === 'U');
   const unstagedFiles = repo.wipFiles.filter((f) => !f.staged && f.status !== 'U');
   const stagedFiles = repo.wipFiles.filter((f) => f.staged);
   // Файлы с находками Pre-commit Guard: путь → количество
-  const guardFiles = new Map();
+  const guardFiles = new Map<string, number>();
   for (const f of guardResult?.findings ?? []) guardFiles.set(f.file, (guardFiles.get(f.file) ?? 0) + 1);
 
   return (
@@ -618,6 +743,21 @@ function FileGroup({
   fileActionTitle,
   onFileMenu,
   flagged,
+}: {
+  title: string;
+  kind: FileKind;
+  files: RowFile[];
+  busy: boolean;
+  activeFile: ActiveFile;
+  onOpenFile: OpenFile;
+  actionLabel: string;
+  actionClass: string;
+  onAction: () => void;
+  onFileAction: (file: RowFile) => void;
+  fileActionIcon: LucideIcon;
+  fileActionTitle: string;
+  onFileMenu?: FileMenu;
+  flagged?: Map<string, number>;
 }) {
   return (
     <div className="flex min-h-0 flex-1 flex-col border-b border-gk-border last:border-b-0">
@@ -677,7 +817,7 @@ function FileGroup({
 
 /* ---------- Общие мелочи ---------- */
 
-function FileRow({ file, tree, active, selected, found = false, lead, children, ...props }) {
+function FileRow({ file, tree, active, selected, found = false, lead, children, ...props }: HTMLAttributes<HTMLDivElement> & { file: RowFile; tree?: boolean; active: boolean; selected?: boolean; found?: boolean; lead?: ReactNode }) {
   const parts = file.path.split('/');
   const name = parts.pop();
   const dir = parts.join('/');
@@ -697,7 +837,7 @@ function FileRow({ file, tree, active, selected, found = false, lead, children, 
       {lead}
       <StatusBadge status={file.status} />
       {renamed ? (
-        <RenamedPath from={file.oldPath} to={file.path} moved={file.moved} tree={tree} />
+        <RenamedPath from={file.oldPath!} to={file.path} moved={file.moved} tree={tree} />
       ) : (
         <FileName name={name} dir={tree ? '' : dir} />
       )}
@@ -710,7 +850,7 @@ function FileRow({ file, tree, active, selected, found = false, lead, children, 
  * Имя файла — всегда целиком и основным цветом; папка — рядом, приглушённо и обрезается с НАЧАЛА:
  * «Form.jsx  …/shared/components». Длинный путь больше не прячет имя и расширение.
  */
-function FileName({ name, dir, muted }) {
+function FileName({ name, dir, muted }: { name: string | undefined; dir: string; muted?: boolean }) {
   return (
     <span className="flex min-w-0 flex-1 items-baseline gap-1.5">
       <span className={`max-w-full shrink-0 truncate ${muted ? 'italic text-gk-muted' : 'text-gk-text'}`}>{name}</span>
@@ -723,7 +863,7 @@ function FileName({ name, dir, muted }) {
  * Длинная папка — первая папка, «…» и две последние: «frontend/…/components/Profile».
  * Конец пути (где лежит файл) виден всегда; полный путь — в подсказке строки.
  */
-export function compactDir(dir) {
+export function compactDir(dir: unknown): string {
   const parts = String(dir).split('/').filter(Boolean);
   if (parts.length <= 3) return parts.join('/');
   return `${parts[0]}/…/${parts.slice(-2).join('/')}`;
@@ -731,7 +871,7 @@ export function compactDir(dir) {
 
 // Обрезание с начала: у контейнера direction rtl — многоточие встаёт слева, а сам путь
 // внутри изолирован как LTR, поэтому «/» и стрелки остаются на своих местах
-function DirPath({ dir, children }) {
+function DirPath({ dir, children }: { dir: string; children?: ReactNode }) {
   return (
     <span dir="rtl" className="min-w-0 flex-1 truncate text-left text-[11.5px] text-gk-dim">
       <span dir="ltr">{children ?? dir}</span>
@@ -740,11 +880,11 @@ function DirPath({ dir, children }) {
 }
 
 // Перенос/переименование: новое имя — основным цветом; рядом — откуда («← старое имя» или «← старая/папка»)
-function RenamedPath({ from, to, moved, tree }) {
-  const split = (p) => {
+function RenamedPath({ from, to, moved, tree }: { from: string; to: string; moved?: boolean | null; tree?: boolean }) {
+  const split = (p: string) => {
     const parts = p.split('/');
     const name = parts.pop();
-    return [parts.join('/'), name];
+    return [parts.join('/'), name!] as const;
   };
   const [oldDir, oldName] = split(from);
   const [newDir, newName] = split(to);
@@ -760,7 +900,7 @@ function RenamedPath({ from, to, moved, tree }) {
 }
 
 /** Счётчики +X −Y; чистый перенос — метка moved; бинарный — bin */
-export function DiffStat({ file }) {
+export function DiffStat({ file }: { file: RowFile }) {
   if (file.additions === undefined) return null;
   if (file.moved) {
     return (
@@ -783,8 +923,8 @@ export function DiffStat({ file }) {
   );
 }
 
-function StatusBadge({ status }) {
-  const { color: raw, label } = FILE_STATUS[status] ?? FILE_STATUS.M;
+function StatusBadge({ status }: { status: string }) {
+  const { color: raw, label } = FILE_STATUS[status as FileStatusLetter] ?? FILE_STATUS.M;
   const color = readable(raw);
   return (
     <span
@@ -797,7 +937,7 @@ function StatusBadge({ status }) {
   );
 }
 
-function ViewToggle({ active, icon: Icon, ...props }) {
+function ViewToggle({ active, icon: Icon, ...props }: ButtonHTMLAttributes<HTMLButtonElement> & { active: boolean; icon: LucideIcon }) {
   return (
     <button
       {...props}
@@ -810,7 +950,7 @@ function ViewToggle({ active, icon: Icon, ...props }) {
   );
 }
 
-function Avatar({ name, size }) {
+function Avatar({ name, size }: { name: string; size: number }) {
   return (
     <span
       style={{ width: size, height: size, backgroundColor: avatarColor(name) }}

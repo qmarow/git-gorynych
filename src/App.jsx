@@ -56,7 +56,7 @@ import TitleBar from './components/TitleBar.tsx';
 import Toolbar from './components/Toolbar.tsx';
 import Sidebar from './components/Sidebar.tsx';
 import CommitGraph from './components/CommitGraph.jsx';
-import CommitDetails from './components/CommitDetails.jsx';
+import CommitDetails from './components/CommitDetails.tsx';
 import Toasts from './components/Toasts.tsx';
 import TooltipLayer from './components/TooltipLayer.tsx';
 import DiffView from './components/DiffView.jsx';

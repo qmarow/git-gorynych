@@ -96,6 +96,7 @@ node tests/ui-parity/components-compiled.mjs $old $PWD Toasts CodeText Resizer A
 | `Sidebar` | см. `git log -- src/components/Sidebar.tsx` |
 | `RebaseView`, `CompareView` | см. `git log -- src/components/RebaseView.tsx` |
 | `ConflictView`, `GuideDialog` | см. `git log -- src/components/ConflictView.tsx` |
+| `CommitForm`, `CommitDetails` | см. `git log -- src/components/CommitForm.tsx` |
 
 В `RebaseView` при переводе удалён мёртвый код: `const ACTION = …` и `const a = ACTION[item.action]` в `PlanRow`
 (чистый поиск, результат не используется; `noUnusedLocals` его не пропускает). Для сверки эти две строки
