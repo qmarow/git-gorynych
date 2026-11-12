@@ -1,13 +1,69 @@
-import { useEffect, useRef, useState } from 'react';
-import { AlertTriangle, ArrowRightLeft, Check, CircleCheck, Cloud, Copy, Eye, EyeOff, ExternalLink, FileKey, FolderGit2, FolderOpen, KeyRound, Loader2, Lock, Server, Sparkles, Trash2, UserRound, Workflow } from 'lucide-react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { AlertTriangle, ArrowRightLeft, Check, CircleCheck, Cloud, Copy, Eye, EyeOff, ExternalLink, FileKey, FolderGit2, FolderOpen, KeyRound, Loader2, Lock, Server, Sparkles, Trash2, UserRound, Workflow, type LucideIcon } from 'lucide-react';
 import { Button, Modal } from './Dialogs.tsx';
 import { secretStorageText } from '../lib/platform.ts';
 import { CLOUD_SERVERS, SERVER_KINDS, kindInfo, kindLabel, prefersToken, sshKeysPage, tokenPage, tokenPlaceholder, tokenScopes } from '../lib/servers.ts';
 import { t as tr, tj } from '../i18n/index.ts';
+import type { ApiError, ApiResult } from '../platform/tauri.ts';
+import type {
+  AuthMethod,
+  DetectedServer_Serialize,
+  GeneratedKey_Serialize,
+  KeyDefaults_Serialize,
+  LoginCheckResult_Serialize,
+  RemoteCredTarget_Serialize,
+  SshKeyList_Serialize,
+} from '../../crates/gorynych-tauri/bindings/commands.ts';
 
-const api = typeof window !== 'undefined' ? window.api : null;
+/** Проверка API от этой авторизации: `LoginCheckResult` или «ещё не проверяли» (только `state` и `method`) */
+type ApiView = Partial<LoginCheckResult_Serialize> & { state: string | null };
+/** Ответ `creds:describe`; у репозитория без remote адреса нет */
+export type AuthTarget = Omit<RemoteCredTarget_Serialize, 'url' | 'api'> & { url: string | null; api: ApiView | null };
 
-const TABS = [
+/** Что окно отдаёт в `onSubmit` (App → `creds:save`) */
+export interface AuthSubmit {
+  method: AuthMethod;
+  username?: string;
+  secret?: string;
+  keyPath?: string;
+  passphrase?: string;
+  kind?: string;
+  remoteUrl?: string;
+  apiToken?: string;
+}
+
+type Message = { message: string; hint?: string | null; details?: string };
+
+interface AuthApi {
+  creds: {
+    describe: (dir: string | null, url: string) => Promise<ApiResult<AuthTarget>>;
+    detectServer?: (input: string) => Promise<ApiResult<DetectedServer_Serialize>>;
+    sshKeys: () => Promise<ApiResult<SshKeyList_Serialize>>;
+    pickKey: () => Promise<string | null>;
+    generateKey: (options: { type: string; name: string; comment: string; passphrase: string; host: string | null }) => Promise<ApiResult<GeneratedKey_Serialize>>;
+    copyPublicKey: (keyPath: string) => Promise<ApiResult<unknown>>;
+    servers?: () => Promise<ApiResult<{ hostname: string; base: string; cloud: boolean }[]> | undefined>;
+  };
+  openExternal: (url: string) => void;
+}
+
+const api = (typeof window !== 'undefined' ? window.api : null) as AuthApi | null | undefined;
+
+/** Разобранный адрес репозитория */
+interface ParsedUrl {
+  protocol: 'https' | 'ssh' | null;
+  scheme: string | null;
+  host: string | null;
+  hostname: string | null;
+  user: string | null;
+  path: string;
+  sshUrl?: boolean;
+}
+
+/** Протокол и путь проекта, которые переживают смену сервера */
+type UrlParts = { protocol?: string; user?: string | null; path?: string };
+
+const TABS: { id: AuthMethod; label: string; icon: LucideIcon; https: boolean }[] = [
   { id: 'password', label: tr('Логин и пароль'), icon: UserRound, https: true },
   { id: 'token', label: tr('Токен доступа'), icon: KeyRound, https: true },
   { id: 'ssh', label: tr('SSH-ключ'), icon: FileKey, https: false },
@@ -16,7 +72,7 @@ const TABS = [
 /* ---------- Адрес репозитория: сервер + путь ---------- */
 
 /** → { protocol: 'https' | 'ssh' | null, scheme, host (с портом), hostname, user, path } */
-export function parseRepoUrl(raw) {
+export function parseRepoUrl(raw: unknown): ParsedUrl {
   const u = String(raw ?? '').trim();
   if (/^https?:\/\//i.test(u)) {
     try {
@@ -37,7 +93,7 @@ export function parseRepoUrl(raw) {
  * Адрес репозитория на сервере domain («host», «host:порт», «http://host») с протоколом и путём from.
  * Пустой домен — пустой адрес (путь хранится отдельно и вернётся, когда домен введут).
  */
-export function buildRepoUrl(domain, { protocol = 'https', user = null, path = '' } = {}) {
+export function buildRepoUrl(domain: unknown, { protocol = 'https', user = null, path = '' }: UrlParts = {}) {
   const d = String(domain ?? '').trim().replace(/\/+$/, '');
   const host = d.replace(/^https?:\/\//i, '').replace(/\/.*$/, '').toLowerCase();
   if (!host) return '';
@@ -47,17 +103,17 @@ export function buildRepoUrl(domain, { protocol = 'https', user = null, path = '
 }
 
 /** https ↔ SSH для того же репозитория */
-const toSsh = (raw) => {
+const toSsh = (raw: unknown) => {
   const p = parseRepoUrl(raw);
   return p.hostname && p.path ? `git@${p.hostname}:${p.path}.git` : null;
 };
-const toHttps = (raw) => {
+const toHttps = (raw: unknown) => {
   const p = parseRepoUrl(raw);
   return p.hostname && p.path ? `https://${p.hostname}/${p.path}.git` : null;
 };
-const sameUrl = (a, b) => String(a ?? '').trim().replace(/\/+$/, '') === String(b ?? '').trim().replace(/\/+$/, '');
-const choiceOfHost = (hostname) => (!hostname ? null : CLOUD_SERVERS.some((c) => c.host === hostname) ? hostname : 'self');
-const domainOfUrl = (raw) => {
+const sameUrl = (a: unknown, b: unknown) => String(a ?? '').trim().replace(/\/+$/, '') === String(b ?? '').trim().replace(/\/+$/, '');
+const choiceOfHost = (hostname: string | null) => (!hostname ? null : CLOUD_SERVERS.some((c) => c.host === hostname) ? hostname : 'self');
+const domainOfUrl = (raw: unknown) => {
   const p = parseRepoUrl(raw);
   return p.scheme === 'http' ? `http://${p.host}` : p.host ?? '';
 };
@@ -71,29 +127,43 @@ const domainOfUrl = (raw) => {
  * canEditRemote — адрес можно менять (открытый репозиторий); при клонировании адрес задан в окне клонирования.
  * target — ответ api.creds.describe; error — ошибка, из-за которой окно открылось; onSubmit(data) — сохранить и повторить.
  */
-export default function AuthDialog({ target, error, formError, notice, busy, actionLabel, canEditRemote = false, onSubmit, onForget, onClose, onKeyDefaults }) {
+interface AuthDialogProps {
+  target: AuthTarget | null | undefined;
+  error?: Message | null;
+  formError?: Message | null;
+  notice?: Message | null;
+  busy?: boolean;
+  actionLabel?: string | null;
+  canEditRemote?: boolean;
+  onSubmit: (data: AuthSubmit) => void;
+  onForget?: (() => void) | null;
+  onClose: () => void;
+  onKeyDefaults?: (type: string, url?: string) => Promise<ApiResult<KeyDefaults_Serialize> | undefined>;
+}
+
+export default function AuthDialog({ target, error, formError, notice, busy, actionLabel, canEditRemote = false, onSubmit, onForget, onClose, onKeyDefaults }: AuthDialogProps) {
   const originalUrl = target?.url ?? '';
   const [url, setUrl] = useState(originalUrl);
   const parsed = parseRepoUrl(url);
-  const [choice, setChoice] = useState(() => choiceOfHost(parseRepoUrl(originalUrl).hostname));
+  const [choice, setChoice] = useState<string | null>(() => choiceOfHost(parseRepoUrl(originalUrl).hostname));
   const [domain, setDomain] = useState(() => (choiceOfHost(parseRepoUrl(originalUrl).hostname) === 'self' ? domainOfUrl(originalUrl) : ''));
   // Описание текущего адреса: сохранённый вход этого репозитория, тип сервера; для исходного адреса — из target
-  const [described, setDescribed] = useState(() => (target?.url ? target : null));
+  const [described, setDescribed] = useState<AuthTarget | null>(() => (target?.url ? target : null));
   // Окно получило свежее описание (после «Забыть» или неудачной попытки) — показать его
   useEffect(() => {
     if (target?.url) setDescribed(target);
   }, [target]);
   // Протокол и путь проекта — переживают смену сервера (в т. ч. пока домен своего сервера не введён)
-  const last = useRef((() => {
+  const last = useRef<UrlParts>((() => {
     const p0 = parseRepoUrl(originalUrl);
     return { protocol: p0.protocol ?? 'https', user: p0.user, path: p0.path };
   })());
   const srv = described && sameUrl(described.url, url) ? described : null;
   const changed = canEditRemote && !sameUrl(url, originalUrl);
   const validUrl = Boolean(parsed.hostname && parsed.path);
-  const [kind, setKind] = useState(target?.kind ?? null);
+  const [kind, setKind] = useState<string | null>(target?.kind ?? null);
   const [kindTouched, setKindTouched] = useState(false);
-  const [detect, setDetect] = useState(null); // { status: 'loading' | 'ok' | 'fail', kind, version, error }
+  const [detect, setDetect] = useState<{ status: 'loading' | 'ok' | 'fail'; kind?: string | null; version?: unknown; error?: string | null } | null>(null); // { status: 'loading' | 'ok' | 'fail', kind, version, error }
   const proto = parsed.protocol ?? 'https';
   const cloud = CLOUD_SERVERS.some((c) => c.host === parsed.hostname);
   const base = parsed.hostname ? (parsed.protocol === 'https' ? `${parsed.scheme}://${parsed.host}` : srv?.base ?? `https://${parsed.hostname}`) : null;
@@ -103,9 +173,9 @@ export default function AuthDialog({ target, error, formError, notice, busy, act
     if (proto === 'ssh') return 'ssh';
     return prefersToken(target?.kind) ? 'token' : 'password';
   })();
-  const [tab, setTabRaw] = useState(initialTab);
+  const [tab, setTabRaw] = useState<string>(initialTab);
   const tabTouched = useRef(false);
-  const setTab = (id, byUser = false) => {
+  const setTab = (id: string, byUser = false) => {
     if (byUser) tabTouched.current = true;
     setTabRaw(id);
   };
@@ -118,18 +188,18 @@ export default function AuthDialog({ target, error, formError, notice, busy, act
   const [passphrase, setPassphrase] = useState('');
   // Пароль и SSH-ключ API GitLab не принимает — токен для пайплайнов хранится в этой же авторизации
   const [apiToken, setApiToken] = useState('');
-  const [show, setShow] = useState({ password: false, token: false, passphrase: false });
-  const [keys, setKeys] = useState(null); // { dir, keys: [...] }
-  const [keyNote, setKeyNote] = useState(null); // { type: 'ok' | 'error', text }
-  const [sshMode, setSshMode] = useState(null); // 'existing' | 'new' — по умолчанию решается по наличию ключей
-  const [created, setCreated] = useState(null); // только что созданный ключ: { path, name, publicKey, type, fingerprint }
+  const [show, setShow] = useState<Record<string, boolean>>({ password: false, token: false, passphrase: false });
+  const [keys, setKeys] = useState<SshKeyList_Serialize | null>(null); // { dir, keys: [...] }
+  const [keyNote, setKeyNote] = useState<{ type: 'ok' | 'error'; text: string; hint?: string } | null>(null); // { type: 'ok' | 'error', text }
+  const [sshMode, setSshMode] = useState<string | null>(null); // 'existing' | 'new' — по умолчанию решается по наличию ключей
+  const [created, setCreated] = useState<GeneratedKey_Serialize | null>(null); // только что созданный ключ: { path, name, publicKey, type, fingerprint }
 
   /* ---------- Адрес изменился (другой сервер, домен, путь): что сохранено для него, тип сервера ---------- */
   useEffect(() => {
     if (!validUrl || (described && sameUrl(described.url, url))) return undefined;
     let alive = true;
     const timer = setTimeout(async () => {
-      const res = await api.creds.describe(null, url.trim());
+      const res = await api!.creds.describe(null, url.trim());
       if (!alive || !res.ok) return;
       const d = res.data;
       setDescribed(d);
@@ -155,7 +225,7 @@ export default function AuthDialog({ target, error, formError, notice, busy, act
   }, [url, validUrl]);
 
   // Где хранится: облако — сразу адрес на нём; свой сервер — домен вводится ниже
-  const pickChoice = (id) => {
+  const pickChoice = (id: string) => {
     if (!canEditRemote && id !== choice) return;
     setChoice(id);
     setDetect(null);
@@ -170,12 +240,12 @@ export default function AuthDialog({ target, error, formError, notice, busy, act
       setKind(CLOUD_SERVERS.find((c) => c.host === id)?.kind ?? null);
     }
   };
-  const changeDomain = (d) => {
+  const changeDomain = (d: string) => {
     setDomain(d);
     setUrl(buildRepoUrl(d, last.current));
   };
   // Адрес правят целиком — выбор сервера подстраивается
-  const changeUrl = (next) => {
+  const changeUrl = (next: string) => {
     setUrl(next);
     const p = parseRepoUrl(next);
     if (p.protocol) last.current = { protocol: p.protocol, user: p.user, path: p.path || last.current.path };
@@ -185,7 +255,7 @@ export default function AuthDialog({ target, error, formError, notice, busy, act
   };
 
 const tabInfo = TABS.find((t) => t.id === tab);
-  const wrongProtocol = proto !== 'local' && tabInfo.https !== (proto === 'https');
+  const wrongProtocol = (proto as string) !== 'local' && tabInfo!.https !== (proto === 'https');
 
   // Тип своего сервера неизвестен (не выбран раньше) — спросить у сервера
   const detectFor = srv && !srv.cloud && !srv.kindSaved && srv.base ? srv.base : null;
@@ -211,7 +281,7 @@ const tabInfo = TABS.find((t) => t.id === tab);
     };
   }, [detectFor]);
 
-  const chooseKind = (k) => {
+  const chooseKind = (k: string | null) => {
     setKind(k);
     setKindTouched(true);
   };
@@ -243,7 +313,7 @@ const tabInfo = TABS.find((t) => t.id === tab);
   }, [tab, keys, keyPath]);
 
   // Сохранённый секрет можно не вводить заново, если меняется только логин
-  const reuseSecret = (method) => saved?.method === method && saved.hasSecret;
+  const reuseSecret = (method: string) => saved?.method === method && saved.hasSecret;
   const canSubmit =
     !busy &&
     !wrongProtocol &&
@@ -257,7 +327,7 @@ const tabInfo = TABS.find((t) => t.id === tab);
   const submit = () => {
     if (!canSubmit) return;
     // Тип сервера уходит вместе с данными: для своего домена он запоминается
-    const extra = {};
+    const extra: { kind?: string; remoteUrl?: string; apiToken?: string } = {};
     if (!cloud && kind) extra.kind = kind;
     // Другой сервер / адрес — remote репозитория сменится (или добавится, если его не было)
     if (canEditRemote && (changed || !originalUrl)) extra.remoteUrl = url.trim();
@@ -273,7 +343,7 @@ const tabInfo = TABS.find((t) => t.id === tab);
   };
 
   // Новый ключ создан: выбрать его, передать пароль ключа, перечитать список
-  const onCreated = (res, pass) => {
+  const onCreated = (res: GeneratedKey_Serialize, pass: string) => {
     setCreated(res);
     setKeyPath(res.path);
     setPassphrase(pass);
@@ -282,11 +352,11 @@ const tabInfo = TABS.find((t) => t.id === tab);
   };
 
   const copyPublic = async () => {
-    const res = await api.creds.copyPublicKey(keyPath);
+    const res = await api!.creds.copyPublicKey(keyPath);
     setKeyNote(res.ok ? { type: 'ok', text: tr('Публичный ключ скопирован в буфер обмена') } : { type: 'error', text: res.error.message });
   };
 
-  const eye = (field) => (
+  const eye = (field: string) => (
     <button
       type="button"
       tabIndex={-1}
@@ -452,10 +522,10 @@ const tabInfo = TABS.find((t) => t.id === tab);
             : tr('Адрес — SSH (git@…): для него нужен SSH-ключ. Логин, пароль и токен работают только с адресами https://.')}
           {canEditRemote && (proto === 'https' ? toSsh(url) : toHttps(url)) && (
             <div className="mt-2 flex items-center gap-2">
-              <span className="min-w-0 flex-1 truncate font-mono text-[11px] text-gk-muted" data-tip={proto === 'https' ? toSsh(url) : toHttps(url)}>
+              <span className="min-w-0 flex-1 truncate font-mono text-[11px] text-gk-muted" data-tip={(proto === 'https' ? toSsh(url) : toHttps(url))!}>
                 → {proto === 'https' ? toSsh(url) : toHttps(url)}
               </span>
-              <Button onClick={() => changeUrl(proto === 'https' ? toSsh(url) : toHttps(url))} disabled={busy} className="shrink-0 py-1 text-[12px]" data-testid="switch-to-ssh">
+              <Button onClick={() => changeUrl((proto === 'https' ? toSsh(url) : toHttps(url))!)} disabled={busy} className="shrink-0 py-1 text-[12px]" data-testid="switch-to-ssh">
                 <ArrowRightLeft size={12} /> {proto === 'https' ? tr('Перевести адрес на SSH') : tr('Перевести адрес на HTTPS')}
               </Button>
             </div>
@@ -538,7 +608,7 @@ const tabInfo = TABS.find((t) => t.id === tab);
           </p>
           {CI_KINDS.includes(kind) && (
             <p data-testid="auth-ci-hint" className="flex items-start gap-1.5 text-[11.5px] leading-relaxed text-gk-dim">
-              {tj('{0}<1>Эта же авторизация работает и для пайплайнов CI/CD — отдельно входить не нужно. {2}</1>', [<Workflow size={12} className="mt-0.5 shrink-0" />, <span />, CI_SCOPE_HINT[kind]])}
+              {tj('{0}<1>Эта же авторизация работает и для пайплайнов CI/CD — отдельно входить не нужно. {2}</1>', [<Workflow size={12} className="mt-0.5 shrink-0" />, <span />, CI_SCOPE_HINT[kind!]])}
             </p>
           )}
         </div>
@@ -548,10 +618,10 @@ const tabInfo = TABS.find((t) => t.id === tab);
         <div className="space-y-2.5">
           {/* Выбрать имеющийся ключ или создать новый */}
           <div role="radiogroup" className="flex gap-1 text-[12px]">
-            {[
+            {([
               ['existing', tr('Существующий ключ'), FileKey],
               ['new', tr('Создать новый ключ'), Sparkles],
-            ].map(([id, label, Icon]) => (
+            ] as [string, string, LucideIcon][]).map(([id, label, Icon]) => (
               <button
                 key={id}
                 role="radio"
@@ -662,9 +732,9 @@ const tabInfo = TABS.find((t) => t.id === tab);
             {tj('{0} Пайплайны CI/CD<1>— необязательно</1>', [<Workflow size={13} className="text-gk-muted" />, <span className="font-normal text-gk-dim" />])}
           </div>
           <p className="text-[11.5px] leading-relaxed text-gk-dim">
-            {tj('{0} {1} принимает для Pull/Push, но не для API. Чтобы эта же авторизация открывала и пайплайны, добавьте токен — он сохранится вместе с ней. {2}{3}', [tab === 'ssh' ? tr('SSH-ключ') : tr('Пароль'), KIND_NAME[kind], CI_SCOPE_HINT[kind], base && tokenPage(kind, base, parsed.hostname) && (
+            {tj('{0} {1} принимает для Pull/Push, но не для API. Чтобы эта же авторизация открывала и пайплайны, добавьте токен — он сохранится вместе с ней. {2}{3}', [tab === 'ssh' ? tr('SSH-ключ') : tr('Пароль'), KIND_NAME[kind!], CI_SCOPE_HINT[kind!], base && tokenPage(kind, base, parsed.hostname) && (
               <button
-                onClick={() => api?.openExternal(tokenPage(kind, base, parsed.hostname))}
+                onClick={() => api?.openExternal(tokenPage(kind, base, parsed.hostname)!)}
                 className="ml-1 inline-flex items-center gap-0.5 text-gk-blue hover:underline"
               >
                 {tj('Создать токен {0}', [<ExternalLink size={10} />])}
@@ -712,19 +782,19 @@ const tabInfo = TABS.find((t) => t.id === tab);
   );
 }
 
-const METHOD_NAMES = { password: tr('логин и пароль'), token: tr('токен'), ssh: tr('SSH-ключ') };
+const METHOD_NAMES: Record<string, string> = { password: tr('логин и пароль'), token: tr('токен'), ssh: tr('SSH-ключ') };
 
 /** Работают ли пайплайны от сохранённой авторизации (последняя проверка) */
-const CI_KINDS = ['gitlab', 'github', 'gitea', 'bitbucket'];
-const KIND_NAME = { gitlab: 'GitLab', github: 'GitHub', gitea: 'Gitea', bitbucket: 'Bitbucket' };
-const CI_SCOPE_HINT = {
+const CI_KINDS: (string | null)[] = ['gitlab', 'github', 'gitea', 'bitbucket'];
+const KIND_NAME: Record<string, string> = { gitlab: 'GitLab', github: 'GitHub', gitea: 'Gitea', bitbucket: 'Bitbucket' };
+const CI_SCOPE_HINT: Record<string, string> = {
   gitlab: tr('Права api хватает на всё.'),
   github: tr('Токену нужны права repo и workflow (для раннеров и секретов — администратор репозитория).'),
   gitea: tr('Токену нужны права write:repository.'),
   bitbucket: tr('Паролю приложения нужны права Pipelines и Repositories.'),
 };
 
-function ApiLine({ api: a }) {
+function ApiLine({ api: a }: { api: ApiView | null }) {
   if (!a) return null;
   if (a.state === 'ok') {
     return (
@@ -744,7 +814,7 @@ function ApiLine({ api: a }) {
 }
 
 /** Логин для токена по умолчанию — как в main-процессе (credentials.defaultTokenUser), но по выбранному сейчас типу */
-function defaultTokenUserFor(kind, fallback) {
+function defaultTokenUserFor(kind: string | null, fallback: string | null | undefined) {
   if (kind === 'gitlab') return 'oauth2';
   if (kind === 'bitbucket') return 'x-token-auth';
   if (kind) return 'git';
@@ -752,8 +822,17 @@ function defaultTokenUserFor(kind, fallback) {
 }
 
 /** Где хранится репозиторий: GitHub, GitLab или свой сервер (Self-Managed) по домену. locked — адрес менять нельзя (клонирование) */
-function ServerPicker({ choice, onChoice, locked, domain, onDomain, kindRow }) {
-  const [known, setKnown] = useState([]);
+interface ServerPickerProps {
+  choice: string | null;
+  onChoice: (id: string) => void;
+  locked: boolean;
+  domain: string;
+  onDomain: (domain: string) => void;
+  kindRow: ReactNode;
+}
+
+function ServerPicker({ choice, onChoice, locked, domain, onDomain, kindRow }: ServerPickerProps) {
+  const [known, setKnown] = useState<{ hostname: string; base: string; cloud: boolean }[]>([]);
   useEffect(() => {
     if (locked) return;
     api?.creds?.servers?.().then((res) => res?.ok && setKnown(res.data.filter((s) => !s.cloud)));
@@ -826,8 +905,16 @@ function ServerPicker({ choice, onChoice, locked, domain, onDomain, kindRow }) {
 }
 
 /** Тип своего сервера: определён по API, угадан по имени или выбран вручную */
-function KindRow({ kind, touched, detect, saved, onChange }) {
-  let note = null;
+interface KindRowProps {
+  kind: string | null;
+  touched: boolean;
+  detect: { status: string; kind?: string | null; version?: unknown; error?: string | null } | null;
+  saved: boolean;
+  onChange: (kind: string | null) => void;
+}
+
+function KindRow({ kind, touched, detect, saved, onChange }: KindRowProps) {
+  let note: ReactNode = null;
   if (touched) note = <span className="text-gk-dim">{tr('выбран вами')}</span>;
   else if (detect?.status === 'loading')
     note = (
@@ -865,7 +952,7 @@ function KindRow({ kind, touched, detect, saved, onChange }) {
 const INPUT =
   'w-full rounded-md border border-gk-border bg-gk-bg px-2.5 py-1.5 text-[13px] text-gk-text outline-none placeholder:text-gk-dim focus:border-gk-blue/70';
 
-function Field({ label, hint, children }) {
+function Field({ label, hint, children }: { label: ReactNode; hint?: ReactNode; children?: ReactNode }) {
   return (
     <label className="block">
       <span className="mb-1 flex items-baseline gap-1.5 text-[11.5px] font-medium text-gk-muted">
@@ -883,7 +970,13 @@ const KEY_TYPES = [
 ];
 
 /** Форма нового SSH-ключа: тип, имя файла, комментарий, пароль ключа с повтором */
-function KeyGenerator({ host, onDefaults, onCreated }) {
+interface KeyGeneratorProps {
+  host: string | null;
+  onDefaults: ((type: string) => Promise<ApiResult<KeyDefaults_Serialize> | undefined>) | null;
+  onCreated: (key: GeneratedKey_Serialize, passphrase: string) => void;
+}
+
+function KeyGenerator({ host, onDefaults, onCreated }: KeyGeneratorProps) {
   const [type, setType] = useState('ed25519');
   const [name, setName] = useState('');
   const [nameTouched, setNameTouched] = useState(false);
@@ -893,7 +986,7 @@ function KeyGenerator({ host, onDefaults, onCreated }) {
   const [pass2, setPass2] = useState('');
   const [showPass, setShowPass] = useState(false);
   const [busy, setBusy] = useState(false);
-  const [err, setErr] = useState(null);
+  const [err, setErr] = useState<ApiError | null>(null);
 
   // Имя файла и комментарий по умолчанию: стандартное имя (или с именем сервера, если занято) и email из git config
   useEffect(() => {
@@ -918,7 +1011,7 @@ function KeyGenerator({ host, onDefaults, onCreated }) {
     if (!canCreate) return;
     setBusy(true);
     setErr(null);
-    const res = await api.creds.generateKey({ type, name: name.trim(), comment: comment.trim(), passphrase: pass, host });
+    const res = await api!.creds.generateKey({ type, name: name.trim(), comment: comment.trim(), passphrase: pass, host });
     setBusy(false);
     if (!res.ok) setErr(res.error);
     else onCreated(res.data, pass);
@@ -1028,10 +1121,18 @@ function KeyGenerator({ host, onDefaults, onCreated }) {
 }
 
 /** Ключ создан: публичная часть, копирование и куда её добавить */
-function CreatedKey({ keyInfo, page, host, onAnother, submitLabel }) {
+interface CreatedKeyProps {
+  keyInfo: GeneratedKey_Serialize;
+  page: string | null;
+  host: string | null;
+  onAnother: () => void;
+  submitLabel: string;
+}
+
+function CreatedKey({ keyInfo, page, host, onAnother, submitLabel }: CreatedKeyProps) {
   const [copied, setCopied] = useState(true); // при создании ключ уже скопирован в буфер
   const copy = async () => {
-    const res = await api.creds.copyPublicKey(keyInfo.path);
+    const res = await api!.creds.copyPublicKey(keyInfo.path);
     setCopied(res.ok);
   };
   return (

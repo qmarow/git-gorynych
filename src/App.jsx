@@ -88,7 +88,7 @@ import { IS_MAC, isMod, kb, openFolderLabel, openTerminalLabel } from './lib/pla
 import { DEFAULT_SYNC_MODE, SYNC_MODES, nextDelay, resetSyncStatus, setSyncStatus } from './lib/syncStatus.ts';
 import InitRepoDialog, { plural } from './components/InitRepoDialog.tsx';
 import CloneDialog from './components/CloneDialog.tsx';
-import AuthDialog from './components/AuthDialog.jsx';
+import AuthDialog from './components/AuthDialog.tsx';
 import NewTabPage from './components/NewTabPage.tsx';
 import { describeStash } from './lib/stashName.ts';
 import RevertToDialog from './components/RevertToDialog.tsx';
