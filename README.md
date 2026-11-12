@@ -35,11 +35,10 @@ npm run electron:preview          # собрать фронт и открыть 
 ```
 electron/main.cjs        главный процесс: frameless-окно 1200×800, IPC
 electron/preload.cjs     безопасный мост window.api
-src/App.jsx              трёхпанельный layout
+src/App.tsx              трёхпанельный layout
 src/components/          TitleBar, Toolbar, Sidebar, CommitGraph, CommitDetails
-src/lib/graphLayout.js   раскладка коммитов по дорожкам и пути рёбер
-src/lib/format.js        даты, инициалы, цвета
-src/lib/highlight.js     подсветка синтаксиса и поиск в diff
+src/lib/graphLayout.ts   раскладка коммитов по дорожкам и пути рёбер
+src/lib/format.ts        даты, инициалы, цвета
+src/lib/highlight.ts     подсветка синтаксиса и поиск в diff
 src/vendor/hljs.js       highlight.js (BSD-3) одним файлом — пересборка: scripts/build-hljs.mjs
-src/data/mockRepo.js     демо-данные до подключения Git
 ```
