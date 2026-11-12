@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState, type ComponentType, type ReactNode } from 'react';
 import { installGitHint, kb, openFolderLabel } from '../lib/platform.ts';
 import {
   Archive,
@@ -28,12 +28,27 @@ import {
   LayoutTemplate,
   Ticket,
   MessageSquareText,
+  type LucideIcon,
 } from 'lucide-react';
 import { t, tj } from '../i18n/index.ts';
 
+/** Группа горячих клавиш: название и пары «сочетание — что делает» */
+export type ShortcutGroup = [string, [string, string][]];
+
+/** Раздел руководства */
+interface Section {
+  id: string;
+  title: string;
+  icon: LucideIcon;
+  keywords: string;
+  body: ComponentType;
+}
+
+type WithChildren = { children?: ReactNode };
+
 /* ---------------- Горячие клавиши (используются и в разделе руководства) ---------------- */
 
-export const SHORTCUTS = [
+export const SHORTCUTS: ShortcutGroup[] = [
   [t('Репозитории'), [
     ['Ctrl+O', t('Открыть репозиторий')],
     ['Ctrl+Shift+O', t('Клонировать')],
@@ -91,15 +106,15 @@ export const SHORTCUTS = [
 /* ---------------- Кирпичики текста ---------------- */
 
 // Клавиши: на macOS Ctrl → ⌘, Alt → ⌥ (kb)
-const K = ({ children }) => (
+const K = ({ children }: WithChildren) => (
   <kbd className="mx-0.5 inline-block whitespace-nowrap rounded border border-gk-border bg-gk-fg/[0.06] px-1.5 py-px font-mono text-[11px] text-gk-text shadow-[inset_0_-1px_0_rgb(255_255_255/0.06)]">
     {typeof children === 'string' ? kb(children) : children}
   </kbd>
 );
-const B = ({ children }) => <b className="font-medium text-gk-strong">{children}</b>;
-const H = ({ children }) => <h3 className="mb-2 mt-6 text-[14px] font-semibold text-gk-strong first:mt-0">{children}</h3>;
-const P = ({ children }) => <p className="mb-2.5 leading-relaxed">{children}</p>;
-const Steps = ({ items }) => (
+const B = ({ children }: WithChildren) => <b className="font-medium text-gk-strong">{children}</b>;
+const H = ({ children }: WithChildren) => <h3 className="mb-2 mt-6 text-[14px] font-semibold text-gk-strong first:mt-0">{children}</h3>;
+const P = ({ children }: WithChildren) => <p className="mb-2.5 leading-relaxed">{children}</p>;
+const Steps = ({ items }: { items: ReactNode[] }) => (
   <ol className="mb-3 space-y-1.5">
     {items.map((it, i) => (
       <li key={i} className="flex gap-2.5 leading-relaxed">
@@ -109,7 +124,7 @@ const Steps = ({ items }) => (
     ))}
   </ol>
 );
-const List = ({ items }) => (
+const List = ({ items }: { items: ReactNode[] }) => (
   <ul className="mb-3 space-y-1">
     {items.map((it, i) => (
       <li key={i} className="flex gap-2 leading-relaxed">
@@ -119,7 +134,7 @@ const List = ({ items }) => (
     ))}
   </ul>
 );
-const Tip = ({ children, tone = 'blue' }) => (
+const Tip = ({ children, tone = 'blue' }: WithChildren & { tone?: 'blue' | 'yellow' | 'green' }) => (
   <div
     className={`mb-3 rounded-lg border px-3 py-2 leading-relaxed ${
       tone === 'yellow' ? 'border-gk-yellow/30 bg-gk-yellow/[0.06]' : tone === 'green' ? 'border-gk-green/30 bg-gk-green/[0.06]' : 'border-gk-blue/30 bg-gk-blue/[0.06]'
@@ -131,7 +146,7 @@ const Tip = ({ children, tone = 'blue' }) => (
 
 /* ---------------- Разделы ---------------- */
 
-const SECTIONS = [
+const SECTIONS: Section[] = [
   {
     id: 'start',
     title: t('Начало работы'),
@@ -953,10 +968,10 @@ const SECTIONS = [
 /**
  * Руководство пользователя: разделы слева (с поиском), текст справа.
  */
-export default function GuideDialog({ initialSection = 'start', onClose }) {
+export default function GuideDialog({ initialSection = 'start', onClose }: { initialSection?: string; onClose: () => void }) {
   const [active, setActive] = useState(SECTIONS.some((s) => s.id === initialSection) ? initialSection : 'start');
   const [query, setQuery] = useState('');
-  const contentRef = useRef(null);
+  const contentRef = useRef<HTMLDivElement>(null);
 
   const shown = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -973,9 +988,9 @@ export default function GuideDialog({ initialSection = 'start', onClose }) {
   }, [active]);
 
   useEffect(() => {
-    const onKey = (e) => {
+    const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') onClose();
-      if ((e.key === 'ArrowDown' || e.key === 'ArrowUp') && e.target?.tagName !== 'INPUT') {
+      if ((e.key === 'ArrowDown' || e.key === 'ArrowUp') && (e.target as HTMLElement | null)?.tagName !== 'INPUT') {
         e.preventDefault();
         const i = shown.findIndex((s) => s.id === active);
         const next = shown[Math.max(0, Math.min(shown.length - 1, i + (e.key === 'ArrowDown' ? 1 : -1)))];

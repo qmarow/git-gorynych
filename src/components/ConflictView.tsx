@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type ButtonHTMLAttributes, type CSSProperties, type MutableRefObject, type ReactNode, type RefCallback } from 'react';
 import {
   AlertTriangle,
   ArrowLeft,
@@ -24,13 +24,43 @@ import { detectLanguage } from '../lib/highlight.ts';
 import { isMod, kb } from '../lib/platform.ts';
 import { readable } from '../lib/scheme.ts';
 import { t, tj } from '../i18n/index.ts';
+import type { ApiError, ApiResult } from '../platform/tauri.ts';
+import type { ConflictInfo_Serialize, ConflictSegment_Serialize, ParsedConflict_Serialize } from '../../crates/gorynych-tauri/bindings/commands.ts';
 
-const api = window.api;
+/** Ответ `getConflict`; участки (`segments`, `eol`, `finalNewline`) есть только у `kind: 'text'` */
+type ConflictData = ConflictInfo_Serialize & Partial<ParsedConflict_Serialize>;
+type TextConflictData = ConflictData & ParsedConflict_Serialize;
+type Block = Extract<ConflictSegment_Serialize, { type: 'conflict' }>;
+/** Подпись стороны: `labels.ours`/`labels.theirs` или запасная */
+type SideInfo = { title: string; sub: string; hint?: string };
+type SideKey = 'ours' | 'theirs';
+type PickMode = 'left' | 'right' | 'leftRight' | 'rightLeft' | 'none';
+
+/** Решение по одному блоку конфликта */
+interface Choice {
+  decided: boolean;
+  ours: boolean[];
+  theirs: boolean[];
+  order: SideKey;
+  manual: string | null;
+}
+
+/** App.run: показывает ошибки и перечитывает репозиторий */
+export type RunAction = (name: string, payload: Record<string, unknown>, opts?: { label?: string }) => Promise<{ ok: boolean }>;
+
+interface ConflictApi {
+  repo: {
+    action: (dir: string, name: 'getConflict', payload: { path: string }) => Promise<ApiResult<ConflictData>>;
+    openPath: (dir: string, rel: string) => void;
+  };
+}
+
+const api = window.api as unknown as ConflictApi;
 const LEFT = '#2f9bff'; // сторона ours (stage 2)
 const RIGHT = '#c517b6'; // сторона theirs (stage 3)
 const CONTEXT = 3; // сколько строк контекста показывать вокруг конфликтов
 
-const emptyChoice = (block) => ({
+const emptyChoice = (block: Block): Choice => ({
   decided: false,
   ours: block.ours.map(() => false),
   theirs: block.theirs.map(() => false),
@@ -38,7 +68,7 @@ const emptyChoice = (block) => ({
   manual: null,
 });
 
-function blockResult(block, ch) {
+function blockResult(block: Block, ch: Choice): string[] {
   if (ch.manual != null) return ch.manual === '' ? [] : ch.manual.split('\n');
   const left = block.ours.filter((_, i) => ch.ours[i]);
   const right = block.theirs.filter((_, i) => ch.theirs[i]);
@@ -49,14 +79,26 @@ function blockResult(block, ch) {
  * Редактор конфликта одного файла.
  * runAction(name, payload, opts) — App.run (показывает ошибки, перечитывает репозиторий).
  */
-export default function ConflictView({ repoPath, path, fileIndex, fileCount, onPrevFile, onNextFile, onClose, onResolved, runAction }) {
-  const [data, setData] = useState(null);
-  const [error, setError] = useState(null);
-  const [choices, setChoices] = useState([]);
+interface ConflictViewProps {
+  repoPath: string;
+  path: string;
+  fileIndex: number;
+  fileCount: number;
+  onPrevFile: (() => void) | null;
+  onNextFile: (() => void) | null;
+  onClose: () => void;
+  onResolved: (path: string) => void;
+  runAction: RunAction;
+}
+
+export default function ConflictView({ repoPath, path, fileIndex, fileCount, onPrevFile, onNextFile, onClose, onResolved, runAction }: ConflictViewProps) {
+  const [data, setData] = useState<ConflictData | null>(null);
+  const [error, setError] = useState<ApiError | null>(null);
+  const [choices, setChoices] = useState<Choice[]>([]);
   const [preview, setPreview] = useState(false);
   const [saving, setSaving] = useState(false);
   const [reloadKey, setReloadKey] = useState(0);
-  const cardRefs = useRef([]);
+  const cardRefs = useRef<(HTMLDivElement | null)[]>([]);
 
   useEffect(() => {
     let alive = true;
@@ -66,7 +108,7 @@ export default function ConflictView({ repoPath, path, fileIndex, fileCount, onP
       if (!alive) return;
       if (!res.ok) return setError(res.error);
       setData(res.data);
-      const blocks = (res.data.segments ?? []).filter((s) => s.type === 'conflict');
+      const blocks = (res.data.segments ?? []).filter((s): s is Block => s.type === 'conflict');
       setChoices(blocks.map(emptyChoice));
     });
     return () => {
@@ -74,20 +116,20 @@ export default function ConflictView({ repoPath, path, fileIndex, fileCount, onP
     };
   }, [repoPath, path, reloadKey]);
 
-  const blocks = useMemo(() => (data?.segments ?? []).filter((s) => s.type === 'conflict'), [data]);
+  const blocks = useMemo(() => (data?.segments ?? []).filter((s): s is Block => s.type === 'conflict'), [data]);
   const decidedCount = choices.filter((c) => c.decided).length;
   const allDecided = blocks.length > 0 && decidedCount === blocks.length;
-  const L = data?.labels?.ours ?? { title: t('Моё'), sub: '' };
-  const R = data?.labels?.theirs ?? { title: t('Их'), sub: '' };
+  const L: SideInfo = data?.labels?.ours ?? { title: t('Моё'), sub: '' };
+  const R: SideInfo = data?.labels?.theirs ?? { title: t('Их'), sub: '' };
 
-  const setChoice = (i, patch) =>
+  const setChoice = (i: number, patch: Partial<Choice> | ((c: Choice) => Partial<Choice>)) =>
     setChoices((list) => list.map((c, k) => (k === i ? { ...c, ...(typeof patch === 'function' ? patch(c) : patch), decided: true } : c)));
 
-  const pick = (i, mode) => {
+  const pick = (i: number, mode: PickMode) => {
     const b = blocks[i];
-    const all = (arr) => arr.map(() => true);
-    const none = (arr) => arr.map(() => false);
-    const map = {
+    const all = (arr: unknown[]) => arr.map(() => true);
+    const none = (arr: unknown[]) => arr.map(() => false);
+    const map: Record<PickMode, Pick<Choice, 'ours' | 'theirs' | 'order'>> = {
       left: { ours: all(b.ours), theirs: none(b.theirs), order: 'ours' },
       right: { ours: none(b.ours), theirs: all(b.theirs), order: 'ours' },
       leftRight: { ours: all(b.ours), theirs: all(b.theirs), order: 'ours' },
@@ -97,25 +139,25 @@ export default function ConflictView({ repoPath, path, fileIndex, fileCount, onP
     setChoice(i, { ...map[mode], manual: null });
   };
 
-  const pickAll = (mode) => blocks.forEach((_, i) => pick(i, mode));
-  const resetBlock = (i) => setChoices((list) => list.map((c, k) => (k === i ? emptyChoice(blocks[i]) : c)));
+  const pickAll = (mode: PickMode) => blocks.forEach((_, i) => pick(i, mode));
+  const resetBlock = (i: number) => setChoices((list) => list.map((c, k) => (k === i ? emptyChoice(blocks[i]) : c)));
 
   // Итоговый текст файла
   const resultText = useMemo(() => {
     if (!data || data.kind !== 'text') return '';
-    const out = [];
+    const out: string[] = [];
     let bi = 0;
-    for (const seg of data.segments) {
+    for (const seg of (data as TextConflictData).segments) {
       if (seg.type === 'common') out.push(...seg.lines);
       else {
         out.push(...blockResult(seg, choices[bi] ?? emptyChoice(seg)));
         bi++;
       }
     }
-    return out.join(data.eol) + (data.finalNewline ? data.eol : '');
+    return out.join((data as TextConflictData).eol) + (data.finalNewline ? (data as TextConflictData).eol : '');
   }, [data, choices]);
 
-  const scrollToBlock = (i) => cardRefs.current[i]?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  const scrollToBlock = (i: number) => cardRefs.current[i]?.scrollIntoView({ behavior: 'smooth', block: 'center' });
   const nextUnresolved = useCallback(
     (dir = 1) => {
       if (!blocks.length) return;
@@ -134,7 +176,7 @@ export default function ConflictView({ repoPath, path, fileIndex, fileCount, onP
     if (res.ok) onResolved(path);
   };
 
-  const whole = async (side) => {
+  const whole = async (side: string | null) => {
     setSaving(true);
     const res = await runAction('resolveWhole', { path, side }, { label: t('Конфликт') });
     setSaving(false);
@@ -152,7 +194,7 @@ export default function ConflictView({ repoPath, path, fileIndex, fileCount, onP
 
   // Ctrl+S — сохранить, Alt+↑/↓ — к нерешённому конфликту, Esc — закрыть
   useEffect(() => {
-    const onKey = (e) => {
+    const onKey = (e: KeyboardEvent) => {
       if (document.querySelector('.fixed.inset-0')) return;
       if (isMod(e) && (e.code === 'KeyS' || e.key === 's' || e.key === 'ы')) {
         e.preventDefault();
@@ -163,7 +205,7 @@ export default function ConflictView({ repoPath, path, fileIndex, fileCount, onP
       } else if (e.altKey && e.key === 'ArrowUp') {
         e.preventDefault();
         nextUnresolved(-1);
-      } else if (e.key === 'Escape' && !['TEXTAREA', 'INPUT'].includes(document.activeElement?.tagName)) {
+      } else if (e.key === 'Escape' && !['TEXTAREA', 'INPUT'].includes(document.activeElement?.tagName as string)) {
         onClose();
       }
     };
@@ -188,9 +230,9 @@ export default function ConflictView({ repoPath, path, fileIndex, fileCount, onP
 
         {fileCount > 1 && (
           <span className="flex items-center gap-0.5 text-[11px] text-gk-muted">
-            {tj('{0}файл {1} из {2}{3}', [<IconBtn title={t('Предыдущий конфликтный файл')} onClick={onPrevFile} disabled={!onPrevFile}>
+            {tj('{0}файл {1} из {2}{3}', [<IconBtn title={t('Предыдущий конфликтный файл')} onClick={onPrevFile!} disabled={!onPrevFile}>
               <ChevronLeft size={14} />
-            </IconBtn>, fileIndex + 1, fileCount, <IconBtn title={t('Следующий конфликтный файл')} onClick={onNextFile} disabled={!onNextFile}>
+            </IconBtn>, fileIndex + 1, fileCount, <IconBtn title={t('Следующий конфликтный файл')} onClick={onNextFile!} disabled={!onNextFile}>
               <ChevronRight size={14} />
             </IconBtn>])}
           </span>
@@ -251,10 +293,10 @@ export default function ConflictView({ repoPath, path, fileIndex, fileCount, onP
 
         {data?.kind === 'text' &&
           (preview ? (
-            <ResultPreview data={data} choices={choices} />
+            <ResultPreview data={data as TextConflictData} choices={choices} />
           ) : (
             <TextConflict
-              data={data}
+              data={data as TextConflictData}
               blocks={blocks}
               choices={choices}
               L={L}
@@ -262,9 +304,9 @@ export default function ConflictView({ repoPath, path, fileIndex, fileCount, onP
               cardRefs={cardRefs}
               onPick={pick}
               onToggle={(i, side, line) =>
-                setChoice(i, (c) => ({ [side]: c[side].map((v, k) => (k === line ? !v : v)), manual: null }))
+                setChoice(i, (c) => ({ [side]: c[side].map((v, k) => (k === line ? !v : v)), manual: null }) as Partial<Choice>)
               }
-              onToggleAll={(i, side, value) => setChoice(i, (c) => ({ [side]: c[side].map(() => value), manual: null }))}
+              onToggleAll={(i, side, value) => setChoice(i, (c) => ({ [side]: c[side].map(() => value), manual: null }) as Partial<Choice>)}
               onOrder={(i, order) => setChoice(i, { order })}
               onManual={(i, text) => setChoice(i, { manual: text })}
               onEditManual={(i) => setChoice(i, (c) => ({ manual: blockResult(blocks[i], c).join('\n') }))}
@@ -283,7 +325,23 @@ export default function ConflictView({ repoPath, path, fileIndex, fileCount, onP
 
 /* ---------------- Текстовый конфликт ---------------- */
 
-function TextConflict({ data, blocks, choices, L, R, cardRefs, onPick, onToggle, onToggleAll, onOrder, onManual, onEditManual, onReset }) {
+interface TextConflictProps {
+  data: TextConflictData;
+  blocks: Block[];
+  choices: Choice[];
+  L: SideInfo;
+  R: SideInfo;
+  cardRefs: MutableRefObject<(HTMLDivElement | null)[]>;
+  onPick: (i: number, mode: PickMode) => void;
+  onToggle: (i: number, side: SideKey, line: number) => void;
+  onToggleAll: (i: number, side: SideKey, value: boolean) => void;
+  onOrder: (i: number, order: SideKey) => void;
+  onManual: (i: number, text: string | null) => void;
+  onEditManual: (i: number) => void;
+  onReset: (i: number) => void;
+}
+
+function TextConflict({ data, blocks, choices, L, R, cardRefs, onPick, onToggle, onToggleAll, onOrder, onManual, onEditManual, onReset }: TextConflictProps) {
   let bi = -1;
   const lastIndex = data.segments.length - 1;
   return (
@@ -319,7 +377,7 @@ function TextConflict({ data, blocks, choices, L, R, cardRefs, onPick, onToggle,
 }
 
 // Неконфликтные строки: показываем по 3 строки контекста, середину сворачиваем
-function CommonLines({ lines, isFirst, isLast }) {
+function CommonLines({ lines, isFirst, isLast }: { lines: string[]; isFirst: boolean; isLast: boolean }) {
   const [open, setOpen] = useState(false);
   const head = isFirst ? 0 : CONTEXT;
   const tail = isLast ? 0 : CONTEXT;
@@ -337,7 +395,7 @@ function CommonLines({ lines, isFirst, isLast }) {
   );
 }
 
-function Code({ lines }) {
+function Code({ lines }: { lines: string[] }) {
   return (
     <pre className="select-text overflow-x-auto whitespace-pre px-2 font-mono text-[12px] leading-5 text-gk-muted [tab-size:4]">
       <HighlightedLines lines={lines} />
@@ -345,13 +403,30 @@ function Code({ lines }) {
   );
 }
 
-function ConflictCard({ refFn, index, total, block, choice, L, R, onPick, onToggle, onToggleAll, onOrder, onManual, onEditManual, onReset }) {
+interface ConflictCardProps {
+  refFn: (el: HTMLDivElement | null) => unknown;
+  index: number;
+  total: number;
+  block: Block;
+  choice: Choice;
+  L: SideInfo;
+  R: SideInfo;
+  onPick: (mode: PickMode) => void;
+  onToggle: (side: SideKey, line: number) => void;
+  onToggleAll: (side: SideKey, value: boolean) => void;
+  onOrder: (order: SideKey) => void;
+  onManual: (text: string | null) => void;
+  onEditManual: () => void;
+  onReset: () => void;
+}
+
+function ConflictCard({ refFn, index, total, block, choice, L, R, onPick, onToggle, onToggleAll, onOrder, onManual, onEditManual, onReset }: ConflictCardProps) {
   const [showBase, setShowBase] = useState(false);
   const result = blockResult(block, choice);
   const decided = choice.decided;
   return (
     <div
-      ref={refFn}
+      ref={refFn as RefCallback<HTMLDivElement>}
       className={`overflow-hidden rounded-lg border transition-colors ${
         decided ? 'border-gk-green/30 bg-gk-green/[0.03]' : 'border-gk-red/40 bg-gk-red/[0.04]'
       }`}
@@ -444,7 +519,16 @@ function ConflictCard({ refFn, index, total, block, choice, L, R, onPick, onTogg
   );
 }
 
-function SideLines({ color, lines, selected, disabled, onToggle, onToggleAll }) {
+interface SideLinesProps {
+  color: string;
+  lines: string[];
+  selected: boolean[];
+  disabled: boolean;
+  onToggle: (line: number) => void;
+  onToggleAll: (value: boolean) => void;
+}
+
+function SideLines({ color, lines, selected, disabled, onToggle, onToggleAll }: SideLinesProps) {
   const all = lines.length > 0 && selected.every(Boolean);
   const tokens = useLineTokens(lines);
   return (
@@ -485,7 +569,7 @@ function SideLines({ color, lines, selected, disabled, onToggle, onToggleAll }) 
 }
 
 // Весь итоговый файл: решённые блоки подсвечены зелёным, нерешённые — красным
-function ResultPreview({ data, choices }) {
+function ResultPreview({ data, choices }: { data: TextConflictData; choices: Choice[] }) {
   let bi = -1;
   return (
     <div className="px-4 py-3 pb-10 font-mono text-[12px] leading-5">
@@ -517,11 +601,22 @@ function ResultPreview({ data, choices }) {
 
 /* ---------------- Особые случаи ---------------- */
 
-function SpecialConflict({ data, L, R, busy, onWhole, onMarkResolved, onOpen, onClose }) {
-  const sideOf = (s) => (s === 'ours' ? L : R);
-  let title;
-  let text;
-  let actions;
+interface SpecialConflictProps {
+  data: ConflictData;
+  L: SideInfo;
+  R: SideInfo;
+  busy: boolean;
+  onWhole: (side: string | null) => void;
+  onMarkResolved: () => void;
+  onOpen: () => void;
+  onClose: () => void;
+}
+
+function SpecialConflict({ data, L, R, busy, onWhole, onMarkResolved, onOpen, onClose }: SpecialConflictProps) {
+  const sideOf = (s: string | null) => (s === 'ours' ? L : R);
+  let title: string;
+  let text: string;
+  let actions: ReactNode;
   if (data.kind === 'deleted') {
     const del = sideOf(data.deletedSide);
     const keep = sideOf(data.keepSide);
@@ -596,7 +691,7 @@ function SpecialConflict({ data, L, R, busy, onWhole, onMarkResolved, onOpen, on
 
 /* ---------------- Мелочи ---------------- */
 
-function SideLabel({ color, side, onTakeAll }) {
+function SideLabel({ color, side, onTakeAll }: { color: string; side: SideInfo; onTakeAll: () => void }) {
   return (
     <div className="flex min-w-0 items-center gap-2" title={side.hint}>
       <span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ backgroundColor: color }} />
@@ -608,14 +703,14 @@ function SideLabel({ color, side, onTakeAll }) {
         onClick={onTakeAll}
         title={t('Во всех конфликтах этого файла взять «{0}»', side.title)}
         className="ml-auto shrink-0 rounded px-2 py-0.5 text-[11px] text-gk-muted ring-1 transition hover:bg-gk-fg/10 hover:text-gk-text"
-        style={{ '--tw-ring-color': `${color}66` }}
+        style={{ '--tw-ring-color': `${color}66` } as CSSProperties}
       >
         {tj('Взять «{0}» везде', [side.title])}</button>
     </div>
   );
 }
 
-function QuickBtn({ color, active, children, ...props }) {
+function QuickBtn({ color, active, children, ...props }: ButtonHTMLAttributes<HTMLButtonElement> & { color?: string; active?: boolean }) {
   return (
     <button
       {...props}
@@ -628,7 +723,7 @@ function QuickBtn({ color, active, children, ...props }) {
   );
 }
 
-function BigButton({ color, danger, children, ...props }) {
+function BigButton({ color, danger, children, ...props }: ButtonHTMLAttributes<HTMLButtonElement> & { color?: string; danger?: boolean }) {
   return (
     <button
       {...props}
@@ -642,7 +737,7 @@ function BigButton({ color, danger, children, ...props }) {
   );
 }
 
-function IconBtn({ children, active, disabled, ...props }) {
+function IconBtn({ children, active, disabled, ...props }: ButtonHTMLAttributes<HTMLButtonElement> & { active?: boolean }) {
   return (
     <button
       {...props}
