@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type DragEvent, type HTMLAttributes, type KeyboardEvent, type MouseEvent } from 'react';
+import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type DragEvent, type HTMLAttributes, type KeyboardEvent, type MouseEvent } from 'react';
 import { flushSync } from 'react-dom';
 import { Archive, Check, Copy, FileSearch, Pencil, SlidersHorizontal } from 'lucide-react';
 import { RefKindIcon, RefsPopover, refKindLabel, useHoverPopover, type RefActions, type RefGroup, type RefItem } from './RefBadge.tsx';
@@ -6,13 +6,13 @@ import { edgePath, fitMetrics, graphWidth, laneColor, laneX, layoutGraph, metric
 import { StatusIcon, statusInfo } from './PipelineStatus.tsx';
 import { fullDate, initials, relativeTime, shortDate } from '../lib/format.ts';
 import { ResizeHandle, useStoredWidth } from './Resizer.tsx';
-import { avatarUrl, isFailed, markFailed } from '../lib/avatars.ts';
+import { avatarUrl, avatarUrlSync, isFailed, markFailed } from '../lib/avatars.ts';
 import { hasRefDrag, readRefDrag, startRefDrag, type RefDragPayload } from '../lib/dnd.ts';
 import { isMod, kb } from '../lib/platform.ts';
 import { CC_TYPES, parseSummary } from '../lib/commitMsg.ts';
 import { DEFAULT_VIEW, columnById, moveColumn, useGraphView, type ColumnId, type GraphView } from '../lib/graphView.ts';
 import GraphViewMenu from './GraphViewMenu.tsx';
-import { isLight, readable } from '../lib/scheme.ts';
+import { readable } from '../lib/scheme.ts';
 import { t as tr, tj, locale } from '../i18n/index.ts';
 
 /** Ссылка на коммите (`CommitRef`): ветка, серверная ветка или тег */
@@ -73,6 +73,7 @@ interface CommitGraphProps {
 
 const HEADER_HEIGHT = 30;
 const OVERSCAN = 15; // запас строк выше и ниже видимой области
+const VIEW_STEP = 5; // окно прокрутки меняется шагом в 5 строк: перерисовка — раз в несколько строк, а не на каждый пиксель
 const MAX_AUTO_GRAPH_WIDTH = 400; // авто-ширина графа; вручную можно растянуть шире
 const MESSAGE_MIN_WIDTH = 140;
 const DATE_MIN_WIDTH = 132; // «22.09.2021 01:59» целиком
@@ -130,6 +131,13 @@ function measureColumn(id: string, sample: GraphItem[], gv: GraphView): number |
 
 const clampW = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v));
 
+/** Окно отрисовки для прокрутки `top`: первая и последняя строка с запасом OVERSCAN, округлённые наружу до VIEW_STEP */
+function windowFor(top: number, height: number, width: number, rowH: number) {
+  const first = Math.max(0, Math.floor(top / rowH) - OVERSCAN);
+  const last = Math.ceil((top + height) / rowH) + OVERSCAN;
+  return { first: Math.floor(first / VIEW_STEP) * VIEW_STEP, last: Math.ceil(last / VIEW_STEP) * VIEW_STEP, height, width };
+}
+
 export default function CommitGraph({
   commits,
   introKey,
@@ -160,12 +168,23 @@ export default function CommitGraph({
     if (!dragSource) setDropHash(null);
   }, [dragSource]);
   const { nodes, edges, laneCount } = useMemo(() => layoutGraph(commits), [commits]);
-  const [view, setView] = useState({ top: 0, height: 800, width: 1000 });
+  // Строка коммита по хэшу — для перехода к коммиту и стрелок без перебора всего списка
+  const rowByHash = useMemo(() => new Map(nodes.map((n) => [n.hash, n.row])), [nodes]);
 
   // Вид таблицы: колонки, порядок, плотность, формат даты, стиль узлов
   const [gv, setGv] = useGraphView();
   const m = metricsFor(gv.density);
   const dots = gv.nodeStyle === 'dots';
+
+  // Окно прокрутки: границы видимых строк (с запасом, шагом VIEW_STEP) и размер области. Меняется, только когда
+  // сдвинулись границы или размер, — прокрутка внутри шага граф не перерисовывает
+  const rowHRef = useRef(m.rowH);
+  rowHRef.current = m.rowH;
+  const [view, setView] = useState(() => windowFor(0, 800, 1000, m.rowH));
+  const measureView = useCallback((el: HTMLDivElement) => {
+    const next = windowFor(el.scrollTop, el.clientHeight, el.clientWidth, rowHRef.current);
+    setView((prev) => (prev.first === next.first && prev.last === next.last && prev.height === next.height && prev.width === next.width ? prev : next));
+  }, []);
   const [menu, setMenu] = useState<{ x: number; y: number } | null>(null); // { x, y }
   const closeMenu = useCallback(() => setMenu(null), []);
 
@@ -191,7 +210,7 @@ export default function CommitGraph({
   };
 
   // Видимые колонки в выбранном порядке; «Сообщение» видно всегда
-  const columns = gv.order.filter((id) => id === 'message' || !gv.hidden.includes(id));
+  const columns = useMemo(() => gv.order.filter((id) => id === 'message' || !gv.hidden.includes(id)), [gv.order, gv.hidden]);
   const has = (id: ColumnId) => columns.includes(id);
   const fixed: Record<string, number> = { refs: refsW, author: authorW, date: dateW, sha: shaW };
   const fixedSum = columns.reduce((sum, id) => sum + (fixed[id] ?? 0), 0);
@@ -203,12 +222,19 @@ export default function CommitGraph({
   const width = has('graph') ? Math.max(40, Math.min(graphW ?? autoGraphWidth, roomForGraph)) : 0;
   // Сообщение забирает всё оставшееся место — в том числе от скрытых колонок
   const messageW = Math.max(MESSAGE_MIN_WIDTH, view.width - fixedSum - width);
-  const cols: Record<string, number> = { ...fixed, graph: width, message: messageW };
-  const offsets: Record<string, number> = {};
-  columns.reduce((left, id) => {
-    offsets[id] = left;
-    return left + cols[id];
-  }, 0);
+  // Ширины и отступы колонок меняют идентичность только вместе со значениями — строки (memo) не перерисовываются зря
+  const cols = useMemo<Record<string, number>>(
+    () => ({ refs: refsW, author: authorW, date: dateW, sha: shaW, graph: width, message: messageW }),
+    [refsW, authorW, dateW, shaW, width, messageW],
+  );
+  const offsets = useMemo(() => {
+    const out: Record<string, number> = {};
+    columns.reduce((left, id) => {
+      out[id] = left;
+      return left + cols[id];
+    }, 0);
+    return out;
+  }, [columns, cols]);
   const graphAt = columns.indexOf('graph');
   const refsAt = columns.indexOf('refs');
   // С какой стороны от меток веток стоит граф — туда тянется соединительная линия
@@ -226,7 +252,9 @@ export default function CommitGraph({
   const dotsEff = dots;
 
   const scrollRef = useRef<HTMLDivElement>(null);
-  const [hoverHash, setHoverHash] = useState<string | null>(null);
+  // Наведение не хранится в состоянии React: узел увеличивается классом is-hover прямо в SVG (`hoverNode`),
+  // полоса строки подсвечивается через CSS (:hover), поэтому граф при движении мыши не перерисовывается
+  const svgRef = useRef<SVGSVGElement>(null);
   const [intro, setIntro] = useState(true);
   const [copied, setCopied] = useState<string | null>(null);
   const [colDrag, setColDrag] = useState<{ id: string; over: string | null; after: boolean } | null>(null); // { id, over, after }
@@ -254,7 +282,7 @@ export default function CommitGraph({
   useLayoutEffect(() => {
     const el = scrollRef.current;
     if (!el) return undefined;
-    const update = () => setView({ top: el.scrollTop, height: el.clientHeight, width: el.clientWidth });
+    const update = () => measureView(el);
     update();
     const ro = new ResizeObserver(update);
     ro.observe(el);
@@ -266,10 +294,10 @@ export default function CommitGraph({
   useEffect(() => {
     const el = scrollRef.current;
     if (!el || !focus?.hash || focusDone.current === focus.n) return;
-    const node = nodes.find((n) => n.hash === focus.hash);
-    if (!node) return;
+    const row = rowByHash.get(focus.hash);
+    if (row === undefined) return;
     focusDone.current = focus.n;
-    const center = node.row * m.rowH + m.rowH / 2;
+    const center = row * m.rowH + m.rowH / 2;
     const visible = el.clientHeight - HEADER_HEIGHT;
     el.scrollTo({ top: Math.max(0, center - visible / 2), behavior: 'smooth' });
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -278,10 +306,10 @@ export default function CommitGraph({
   // Прокручиваем к выбранному коммиту, если он вне экрана
   useEffect(() => {
     const el = scrollRef.current;
-    const node = nodes.find((n) => n.hash === selectedHash);
-    if (!el || !node) return;
+    const row = selectedHash === null ? undefined : rowByHash.get(selectedHash);
+    if (!el || row === undefined) return;
     if (focus?.hash === selectedHash) return; // к нему уже едем по центру (focus)
-    const top = node.row * m.rowH;
+    const top = row * m.rowH;
     if (top < el.scrollTop || top + m.rowH > el.scrollTop + el.clientHeight - HEADER_HEIGHT) {
       el.scrollTo({ top: Math.max(0, top - el.clientHeight / 3), behavior: 'smooth' });
     }
@@ -294,17 +322,19 @@ export default function CommitGraph({
     const el = scrollRef.current;
     if (el && prevRowH.current !== m.rowH) el.scrollTop = Math.round((el.scrollTop / prevRowH.current) * m.rowH);
     prevRowH.current = m.rowH;
-  }, [m.rowH]);
+    // Окно строк считается от высоты строки: пересчитываем, даже если scrollTop не изменился
+    if (el) measureView(el);
+  }, [m.rowH, measureView]);
 
-  const first = Math.max(0, Math.floor(view.top / m.rowH) - OVERSCAN);
-  const last = Math.min(nodes.length - 1, Math.ceil((view.top + view.height) / m.rowH) + OVERSCAN);
-  const visibleNodes = nodes.slice(first, last + 1);
-  const visibleEdges = edges.filter((e) => e.minRow <= last && e.maxRow >= first);
+  const first = view.first;
+  const last = Math.min(nodes.length - 1, view.last);
+  const visibleNodes = useMemo(() => nodes.slice(first, last + 1), [nodes, first, last]);
+  const visibleEdges = useMemo(() => edges.filter((e) => e.minRow <= last && e.maxRow >= first), [edges, first, last]);
 
   const onKeyDown = (e: KeyboardEvent<HTMLDivElement>) => {
     if (e.key !== 'ArrowDown' && e.key !== 'ArrowUp') return;
     e.preventDefault();
-    const index = nodes.findIndex((n) => n.hash === selectedHash);
+    const index = selectedHash === null ? -1 : rowByHash.get(selectedHash) ?? -1;
     const next = nodes[Math.min(nodes.length - 1, Math.max(0, index + (e.key === 'ArrowDown' ? 1 : -1)))];
     if (next) onSelect(next.hash);
   };
@@ -320,11 +350,69 @@ export default function CommitGraph({
     setGv({ order: DEFAULT_VIEW.order, hidden: DEFAULT_VIEW.hidden });
   };
 
-  const copySha = (hash: string) => {
-    onCopySha?.(hash);
+  // Обработчики строк стабильны (строки — memo): свежие пропсы App и состояние перетаскивания читаются через ref,
+  // строка передаёт себя аргументом. Обработчики App (onCompare, onCopySha…) создаются при каждом его рендере.
+  const live = useRef({ onSelect, onActivate, onContextMenu, onCompare, onCopySha, onPipelineClick, onPipelineHover, onDragSource, onDropOnBranch, dragSource, dropHash, refActions });
+  live.current = { onSelect, onActivate, onContextMenu, onCompare, onCopySha, onPipelineClick, onPipelineHover, onDragSource, onDropOnBranch, dragSource, dropHash, refActions };
+
+  const copySha = useCallback((hash: string) => {
+    live.current.onCopySha?.(hash);
     setCopied(hash);
     setTimeout(() => setCopied((h) => (h === hash ? null : h)), 1200);
-  };
+  }, []);
+  const rowSelect = useCallback((node: GraphItem, e: MouseEvent<HTMLDivElement>) => {
+    const p = live.current;
+    if (isMod(e) && p.onCompare && !node.wip && !node.stash) p.onCompare(node.hash);
+    else p.onSelect(node.hash);
+  }, []);
+  const rowDoubleClick = useCallback((node: GraphItem) => live.current.onActivate?.(node), []);
+  const rowContextMenu = useCallback((node: GraphItem, e: MouseEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    live.current.onSelect(node.hash);
+    live.current.onContextMenu?.(node, e.clientX, e.clientY);
+  }, []);
+  const dragStartRef = useCallback((e: DragEvent<HTMLElement>, payload: DragPayload) => {
+    startRefDrag(e, payload);
+    live.current.onDragSource?.(payload);
+  }, []);
+  const dragEndRef = useCallback(() => live.current.onDragSource?.(null), []);
+  const dragOverRow = useCallback((node: GraphItem, e: DragEvent<HTMLDivElement>) => {
+    const { dragSource: source, dropHash: over } = live.current;
+    if (!hasRefDrag(e) || !source) return;
+    const locals = node.refs.filter((r) => r.type === 'local').map((r) => r.name);
+    if (!locals.length || source.hash === node.hash) return;
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'copy';
+    if (over !== node.hash) setDropHash(node.hash);
+  }, []);
+  const dragLeaveRow = useCallback((node: GraphItem) => setDropHash((h) => (h === node.hash ? null : h)), []);
+  const dropRow = useCallback((node: GraphItem, e: DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    setDropHash(null);
+    const payload = readRefDrag(e);
+    live.current.onDragSource?.(null);
+    if (!payload) return;
+    const locals = node.refs.filter((r) => r.type === 'local').map((r) => r.name);
+    live.current.onDropOnBranch?.(locals.map((name) => ({ name, hash: node.hash })), e.clientX, e.clientY, payload);
+  }, []);
+  const pipelineClick = useCallback((pipeline: PipelineMark) => live.current.onPipelineClick?.(pipeline), []);
+  const pipelineHover = useCallback((pipeline: PipelineMark) => live.current.onPipelineHover?.(pipeline), []);
+  // Наведение на строку — увеличить её узел в SVG напрямую; узел вне окна прокрутки размонтирован, класс поставится
+  // при следующем наведении
+  const hoverNode = useCallback((hash: string, on: boolean) => {
+    svgRef.current?.querySelector(`g[data-hash="${CSS.escape(hash)}"]`)?.classList.toggle('is-hover', on);
+  }, []);
+  // Действия меток веток: тот же набор, что передал App, но объект стабилен, пока не меняется набор действий
+  const actionKeys = refActions ? `${Boolean(refActions.checkout)}${Boolean(refActions.deleteRemote)}${Boolean(refActions.menu)}` : '';
+  const stableRefActions = useMemo((): RefActions | null => {
+    if (!actionKeys) return null;
+    const a = live.current.refActions!;
+    return {
+      ...(a.checkout ? { checkout: (r: RefItem) => live.current.refActions?.checkout?.(r) } : null),
+      ...(a.deleteRemote ? { deleteRemote: (name: string) => live.current.refActions?.deleteRemote?.(name) } : null),
+      ...(a.menu ? { menu: (r: RefItem, x: number, y: number) => live.current.refActions?.menu?.(r, x, y) } : null),
+    };
+  }, [actionKeys]);
 
   if (nodes.length === 0) {
     return (
@@ -371,11 +459,7 @@ export default function CommitGraph({
       ref={scrollRef}
       tabIndex={0}
       onKeyDown={onKeyDown}
-      onScroll={(e) => {
-        const el = e.currentTarget;
-        setView({ top: el.scrollTop, height: el.clientHeight, width: el.clientWidth });
-      }}
-      onMouseLeave={() => setHoverHash(null)}
+      onScroll={(e) => measureView(e.currentTarget)}
       className="relative min-h-0 flex-1 overflow-auto bg-gk-bg outline-none"
     >
       {/* Заголовки колонок. Правый клик — настройка вида */}
@@ -457,59 +541,34 @@ export default function CommitGraph({
             pipeline={pipelines?.[node.hash] ?? null}
             pipelineTip={pipelines?.[node.hash] ? pipelineTips?.[pipelines[node.hash].id] ?? null : null}
             fileHit={fileHits?.get(node.hash) ?? null}
-            onPipelineHover={onPipelineHover}
-            onPipelineClick={onPipelineClick}
+            onPipelineHover={onPipelineHover ? pipelineHover : undefined}
+            onPipelineClick={pipelineClick}
             selected={node.hash === selectedHash}
-            hovered={node.hash === hoverHash}
             dim={Boolean(matchSet) && !matchSet!.has(node.hash)}
             intro={intro}
-            delay={introDelay(node.row)}
-            wipCount={wipCount}
-            onHover={() => setHoverHash(node.hash)}
+            delay={intro ? introDelay(node.row) : ''}
+            wipCount={node.wip ? wipCount : 0}
+            onHoverNode={hoverNode}
             marked={node.hash === compareMark}
             dropTarget={dropHash === node.hash}
             copied={copied === node.hash}
             onCopySha={copySha}
-            onDragStartRef={(e, payload) => {
-              startRefDrag(e, payload);
-              onDragSource?.(payload);
-            }}
-            onDragEndRef={() => onDragSource?.(null)}
-            onDragOverRow={(e) => {
-              if (!hasRefDrag(e) || !dragSource) return;
-              const locals = node.refs.filter((r) => r.type === 'local').map((r) => r.name);
-              if (!locals.length || dragSource.hash === node.hash) return;
-              e.preventDefault();
-              e.dataTransfer.dropEffect = 'copy';
-              if (dropHash !== node.hash) setDropHash(node.hash);
-            }}
-            onDragLeaveRow={() => setDropHash((h) => (h === node.hash ? null : h))}
+            onDragStartRef={dragStartRef}
+            onDragEndRef={dragEndRef}
+            onDragOverRow={dragOverRow}
+            onDragLeaveRow={dragLeaveRow}
             currentBranch={currentBranch}
-            refActions={refActions}
-            onDropRow={(e) => {
-              e.preventDefault();
-              setDropHash(null);
-              const payload = readRefDrag(e);
-              onDragSource?.(null);
-              if (!payload) return;
-              const locals = node.refs.filter((r) => r.type === 'local').map((r) => r.name);
-              onDropOnBranch?.(locals.map((name) => ({ name, hash: node.hash })), e.clientX, e.clientY, payload);
-            }}
-            onSelect={(e) => {
-              if (isMod(e) && onCompare && !node.wip && !node.stash) onCompare(node.hash);
-              else onSelect(node.hash);
-            }}
-            onDoubleClick={() => onActivate?.(node)}
-            onContextMenu={(e) => {
-              e.preventDefault();
-              onSelect(node.hash);
-              onContextMenu?.(node, e.clientX, e.clientY);
-            }}
+            refActions={stableRefActions}
+            onDropRow={dropRow}
+            onSelect={rowSelect}
+            onDoubleClick={rowDoubleClick}
+            onContextMenu={rowContextMenu}
           />
         ))}
 
         {has('graph') && (
           <svg
+            ref={svgRef}
             className="pointer-events-none absolute top-0 overflow-hidden"
             style={{ left: offsets.graph, width, height }}
             width={width}
@@ -583,9 +642,8 @@ export default function CommitGraph({
                 dots={dotsEff}
                 dim={Boolean(matchSet) && !matchSet!.has(node.hash)}
                 selected={node.hash === selectedHash}
-                hovered={node.hash === hoverHash}
                 intro={intro}
-                delay={introDelay(node.row)}
+                delay={intro ? introDelay(node.row) : ''}
               />
             ))}
           </svg>
@@ -691,7 +749,7 @@ function MessageText({ node, strong }: { node: GraphItem; strong: boolean | unde
   );
 }
 
-function Row({
+const Row = memo(function Row({
   node,
   m,
   columns,
@@ -700,7 +758,6 @@ function Row({
   refsSide,
   dateFormat,
   selected,
-  hovered,
   dim,
   intro,
   delay,
@@ -710,7 +767,7 @@ function Row({
   fileHit,
   onPipelineHover,
   onPipelineClick,
-  onHover,
+  onHoverNode,
   onSelect,
   onDoubleClick,
   onContextMenu,
@@ -734,7 +791,6 @@ function Row({
   refsSide: 'left' | 'right' | null;
   dateFormat: string;
   selected: boolean;
-  hovered: boolean;
   dim: boolean;
   intro: boolean;
   delay: string;
@@ -744,25 +800,32 @@ function Row({
   fileHit: FileHit | null;
   onPipelineHover?: (pipeline: PipelineMark) => void;
   onPipelineClick?: (pipeline: PipelineMark) => void;
-  onHover: () => void;
-  onSelect: (e: MouseEvent<HTMLDivElement>) => void;
-  onDoubleClick: () => void;
-  onContextMenu: (e: MouseEvent<HTMLDivElement>) => void;
+  onHoverNode: (hash: string, on: boolean) => void;
+  onSelect: (node: GraphItem, e: MouseEvent<HTMLDivElement>) => void;
+  onDoubleClick: (node: GraphItem) => void;
+  onContextMenu: (node: GraphItem, e: MouseEvent<HTMLDivElement>) => void;
   marked: boolean;
   dropTarget: boolean;
   copied: boolean;
   onCopySha: (hash: string) => void;
   onDragStartRef: (e: DragEvent<HTMLElement>, payload: DragPayload) => void;
   onDragEndRef: () => void;
-  onDragOverRow: (e: DragEvent<HTMLDivElement>) => void;
-  onDragLeaveRow: () => void;
-  onDropRow: (e: DragEvent<HTMLDivElement>) => void;
+  onDragOverRow: (node: GraphItem, e: DragEvent<HTMLDivElement>) => void;
+  onDragLeaveRow: (node: GraphItem) => void;
+  onDropRow: (node: GraphItem, e: DragEvent<HTMLDivElement>) => void;
   currentBranch: string | null | undefined;
   refActions: RefActions | null | undefined;
 }) {
   const color = laneColor(node.lane);
-  const bandAlpha = isLight() ? (selected ? '30' : hovered ? '1e' : '0c') : selected ? '42' : hovered ? '2a' : '14';
   const compact = m.id === 'compact';
+  // Подсказка значка пайплайна — длинная строка, считается только при смене пайплайна или сводки
+  const pipelineTipText = useMemo(
+    () =>
+      pipeline
+        ? tr('pipeline-click', pipeline.id, statusInfo(pipeline.status).label, pipelineTip && pipelineTip.status === pipeline.status && pipelineTip.text ? `\n${pipelineTip.text}` : '', pipeline.status === 'failed' ? tr('log-of-failed-job') : tr('details'))
+        : '',
+    [pipeline, pipelineTip],
+  );
   const bandLeft = columns.includes('graph') ? offsets.graph + Math.min(laneX(node.lane, m), cols.graph) : offsets.message;
 
   const cell = (id: string) => {
@@ -849,7 +912,7 @@ function Row({
                     onMouseEnter={() => onPipelineHover?.(pipeline)}
                     data-testid="pipeline-badge"
                     data-status={pipeline.status}
-                    data-tip={tr('pipeline-click', pipeline.id, statusInfo(pipeline.status).label, pipelineTip && pipelineTip.status === pipeline.status && pipelineTip.text ? `\n${pipelineTip.text}` : '', pipeline.status === 'failed' ? tr('log-of-failed-job') : tr('details'))}
+                    data-tip={pipelineTipText}
                     data-tip-wide
                     className="ml-2 flex h-5 w-5 shrink-0 items-center justify-center rounded-full transition-transform hover:scale-125"
                   >
@@ -914,37 +977,50 @@ function Row({
 
   return (
     <div
-      onMouseDown={(e) => e.button === 0 && onSelect(e)}
-      onMouseEnter={onHover}
-      onContextMenu={onContextMenu}
-      onDoubleClick={onDoubleClick}
+      onMouseDown={(e) => e.button === 0 && onSelect(node, e)}
+      onMouseEnter={() => onHoverNode(node.hash, true)}
+      onMouseLeave={() => onHoverNode(node.hash, false)}
+      onContextMenu={(e) => onContextMenu(node, e)}
+      onDoubleClick={() => onDoubleClick(node)}
       draggable={!node.wip && !node.stash}
       onDragStart={(e) =>
         onDragStartRef(e, { kind: 'commit', hash: node.hash, label: `${node.hash.slice(0, 7)} ${node.message}`, message: node.message })
       }
       onDragEnd={onDragEndRef}
-      onDragOver={onDragOverRow}
-      onDragLeave={onDragLeaveRow}
-      onDrop={onDropRow}
+      onDragOver={(e) => onDragOverRow(node, e)}
+      onDragLeave={() => onDragLeaveRow(node)}
+      onDrop={(e) => onDropRow(node, e)}
       style={{ top: node.row * m.rowH, height: m.rowH, animationDelay: intro ? delay : undefined }}
-      className={`absolute inset-x-0 flex min-w-max cursor-default items-center transition-opacity duration-150 ${compact ? 'text-[12.5px]' : 'text-[13px]'} ${
+      className={`group absolute inset-x-0 flex min-w-max cursor-default items-center transition-opacity duration-150 ${compact ? 'text-[12.5px]' : 'text-[13px]'} ${
         intro ? 'animate-row-in' : ''
       } ${dim && !selected ? 'opacity-30' : ''} ${dropTarget ? 'z-10 rounded-md bg-gk-green/10 outline-dashed outline-2 -outline-offset-2 outline-gk-green' : ''}`}
     >
-      {/* Цветная полоса от узла через всю строку, как в GitKraken */}
+      {/* Цветная полоса от узла через всю строку, как в GitKraken. Прозрачность (обычная, наведение, выбранная) — в
+          index.css (.graph-band): наведение меняет её через :hover, без перерисовки */}
       <div
-        style={{ left: bandLeft, backgroundColor: `${color}${bandAlpha}`, top: compact ? 2 : 3, bottom: compact ? 2 : 3 }}
-        className="pointer-events-none absolute right-0 rounded-l-full transition-colors duration-150"
+        style={{ left: bandLeft, '--lane': color, top: compact ? 2 : 3, bottom: compact ? 2 : 3 } as CSSProperties}
+        className={`graph-band pointer-events-none absolute right-0 rounded-l-full transition-colors duration-150 ${selected ? 'is-selected' : ''}`}
       />
       {columns.map(cell)}
     </div>
   );
-}
+});
 
 /* ---------------- Метки веток ---------------- */
 
-// Локальная и удалённая ветка с одним именем показываются одной меткой с двумя иконками
+// Группы меток по массиву refs коммита: массив тот же, пока граф не перечитан, — группировка не повторяется
+const groupCache = new WeakMap<GraphRef[], RefGroup[]>();
 function groupRefs(refs: GraphRef[]): RefGroup[] {
+  let groups = groupCache.get(refs);
+  if (!groups) {
+    groups = groupRefsNow(refs);
+    groupCache.set(refs, groups);
+  }
+  return groups;
+}
+
+// Локальная и удалённая ветка с одним именем показываются одной меткой с двумя иконками
+function groupRefsNow(refs: GraphRef[]): RefGroup[] {
   const groups: RefGroup[] = [];
   const used = new Set<GraphRef>();
   // Сначала локальные ветки: иначе origin/x, стоящий в списке раньше x, не склеится с ней («x +1»)
@@ -982,6 +1058,13 @@ function RefLabels({ refs, color, onDragStart, currentBranch, actions, compact =
   const [expanded, setExpanded] = useState(false);
   const badgeRef = useRef<HTMLSpanElement>(null);
   const groups = groupRefs(refs);
+  // Подсказка метки — длинная строка: считается только при смене меток
+  const tip = useMemo(() => {
+    const [g, ...others] = groups;
+    if (!g) return '';
+    const canDrag = !g.tag;
+    return `${g.remoteName && !g.local ? g.remoteName : g.name} — ${refKindLabel(g)}${others.length ? tr('more-hover-over', others.length, others.length) : ''}${canDrag ? tr('double-click-drag-onto-another', g.local ? tr('switch-to-branch') : tr('create-local-branch-and-switch')) : ''}`;
+  }, [groups]);
   if (!groups.length) return null;
   const [first, ...rest] = groups;
   const draggable = !first.tag;
@@ -1015,7 +1098,7 @@ function RefLabels({ refs, color, onDragStart, currentBranch, actions, compact =
           e.stopPropagation();
           actions.checkout(first.local ? { type: 'local', name: first.name } : { type: 'remote', name: first.remoteName! });
         }}
-        data-tip={`${first.remoteName && !first.local ? first.remoteName : first.name} — ${refKindLabel(first)}${rest.length ? tr('more-hover-over', rest.length, rest.length) : ''}${draggable ? tr('double-click-drag-onto-another', first.local ? tr('switch-to-branch') : tr('create-local-branch-and-switch')) : ''}`}
+        data-tip={tip}
         style={style}
         className={`relative flex min-w-0 items-center gap-1.5 rounded-l px-2 font-medium ${compact ? 'h-[18px] text-[11.5px]' : 'h-[22px] text-[12px]'} ${remoteOnly ? 'border border-dashed text-gk-strong/90' : 'text-gk-strong'}`}
       >
@@ -1100,11 +1183,22 @@ function RefLabels({ refs, color, onDragStart, currentBranch, actions, compact =
 
 /* ---------------- Узел ---------------- */
 
+const usableAvatar = (u: string | null) => (u && !isFailed(u) ? u : null);
+
 function useAvatar(email: string): [string | null, () => void] {
-  const [url, setUrl] = useState<string | null>(null);
+  // Адрес уже известен (узел снова появился при прокрутке) — сразу картинка, без кадра с инициалами
+  const [url, setUrl] = useState<string | null>(() => {
+    const known = avatarUrlSync(email);
+    return known === undefined ? null : usableAvatar(known);
+  });
   useEffect(() => {
+    const known = avatarUrlSync(email);
+    if (known !== undefined) {
+      setUrl(usableAvatar(known));
+      return undefined;
+    }
     let alive = true;
-    avatarUrl(email).then((u) => alive && setUrl(u && !isFailed(u) ? u : null));
+    avatarUrl(email).then((u) => alive && setUrl(usableAvatar(u)));
     return () => {
       alive = false;
     };
@@ -1133,18 +1227,19 @@ function HeadPill({ detached = false, compact = false }: { detached?: boolean; c
   );
 }
 
-function Node({ node, m, dots, selected, hovered, dim, intro, delay }: { node: GraphItem; m: Metrics; dots: boolean; selected: boolean; hovered: boolean; dim: boolean; intro: boolean; delay: string }) {
+// Увеличение при наведении (класс is-hover) ставит строка через DOM по data-hash — см. `hoverNode` в CommitGraph
+const Node = memo(function Node({ node, m, dots, selected, dim, intro, delay }: { node: GraphItem; m: Metrics; dots: boolean; selected: boolean; dim: boolean; intro: boolean; delay: string }) {
   const x = laneX(node.lane, m);
   const y = rowY(node.row, m);
   const color = laneColor(node.lane);
-  const cls = `graph-node ${intro ? 'is-intro' : ''} ${hovered ? 'is-hover' : ''}`;
-  const style = { ...(intro ? { animationDelay: delay } : null), opacity: dim && !selected ? 0.3 : 1, transition: 'opacity 150ms' };
+  const cls = `graph-node ${intro ? 'is-intro' : ''}`;
+  const style = useMemo(() => ({ ...(intro ? { animationDelay: delay } : null), opacity: dim && !selected ? 0.3 : 1, transition: 'opacity 150ms' }), [intro, delay, dim, selected]);
 
   // Stash — пунктирный квадрат с «коробкой» внутри (как в GitKraken)
   if (node.stash) {
     const h = dots ? m.dotR + 1.5 : m.nodeR - 2;
     return (
-      <g className={cls} style={style} data-node="stash">
+      <g className={cls} style={style} data-node="stash" data-hash={node.hash}>
         {selected && <rect x={x - h - 2.5} y={y - h - 2.5} width={(h + 2.5) * 2} height={(h + 2.5) * 2} rx={4} fill="none" stroke={color} strokeWidth={1.5} />}
         <rect x={x - h} y={y - h} width={h * 2} height={h * 2} rx={3} style={{ fill: 'var(--gk-solid)' }} stroke={color} strokeWidth={2} strokeDasharray={dots ? '2 2' : '3 2.5'} />
         {!dots && (
@@ -1160,7 +1255,7 @@ function Node({ node, m, dots, selected, hovered, dim, intro, delay }: { node: G
   if (node.wip) {
     const r = dots ? m.dotR + 1.5 : m.nodeR - 1;
     return (
-      <g className={cls} style={style}>
+      <g className={cls} style={style} data-hash={node.hash}>
         <circle cx={x} cy={y} r={r} style={{ fill: 'var(--gk-solid)' }} stroke={color} strokeWidth={2} strokeDasharray={dots ? '3 2' : '4 3'} />
         <circle cx={x} cy={y} r={dots ? 1.75 : 2.5} fill={color} />
       </g>
@@ -1171,7 +1266,7 @@ function Node({ node, m, dots, selected, hovered, dim, intro, delay }: { node: G
   if (dots || node.parents.length > 1) {
     const r = dots ? (node.parents.length > 1 ? m.dotR - 1 : m.dotR) : Math.round(m.nodeR * 0.54 * 2) / 2;
     return (
-      <g className={cls} style={style} data-node={dots ? 'dot' : 'merge'}>
+      <g className={cls} style={style} data-node={dots ? 'dot' : 'merge'} data-hash={node.hash}>
         {node.isHead && <HeadRing x={x} y={y} r={r + 5} />}
         {selected && <circle className="graph-pulse" cx={x} cy={y} r={r + 0.5} fill="none" stroke={color} strokeWidth={2} />}
         {selected && dots && <circle cx={x} cy={y} r={r + 2.5} fill="none" stroke={color} strokeWidth={1.5} />}
@@ -1181,14 +1276,14 @@ function Node({ node, m, dots, selected, hovered, dim, intro, delay }: { node: G
   }
 
   return <AvatarNode node={node} x={x} y={y} r={m.nodeR} color={color} selected={selected} cls={cls} style={style} />;
-}
+});
 
-function AvatarNode({ node, x, y, r, color, selected, cls, style }: { node: GraphItem; x: number; y: number; r: number; color: string; selected: boolean; cls: string; style: CSSProperties }) {
+const AvatarNode = memo(function AvatarNode({ node, x, y, r, color, selected, cls, style }: { node: GraphItem; x: number; y: number; r: number; color: string; selected: boolean; cls: string; style: CSSProperties }) {
   const [url, onError] = useAvatar(node.author.email);
   // В компактной плотности влезает одна буква
   const letters = initials(node.author.name).slice(0, r < 11 ? 1 : 2);
   return (
-    <g className={cls} style={style} data-node="avatar">
+    <g className={cls} style={style} data-node="avatar" data-hash={node.hash}>
       {node.isHead && <HeadRing x={x} y={y} r={r + 4} />}
       {selected && <circle className="graph-pulse" cx={x} cy={y} r={r} fill="none" stroke={color} strokeWidth={2} />}
       {selected && <circle cx={x} cy={y} r={r + 2.5} fill="none" stroke={color} strokeWidth={1.75} />}
@@ -1211,4 +1306,4 @@ function AvatarNode({ node, x, y, r, color, selected, cls, style }: { node: Grap
       )}
     </g>
   );
-}
+});

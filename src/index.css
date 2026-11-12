@@ -305,10 +305,35 @@ html[data-motion='off'] .app-backdrop::after {
   stroke-dasharray: 1;
   animation: edge-draw 0.8s cubic-bezier(0.65, 0, 0.35, 1) both;
 }
+/* Два импульса при выборе узла и стоп: конечный кадр node-pulse невидим, статичное кольцо выбранного узла остаётся */
 .graph-pulse {
   transform-box: fill-box;
   transform-origin: center;
-  animation: node-pulse 1.8s ease-out infinite;
+  animation: node-pulse 1.8s ease-out 2;
+  animation-fill-mode: forwards;
+}
+
+/* Полоса строки графа цветом дорожки (--lane): обычная, при наведении на строку, выбранная.
+   Прозрачность — прежние альфа-каналы hex: тёмная тема 14/2a/42, светлая 0c/1e/30 (из 255) */
+.graph-band {
+  background-color: color-mix(in srgb, var(--lane) 7.843%, transparent);
+}
+.group:hover > .graph-band {
+  background-color: color-mix(in srgb, var(--lane) 16.471%, transparent);
+}
+.graph-band.is-selected,
+.group:hover > .graph-band.is-selected {
+  background-color: color-mix(in srgb, var(--lane) 25.882%, transparent);
+}
+html[data-scheme='light'] .graph-band {
+  background-color: color-mix(in srgb, var(--lane) 4.706%, transparent);
+}
+html[data-scheme='light'] .group:hover > .graph-band {
+  background-color: color-mix(in srgb, var(--lane) 11.765%, transparent);
+}
+html[data-scheme='light'] .graph-band.is-selected,
+html[data-scheme='light'] .group:hover > .graph-band.is-selected {
+  background-color: color-mix(in srgb, var(--lane) 18.824%, transparent);
 }
 
 /* Лоадер-граф */

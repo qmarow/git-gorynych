@@ -2442,10 +2442,13 @@ export default function App() {
   const loadPipelineTip = ciStore.getState().loadPipelineTip;
 
   // Граф: WIP сверху, stash — строками над коммитами, на которых их сделали (как в GitKraken)
+  // Зависит только от коммитов, stash, HEAD и наличия изменений: правка файла (новый repo из `applyStatus`) граф не
+  // пересчитывает — число файлов в строке WIP приходит отдельно (`wipCount`)
+  const hasWip = (repo?.wipFiles.length ?? 0) > 0;
   const allCommits = useMemo((): GraphEntry[] => {
     if (!repo) return [];
     const commits = withStashes(repo!.commits, repo!.stashes, (st) => describeStash(st).title);
-    if (repo!.wipFiles.length === 0) return commits as GraphEntry[];
+    if (!hasWip) return commits as GraphEntry[];
     const wip = {
       hash: 'WIP',
       wip: true,
@@ -2454,7 +2457,8 @@ export default function App() {
       refs: [],
     };
     return [wip, ...commits] as GraphEntry[];
-  }, [repo]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [repo?.commits, repo?.stashes, repo?.headHash, hasWip]);
 
   const commitsBySha = useMemo(() => new Map((repo?.commits ?? []).map((c) => [c.hash, c])), [repo?.commits]);
 
