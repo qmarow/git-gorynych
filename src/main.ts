@@ -7,4 +7,4 @@ import { installTauriApi } from './platform/tauri.ts';
 installTauriApi()
   .catch((error) => console.error('installTauriApi', error))
   // Отладочная проверка окна запускает свой сценарий вместо интерфейса (см. `GORYNYCH_DEV_SMOKE_SCRIPT` в gorynych-tauri)
-  .then(() => (window.__GORYNYCH_SMOKE__ ? null : import('./boot.jsx')));
+  .then(() => (window.__GORYNYCH_SMOKE__ ? null : import('./boot.tsx')));

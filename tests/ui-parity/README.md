@@ -103,6 +103,7 @@ node tests/ui-parity/components-compiled.mjs $old $PWD Toasts CodeText Resizer A
 | `FileView` | см. `git log -- src/components/FileView.tsx` |
 | `CommitGraph` | см. `git log -- src/components/CommitGraph.tsx` |
 | `CiView` | см. `git log -- src/components/CiView.tsx` |
+| `App`, `boot`, `main` (вне `components/`: `../App`, `../boot`, `../main`; `main` стал `.ts`) | см. `git log -- src/App.tsx` |
 
 Неиспользуемые имена `noUnusedLocals`/`noUnusedParameters` не пропускают, поэтому при переводе они убираются, а для
 сверки та же правка делается в старой копии:

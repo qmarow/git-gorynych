@@ -44,7 +44,7 @@ export function nextDelay({ mode, focused, failures = 0, retryAfter = 0 }: Delay
   return (focused ? base : Math.max(base, BACKGROUND_SEC)) * 1000;
 }
 
-/** Состояние проверки сервера. Поля заполняет `App.jsx`: время — `Date.now()`, способ проверки и текст ошибки — строки. */
+/** Состояние проверки сервера. Поля заполняет `App.tsx`: время — `Date.now()`, способ проверки и текст ошибки — строки. */
 export interface SyncState {
   at: number | null;
   via: string | null;
@@ -53,6 +53,8 @@ export interface SyncState {
   failures: number;
   focused: boolean;
   ms: number | null;
+  /** Код последней ошибки связи (`repo:remote-check`) */
+  code?: string | null;
 }
 
 let state: SyncState = { at: null, via: null, error: null, retryAt: null, failures: 0, focused: true, ms: null };

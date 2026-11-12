@@ -1,6 +1,6 @@
-import { Component, StrictMode } from 'react';
+import { Component, StrictMode, type ErrorInfo, type ReactNode } from 'react';
 import { createRoot } from 'react-dom/client';
-import App from './App.jsx';
+import App from './App.tsx';
 import { syncLanguageToMain } from './i18n/index.ts';
 import './index.css';
 import { applyAppearance, readCachedAppearance } from './lib/appearance.ts';
@@ -16,16 +16,16 @@ try {
 }
 
 // Если интерфейс упал — показываем ошибку вместо пустого окна
-class ErrorBoundary extends Component {
-  state = { error: null };
+class ErrorBoundary extends Component<{ children?: ReactNode }, { error: unknown }> {
+  state: { error: unknown } = { error: null };
 
-  static getDerivedStateFromError(error) {
+  static getDerivedStateFromError(error: unknown) {
     return { error };
   }
 
-  componentDidCatch(error, info) {
+  componentDidCatch(error: unknown, info: ErrorInfo) {
     console.error('UI crash:', error, info?.componentStack);
-    reportError(`UI crash: ${error?.stack || error}`);
+    reportError(`UI crash: ${(error as Error | null)?.stack || error}`);
   }
 
   render() {
@@ -37,7 +37,7 @@ class ErrorBoundary extends Component {
         <div className="glass-strong w-full max-w-xl rounded-xl border border-gk-border bg-gk-panel-2 p-5">
           <div className="text-[15px] font-semibold text-gk-strong">{t('Интерфейс упал с ошибкой')}</div>
           <pre className="mt-3 max-h-72 select-text overflow-auto whitespace-pre-wrap rounded bg-gk-sink/30 p-3 font-mono text-xs text-gk-red">
-            {String(error?.stack || error)}
+            {String((error as Error | null)?.stack || error)}
           </pre>
           <div className="mt-4 flex gap-2">
             <button
@@ -46,7 +46,7 @@ class ErrorBoundary extends Component {
             >
               {t('Перезагрузить')}</button>
             <button
-              onClick={() => navigator.clipboard?.writeText(String(error?.stack || error))}
+              onClick={() => navigator.clipboard?.writeText(String((error as Error | null)?.stack || error))}
               className="rounded bg-gk-fg/10 px-3 py-1.5 text-[13px] text-gk-text"
             >
               {t('Скопировать ошибку')}</button>
@@ -60,7 +60,7 @@ class ErrorBoundary extends Component {
 // Main-процесс переводит свои сообщения на язык окна
 syncLanguageToMain();
 
-createRoot(document.getElementById('root')).render(
+createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <ErrorBoundary>
       <App />

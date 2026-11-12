@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type MouseEvent as ReactMouseEvent, type ReactNode } from 'react';
 import {
   AlertTriangle,
   RefreshCw,
@@ -51,27 +51,28 @@ import {
   FolderSync,
   Pencil,
 } from 'lucide-react';
-import ContextMenu from './components/ContextMenu.tsx';
-import TitleBar from './components/TitleBar.tsx';
+import ContextMenu, { type MenuEntry, type MenuItem } from './components/ContextMenu.tsx';
+import TitleBar, { type TabInfo } from './components/TitleBar.tsx';
 import Toolbar from './components/Toolbar.tsx';
 import Sidebar from './components/Sidebar.tsx';
-import CommitGraph from './components/CommitGraph.tsx';
-import CommitDetails from './components/CommitDetails.tsx';
-import Toasts from './components/Toasts.tsx';
+import CommitGraph, { type GraphRow, type PipelineMark } from './components/CommitGraph.tsx';
+import CommitDetails, { type CommitHits, type HitFile, type RowFile, type SelectedRow } from './components/CommitDetails.tsx';
+import Toasts, { type ToastData } from './components/Toasts.tsx';
 import TooltipLayer from './components/TooltipLayer.tsx';
-import DiffView from './components/DiffView.tsx';
-import ConflictView from './components/ConflictView.tsx';
+import DiffView, { type DiffData, type DiffEditor, type DiffTarget, type FileAction, type HunkAction } from './components/DiffView.tsx';
+import ConflictView, { type RunAction } from './components/ConflictView.tsx';
 import CiView from './components/CiView.tsx';
-import RebaseView from './components/RebaseView.tsx';
-import CompareView from './components/CompareView.tsx';
-import FileView from './components/FileView.tsx';
+import RebaseView, { type RebaseSession } from './components/RebaseView.tsx';
+import CompareView, { type CompareSearchJump } from './components/CompareView.tsx';
+import FileView, { type FileViewState } from './components/FileView.tsx';
 import GuideDialog from './components/GuideDialog.tsx';
 import ActionBuilder, { ACTION_ICONS } from './components/ActionBuilder.tsx';
-import { RunDialog, RunnerCard } from './components/ActionRunner.tsx';
+import { RunDialog, RunnerCard, type ActionRun } from './components/ActionRunner.tsx';
 import { GuardDialog } from './components/Guard.tsx';
-import { activeRules, guardOnFor, readGuard, writeGuard } from './lib/guardRules.ts';
+import { activeRules, guardOnFor, readGuard, writeGuard, type GuardConfig } from './lib/guardRules.ts';
 import { STEP_TYPES, defaultBranchOf, expandParams, hotkeyFromEvent, inputsOf, readActions, validateAction, writeActions } from './lib/actions.ts';
-import SettingsDialog from './components/SettingsDialog.tsx';
+import type { ActionInput, CustomAction, ExpandContext, StepTypeId } from './lib/actions.ts';
+import SettingsDialog, { type Workflow } from './components/SettingsDialog.tsx';
 import {
   DEFAULT_APPEARANCE,
   AUTO_THEME,
@@ -81,6 +82,7 @@ import {
   normalizeAppearance,
   readCachedAppearance,
   syncScheme,
+  type Appearance,
 } from './lib/appearance.ts';
 import { ACTIVE_STATUSES } from './components/PipelineStatus.tsx';
 import StatusBar from './components/StatusBar.tsx';
@@ -88,11 +90,11 @@ import { IS_MAC, isMod, kb, openFolderLabel, openTerminalLabel } from './lib/pla
 import { DEFAULT_SYNC_MODE, SYNC_MODES, nextDelay, resetSyncStatus, setSyncStatus } from './lib/syncStatus.ts';
 import InitRepoDialog, { plural } from './components/InitRepoDialog.tsx';
 import CloneDialog from './components/CloneDialog.tsx';
-import AuthDialog from './components/AuthDialog.tsx';
+import AuthDialog, { type AuthSubmit, type AuthTarget } from './components/AuthDialog.tsx';
 import NewTabPage from './components/NewTabPage.tsx';
 import { describeStash } from './lib/stashName.ts';
 import RevertToDialog from './components/RevertToDialog.tsx';
-import SearchBar, { EMPTY_FILTER, isFilterActive, matchCommit } from './components/SearchBar.tsx';
+import SearchBar, { EMPTY_FILTER, isFilterActive, matchCommit, type CommitFilter } from './components/SearchBar.tsx';
 import { GraphLoader, LoadingOverlay, Splash } from './components/Loader.tsx';
 import AppLogo from './components/AppLogo.tsx';
 import { ResizeHandle, useStoredWidth } from './components/Resizer.tsx';
@@ -109,12 +111,304 @@ import {
   RenameBranchDialog,
   SwitchToDialog,
   TagDialog,
+  type AccessState,
+  type DialogError,
+  type GitFlowConfig,
+  type WipChoice,
+  type WipConflict,
 } from './components/Dialogs.tsx';
 import { t as tr, tj, locale } from './i18n/index.ts';
-import { repoStore, useRepoStore } from './state/repoStore.ts';
-import { withStashes } from './lib/graphStash.ts';
+import { repoStore, useRepoStore, type LoadError, type RepoData, type RepoStatus } from './state/repoStore.ts';
+import { withStashes, type StashData } from './lib/graphStash.ts';
+import type { RefDragPayload } from './lib/dnd.ts';
+import type { ActionOutput, ActionPayload, RepoActionName } from './state/repoActions.ts';
+import type { ApiError, ApiResult } from './platform/tauri.ts';
+import type {
+  AppearanceInfo_Serialize,
+  BranchLog,
+  ClearResult,
+  CommitFile_Serialize,
+  CommitRef_Serialize,
+  ConnectOptions_Deserialize,
+  ConnectResult_Serialize,
+  CredSaved_Serialize,
+  CredTarget_Serialize,
+  FileDiff_Serialize,
+  FolderInfo_Serialize,
+  ForgeStatus_Serialize,
+  ForgetResult,
+  GlMergeRequest_Serialize,
+  GuardScan_Serialize,
+  HistorySearch_Serialize,
+  InitOptions_Deserialize,
+  InitResult_Serialize,
+  KeyDefaults_Serialize,
+  LightCheck_Serialize,
+  LocalBranch_Serialize,
+  MenuInvoke_Serialize,
+  OpenedPath,
+  OpenedTerminal,
+  PipelineDetailWithCaps_Serialize,
+  PipelineListWithCaps_Serialize,
+  PipelineRun_Serialize,
+  RemoteProbe_Serialize,
+  RepoChanged,
+  RepoIndexSynced,
+  Stash_Serialize,
+  StashDetails_Serialize,
+  TabsState_Serialize,
+  UrlChecked,
+  WorktreeSave,
+  WorktreeSaved,
+  WorktreeText,
+} from '../crates/gorynych-tauri/bindings/commands.ts';
 
-const api = window.api;
+/* ---------- Типы ---------- */
+
+/** Ошибка, которую показывает интерфейс: ответ команды или придуманная здесь (`BUSY`, `STOPPED`, `CANCELED`) */
+type UiError = Partial<ApiError> & { code: string };
+/** Ответ, как его читает интерфейс: ошибка может быть неполной */
+type UiResult<T> = { ok: true; data: T } | { ok: false; error: UiError };
+
+/** Ответ `repo:action` с известным типом результата */
+type ActionResult<N extends RepoActionName> = UiResult<ActionOutput<N>>;
+
+/** Та часть `window.api`, которой пользуется App (форма `electron/preload.cjs` и `platform/tauri.ts`) */
+interface AppApi {
+  platform?: string;
+  window: { close: () => void; onFocus: (cb: () => void) => () => void };
+  menu?: { set: (model: unknown) => void; onInvoke?: (cb: (value: MenuInvoke_Serialize) => void) => () => void };
+  tabs?: { get: () => Promise<TabsState_Serialize>; save: (tabs: string[], active: string | null) => Promise<boolean> };
+  openExternal: (url: string) => Promise<boolean>;
+  openFolder?: (dir: string) => Promise<ApiResult<OpenedPath>>;
+  openTerminal?: (dir: string) => Promise<ApiResult<OpenedTerminal>>;
+  appearance?: {
+    get: () => Promise<Omit<AppearanceInfo_Serialize, 'appearance'> & { appearance: unknown }>;
+    set: (value: unknown) => Promise<boolean>;
+    pickImage: () => Promise<{ ok: boolean; canceled?: boolean; name?: string | null; error?: { message: string } }>;
+    image: () => Promise<string | null>;
+  };
+  creds?: {
+    describe: (dir: string | null, url: string | null) => Promise<ApiResult<CredTarget_Serialize>>;
+    save: (dir: string | null, url: string | null, data: AuthSubmit) => Promise<ApiResult<CredSaved_Serialize>>;
+    clear: (dir: string | null, url: string | null) => Promise<ApiResult<ClearResult>>;
+    checkUrl: (url: string) => Promise<ApiResult<UrlChecked>>;
+    servers?: () => Promise<ApiResult>;
+    forgetLogin: (key: string) => Promise<ApiResult<ForgetResult>>;
+    forgetServer: (hostname: string) => Promise<ApiResult<ForgetResult>>;
+    keyDefaults: (dir: string | null, url: string | null, type: string) => Promise<ApiResult<KeyDefaults_Serialize>>;
+  };
+  cicd?: {
+    status: (dir: string, opts: { remote?: string | null }) => Promise<ApiResult<ForgeStatus_Serialize | null>>;
+    pipelines: (dir: string, opts: { remote?: string | null }) => Promise<ApiResult<PipelineListWithCaps_Serialize>>;
+    pipeline: (dir: string, id: string | number, opts: { remote?: string | null }) => Promise<ApiResult<PipelineDetailWithCaps_Serialize>>;
+  };
+  gitlab: {
+    createMergeRequest: (dir: string, mr: { source: string; target: unknown; title: unknown; draft: boolean }, opts: { remote?: string | null }) => Promise<ApiResult<GlMergeRequest_Serialize>>;
+  };
+  repo: {
+    openDialog: (title?: string) => Promise<string | null>;
+    inspect: (dir: string) => Promise<ApiResult<FolderInfo_Serialize>>;
+    init: (dir: string, options: InitOptions_Deserialize) => Promise<ApiResult<InitResult_Serialize>>;
+    probeRemote: (dir: string | undefined, options: { url: string; branch?: string | null }) => Promise<ApiResult<RemoteProbe_Serialize>>;
+    connect: (dir: string, options: ConnectOptions_Deserialize) => Promise<ApiResult<ConnectResult_Serialize>>;
+    status?: (dir: string) => Promise<ApiResult<RepoStatus>>;
+    getLast: () => Promise<string | null>;
+    commitFiles: (dir: string, hash: string, parent: string | undefined) => Promise<ApiResult<CommitFile_Serialize[]>>;
+    stashDetails: (dir: string, hash: string) => Promise<ApiResult<StashDetails_Serialize>>;
+    fileDiff: (dir: string, params: Record<string, unknown>) => Promise<ApiResult<FileDiff_Serialize>>;
+    readFile?: (dir: string, path: string) => Promise<ApiResult<WorktreeText>>;
+    saveFile?: (dir: string, params: WorktreeSave) => Promise<ApiResult<WorktreeSaved>>;
+    searchHistory?: (dir: string, params: { hashes: string[]; query: string }) => Promise<ApiResult<HistorySearch_Serialize>>;
+    gitflowConfig?: (dir: string) => Promise<ApiResult<GitFlowConfig>>;
+    guardScan?: (dir: string, params: { rules: unknown; exclude: unknown }) => Promise<ApiResult<GuardScan_Serialize>>;
+    remoteCheck?: (dir: string) => Promise<ApiResult<LightCheck_Serialize>>;
+    branchLog: (dir: string, params: { branch: string; direction: string }) => Promise<ApiResult<BranchLog>>;
+    watch?: (dir: string | null, opts?: { syncIndex: boolean }) => void;
+    onIndexSynced?: (cb: (ev: RepoIndexSynced) => void) => () => void;
+    onChanged?: (cb: (ev: RepoChanged) => void) => () => void;
+    action: <N extends RepoActionName>(dir: string, name: N, payload: ActionPayload<N>) => Promise<ApiResult<ActionOutput<N>>>;
+  };
+}
+
+/** Пункт главного меню: `id` нужен системному меню macOS */
+type AppMenuItem = MenuItem & { id?: string };
+
+/** Вкладка: репозиторий или «Новая вкладка» */
+type Tab = TabInfo;
+
+/** Узел графа, как его читает App: коммит, stash или WIP */
+type GraphEntry = GraphRow & { stash?: StashData | null; description?: string };
+/** Ветка или тег на коммите */
+type CommitRef = { type: CommitRef_Serialize['type'] | (string & {}); name: string };
+
+/** Ветка как «группа»: локальная и её серверная копия на одном коммите — одно целое (`refGroup`) */
+interface BranchGroup {
+  tag?: string;
+  local?: string | null;
+  remote?: string | null;
+  upstream?: string | null;
+  synced?: boolean;
+  info?: LocalBranch_Serialize | null;
+  tracker?: LocalBranch_Serialize | null;
+}
+
+/** Цель checkout: локальная ветка или серверная (тогда создаётся локальная) */
+interface CheckoutTarget {
+  branch?: string;
+  remoteBranch?: { name: string; fullName: string };
+}
+
+/** Тост без `id`: его даёт `notify` */
+type Toast = Omit<ToastData, 'id'>;
+type Notify = (toast: Toast) => void;
+
+/** Подтверждение (`confirm`) */
+interface ConfirmOptions {
+  title: ReactNode;
+  body: ReactNode;
+  confirmLabel?: string;
+  danger?: boolean;
+  onConfirm: () => void;
+}
+
+/** Открытое окно (одновременно не больше одного) */
+type Dialog =
+  | { type: 'init'; info: FolderInfo_Serialize; reason: 'open' | 'create'; mode?: 'init' | 'connect'; error: DialogError | null }
+  | { type: 'clone' }
+  | { type: 'settings'; tab: string }
+  | { type: 'integrations' }
+  | { type: 'guide'; section?: string }
+  | { type: 'about' }
+  | { type: 'access' }
+  | { type: 'actions'; id?: string }
+  | { type: 'error'; action: ReactNode; error: DialogError }
+  | { type: 'rejected'; branch: string | null | undefined; remote: string }
+  | { type: 'checkoutWip'; target: CheckoutTarget; wip: WipConflict; resolve: (res: UiResult<unknown>) => void }
+  | { type: 'branch'; startHash: string | null; startLabel: string; error: DialogError | null; flow: GitFlowConfig | null }
+  | { type: 'tag'; hash: string; label: string; error?: DialogError | null }
+  | ({ type: 'confirm' } & ConfirmOptions)
+  | { type: 'renameBranch'; from: string; upstream: string | null | undefined; busy: boolean; error: DialogError | null }
+  | { type: 'deleteRemote'; remote: string; branch: string; fullName: string; locals: string[]; busy: boolean; error: DialogError | null }
+  | { type: 'guard'; mode: 'commit' | 'view'; result: GuardScan_Serialize; resolve?: (ok: boolean) => void }
+  | { type: 'actionConfirm'; title: ReactNode; body: ReactNode; onYes: () => void; onNo: () => void }
+  | { type: 'switchTo'; node: GraphEntry; locals: CommitRef[]; remotes: CommitRef[] }
+  | { type: 'revertTo'; commit: GraphEntry };
+
+type DialogOf<T extends Dialog['type']> = Extract<Dialog, { type: T }>;
+
+/** Окно «Авторизация репозитория» */
+interface AuthState {
+  dir: string | null;
+  url: string | null;
+  verify: boolean;
+  target: AuthTarget;
+  error: DialogError | null;
+  retry: (() => Promise<UiResult<unknown>>) | null;
+  actionLabel: string | null;
+  forCi: boolean;
+  formError: ApiError | null;
+  notice: { message: string; hint: string | null | undefined } | null;
+  busy: boolean;
+  nonce: number;
+}
+interface AuthOptions {
+  url?: string | null;
+  verify?: boolean;
+  error?: DialogError | null;
+  retry?: (() => Promise<UiResult<unknown>>) | null;
+  actionLabel?: string | null;
+  forCi?: boolean;
+}
+
+/** Параметры `run` */
+interface RunOptions<N extends RepoActionName> {
+  label?: string;
+  success?: string | ((data: ActionOutput<N>) => string) | null;
+  onError?: (error: UiError) => boolean;
+  progress?: string;
+  authRetry?: boolean;
+}
+
+/** Просмотр CI/CD в центре */
+interface CiViewState {
+  file: string | null;
+  mode: string;
+  pipelineId?: string | number | null;
+  focusFailed?: boolean;
+  n: number;
+}
+/** Сравнение двух коммитов */
+interface CompareViewState {
+  a: string;
+  b: string;
+}
+/** Статусы пайплайнов для графа */
+interface PipelineMap {
+  bySha: Record<string, PipelineMark>;
+  pipelines: PipelineRun_Serialize[];
+  error: ApiError | null;
+}
+/** Поиск по изменённым строкам коммитов */
+interface ContentSearch {
+  query: string;
+  loading: boolean;
+  data: HistorySearch_Serialize | null;
+  error: ApiError | null;
+}
+/** Шаг действия из конструктора: результат одного шага */
+type StepResult = { ok: boolean; data?: unknown; error?: (Partial<UiError> & { message?: string }) | null; skipped?: boolean; note?: string | null };
+/** Ход выполнения действия вместе с контекстом подстановок */
+type RunState = ActionRun & { ctx: ExpandContext & { inputs: Record<string, string | undefined> } };
+/** Что перетаскивают на ветку */
+type DragSource = RefDragPayload;
+/** Открытый diff: файл из списка коммита, stash, рабочей копии или сравнения */
+type AppDiffTarget = DiffTarget & { file: RowFile; list: RowFile[]; hash?: string; parent?: string | null };
+/** Выбранная строка: коммит или WIP из графа либо stash из боковой панели */
+type SelectedEntry =
+  | (GraphEntry & { isStash?: undefined; key?: undefined; id?: undefined })
+  | (Stash_Serialize & { isStash: true; key: string; wip?: undefined; parents?: undefined; stash?: undefined });
+/** Stash из списка репозитория (или строки графа) */
+type StashLike = Pick<Stash_Serialize, 'id' | 'hash' | 'message'> & Partial<Stash_Serialize>;
+/** Меню файла stash из панели: свой stash и своё восстановление */
+interface FileMenuExtra {
+  stash?: StashLike;
+  restore?: () => void;
+}
+/** Тип списка файлов у diff */
+type FileKind = 'commit' | 'stash' | 'staged' | 'unstaged' | 'compare';
+/** Файл, у которого бывает версия из stash */
+type AnyFile = RowFile & Partial<Pick<CommitFile_Serialize, 'diffHash' | 'diffParent'>>;
+/** Значения шага действия после подстановок (поля задаёт конструктор действий, `STEP_TYPES`) */
+interface StepValues {
+  mode?: string;
+  force?: boolean;
+  name?: string;
+  from?: string;
+  checkout?: boolean;
+  branch?: string;
+  onto?: string;
+  ref?: string;
+  message?: string;
+  stageAll?: boolean;
+  target?: string;
+  title?: string;
+  draft?: boolean;
+  open?: boolean;
+  text?: string;
+  command?: string;
+}
+type PropsOf<C extends (props: never) => ReactNode, K extends keyof Parameters<C>[0]> = Parameters<C>[0][K];
+/** Откуда открыть историю файла и blame */
+type FileViewBase = Pick<FileViewState, 'path' | 'rev' | 'focus' | 'blameRev'>;
+/** История и blame файла: что доступно и почему нет */
+interface FileViews {
+  history: FileViewBase | null;
+  blame: FileViewBase | null;
+  reason?: string;
+}
+
+const api = window.api as unknown as AppApi;
 
 // Сеттеры хранилища стабильны: функции созданы один раз вместе с ним
 const { setSelectedHash, setFilesByHash, setLoadError } = repoStore.getState();
@@ -133,11 +427,11 @@ const activeRef = {
 // Ошибки, которые показываем модальным окном с подсказкой, а не всплывашкой
 // Пустые вкладки («Новая вкладка») — path с этим префиксом вместо пути к репозиторию
 const NEW_TAB = 'new-tab:';
-const isNewTab = (p) => typeof p === 'string' && p.startsWith(NEW_TAB);
+const isNewTab = (p: unknown) => typeof p === 'string' && p.startsWith(NEW_TAB);
 
 const ACCESS_CODES = new Set(['AUTH', 'FORBIDDEN', 'NOT_FOUND', 'PROTECTED', 'HOOK_DECLINED', 'HOST_KEY']);
 // Оверлей поверх графа для долгих операций: что показывать, пока операция идёт
-const PROGRESS_TEXT = {
+const PROGRESS_TEXT: Record<string, string> = {
   checkout: tr('Переключаем ветку…'),
   checkoutCommit: tr('Переключаемся на коммит…'),
   pull: tr('Получаем изменения с сервера…'),
@@ -163,9 +457,9 @@ const PROGRESS_TEXT = {
 };
 
 
-const OPERATION_LABELS = { rebase: 'rebase', merge: 'merge', 'cherry-pick': 'cherry-pick', revert: 'revert' };
+const OPERATION_LABELS: Record<string, string> = { rebase: 'rebase', merge: 'merge', 'cherry-pick': 'cherry-pick', revert: 'revert' };
 
-function readPref(key, fallback) {
+function readPref(key: string, fallback: string) {
   try {
     return localStorage.getItem(key) ?? fallback;
   } catch {
@@ -173,7 +467,7 @@ function readPref(key, fallback) {
   }
 }
 
-function writePref(key, value) {
+function writePref(key: string, value: string) {
   try {
     localStorage.setItem(key, value);
   } catch {
@@ -201,54 +495,54 @@ export default function App() {
   const [booting, setBooting] = useState(true);
   const [sidebarW, setSidebarW, saveSidebarW] = useStoredWidth('panel.sidebar', 256, 170, 480);
   const [detailsW, setDetailsW, saveDetailsW] = useStoredWidth('panel.details', 300, 250, 680);
-  const [busyAction, setBusyAction] = useState(null);
-  const [busyText, setBusyText] = useState(null); // текст оверлея для долгих операций (checkout, pull…)
-  const [toasts, setToasts] = useState([]);
-  const [dialog, setDialog] = useState(null);
-  const [access, setAccess] = useState(null);
+  const [busyAction, setBusyAction] = useState<string | null>(null);
+  const [busyText, setBusyText] = useState<string | null>(null); // текст оверлея для долгих операций (checkout, pull…)
+  const [toasts, setToasts] = useState<ToastData[]>([]);
+  const [dialog, setDialog] = useState<Dialog | null>(null);
+  const [access, setAccess] = useState<AccessState | null>(null);
   const [pullMode, setPullMode] = useState(readPullMode);
   // Поведение: что делать с незакоммиченными изменениями при переключении ветки
   // ('ask' — спросить, 'stash' — спрятать под именем ветки, 'merge' — перенести) и синхронизация индекса
-  const [workflow, setWorkflow] = useState(() => ({
+  const [workflow, setWorkflow] = useState<Workflow>(() => ({
     checkoutWip: ['ask', 'stash', 'merge'].includes(readPref('checkoutWip', 'ask')) ? readPref('checkoutWip', 'ask') : 'ask',
     syncIndex: readPref('syncIndex', '1') !== '0',
   }));
-  const updateWorkflow = (next) => {
+  const updateWorkflow = (next: Workflow) => {
     setWorkflow(next);
     writePref('checkoutWip', next.checkoutWip);
     writePref('syncIndex', next.syncIndex ? '1' : '0');
   };
   // Перейти к коммиту в графе: выделить и плавно прокрутить, чтобы он оказался по центру (после checkout — новый HEAD)
-  const [graphFocus, setGraphFocus] = useState(null); // { hash, n }
+  const [graphFocus, setGraphFocus] = useState<{ hash: string; n: number } | null>(null); // { hash, n }
   useEffect(() => {
     if (graphFocus?.hash) setSelectedHash(graphFocus.hash);
   }, [graphFocus]);
   const [fsTick, setFsTick] = useState(0); // счётчик изменений файлов на диске — для повторной проверки перед коммитом
   // Pre-commit Guard: правила и последняя проверка staged-изменений
   const [guardCfg, setGuardCfg] = useState(readGuard);
-  const updateGuard = (next) => {
+  const updateGuard = (next: GuardConfig) => {
     setGuardCfg(next);
     writeGuard(next);
   };
-  const [guardResult, setGuardResult] = useState(null);
+  const [guardResult, setGuardResult] = useState<GuardScan_Serialize | null>(null);
   // Конструктор действий
   const [userActions, setUserActions] = useState(readActions);
-  const updateActions = (list) => {
+  const updateActions = (list: CustomAction[]) => {
     setUserActions(list);
     writeActions(list);
   };
-  const [actionRun, setActionRun] = useState(null); // ход выполнения
-  const [dragSource, setDragSource] = useState(null); // перетаскиваемый коммит/ветка
-  const [runPrompt, setRunPrompt] = useState(null); // { action, inputs } — спросить значения перед запуском
-  const [menu, setMenu] = useState(null); // { x, y, node }
-  const [diffTarget, setDiffTarget] = useState(null); // { kind, mode, hash, parent, file, list, index, commitHash }
-  const [ciView, setCiViewRaw] = useState(null); // { file, mode, pipelineId } — открыт просмотр CI/CD
-  const [compareView, setCompareViewRaw] = useState(null); // { a, b } — сравнение двух коммитов
-  const [rebaseView, setRebaseViewRaw] = useState(null); // { upstream, onto?, nonce } — интерактивный rebase
-  const [fileView, setFileViewRaw] = useState(null); // { path, rev, mode, blameRev, blamePath, blameStack, focus } — история файла / blame
-  const [compareMark, setCompareMark] = useState(null); // коммит, отмеченный для сравнения
+  const [actionRun, setActionRun] = useState<RunState | null>(null); // ход выполнения
+  const [dragSource, setDragSource] = useState<DragSource | null>(null); // перетаскиваемый коммит/ветка
+  const [runPrompt, setRunPrompt] = useState<{ action: CustomAction; inputs: ActionInput[] } | null>(null); // { action, inputs } — спросить значения перед запуском
+  const [menu, setMenu] = useState<{ x: number; y: number; items: MenuEntry[] } | null>(null); // { x, y, node }
+  const [diffTarget, setDiffTarget] = useState<AppDiffTarget | null>(null); // { kind, mode, hash, parent, file, list, index, commitHash }
+  const [ciView, setCiViewRaw] = useState<CiViewState | null>(null); // { file, mode, pipelineId } — открыт просмотр CI/CD
+  const [compareView, setCompareViewRaw] = useState<CompareViewState | null>(null); // { a, b } — сравнение двух коммитов
+  const [rebaseView, setRebaseViewRaw] = useState<RebaseSession | null>(null); // { upstream, onto?, nonce } — интерактивный rebase
+  const [fileView, setFileViewRaw] = useState<FileViewState | null>(null); // { path, rev, mode, blameRev, blamePath, blameStack, focus } — история файла / blame
+  const [compareMark, setCompareMark] = useState<string | null>(null); // коммит, отмеченный для сравнения
   // В центре одновременно открыта только одна большая панель
-  const setCiView = (v) => {
+  const setCiView = (v: CiViewState | null) => {
     setCiViewRaw(v);
     if (v) {
       setCompareViewRaw(null);
@@ -256,7 +550,7 @@ export default function App() {
       setFileViewRaw(null);
     }
   };
-  const setCompareView = (v) => {
+  const setCompareView = (v: CompareViewState | null) => {
     setCompareViewRaw(v);
     if (v) {
       setCiViewRaw(null);
@@ -265,7 +559,7 @@ export default function App() {
       setDiffTarget(null);
     }
   };
-  const setRebaseView = (v) => {
+  const setRebaseView = (v: RebaseSession | null) => {
     setRebaseViewRaw(v);
     if (v) {
       setCiViewRaw(null);
@@ -274,7 +568,7 @@ export default function App() {
       setDiffTarget(null);
     }
   };
-  const setFileView = (v) => {
+  const setFileView = (v: FileViewState | null) => {
     setFileViewRaw(v);
     if (v) {
       setCiViewRaw(null);
@@ -283,13 +577,13 @@ export default function App() {
       setDiffTarget(null);
     }
   };
-  const [pipelineMap, setPipelineMap] = useState(null);
+  const [pipelineMap, setPipelineMap] = useState<PipelineMap | null>(null);
   // Оформление: тема, фон, прозрачность. Кэш в localStorage — чтобы не мигало при запуске
-  const [appearance, setAppearance] = useState(readCachedAppearance);
+  const [appearance, setAppearance] = useState<Appearance>(readCachedAppearance);
   const [appearanceMeta, setAppearanceMeta] = useState({ supportsMaterial: false, hasImage: false });
-  const [bgImage, setBgImage] = useState(null);
-  const saveAppearanceTimer = useRef(null); // статусы пайплайнов GitLab: { bySha, pipelines, error }
-  const [diffData, setDiffData] = useState(null);
+  const [bgImage, setBgImage] = useState<string | null>(null);
+  const saveAppearanceTimer = useRef<ReturnType<typeof setTimeout> | null>(null); // статусы пайплайнов GitLab: { bySha, pipelines, error }
+  const [diffData, setDiffData] = useState<DiffData | null>(null);
   const [diffView, setDiffView] = useState(() => readPref('diffView', 'unified'));
   const [ignoreWs, setIgnoreWs] = useState(() => readPref('ignoreWs', '0') === '1');
   // Показывать весь файл, а не только места изменений: выбор запоминается (localStorage → в 2.0 ещё и SQLite)
@@ -297,7 +591,7 @@ export default function App() {
   const [diffNonce, setDiffNonce] = useState(0); // файл сохранён из редактора — перечитать diff
 
   // Вкладки: [{ path, name }], активная — по path
-  const [tabs, setTabs] = useState([]);
+  const [tabs, setTabs] = useState<Tab[]>([]);
   const tabsLoaded = useRef(false);
 
   const busyRef = useRef(false);
@@ -307,9 +601,9 @@ export default function App() {
 
   /* ---------- Уведомления ---------- */
 
-  const closeToast = useCallback((id) => setToasts((t) => t.filter((x) => x.id !== id)), []);
-  const notify = useCallback(
-    (toast) => {
+  const closeToast = useCallback((id: string) => setToasts((t) => t.filter((x) => x.id !== id)), []);
+  const notify: Notify = useCallback(
+    (toast: Toast) => {
       const id = `${Date.now()}-${Math.random()}`;
       setToasts((t) => [...t.slice(-4), { ...toast, id }]);
       if (toast.type !== 'error') setTimeout(() => closeToast(id), 4500);
@@ -327,7 +621,7 @@ export default function App() {
   const rememberActiveTab = () => repoStore.getState().rememberActive();
 
   // Пустая вкладка («Новая вкладка») или ни одной: репозитория нет, показываем стартовую страницу
-  const showBlank = (path) => {
+  const showBlank = (path: string | null) => {
     repoStore.getState().showBlank(path); // заодно отменяет ответы на ещё идущие загрузки
     setDiffTarget(null);
     setCiView(null);
@@ -347,7 +641,7 @@ export default function App() {
     showBlank(id);
   };
 
-  const showTab = (path) => {
+  const showTab = (path: string) => {
     if (isNewTab(path)) {
       rememberActiveTab();
       showBlank(path);
@@ -366,7 +660,7 @@ export default function App() {
     repoStore.getState().showCached(path);
   };
 
-  const openTab = async (dir) => {
+  const openTab = async (dir: string) => {
     // Открываем из «Новой вкладки» — репозиторий займёт её место, как в GitKraken
     const replacing = isNewTab(activeRef.current) ? activeRef.current : null;
     rememberActiveTab();
@@ -382,7 +676,7 @@ export default function App() {
     repoStore.getState().setActivePath(data.path);
   };
 
-  const closeTab = (path) => {
+  const closeTab = (path: string) => {
     const index = tabs.findIndex((t) => t.path === path);
     if (index === -1) return;
     const rest = tabs.filter((t) => t.path !== path);
@@ -396,7 +690,7 @@ export default function App() {
     }
   };
 
-  const cycleTab = (delta) => {
+  const cycleTab = (delta: number) => {
     if (tabs.length < 2) return;
     const index = tabs.findIndex((t) => t.path === activePath);
     showTab(tabs[(index + delta + tabs.length) % tabs.length].path);
@@ -439,7 +733,7 @@ export default function App() {
   useEffect(() => {
     if (!api) return undefined;
     return api.window.onFocus(() => {
-      if (repoRef.current && !busyRef.current) loadRepo(repoRef.current.path, { silent: true });
+      if (repoRef.current && !busyRef.current) loadRepo(repoRef.current!.path, { silent: true });
     });
   }, [loadRepo]);
 
@@ -456,7 +750,7 @@ export default function App() {
   };
 
   // Создать или подключить: выбрать папку проекта и открыть мастер (mode: 'init' | 'connect')
-  const createRepository = async (presetDir, mode = 'init') => {
+  const createRepository = async (presetDir?: string | null, mode: 'init' | 'connect' = 'init') => {
     const dir =
       presetDir ??
       (await api?.repo.openDialog(
@@ -472,13 +766,13 @@ export default function App() {
     setDialog({ type: 'init', info: res.data, reason: 'create', mode, error: null });
   };
 
-  const probeRemote = (url, branch) => api.repo.probeRemote(dialog?.info?.path, { url, branch });
+  const probeRemote = (url: string, branch?: string | null) => api.repo.probeRemote((dialog as DialogOf<'init'> | null)?.info?.path, { url, branch });
 
-  const submitConnect = async (options) => {
-    const info = dialog?.info;
+  const submitConnect = async (options: ConnectOptions_Deserialize) => {
+    const info = (dialog as DialogOf<'init'> | null)?.info;
     if (!info) return;
     setInitBusy(true);
-    setDialog((d) => ({ ...d, error: null }));
+    setDialog((d) => ({ ...d, error: null }) as Dialog);
     const res = await api.repo.connect(info.path, options);
     setInitBusy(false);
     if (!res.ok) {
@@ -490,8 +784,8 @@ export default function App() {
     const parts = [
       tr('ветка {0}', r.branch),
       !r.remoteWasEmpty && tr('история загружена с сервера'),
-      r.restored > 0 && tr('добавлено с сервера: {0} {1}', r.restored, plural(r.restored, tr('файл'), tr('файла'), tr('файлов'))),
-      r.commit?.hash && tr('коммит {0} ({1} {2})', r.commit.hash.slice(0, 7), r.commit.files, plural(r.commit.files, tr('файл'), tr('файла'), tr('файлов'))),
+      r.restored! > 0 && tr('добавлено с сервера: {0} {1}', r.restored, plural(r.restored!, tr('файл'), tr('файла'), tr('файлов'))),
+      r.commit?.hash && tr('коммит {0} ({1} {2})', r.commit.hash.slice(0, 7), r.commit.files, plural(r.commit.files!, tr('файл'), tr('файла'), tr('файлов'))),
       r.pushed && tr('отправлено на сервер'),
     ].filter(Boolean);
     notify({ type: 'success', title: tr('{0} подключён к {1}', r.name, r.url), hint: parts.join(' · ') });
@@ -507,11 +801,11 @@ export default function App() {
   };
 
   const [initBusy, setInitBusy] = useState(false);
-  const submitInit = async (options) => {
-    const info = dialog?.info;
+  const submitInit = async (options: InitOptions_Deserialize) => {
+    const info = (dialog as DialogOf<'init'> | null)?.info;
     if (!info) return;
     setInitBusy(true);
-    setDialog((d) => ({ ...d, error: null }));
+    setDialog((d) => ({ ...d, error: null }) as Dialog);
     const res = await api.repo.init(info.path, options);
     setInitBusy(false);
     if (!res.ok) {
@@ -526,7 +820,7 @@ export default function App() {
       hint: [
         tr('ветка {0}', r.branch),
         r.commit?.hash &&
-          tr('коммит {0} ({1} {2})', r.commit.hash.slice(0, 7), r.commit.files, plural(r.commit.files, tr('файл'), tr('файла'), tr('файлов'))),
+          tr('коммит {0} ({1} {2})', r.commit.hash.slice(0, 7), r.commit.files, plural(r.commit.files!, tr('файл'), tr('файла'), tr('файлов'))),
         r.commit && !r.commit.hash && tr('коммит пропущен — нет файлов'),
         r.remote && `origin → ${r.remote}`,
       ]
@@ -538,22 +832,22 @@ export default function App() {
 
   /* ---------- Папка репозитория: Проводник / Finder и терминал ---------- */
 
-  const openRepoFolder = async (dir = repoRef.current?.path) => {
+  const openRepoFolder = async (dir: string | null | undefined = repoRef.current?.path) => {
     if (!dir || !api?.openFolder) return;
     const res = await api.openFolder(dir);
     if (!res.ok) notify({ type: 'error', title: res.error.message, hint: res.error.hint, details: res.error.details });
   };
-  const openRepoTerminal = async (dir = repoRef.current?.path) => {
+  const openRepoTerminal = async (dir: string | null | undefined = repoRef.current?.path) => {
     if (!dir || !api?.openTerminal) return;
     const res = await api.openTerminal(dir);
     if (!res.ok) notify({ type: 'error', title: res.error.message, hint: res.error.hint, details: res.error.details });
   };
-  const repoFolderItems = (dir = repoRef.current?.path) => [
+  const repoFolderItems = (dir: string | null | undefined = repoRef.current?.path): AppMenuItem[] => [
     { id: 'reveal', label: openFolderLabel(), icon: FolderOpen, disabled: !dir, onClick: () => openRepoFolder(dir) },
     { id: 'terminal', label: openTerminalLabel(), icon: SquareTerminal, disabled: !dir, onClick: () => openRepoTerminal(dir) },
   ];
 
-  const fileMenuItems = () => [
+  const fileMenuItems = (): AppMenuItem[] => [
     { id: 'new-tab', label: tr('Новая вкладка'), icon: Plus, hint: 'Ctrl+T', onClick: newTab },
     { id: 'open', label: tr('Открыть репозиторий…'), icon: FolderOpen, hint: 'Ctrl+O', onClick: openRepository },
     { id: 'init', label: tr('Создать репозиторий…'), icon: GitBranch, hint: 'Ctrl+N', onClick: () => createRepository() },
@@ -581,7 +875,7 @@ export default function App() {
 
   // Ctrl+O — открыть, Ctrl+W — закрыть вкладку, Ctrl+Tab / Ctrl+Shift+Tab — переключить
   useEffect(() => {
-    const onKey = (e) => {
+    const onKey = (e: KeyboardEvent) => {
       // Ctrl+Tab — и на Mac Control: ⌘Tab занят системой
       if (e.key === 'Tab' && e.ctrlKey && !e.altKey && !e.metaKey) {
         e.preventDefault();
@@ -625,23 +919,23 @@ export default function App() {
     return () => window.removeEventListener('keydown', onKey);
   });
 
-  const refresh = () => repo && loadRepo(repo.path, { silent: true });
+  const refresh = () => repo && loadRepo(repo!.path, { silent: true });
 
   /* ---------- Проверка доступа к remote ---------- */
 
-  const checkAccess = useCallback(async () => {
+  const checkAccess = useCallback(async (): Promise<AccessState | null> => {
     const current = repoRef.current;
     if (!current || current.remotes.length === 0) return null;
     setAccess((a) => ({ status: 'checking', data: a?.data ?? null, error: null }));
     const res = await api.repo.action(current.path, 'checkAccess', { write: true });
     if (repoRef.current?.path !== current.path) return null;
-    const next = { status: 'done', data: res.ok ? res.data : null, error: res.ok ? null : res.error };
+    const next: AccessState = { status: 'done', data: res.ok ? res.data : null, error: res.ok ? null : res.error };
     setAccess(next);
     return next;
   }, []);
 
   // Проверяем доступ при открытии репозитория и при смене текущей ветки
-  const accessKey = repo && repo.remotes.length ? `${repo.path}|${repo.currentBranch}` : null;
+  const accessKey = repo && repo!.remotes.length ? `${repo!.path}|${repo!.currentBranch}` : null;
   useEffect(() => {
     if (accessKey) checkAccess();
   }, [accessKey, checkAccess]);
@@ -649,8 +943,8 @@ export default function App() {
   /* ---------- Авторизация на remote-сервере ---------- */
 
   // { dir, url, target, error, formError, busy, retry } — окно «Авторизация репозитория»
-  const [auth, setAuth] = useState(null);
-  const authRef = useRef(null);
+  const [auth, setAuth] = useState<AuthState | null>(null);
+  const authRef = useRef<AuthState | null>(null);
   authRef.current = auth;
 
   // Список серверов и репозиториев в настройках перечитывается после входа
@@ -671,7 +965,7 @@ export default function App() {
    * url — клонирование или репозиторий из списка в настройках (verify: проверить доступ git ls-remote).
    * retry() → { ok, error } — операция, которую повторить после входа (без retry — проверить доступ).
    */
-  const openAuth = useCallback(async ({ url = null, verify = false, error = null, retry = null, actionLabel = null, forCi = false } = {}) => {
+  const openAuth = useCallback(async ({ url = null, verify = false, error = null, retry = null, actionLabel = null, forCi = false }: AuthOptions = {}) => {
     if (!api?.creds || authRef.current) return;
     const dir = url ? null : repoRef.current?.path ?? null;
     if (!url && !dir) return;
@@ -681,14 +975,14 @@ export default function App() {
       else notify({ type: 'error', title: res.error.message, hint: res.error.hint });
       return;
     }
-    setAuth({ dir, url, verify, target: res.data, error, retry, actionLabel, forCi, formError: null, notice: null, busy: false, nonce: Date.now() });
+    setAuth({ dir, url, verify, target: res.data as AuthTarget, error, retry, actionLabel, forCi, formError: null, notice: null, busy: false, nonce: Date.now() });
   }, []);
 
-  const submitAuth = async (data) => {
+  const submitAuth = async (data: AuthSubmit) => {
     const a = authRef.current;
     if (!a) return;
     setAuth({ ...a, busy: true, formError: null, notice: null });
-    const saved = await api.creds.save(a.dir, a.url, data);
+    const saved = await api.creds!.save(a.dir, a.url, data);
     if (!saved.ok) {
       setAuth((cur) => cur && { ...cur, busy: false, formError: saved.error });
       return;
@@ -705,27 +999,27 @@ export default function App() {
       if (a.dir) await loadRepo(a.dir, { silent: true });
     }
     // Повторяем прерванную операцию; без неё — проверяем доступ (git ls-remote / push --dry-run)
-    let result;
+    let result: { ok: boolean; error?: DialogError | null };
     if (a.retry) result = await a.retry();
-    else if (a.verify && a.url) result = await api.creds.checkUrl(a.url);
+    else if (a.verify && a.url) result = await api.creds!.checkUrl(a.url);
     else {
       const acc = await checkAccess();
       const err = acc?.error ?? acc?.data?.error ?? null;
       result = err ? { ok: false, error: err } : { ok: true };
     }
-    if (result?.ok === false && ['AUTH', 'HOST_KEY', 'NOT_FOUND', 'FORBIDDEN'].includes(result.error?.code)) {
+    if (result?.ok === false && ['AUTH', 'HOST_KEY', 'NOT_FOUND', 'FORBIDDEN'].includes(result.error?.code as string)) {
       // Сервер снова не пустил — окно остаётся (уже с сохранённым входом), показываем свежую ошибку
-      setAuth((cur) => cur && { ...cur, busy: false, target: saved.data, error: result.error });
+      setAuth((cur) => cur && { ...cur, busy: false, target: saved.data as AuthTarget, error: result.error! });
       return;
     }
     // Авторизация одна: та же должна открывать пайплайны. Не открывает — окно остаётся и объясняет почему
-    const apiRes = saved.data.api;
+    const apiRes = (saved.data as AuthTarget).api;
     if (result?.ok !== false && apiRes && (apiRes.state === 'bad' || (a.forCi && apiRes.state === 'none'))) {
-      setAuth((cur) => cur && { ...cur, busy: false, target: saved.data, error: null, notice: { message: tr('Pull и Push работают, а пайплайны CI/CD — нет'), hint: apiRes.reason } });
+      setAuth((cur) => cur && { ...cur, busy: false, target: saved.data as AuthTarget, error: null, notice: { message: tr('Pull и Push работают, а пайплайны CI/CD — нет'), hint: apiRes.reason } });
       return;
     }
     setAuth(null);
-    const where = saved.data.repoPath ? `${saved.data.repoPath} (${saved.data.hostname})` : saved.data.hostname ?? saved.data.host;
+    const where = (saved.data as AuthTarget).repoPath ? `${(saved.data as AuthTarget).repoPath} (${(saved.data as AuthTarget).hostname})` : (saved.data as AuthTarget).hostname ?? (saved.data as AuthTarget).host;
     if (result?.ok !== false) {
       notify({ type: 'success', title: tr('Вход для {0} выполнен — данные сохранены', where), hint: apiRes?.state === 'ok' ? tr('Эта же авторизация работает и для пайплайнов CI/CD') : undefined });
       if (repoRef.current?.remotes?.length && a.retry) checkAccess();
@@ -737,10 +1031,10 @@ export default function App() {
   const forgetAuth = async () => {
     const a = authRef.current;
     if (!a) return;
-    const res = await api.creds.clear(a.dir, a.url);
+    const res = await api.creds!.clear(a.dir, a.url);
     if (res.ok) {
-      const fresh = await api.creds.describe(a.dir, a.url);
-      setAuth((cur) => cur && { ...cur, target: fresh.ok ? fresh.data : { ...cur.target, saved: null } });
+      const fresh = await api.creds!.describe(a.dir, a.url);
+      setAuth((cur) => cur && { ...cur, target: fresh.ok ? (fresh.data as AuthTarget) : { ...cur.target, saved: null } });
       setServersTick((n) => n + 1);
       refreshForge();
       notify({
@@ -757,7 +1051,7 @@ export default function App() {
    * success — текст (или функция от data) для уведомления об успехе
    * onError — вернуть true, если ошибка обработана сама
    */
-  const run = async (name, payload = {}, options = {}) => {
+  const run = async <N extends RepoActionName>(name: N, payload: ActionPayload<N> = {} as ActionPayload<N>, options: RunOptions<N> = {}): Promise<ActionResult<N>> => {
     const { label, success, onError, progress, authRetry = false } = options;
     const current = repoRef.current;
     if (!current || busyRef.current) return { ok: false, error: { code: 'BUSY' } };
@@ -781,7 +1075,7 @@ export default function App() {
     if (onError?.(res.error)) return res;
     // Сервер не пустил — сразу окно входа; «Войти и повторить» перезапустит эту же операцию
     if (res.error.code === 'AUTH' && api?.creds) {
-      openAuth({ error: res.error, retry: () => run(name, payload, { ...options, authRetry: true }) });
+      openAuth({ error: res.error, retry: () => run<N>(name, payload, { ...options, authRetry: true }) });
       return res;
     }
     if (ACCESS_CODES.has(res.error.code)) {
@@ -793,7 +1087,7 @@ export default function App() {
     return res;
   };
 
-  const pull = (mode = pullMode) => {
+  const pull = (mode: string = pullMode) => {
     setPullMode(mode);
     try {
       localStorage.setItem('pullMode', mode);
@@ -833,21 +1127,21 @@ export default function App() {
 
   const undo = () => run('undo', {}, { label: 'Undo', success: (d) => tr('Отменено: {0}', d.label) });
   // Актуальные обработчики для глобальных горячих клавиш (эффект регистрируется один раз)
-  const hotkeys = useRef({});
+  const hotkeys = useRef({} as { undo: () => void; redo: () => void; repo: RepoData | null; busyAction: string | null });
   const redo = () => run('redo', {}, { label: 'Redo', success: (d) => tr('Повторено: {0}', d.label) });
 
   hotkeys.current = { undo, redo, repo, busyAction };
 
   // Ctrl+Z / Ctrl+Y — отменить/повторить (не в полях ввода), F1 — горячие клавиши
   useEffect(() => {
-    const onKey = (e) => {
+    const onKey = (e: KeyboardEvent) => {
       if (e.key === 'F1') {
         e.preventDefault();
         setDialog((d) => d ?? { type: 'guide' });
         return;
       }
       if (!isMod(e) || e.altKey) return;
-      const t = e.target;
+      const t = e.target as HTMLElement | null;
       if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable)) return;
       if (document.querySelector('.fixed.inset-0')) return;
       const { undo: doUndo, redo: doRedo, repo: r, busyAction: busy } = hotkeys.current;
@@ -873,9 +1167,9 @@ export default function App() {
    * (спрятать / перенести / выбросить), и повторяем с выбранной стратегией. Промис завершается после выбора:
    * вызывающий код (например, «переключиться и перебазировать») продолжит только после успешного checkout.
    */
-  const checkout = (target, strategy) =>
+  const checkout = (target: CheckoutTarget, strategy?: WipChoice): Promise<UiResult<unknown>> =>
     new Promise((resolve) => {
-      const auto = workflow.checkoutWip !== 'ask' ? workflow.checkoutWip : undefined;
+      const auto = workflow.checkoutWip !== 'ask' ? (workflow.checkoutWip as WipChoice) : undefined;
       let deferred = false;
       run('checkout', { ...target, strategy: strategy ?? auto }, {
         label: 'Checkout',
@@ -905,7 +1199,7 @@ export default function App() {
         onError: (error) => {
           if (error.code !== 'WIP_CONFLICT' || !error.data) return false;
           deferred = true;
-          setDialog({ type: 'checkoutWip', target, wip: error.data, resolve });
+          setDialog({ type: 'checkoutWip', target, wip: error.data as WipConflict, resolve });
           return true;
         },
       }).then((res) => {
@@ -914,7 +1208,7 @@ export default function App() {
       });
     });
   // Выбор в окне «незакоммиченные изменения»: повторяем checkout со стратегией; «Больше не спрашивать» — в настройки
-  const chooseCheckoutWip = async (strategy, remember) => {
+  const chooseCheckoutWip = async (strategy: WipChoice, remember: boolean) => {
     const d = dialog;
     if (!d || d.type !== 'checkoutWip') return;
     if (remember) updateWorkflow({ ...workflow, checkoutWip: strategy });
@@ -930,8 +1224,8 @@ export default function App() {
     });
   const stashPop = () => run('stashPop', {}, { label: 'Pop', success: tr('Stash применён') });
 
-  const createBranch = async (params) => {
-    setDialog((d) => ({ ...d, error: null }));
+  const createBranch = async (params: ActionPayload<'createBranch'>) => {
+    setDialog((d) => ({ ...d, error: null }) as Dialog);
     const res = await run('createBranch', params, {
       label: 'Branch',
       success: (d) => tr('Ветка {0} создана{1}', d.name, d.checkedOut ? tr(' и активна') : ''),
@@ -945,7 +1239,7 @@ export default function App() {
   };
 
   // Создание ветки прямо из списка веток: от HEAD и сразу переключиться
-  const quickCreateBranch = (name) =>
+  const quickCreateBranch = (name: string) =>
     run('createBranch', { name, checkout: true }, {
       label: 'Branch',
       progress: tr('Создаём ветку {0}', name),
@@ -953,7 +1247,7 @@ export default function App() {
     });
 
   // Показать коммит в графе: выделить и прокрутить к нему
-  const locateCommit = (hash) => {
+  const locateCommit = (hash: string | null | undefined) => {
     if (!hash) return;
     setDiffTarget(null);
     setCiView(null);
@@ -963,13 +1257,13 @@ export default function App() {
     setSelectedHash(hash);
   };
 
-  const openBranchDialog = (node) => {
+  const openBranchDialog = (node?: GraphEntry) => {
     const sel = node ?? allCommits.find((c) => c.hash === selectedHash);
-    const startHash = sel && !sel.wip ? sel.hash : repo.headHash;
-    const label = sel && !sel.wip ? `${sel.hash.slice(0, 7)} — ${sel.message}` : `HEAD (${repo.headHash?.slice(0, 7)})`;
+    const startHash = sel && !sel.wip ? sel.hash : repo!.headHash;
+    const label = sel && !sel.wip ? `${sel.hash.slice(0, 7)} — ${sel.message}` : `HEAD (${repo!.headHash?.slice(0, 7)})`;
     setDialog({ type: 'branch', startHash, startLabel: label, error: null, flow: null });
     // Приписки git flow из настроек репозитория (git flow init), если они есть
-    const path = repo.path;
+    const path = repo!.path;
     api?.repo?.gitflowConfig?.(path).then((res) => {
       if (res?.ok) setDialog((d) => (d?.type === 'branch' && repoRef.current?.path === path ? { ...d, flow: res.data } : d));
     });
@@ -980,18 +1274,18 @@ export default function App() {
       repo
         ? [
             ...repo.localBranches.map((b) => ({ name: b.name, hash: b.hash })),
-            ...(repo.remotes ?? []).flatMap((r) => r.branches.map((b) => ({ name: b.fullName, hash: b.hash, remote: true }))),
+            ...(repo!.remotes ?? []).flatMap((r) => r.branches.map((b) => ({ name: b.fullName, hash: b.hash, remote: true }))),
           ]
         : [],
     [repo],
   );
 
-  const stageFiles = (paths) => run('stage', { paths }, { label: 'Stage' });
-  const unstageFiles = (paths) => run('unstage', { paths }, { label: 'Unstage' });
+  const stageFiles = (paths: string[] | 'all') => run('stage', { paths }, { label: 'Stage' });
+  const unstageFiles = (paths: string[] | 'all') => run('unstage', { paths }, { label: 'Unstage' });
   // Pre-commit Guard: проверка добавленных строк; если что-то нашлось — спрашиваем
-  const guardCheck = async (path) => {
+  const guardCheck = async (path: string): Promise<boolean> => {
     if (!guardOnFor(guardCfg, path) || !api.repo.guardScan) return true;
-    let scan;
+    let scan: ApiResult<GuardScan_Serialize>;
     try {
       scan = await api.repo.guardScan(path, { rules: activeRules(guardCfg), exclude: guardCfg.exclude });
     } catch {
@@ -1001,9 +1295,9 @@ export default function App() {
     return new Promise((resolve) => setDialog({ type: 'guard', mode: 'commit', result: scan.data, resolve }));
   };
 
-  const commit = async (summary, description) => {
+  const commit = async (summary: string, description: string) => {
     if (!repoRef.current || busyRef.current) return false;
-    if (!(await guardCheck(repoRef.current.path))) return false;
+    if (!(await guardCheck(repoRef.current!.path))) return false;
     const res = await run('commit', { summary, description }, {
       label: 'Commit',
       success: (d) => tr('Коммит {0} создан', d.hash.slice(0, 7)),
@@ -1014,10 +1308,10 @@ export default function App() {
 
   /* ---------- Контекстное меню коммита ---------- */
 
-  const short = (h) => h.slice(0, 7);
-  const confirm = (opts) => setDialog({ type: 'confirm', ...opts });
+  const short = (h: string) => h.slice(0, 7);
+  const confirm = (opts: ConfirmOptions) => setDialog({ type: 'confirm', ...opts });
 
-  const copy = async (text, what) => {
+  const copy = async (text: string, what: string) => {
     try {
       await navigator.clipboard.writeText(text);
       notify({ type: 'success', title: tr('{0} скопирован', what) });
@@ -1026,8 +1320,8 @@ export default function App() {
     }
   };
 
-  const createTag = async (params) => {
-    setDialog((d) => ({ ...d, error: null }));
+  const createTag = async (params: ActionPayload<'createTag'>) => {
+    setDialog((d) => ({ ...d, error: null }) as Dialog);
     const res = await run('createTag', params, {
       label: 'Tag',
       success: (d) => tr('Тег {0} создан на {1}', d.name, short(d.hash)),
@@ -1040,7 +1334,7 @@ export default function App() {
     if (res.ok) setDialog(null);
   };
 
-  const deleteBranch = (name, force = false) =>
+  const deleteBranch = (name: string, force = false): Promise<ActionResult<'deleteBranch'>> =>
     run('deleteBranch', { name, force }, {
       label: tr('Удаление ветки'),
       success: (d) => tr('Ветка {0} удалена (Undo вернёт её)', d.name),
@@ -1057,17 +1351,17 @@ export default function App() {
       },
     });
 
-  const resetTo = (node, mode) => {
+  const resetTo = (node: { hash: string; message: string }, mode: string) => {
     const doReset = () =>
       run('reset', { hash: node.hash, mode }, {
         label: 'Reset',
         success: (d) => tr('{0} сброшена на {1} (--{2})', d.branch ?? 'HEAD', short(d.hash), d.mode),
       });
     if (mode !== 'hard') return doReset();
-    const lost = repo.wipFiles.length;
+    const lost = repo!.wipFiles.length;
     confirm({
       title: 'Reset --hard',
-      body: tr('Ветка {0} будет перемещена на {1} «{2}».{3} Коммиты после этой точки можно вернуть через Undo.', repo.currentBranch ?? 'HEAD', short(node.hash), node.message, lost ? tr(' Незакоммиченные изменения ({0}) будут удалены безвозвратно.', lost) : ''),
+      body: tr('Ветка {0} будет перемещена на {1} «{2}».{3} Коммиты после этой точки можно вернуть через Undo.', repo!.currentBranch ?? 'HEAD', short(node.hash), node.message, lost ? tr(' Незакоммиченные изменения ({0}) будут удалены безвозвратно.', lost) : ''),
       confirmLabel: 'Reset --hard',
       danger: true,
       onConfirm: doReset,
@@ -1078,17 +1372,17 @@ export default function App() {
    * Ветка как «группа», как в GitKraken: локальная и её серверная копия на том же коммите — одно целое.
    * ref: { type: 'local' | 'remote' | 'tag', name } → { local, remote, synced, info, tracker } | { tag }
    */
-  const refGroup = (ref) => {
-    const remoteHash = (full) => repo.remotes.flatMap((r) => r.branches).find((b) => b.fullName === full)?.hash ?? null;
+  const refGroup = (ref: CommitRef): BranchGroup | null => {
+    const remoteHash = (full: string) => repo!.remotes.flatMap((r) => r.branches).find((b) => b.fullName === full)?.hash ?? null;
     if (ref.type === 'tag') return { tag: ref.name };
     if (ref.type === 'local') {
-      const info = repo.localBranches.find((b) => b.name === ref.name) ?? null;
+      const info = repo!.localBranches.find((b) => b.name === ref.name) ?? null;
       const up = info?.upstream && !info.gone ? info.upstream : null;
-      const synced = Boolean(up && remoteHash(up) === info.hash);
+      const synced = Boolean(up && remoteHash(up) === info!.hash);
       return { local: ref.name, remote: synced ? up : null, upstream: up, synced, info };
     }
     if (ref.name.endsWith('/HEAD')) return null;
-    const tracker = repo.localBranches.find((b) => b.upstream === ref.name) ?? null;
+    const tracker = repo!.localBranches.find((b) => b.upstream === ref.name) ?? null;
     if (tracker && tracker.hash === remoteHash(ref.name)) {
       return { local: tracker.name, remote: ref.name, upstream: ref.name, synced: true, info: tracker };
     }
@@ -1096,9 +1390,9 @@ export default function App() {
   };
 
   // Группы веток на коммите: без дублей local + origin, текущая ветка — первой
-  const refGroupsOf = (node) => {
-    const seen = new Set();
-    const groups = [];
+  const refGroupsOf = (node: GraphEntry) => {
+    const seen = new Set<string>();
+    const groups: BranchGroup[] = [];
     const ordered = [...node.refs].sort((a, b) => (a.type === 'local' ? 0 : a.type === 'remote' ? 1 : 2) - (b.type === 'local' ? 0 : b.type === 'remote' ? 1 : 2));
     for (const ref of ordered) {
       const g = refGroup(ref);
@@ -1115,13 +1409,13 @@ export default function App() {
    * Меню одной ветки или тега. inCommit — подменю внутри меню коммита: там уже есть Rebase и Reset к этому коммиту,
    * поэтому их не повторяем.
    */
-  const buildRefItems = (ref, { inCommit = false } = {}) => {
-    const g = ref.group ?? refGroup(ref);
+  const buildRefItems = (ref: CommitRef | { group: BranchGroup; type?: undefined; name?: undefined }, { inCommit = false } = {}): MenuEntry[] => {
+    const g = (ref as { group?: BranchGroup }).group ?? refGroup(ref as CommitRef);
     if (!g) return [];
-    const cur = repo.currentBranch;
+    const cur = repo!.currentBranch;
     const curLabel = cur ?? 'HEAD';
-    const op = Boolean(repo.operation);
-    const copyName = (name) => ({ label: tr('Скопировать название'), icon: Copy, onClick: () => copy(name, tr('Название')) });
+    const op = Boolean(repo!.operation);
+    const copyName = (name: string): MenuItem => ({ label: tr('Скопировать название'), icon: Copy, onClick: () => copy(name, tr('Название')) });
 
     if (g.tag) {
       return [
@@ -1148,7 +1442,7 @@ export default function App() {
       const name = g.local;
       const isCur = name === cur;
       const info = g.info;
-      const items = [];
+      const items: MenuEntry[] = [];
       if (!inCommit) items.push({ header: g.synced ? tr('Ветка {0} = {1}', name, g.remote) : tr('Ветка {0}', name) });
       // Для текущей ветки «переключиться», «влить в себя» и «перебазировать на себя» не имеют смысла — не показываем
       if (!isCur) items.push({ label: tr('Переключиться на {0}', name), icon: LogIn, hint: 'Checkout', disabled: op, onClick: () => checkout({ branch: name }) });
@@ -1157,10 +1451,10 @@ export default function App() {
           label: info?.behind ? tr('Обновить ветку — ↓{0}', info.behind) : tr('Обновить ветку'),
           icon: ArrowDownToLine,
           hint: 'Pull',
-          disabled: (isCur && op) || !info?.behind || (!isCur && info.ahead > 0),
+          disabled: (isCur && op) || !info?.behind || (!isCur && info.ahead! > 0),
           title: !info?.behind
             ? tr('Новых коммитов в {0} нет', g.upstream)
-            : !isCur && info.ahead > 0
+            : !isCur && info.ahead! > 0
               ? tr('В {0} есть свои коммиты (↑{1}) — переключитесь на неё и сделайте Pull', name, info.ahead)
               : isCur
                 ? tr('Забрать {0} {1} из {2}', info.behind, plural(info.behind, tr('коммит'), tr('коммита'), tr('коммитов')), g.upstream)
@@ -1192,7 +1486,7 @@ export default function App() {
             label: tr('Сбросить {0} к {1}', curLabel, name),
             icon: History,
             hint: 'Reset',
-            disabled: op || !cur || !repo.headHash || info.hash === repo.headHash,
+            disabled: op || !cur || !repo!.headHash || info.hash === repo!.headHash,
             submenu: resetSubmenu(target),
           });
         }
@@ -1231,16 +1525,16 @@ export default function App() {
           icon: CloudOff,
           danger: true,
           title: tr('Удалить ветку на сервере (git push --delete). Локальная ветка останется.'),
-          onClick: () => askDeleteRemote(g.upstream),
+          onClick: () => askDeleteRemote(g.upstream!),
         });
       }
       return items;
     }
 
     // Только на сервере: переключение создаёт локальную ветку (или переходит на уже существующую) — без detached HEAD
-    const full = g.remote;
+    const full = g.remote!;
     const short = full.slice(full.indexOf('/') + 1);
-    const existing = g.tracker ?? repo.localBranches.find((b) => b.name === short) ?? null;
+    const existing = g.tracker ?? repo!.localBranches.find((b) => b.name === short) ?? null;
     return [
       ...(inCommit ? [] : [{ header: tr('На сервере: {0}', full) }]),
       existing
@@ -1292,13 +1586,13 @@ export default function App() {
   };
 
   // Сброс текущей ветки к коммиту: три режима; Hard — с подтверждением (поэтому «…»)
-  const resetSubmenu = (node) => [
+  const resetSubmenu = (node: { hash: string; message: string }): MenuEntry[] => [
     { label: tr('Мягко — оставить все изменения в индексе'), icon: Archive, hint: 'soft', onClick: () => resetTo(node, 'soft') },
     { label: tr('Смешанно — оставить изменения в рабочей папке'), icon: FileDiff, hint: 'mixed', onClick: () => resetTo(node, 'mixed') },
     { label: tr('Жёстко — удалить все изменения…'), icon: Trash2, hint: 'hard', danger: true, onClick: () => resetTo(node, 'hard') },
   ];
 
-  const renameBranch = async (to) => {
+  const renameBranch = async (to: string) => {
     const d = dialog;
     if (d?.type !== 'renameBranch') return;
     setDialog({ ...d, busy: true, error: null });
@@ -1315,12 +1609,12 @@ export default function App() {
   };
 
   // Удаление ветки на сервере: подтверждение → git push --delete (с индикатором в окне)
-  const askDeleteRemote = (fullName) => {
+  const askDeleteRemote = (fullName: string) => {
     const slash = fullName.indexOf('/');
     if (slash <= 0) return;
     const remote = fullName.slice(0, slash);
     const branch = fullName.slice(slash + 1);
-    const locals = repo.localBranches.filter((b) => b.upstream === fullName).map((b) => b.name);
+    const locals = repo!.localBranches.filter((b) => b.upstream === fullName).map((b) => b.name);
     setDialog({ type: 'deleteRemote', remote, branch, fullName, locals, busy: false, error: null });
   };
   const confirmDeleteRemote = async () => {
@@ -1337,16 +1631,16 @@ export default function App() {
     else setDialog((cur) => (cur?.type === 'deleteRemote' ? { ...cur, busy: false, error: res.error } : cur));
   };
 
-  const openRefMenu = (ref, x, y) => {
+  const openRefMenu = (ref: CommitRef, x: number, y: number) => {
     const items = buildRefItems(ref);
     if (items.length) setMenu({ x, y, items });
   };
   // Update (Pull) ветки из списка: не текущая — fast-forward без переключения; текущая — тоже fast-forward,
   // а если в ней есть свои коммиты — обычный Pull в выбранном режиме
-  const updateBranch = (name) => {
+  const updateBranch = (name: string) => {
     const info = repoRef.current?.localBranches.find((b) => b.name === name);
     if (!info) return null;
-    if (name === repoRef.current.currentBranch && info.ahead > 0) return pull();
+    if (name === repoRef.current!.currentBranch && info.ahead! > 0) return pull();
     return run('updateBranch', { branch: name }, {
       label: tr('Обновление {0}', name),
       progress: tr('Обновляем {0}…', name),
@@ -1358,9 +1652,9 @@ export default function App() {
   const refActions = {
     update: updateBranch,
     push: () => push(false),
-    log: (branch, direction) => api.repo.branchLog(repoRef.current.path, { branch, direction }),
-    checkout: (ref) => {
-      if (ref.type === 'local') return ref.name !== repo.currentBranch && checkout({ branch: ref.name });
+    log: (branch: string, direction: string) => api.repo.branchLog(repoRef.current!.path, { branch, direction }),
+    checkout: (ref: CommitRef) => {
+      if (ref.type === 'local') return ref.name !== repo!.currentBranch && checkout({ branch: ref.name });
       if (ref.type === 'remote') {
         const name = ref.name.slice(ref.name.indexOf('/') + 1);
         return checkout({ remoteBranch: { name, fullName: ref.name } });
@@ -1371,13 +1665,13 @@ export default function App() {
     menu: openRefMenu,
   };
 
-  const buildCommitMenu = (node) => {
-    const cur = repo.currentBranch;
+  const buildCommitMenu = (node: GraphEntry) => {
+    const cur = repo!.currentBranch;
     const curLabel = cur ?? 'HEAD';
-    const isHead = node.hash === repo.headHash;
-    const op = Boolean(repo.operation);
+    const isHead = node.hash === repo!.headHash;
+    const op = Boolean(repo!.operation);
     // Шапка «abc1234 · сообщение» — клик копирует хэш
-    const items = [{ header: node.message, code: short(node.hash), onCopy: () => copy(node.hash, tr('Хэш коммита')), copyTip: tr('Скопировать хэш коммита (SHA)') }];
+    const items: MenuEntry[] = [{ header: node.message, code: short(node.hash), onCopy: () => copy(node.hash, tr('Хэш коммита')), copyTip: tr('Скопировать хэш коммита (SHA)') }];
 
     // Ветки на коммите: каждая — подменю «Ветка X ›», local + origin на одном коммите — одна группа
     const groups = refGroupsOf(node);
@@ -1386,14 +1680,14 @@ export default function App() {
     // Быстрый переход на ветку этого коммита — если она одна (вместо detached HEAD)
     if (branchOnly.length === 1 && !(groups.some((g) => g.local === cur))) {
       const g = branchOnly[0];
-      const target = g.local ?? g.remote.slice(g.remote.indexOf('/') + 1);
+      const target = g.local ?? g.remote!.slice(g.remote!.indexOf('/') + 1);
       items.push({
         label: tr('Переключиться на {0}', target),
         icon: g.local ? LogIn : Cloud,
         // Только на сервере — создастся локальная ветка, а не detached HEAD
         hint: g.local ? 'Checkout' : tr('новая локальная'),
         disabled: op,
-        onClick: () => (g.local ? checkout({ branch: g.local }) : refActions.checkout({ type: 'remote', name: g.remote })),
+        onClick: () => (g.local ? checkout({ branch: g.local }) : refActions.checkout({ type: 'remote', name: g.remote! })),
       });
     }
 
@@ -1402,7 +1696,7 @@ export default function App() {
         label: tr('Переключиться на этот коммит'),
         icon: GitCommitHorizontal,
         hint: 'detached',
-        disabled: op || (isHead && repo.detached),
+        disabled: op || (isHead && repo!.detached),
         onClick: () =>
           run('checkoutCommit', { hash: node.hash }, {
             label: 'Checkout',
@@ -1420,7 +1714,7 @@ export default function App() {
         label: tr('Перенести коммит в {0}', curLabel),
         icon: Cherry,
         hint: 'Cherry-pick',
-        disabled: op || isHead || !repo.headHash,
+        disabled: op || isHead || !repo!.headHash,
         onClick: () =>
           run('cherryPick', { hash: node.hash }, { label: 'Cherry-pick', success: tr('Коммит {0} применён к {1}', short(node.hash), curLabel) }),
       },
@@ -1428,7 +1722,7 @@ export default function App() {
         label: tr('Обратить изменения коммита'),
         icon: RotateCcw,
         hint: 'Revert',
-        disabled: op || !repo.headHash,
+        disabled: op || !repo!.headHash,
         onClick: () =>
           run('revert', { hash: node.hash }, { label: 'Revert', success: tr('Создан revert-коммит для {0}', short(node.hash)) }),
       },
@@ -1436,7 +1730,7 @@ export default function App() {
         label: tr('Восстановить файлы из коммита…'),
         icon: FolderSync,
         hint: 'checkout files',
-        disabled: op || isHead || !repo.headHash,
+        disabled: op || isHead || !repo!.headHash,
         title: tr('Новый коммит, в котором все файлы проекта — как в этом коммите. История не переписывается, ветка не переключается.'),
         onClick: () => openRevertTo(node),
       },
@@ -1444,7 +1738,7 @@ export default function App() {
         label: tr('Сбросить {0} к этому коммиту', curLabel),
         icon: History,
         hint: 'Reset',
-        disabled: op || isHead || !repo.headHash,
+        disabled: op || isHead || !repo!.headHash,
         submenu: resetSubmenu(node),
       },
       { separator: true },
@@ -1461,7 +1755,7 @@ export default function App() {
         items.push({
           label: g.tag ? tr('Тег {0}', g.tag) : g.local ? tr('Ветка {0}', g.local) : tr('Ветка {0}', g.remote),
           icon: g.tag ? Tag : g.local ? GitBranch : Cloud,
-          hint: g.tag ? null : g.synced ? `= ${g.remote.slice(0, g.remote.indexOf('/'))}` : g.local ? tr('локальная') : tr('на сервере'),
+          hint: g.tag ? null : g.synced ? `= ${g.remote!.slice(0, g.remote!.indexOf('/'))}` : g.local ? tr('локальная') : tr('на сервере'),
           submenu: sub,
         });
       }
@@ -1483,12 +1777,12 @@ export default function App() {
 
   // Коммиты, достижимые из HEAD (среди загруженных) — чтобы понять, «история ветки» это или чужой коммит
   const headAncestors = useMemo(() => {
-    const set = new Set();
+    const set = new Set<string>();
     if (!repo?.headHash) return set;
-    const byHash = new Map(repo.commits.map((c) => [c.hash, c]));
-    const stack = [repo.headHash];
+    const byHash = new Map(repo!.commits.map((c) => [c.hash, c]));
+    const stack = [repo!.headHash];
     while (stack.length) {
-      const h = stack.pop();
+      const h = stack.pop()!;
       if (set.has(h)) continue;
       set.add(h);
       for (const p of byHash.get(h)?.parents ?? []) stack.push(p);
@@ -1496,7 +1790,7 @@ export default function App() {
     return set;
   }, [repo?.commits, repo?.headHash]);
 
-  const openRebase = (upstream, onto) => {
+  const openRebase = (upstream: string, onto?: string) => {
     if (!repo?.currentBranch) {
       notify({ type: 'error', title: tr('Rebase делается для ветки'), hint: tr('Сейчас detached HEAD — переключитесь на ветку.') });
       return;
@@ -1504,11 +1798,11 @@ export default function App() {
     setRebaseView({ upstream, onto, nonce: Date.now() });
   };
 
-  const rebaseItems = (node) => {
-    const cur = repo.currentBranch;
-    const op = Boolean(repo.operation);
-    if (!cur || !repo.headHash) return [];
-    const isHead = node.hash === repo.headHash;
+  const rebaseItems = (node: GraphEntry): MenuEntry[] => {
+    const cur = repo!.currentBranch;
+    const op = Boolean(repo!.operation);
+    if (!cur || !repo!.headHash) return [];
+    const isHead = node.hash === repo!.headHash;
     if (headAncestors.has(node.hash)) {
       if (isHead) return node.parents[0] ? [{ label: tr('Изменить последний коммит…'), icon: Layers, hint: 'Rebase', disabled: op, onClick: () => openRebase(node.parents[0]) }] : [];
       return [
@@ -1528,21 +1822,21 @@ export default function App() {
     return [{ label: tr('Перебазировать {0} на этот коммит…', cur), icon: Layers, hint: 'Rebase', disabled: op, title: tr('С предпросмотром результата до применения'), onClick: () => openRebase(node.hash) }];
   };
 
-  const commitTime = (h) => Date.parse(allCommits.find((c) => c.hash === h)?.date ?? '') || 0;
+  const commitTime = (h: string) => Date.parse(allCommits.find((c) => c.hash === h)?.date ?? '') || 0;
   // «Было» — более старый из двух
-  const openCompare = (x, y) => {
+  const openCompare = (x: string | null | undefined, y: string | null | undefined) => {
     if (!x || !y || x === y) return;
     const [a, b] = commitTime(x) <= commitTime(y) ? [x, y] : [y, x];
     setCompareView({ a, b });
   };
 
-  const compareItems = (node) => {
-    const items = [];
+  const compareItems = (node: GraphEntry) => {
+    const items: MenuEntry[] = [];
     if (compareMark && compareMark !== node.hash) {
       items.push({ label: tr('Сравнить с отмеченным {0}', short(compareMark)), icon: GitCompareArrows, onClick: () => openCompare(compareMark, node.hash) });
     }
-    if (repo.headHash && node.hash !== repo.headHash) {
-      items.push({ label: tr('Сравнить с HEAD'), icon: GitCompareArrows, onClick: () => openCompare(node.hash, repo.headHash) });
+    if (repo!.headHash && node.hash !== repo!.headHash) {
+      items.push({ label: tr('Сравнить с HEAD'), icon: GitCompareArrows, onClick: () => openCompare(node.hash, repo!.headHash) });
     }
     items.push({
       label: compareMark === node.hash ? tr('Снять отметку для сравнения') : tr('Отметить для сравнения'),
@@ -1562,14 +1856,14 @@ export default function App() {
   /* ---------- Pre-commit Guard: живая проверка staged-изменений ---------- */
 
   useEffect(() => {
-    if (!repo || !guardCfg.live || !guardOnFor(guardCfg, repo.path) || !api.repo.guardScan || !repo.wipFiles.some((f) => f.staged)) {
+    if (!repo || !guardCfg.live || !guardOnFor(guardCfg, repo!.path) || !api.repo.guardScan || !repo!.wipFiles.some((f) => f.staged)) {
       setGuardResult(null);
       return undefined;
     }
     let alive = true;
     const t = setTimeout(() => {
       api.repo
-        .guardScan(repo.path, { rules: activeRules(guardCfg), exclude: guardCfg.exclude })
+        .guardScan!(repo!.path, { rules: activeRules(guardCfg), exclude: guardCfg.exclude })
         .then((res) => alive && setGuardResult(res.ok ? res.data : null))
         .catch(() => alive && setGuardResult(null));
     }, 250);
@@ -1582,12 +1876,12 @@ export default function App() {
   // Строки staged-файла с находками — для подсветки в diff
   const guardMarkers = useMemo(() => {
     if (!guardResult?.findings?.length || diffTarget?.kind !== 'staged') return null;
-    const m = new Map();
+    const m = new Map<number, GuardScan_Serialize['findings'][number]>();
     for (const f of guardResult.findings) if (f.file === diffTarget.file.path) m.set(f.line, f);
     return m.size ? m : null;
   }, [guardResult, diffTarget]);
 
-  const openStagedFile = (path) => {
+  const openStagedFile = (path: string) => {
     const staged = repoRef.current?.wipFiles.filter((f) => f.staged) ?? [];
     const file = staged.find((f) => f.path === path);
     if (!file) return;
@@ -1597,17 +1891,17 @@ export default function App() {
 
   /* ---------- Конструктор действий: выполнение цепочек ---------- */
 
-  const confirmAsync = (title, text) =>
-    new Promise((resolve) =>
+  const confirmAsync = (title: string, text: string) =>
+    new Promise<boolean>((resolve) =>
       setDialog({ type: 'actionConfirm', title, body: text, onYes: () => resolve(true), onNo: () => setTimeout(() => resolve(false), 0) }),
     );
 
   // Один шаг: { ok, error?, skipped?, note? }
-  const runStep = async (type, p, path) => {
-    const act = (name, payload) => api.repo.action(path, name, payload);
-    const cur = repoRef.current;
-    const skip = (note) => ({ ok: true, skipped: true, note });
-    const fail = (message, hint) => ({ ok: false, error: { message, hint } });
+  const runStep = async (type: string, p: StepValues, path: string): Promise<StepResult> => {
+    const act = <N extends RepoActionName>(name: N, payload: ActionPayload<N>) => api.repo.action(path, name, payload);
+    const cur = repoRef.current!;
+    const skip = (note: string) => ({ ok: true, skipped: true, note });
+    const fail = (message: string, hint?: string) => ({ ok: false, error: { message, hint } });
     switch (type) {
       case 'fetch':
         return act('fetch', {});
@@ -1667,7 +1961,7 @@ export default function App() {
           return { ok: true, note: `${r.data.created ? tr('создан') : tr('уже был')} !${r.data.iid}` };
         }
         if (f?.webUrl && /github/i.test(f.host ?? f.webUrl)) {
-          api.openExternal(`${f.webUrl}/compare/${encodeURIComponent(p.target)}...${encodeURIComponent(source)}?expand=1`);
+          api.openExternal(`${f.webUrl}/compare/${encodeURIComponent(p.target!)}...${encodeURIComponent(source)}?expand=1`);
           return { ok: true, note: tr('открыта страница pull request') };
         }
         return fail(tr('Не удалось определить сервер для merge request'), tr('Поддерживаются GitLab (через токен) и GitHub (откроется страница PR).'));
@@ -1683,12 +1977,12 @@ export default function App() {
     }
   };
 
-  const executeAction = async (action, inputs, fromIndex = 0, previous = null) => {
+  const executeAction = async (action: CustomAction, inputs: Record<string, string | undefined>, fromIndex = 0, previous: RunState | null = null) => {
     const path = repoRef.current?.path;
     if (!path) return;
-    const ctx = previous?.ctx ?? { inputs, start: repoRef.current.currentBranch, defaultBranch: defaultBranchOf(repoRef.current) };
-    const describe = (step) => STEP_TYPES[step.type]?.describe(expandParams(step.params, { ...ctx, branch: repoRef.current?.currentBranch })) ?? step.type;
-    let state = {
+    const ctx = previous?.ctx ?? { inputs, start: repoRef.current!.currentBranch, defaultBranch: defaultBranchOf(repoRef.current) };
+    const describe = (step: CustomAction['steps'][number]) => STEP_TYPES[step.type as StepTypeId]?.describe(expandParams(step.params, { ...ctx, branch: repoRef.current?.currentBranch })) ?? step.type;
+    let state: RunState = {
       action,
       ctx,
       error: null,
@@ -1697,11 +1991,11 @@ export default function App() {
         previous && i < fromIndex ? previous.steps[i] : { id: step.id, type: step.type, label: describe(step), status: 'pending', note: null },
       ),
     };
-    const publish = (patch) => {
+    const publish = (patch: Partial<RunState>) => {
       state = { ...state, ...patch };
       setActionRun(state);
     };
-    const setStep = (i, patch) => publish({ steps: state.steps.map((x, j) => (j === i ? { ...x, ...patch } : x)) });
+    const setStep = (i: number, patch: Partial<RunState['steps'][number]>) => publish({ steps: state.steps.map((x, j) => (j === i ? { ...x, ...patch } : x)) });
     publish({});
     busyRef.current = true;
     setBusyAction('chain');
@@ -1709,18 +2003,18 @@ export default function App() {
       for (let i = fromIndex; i < action.steps.length; i++) {
         const step = action.steps[i];
         const params = expandParams(step.params, { ...ctx, branch: repoRef.current?.currentBranch });
-        setStep(i, { status: 'running', label: STEP_TYPES[step.type]?.describe(params) ?? step.type });
-        let res;
+        setStep(i, { status: 'running', label: STEP_TYPES[step.type as StepTypeId]?.describe(params) ?? step.type });
+        let res: StepResult;
         try {
-          res = await runStep(step.type, params, path);
+          res = await runStep(step.type, params as StepValues, path);
         } catch (error) {
-          res = { ok: false, error: { message: error.message } };
+          res = { ok: false, error: { message: (error as Error).message } };
         }
         await loadRepo(path, { silent: true });
         if (!res.ok) {
           if (res.error?.code === 'CONFLICT') autoOpenConflict.current = true;
           setStep(i, { status: 'failed' });
-          publish({ error: res.error, finished: true });
+          publish({ error: res.error as ActionRun['error'], finished: true });
           return;
         }
         setStep(i, { status: res.skipped ? 'skipped' : 'done', note: res.note ?? null });
@@ -1732,7 +2026,7 @@ export default function App() {
     }
   };
 
-  const startAction = (action) => {
+  const startAction = (action: CustomAction) => {
     if (!repoRef.current) return;
     const problems = validateAction(action);
     if (problems.length) {
@@ -1749,19 +2043,19 @@ export default function App() {
   };
 
   // Горячие клавиши действий (не в полях ввода и не поверх диалогов)
-  const actionKeys = useRef(null);
+  const actionKeys = useRef<{ userActions: CustomAction[]; startAction: (action: CustomAction) => void } | null>(null);
   actionKeys.current = { userActions, startAction };
   useEffect(() => {
-    const onKey = (e) => {
-      const t = e.target;
+    const onKey = (e: KeyboardEvent) => {
+      const t = e.target as HTMLElement | null;
       if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' || t.isContentEditable)) return;
       if (document.querySelector('.fixed.inset-0')) return;
       const combo = hotkeyFromEvent(e);
       if (!combo) return;
-      const a = actionKeys.current.userActions.find((x) => x.hotkey === combo);
+      const a = actionKeys.current!.userActions.find((x) => x.hotkey === combo);
       if (!a) return;
       e.preventDefault();
-      actionKeys.current.startAction(a);
+      actionKeys.current!.startAction(a);
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
@@ -1770,13 +2064,13 @@ export default function App() {
   /* ---------- Перетаскивание коммитов и веток на ветки ---------- */
 
   // Достижим ли коммит anc из desc по родителям (среди загруженных коммитов)
-  const isAncestorLoaded = (anc, desc) => {
+  const isAncestorLoaded = (anc: string, desc: string) => {
     if (!repo || anc === desc) return anc === desc;
-    const byHash = new Map(repo.commits.map((c) => [c.hash, c]));
-    const seen = new Set();
+    const byHash = new Map(repo!.commits.map((c) => [c.hash, c]));
+    const seen = new Set<string>();
     const stack = [desc];
     while (stack.length) {
-      const h = stack.pop();
+      const h = stack.pop()!;
       if (h === anc) return true;
       if (seen.has(h)) continue;
       seen.add(h);
@@ -1785,13 +2079,13 @@ export default function App() {
     return false;
   };
 
-  const dropOnBranch = (targets, x, y, src) => {
+  const dropOnBranch = (targets: { name: string; hash: string }[], x: number, y: number, src: DragSource | null) => {
     if (!repo || !src) return;
-    const op = Boolean(repo.operation) || Boolean(busyAction);
-    const cur = repo.currentBranch;
+    const op = Boolean(repo!.operation) || Boolean(busyAction);
+    const cur = repo!.currentBranch;
     const ref = src.kind === 'commit' ? src.hash : src.name;
     const srcLabel = src.kind === 'commit' ? short(src.hash) : src.name;
-    const items = [];
+    const items: MenuEntry[] = [];
     for (const t of targets) {
       if (src.kind === 'branch' && src.name === t.name) continue;
       const isCur = t.name === cur;
@@ -1841,7 +2135,7 @@ export default function App() {
             const res = await checkout({ branch: t.name });
             if (!res.ok) return;
           }
-          setRebaseView({ upstream: ref, nonce: Date.now() });
+          setRebaseView({ upstream: ref!, nonce: Date.now() });
         },
       });
     }
@@ -1852,11 +2146,11 @@ export default function App() {
     setMenu({ x, y, items });
   };
 
-  const buildActionsMenu = () => [
+  const buildActionsMenu = (): AppMenuItem[] => [
     ...(userActions.length ? [{ header: tr('Мои действия') }] : []),
     ...userActions.map((a) => ({
       label: a.name || tr('Без названия'),
-      icon: ACTION_ICONS[a.icon] ?? WandSparkles,
+      icon: ACTION_ICONS[a.icon as string] ?? WandSparkles,
       hint: a.hotkey ?? undefined,
       disabled: !repo || Boolean(busyAction),
       onClick: () => startAction(a),
@@ -1865,11 +2159,11 @@ export default function App() {
     { label: tr('Конструктор действий…'), icon: WandSparkles, onClick: () => setDialog({ type: 'actions' }) },
   ];
 
-  const buildWipMenu = () => {
-    const op = Boolean(repo.operation);
+  const buildWipMenu = (): MenuEntry[] => {
+    const op = Boolean(repo!.operation);
     return [
-      { header: tr('Изменения: {0}', repo.wipFiles.length) },
-      { label: tr('Спрятать все изменения (Stash)'), icon: Archive, disabled: op || !repo.headHash, onClick: stash },
+      { header: tr('Изменения: {0}', repo!.wipFiles.length) },
+      { label: tr('Спрятать все изменения (Stash)'), icon: Archive, disabled: op || !repo!.headHash, onClick: stash },
       { label: tr('Добавить все изменения в индекс (Stage)'), icon: GitCommitHorizontal, onClick: () => stageFiles('all') },
       { separator: true },
       {
@@ -1890,12 +2184,12 @@ export default function App() {
   };
 
   // Главное меню: в своём заголовке (Windows/Linux) и в системной строке меню (macOS)
-  const appMenus = () => ({
+  const appMenus = (): Record<string, AppMenuItem[]> => ({
     File: fileMenuItems(),
     Edit: [
       {
         id: 'undo',
-        label: repo?.history?.undo ? tr('Отменить: {0}', repo.history.undo) : tr('Отменить'),
+        label: repo?.history?.undo ? tr('Отменить: {0}', repo!.history.undo) : tr('Отменить'),
         icon: Undo2,
         hint: 'Ctrl+Z',
         disabled: !repo?.history?.undo || Boolean(busyAction),
@@ -1903,7 +2197,7 @@ export default function App() {
       },
       {
         id: 'redo',
-        label: repo?.history?.redo ? tr('Повторить: {0}', repo.history.redo) : tr('Повторить'),
+        label: repo?.history?.redo ? tr('Повторить: {0}', repo!.history.redo) : tr('Повторить'),
         icon: Redo2,
         hint: IS_MAC ? 'Ctrl+Shift+Z' : 'Ctrl+Y',
         disabled: !repo?.history?.redo || Boolean(busyAction),
@@ -1944,7 +2238,7 @@ export default function App() {
   const sentMenu = useRef('');
   useEffect(() => {
     if (!IS_MAC || !api?.menu) return;
-    const plain = (items) =>
+    const plain = (items: AppMenuItem[]) =>
       items.map((it) =>
         it.separator ? { separator: true } : it.header ? { header: it.header } : { id: it.id ?? null, label: it.label, hint: it.hint ?? null, disabled: Boolean(it.disabled) },
       );
@@ -1958,29 +2252,29 @@ export default function App() {
     if (!api?.menu?.onInvoke) return undefined;
     return api.menu.onInvoke(({ menu, index, id }) => {
       const menus = appMenusRef.current();
-      const item = id ? Object.values(menus).flat().find((x) => x.id === id) : menus[menu]?.[index];
+      const item = id ? Object.values(menus).flat().find((x) => x.id === id) : menus[menu!]?.[index!];
       if (item && !item.disabled) item.onClick?.();
     });
   }, []);
 
-  const openMenu = (node, x, y) => setMenu({ x, y, items: node.wip ? buildWipMenu() : node.stash ? buildStashMenu(node.stash) : buildCommitMenu(node) });
+  const openMenu = (node: GraphEntry, x: number, y: number) => setMenu({ x, y, items: node.wip ? buildWipMenu() : node.stash ? buildStashMenu(node.stash) : buildCommitMenu(node) });
   const closeMenu = useCallback(() => setMenu(null), []);
   const closeDiff = useCallback(() => setDiffTarget(null), []);
 
   /* ---------- Конфликты ---------- */
 
-  const [conflictPath, setConflictPath] = useState(null);
+  const [conflictPath, setConflictPath] = useState<string | null>(null);
   const autoOpenConflict = useRef(false);
   const resolvingConflict = useRef(false); // пока сохраняем файл — не закрываем редактор между файлами
   // Когда что-то меняется в репозитории — просмотр CI/CD тихо перечитывает файлы
-  const ciVersion = repo ? `${repo.headHash}|${JSON.stringify(repo.wipFiles)}|${JSON.stringify(repo.ci ?? null)}` : '';
+  const ciVersion = repo ? `${repo!.headHash}|${JSON.stringify(repo!.wipFiles)}|${JSON.stringify(repo!.ci ?? null)}` : '';
 
   const conflictPaths = useMemo(
-    () => (repo ? [...new Set(repo.wipFiles.filter((f) => f.status === 'U').map((f) => f.path))] : []),
+    () => (repo ? [...new Set(repo!.wipFiles.filter((f) => f.status === 'U').map((f) => f.path))] : []),
     [repo],
   );
 
-  const openConflict = (path) => {
+  const openConflict = (path: string) => {
     setDiffTarget(null);
     setConflictPath(path);
   };
@@ -2002,15 +2296,15 @@ export default function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [conflictPaths]);
 
-  const runConflictAction = async (...args) => {
+  const runConflictAction = async (...args: Parameters<RunAction>) => {
     resolvingConflict.current = true;
-    const res = await run(...args);
+    const res = await run(...(args as [RepoActionName, never, RunOptions<RepoActionName>?]));
     if (!res.ok) resolvingConflict.current = false;
     return res;
   };
 
-  const onConflictResolved = async (path) => {
-    const res = await api.repo.status(repoRef.current.path);
+  const onConflictResolved = async (path: string) => {
+    const res = await api.repo.status!(repoRef.current!.path);
     resolvingConflict.current = false;
     const rest = res.ok ? [...new Set(res.data.wipFiles.filter((f) => f.status === 'U').map((f) => f.path))] : [];
     if (rest.length) {
@@ -2041,7 +2335,7 @@ export default function App() {
     api.appearance.get().then(async (res) => {
       setAppearanceMeta({ supportsMaterial: res.supportsMaterial, hasImage: res.hasImage });
       if (res.appearance) setAppearance(normalizeAppearance(res.appearance));
-      if (res.hasImage) setBgImage(await api.appearance.image());
+      if (res.hasImage) setBgImage(await api.appearance!.image());
     });
   }, []);
 
@@ -2062,14 +2356,14 @@ export default function App() {
     cacheAppearance(appearance);
   }, [appearance, bgImage, appearanceMeta.supportsMaterial, systemSchemeTick]);
 
-  const persistAppearance = (next) => {
-    clearTimeout(saveAppearanceTimer.current);
+  const persistAppearance = (next: Appearance) => {
+    clearTimeout(saveAppearanceTimer.current!);
     saveAppearanceTimer.current = setTimeout(() => {
       api?.appearance?.set(nativeAppearance(next));
     }, 250);
   };
 
-  const updateAppearance = (patch) =>
+  const updateAppearance = (patch: Partial<Appearance>) =>
     setAppearance((prev) => {
       const next = normalizeAppearance({ ...prev, ...patch });
       persistAppearance(next);
@@ -2083,32 +2377,32 @@ export default function App() {
   };
 
   const pickBackgroundImage = async () => {
-    const res = await api.appearance.pickImage();
+    const res = await api.appearance!.pickImage();
     if (res?.ok) {
-      setBgImage(await api.appearance.image());
+      setBgImage(await api.appearance!.image());
       setAppearanceMeta((m) => ({ ...m, hasImage: true }));
     }
     return res;
   };
 
-  const openSettings = (tab = 'appearance') => setDialog({ type: 'settings', tab });
+  const openSettings = (tab: string = 'appearance') => setDialog({ type: 'settings', tab });
 
   /* ---------- CI/CD: статусы пайплайнов для графа (GitLab, GitHub, Gitea, Bitbucket) ---------- */
 
   const forge = repo?.forge ?? null;
   const ciReady = Boolean(forge?.provider && forge.token?.configured && forge.capabilities?.canListPipelines !== false);
-  const currentBranchInfo = repo?.localBranches.find((b) => b.name === repo.currentBranch) ?? null;
+  const currentBranchInfo = repo?.localBranches.find((b) => b.name === repo!.currentBranch) ?? null;
   // Ветки для форм CI/CD (расписания GitLab): сначала ветки на сервере, затем локальные
   const ciBranches = useMemo(() => {
     if (!repo) return [];
-    const remote = repo.remotes?.find((r) => r.name === (currentBranchInfo?.upstreamRemote ?? 'origin')) ?? repo.remotes?.[0];
+    const remote = repo!.remotes?.find((r) => r.name === (currentBranchInfo?.upstreamRemote ?? 'origin')) ?? repo!.remotes?.[0];
     return [...new Set([...(remote?.branches ?? []).map((b) => b.name), ...repo.localBranches.map((b) => b.name)])];
   }, [repo, currentBranchInfo?.upstreamRemote]);
   const pipelineKey = ciReady
-    ? `${repo.path}|${forge.provider}|${forge.apiBase}|${forge.token.savedAt ?? forge.token.user?.username ?? ''}|${repo.headHash}|${currentBranchInfo?.ahead}|${currentBranchInfo?.upstream}`
+    ? `${repo!.path}|${forge!.provider}|${forge!.apiBase}|${forge!.token!.savedAt ?? forge!.token!.user?.username ?? ''}|${repo!.headHash}|${currentBranchInfo?.ahead}|${currentBranchInfo?.upstream}`
     : null;
   // Статусы, которые уже видели: пайплайн, который шёл и закончился, — системное уведомление
-  const seenStatuses = useRef(new Map());
+  const seenStatuses = useRef(new Map<string, Map<unknown, string | null>>());
 
   useEffect(() => {
     if (!pipelineKey || !api?.cicd) {
@@ -2116,18 +2410,18 @@ export default function App() {
       return undefined;
     }
     let alive = true;
-    let timer = null;
+    let timer: ReturnType<typeof setTimeout> | null = null;
     const path = repoRef.current?.path;
     const remote = currentBranchInfo?.upstreamRemote;
     const tick = async () => {
       let active = false;
       if (document.visibilityState === 'visible') {
-        const res = await api.cicd.pipelines(path, { remote });
+        const res = await api.cicd!.pipelines(path!, { remote });
         if (!alive) return;
         if (res.ok) {
-          active = res.data.pipelines.some((p) => ACTIVE_STATUSES.has(p.status));
-          announceFinished(path, res.data.pipelines, res.data.label);
-          setPipelineMap({ bySha: res.data.bySha, pipelines: res.data.pipelines, error: null });
+          active = res.data.pipelines.some((p) => ACTIVE_STATUSES.has(p.status!));
+          announceFinished(path!, res.data.pipelines, res.data.label);
+          setPipelineMap({ bySha: res.data.bySha as Record<string, PipelineMark>, pipelines: res.data.pipelines, error: null });
         } else {
           setPipelineMap((m) => ({ bySha: m?.bySha ?? {}, pipelines: m?.pipelines ?? [], error: res.error }));
           // Вход репозитория оказался не годен для API — показать, почему, и предложить токен
@@ -2141,13 +2435,14 @@ export default function App() {
     timer = setTimeout(tick, 400);
     return () => {
       alive = false;
-      clearTimeout(timer);
+      clearTimeout(timer!);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pipelineKey]);
 
-  const onForgeChanged = useCallback((next) => {
-    repoStore.getState().patchRepo((r) => (r ? { ...r, forge: next } : r));
+  const onForgeChanged = useCallback((next?: ForgeStatus_Serialize | null) => {
+    // `CiSettings` вызывает это без аргумента: `forge` становится `undefined` до следующей загрузки (как в 1.x)
+    repoStore.getState().patchRepo((r) => (r ? { ...r, forge: next as ForgeStatus_Serialize | null } : r));
   }, []);
 
   // Токен входа репозитория проверяется в фоне — пока идёт проверка, перечитываем состояние
@@ -2164,22 +2459,22 @@ export default function App() {
   }, [forgePending, refreshForge]);
 
   // focusFailed — открыть сразу лог упавшего задания (клик по красному значку в графе)
-  const openPipelines = (pipelineId = null, focusFailed = false) => {
+  const openPipelines = (pipelineId: string | number | null = null, focusFailed = false) => {
     setDiffTarget(null);
     setCiView({ file: null, mode: 'pipelines', pipelineId, focusFailed, n: Date.now() });
   };
 
   /** Пайплайн, который шёл и закончился успехом или ошибкой, — уведомление ОС и в приложении */
-  function announceFinished(path, list, label) {
+  function announceFinished(path: string, list: PipelineRun_Serialize[], label: string) {
     const seen = seenStatuses.current;
     const first = !seen.has(path);
     if (first) seen.set(path, new Map());
-    const map = seen.get(path);
+    const map = seen.get(path)!;
     for (const p of list) {
       const prev = map.get(p.id);
       map.set(p.id, p.status);
-      if (first || !prev || !ACTIVE_STATUSES.has(prev) || ACTIVE_STATUSES.has(p.status)) continue;
-      if (!['success', 'failed', 'canceled'].includes(p.status)) continue;
+      if (first || !prev || !ACTIVE_STATUSES.has(prev) || ACTIVE_STATUSES.has(p.status!)) continue;
+      if (!['success', 'failed', 'canceled'].includes(p.status!)) continue;
       const ok = p.status === 'success';
       const title = tr('{0} Пайплайн #{1} {2}', ok ? '✓' : p.status === 'failed' ? '✕' : '⊘', p.number ?? p.id, ok ? tr('прошёл') : p.status === 'failed' ? tr('упал') : tr('отменён'));
       const body = [p.branch, p.name].filter(Boolean).join(' · ');
@@ -2206,17 +2501,17 @@ export default function App() {
   );
 
   // Подсказка значка пайплайна в графе: сводка по заданиям (загружается при наведении)
-  const [pipelineTips, setPipelineTips] = useState({});
-  const pipelineTipRequested = useRef(new Set());
+  const [pipelineTips, setPipelineTips] = useState<Record<string, { status: string; text: string }>>({});
+  const pipelineTipRequested = useRef(new Set<string>());
   const loadPipelineTip = useCallback(
-    async (p) => {
+    async (p: PipelineMark) => {
       const r = repoRef.current;
       const key = `${p.id}:${p.status}`;
       if (!r || pipelineTipRequested.current.has(key)) return;
       pipelineTipRequested.current.add(key);
-      const res = await api.cicd.pipeline(r.path, p.id, { remote: r.localBranches?.find((b) => b.name === r.currentBranch)?.upstreamRemote });
+      const res = await api.cicd!.pipeline(r.path, p.id, { remote: r.localBranches?.find((b) => b.name === r.currentBranch)?.upstreamRemote });
       if (!res.ok) return;
-      const icon = (st, allow) => (st === 'success' ? '✓' : st === 'failed' ? (allow ? '⚠' : '✕') : ACTIVE_STATUSES.has(st) ? '⟳' : st === 'manual' ? '⏸' : st === 'canceled' ? '⊘' : st === 'skipped' ? '»' : '•');
+      const icon = (st: string | null, allow?: boolean | null) => (st === 'success' ? '✓' : st === 'failed' ? (allow ? '⚠' : '✕') : ACTIVE_STATUSES.has(st!) ? '⟳' : st === 'manual' ? '⏸' : st === 'canceled' ? '⊘' : st === 'skipped' ? '»' : '•');
       const parts = res.data.stages.flatMap((s) => (s.jobs.length > 4 ? [`${s.name}: ${icon(s.status)} (${s.jobs.length})`] : s.jobs.map((j) => `${j.name}: ${icon(j.status, j.allowFailure)}`)));
       setPipelineTips((m) => ({ ...m, [p.id]: { status: p.status, text: parts.join(', ') } }));
     },
@@ -2224,39 +2519,39 @@ export default function App() {
   );
 
   // Граф: WIP сверху, stash — строками над коммитами, на которых их сделали (как в GitKraken)
-  const allCommits = useMemo(() => {
+  const allCommits = useMemo((): GraphEntry[] => {
     if (!repo) return [];
-    const commits = withStashes(repo.commits, repo.stashes, (st) => describeStash(st).title);
-    if (repo.wipFiles.length === 0) return commits;
+    const commits = withStashes(repo!.commits, repo!.stashes, (st) => describeStash(st).title);
+    if (repo!.wipFiles.length === 0) return commits as GraphEntry[];
     const wip = {
       hash: 'WIP',
       wip: true,
-      parents: repo.headHash ? [repo.headHash] : [],
+      parents: repo!.headHash ? [repo!.headHash] : [],
       message: '// WIP',
       refs: [],
     };
-    return [wip, ...commits];
+    return [wip, ...commits] as GraphEntry[];
   }, [repo]);
 
   const commitsBySha = useMemo(() => new Map((repo?.commits ?? []).map((c) => [c.hash, c])), [repo?.commits]);
 
   const selectedStash =
-    repo && selectedHash?.startsWith('stash:') ? repo.stashes.find((st) => `stash:${st.hash}` === selectedHash) ?? null : null;
-  const selected = selectedStash
-    ? { ...selectedStash, isStash: true, key: selectedHash }
-    : allCommits.find((c) => c.hash === selectedHash && !c.stash) ?? null;
+    repo && selectedHash?.startsWith('stash:') ? repo!.stashes.find((st) => `stash:${st.hash}` === selectedHash) ?? null : null;
+  const selected: SelectedEntry | null = selectedStash
+    ? { ...selectedStash, isStash: true, key: selectedHash! }
+    : (allCommits.find((c) => c.hash === selectedHash && !c.stash) as SelectedEntry | undefined) ?? null;
   const selectedKey = selected ? selected.key ?? selected.hash : null;
 
   // Файлы выбранного коммита или stash подгружаем лениво
   useEffect(() => {
-    if (!repo || !selected || selected.wip || filesByHash[selectedKey]) return undefined;
+    if (!repo || !selected || selected.wip || filesByHash[selectedKey!]) return undefined;
     let cancelled = false;
     const request = selected.isStash
-      ? api.repo.stashDetails(repo.path, selected.hash)
-      : api.repo.commitFiles(repo.path, selected.hash, selected.parents[0]);
+      ? api.repo.stashDetails(repo!.path, selected.hash)
+      : api.repo.commitFiles(repo!.path, selected.hash, selected.parents[0]);
     request.then((res) => {
       if (cancelled) return;
-      setFilesByHash((m) => ({ ...m, [selectedKey]: res.ok ? res.data : { error: res.error.message } }));
+      setFilesByHash((m) => ({ ...m, [selectedKey!]: res.ok ? res.data : { error: res.error.message } }));
     });
     return () => {
       cancelled = true;
@@ -2267,10 +2562,10 @@ export default function App() {
   /* ---------- Просмотр изменений файла ---------- */
 
   // kind: 'commit' | 'staged' | 'unstaged'; list — файлы этой группы для навигации ←/→
-  const openFile = (file, kind, list) => {
+  const openFile = (file: AnyFile, kind: FileKind, list: AnyFile[]) => {
     const index = Math.max(0, list.findIndex((f) => f.path === file.path && Boolean(f.untracked) === Boolean(file.untracked)));
     if (kind === 'stash') {
-      setDiffTarget({ kind, mode: 'commit', hash: file.diffHash, parent: file.diffParent, commitHash: selectedHash, stashId: selected?.id, file, list, index });
+      setDiffTarget({ kind, mode: 'commit', hash: file.diffHash!, parent: file.diffParent, commitHash: selectedHash!, stashId: selected?.id, file, list, index });
       return;
     }
     const commit = kind === 'commit' ? allCommits.find((c) => c.hash === selectedHash) : null;
@@ -2289,25 +2584,25 @@ export default function App() {
 
   // Файл из сравнения двух коммитов (или из предпросмотра rebase): diff между a и b
   // search — открыть файл сразу с поиском (из поиска по содержимому в сравнении) и на нужной строке
-  const openCompareFile = (file, list, a, b, search = null) => {
+  const openCompareFile = (file: AnyFile, list: AnyFile[], a: string | null | undefined, b: string | null | undefined, search: CompareSearchJump | null = null) => {
     const index = Math.max(0, list.findIndex((f) => f.path === file.path));
-    setDiffTarget({ kind: 'compare', mode: 'commit', hash: b, parent: a, commitHash: selectedHash, file, list, index, search: search ? { ...search, nonce: Date.now() } : null });
+    setDiffTarget({ kind: 'compare', mode: 'commit', hash: b!, parent: a, commitHash: selectedHash!, file, list, index, search: search ? { ...search, nonce: Date.now() } : null });
   };
 
-  const stepFile = (delta) => {
+  const stepFile = (delta: number) => {
     if (!diffTarget) return null;
     const next = diffTarget.index + delta;
     if (next < 0 || next >= diffTarget.list.length) return null;
     if (diffTarget.kind === 'compare') return () => openCompareFile(diffTarget.list[next], diffTarget.list, diffTarget.parent, diffTarget.hash);
-    return () => openFile(diffTarget.list[next], diffTarget.kind, diffTarget.list);
+    return () => openFile(diffTarget.list[next], diffTarget.kind as FileKind, diffTarget.list);
   };
 
   /* ---------- Откат файла / фрагмента без коммита ---------- */
 
-  const isDirty = (path) => repo.wipFiles.some((f) => f.path === path);
+  const isDirty = (path: string) => repo!.wipFiles.some((f) => f.path === path);
 
   // sourcePath — имя файла в той версии (из истории файла: до переименования он назывался иначе)
-  const restoreFile = (file, hash, side, sourcePath = null) => {
+  const restoreFile = (file: { path: string }, hash: string, side: 'before' | 'after', sourcePath: string | null = null) => {
     const go = () =>
       run('restoreFile', { hash, path: file.path, side, ...(sourcePath && sourcePath !== file.path ? { sourcePath } : {}) }, {
         label: tr('Вернуть файл'),
@@ -2323,17 +2618,17 @@ export default function App() {
     });
   };
 
-  const HUNK_TEXT = {
+  const HUNK_TEXT: Record<string, { label: string; ok: ((d: ActionOutput<'applyHunks'>) => string) | null }> = {
     revert: { label: tr('Отмена фрагмента'), ok: (d) => tr('{0} в {1} — без коммита, Undo вернёт', d.hunks === d.total ? tr('Изменения коммита отменены') : tr('Фрагмент отменён'), d.path) },
     discard: { label: tr('Отмена фрагмента'), ok: (d) => tr('{0} в {1} отменён — Undo вернёт', d.hunks === d.total ? tr('Изменения') : tr('Фрагмент'), d.path) },
     stage: { label: tr('Добавление фрагмента в индекс'), ok: null },
     unstage: { label: tr('Удаление фрагмента из индекса'), ok: null },
     apply: { label: tr('Фрагмент из stash'), ok: (d) => tr('{0} из stash применён к {1} — Undo вернёт', d.hunks === d.total ? tr('Изменения') : tr('Фрагмент'), d.path) },
   };
-  const applyHunks = (op, mode, file, hash, hunks) =>
+  const applyHunks = (op: string, mode: string, file: AnyFile, hash: string | null | undefined, hunks: string[] | null) =>
     run('applyHunks', { op, mode, hash, path: file.path, oldPath: file.oldPath, hunks }, { label: HUNK_TEXT[op].label, success: HUNK_TEXT[op].ok });
 
-  const hunkActionsFor = (t) => {
+  const hunkActionsFor = (t: AppDiffTarget | null): HunkAction[] | null => {
     if (!t || t.file.status === 'U' || t.file.untracked) return null;
     if (t.kind === 'commit')
       return [{ id: 'revert', label: tr('Отменить в рабочей папке'), icon: Undo2, title: tr('Убрать изменения этого фрагмента из файла в рабочей папке — без коммита. Undo вернёт.') }];
@@ -2347,7 +2642,7 @@ export default function App() {
       return [{ id: 'apply', label: tr('Применить'), icon: ArchiveRestore, title: tr('Перенести только этот фрагмент из stash в файл в рабочей папке. Stash не меняется, Undo вернёт.') }];
     return null;
   };
-  const onHunkAction = (id, hunk) => {
+  const onHunkAction = (id: string, hunk: { header: string }) => {
     const t = diffTarget;
     if (!t) return null;
     return applyHunks(id, t.mode === 'untracked' ? 'unstaged' : t.mode, t.file, t.hash, [hunk.header]);
@@ -2357,7 +2652,7 @@ export default function App() {
 
   // Откуда строить историю и blame для файла из коммита, stash, WIP или сравнения.
   // → { history: view | null, blame: view | null, reason } (reason — почему недоступно)
-  const fileViewsFor = (file, kind, ctx = {}) => {
+  const fileViewsFor = (file: AnyFile, kind: FileKind, ctx: { hash?: string | null; parent?: string | null } = {}): FileViews => {
     if (!file || file.status === 'U') return { history: null, blame: null, reason: tr('Сначала разрешите конфликт') };
     if (kind === 'unstaged' || kind === 'staged') {
       if (file.untracked || file.status === 'A') return { history: null, blame: null, reason: tr('Файл ещё не закоммичен — у него нет истории') };
@@ -2375,12 +2670,12 @@ export default function App() {
     }
     return { history: { path: file.path, rev: hash, focus: hash }, blame: { path: file.path, rev: hash, blameRev: hash } };
   };
-  const openFileView = (base, mode) => {
+  const openFileView = (base: FileViewBase | null, mode: FileViewState['mode']) => {
     if (!base) return;
     setMenu(null);
     setFileView({ ...base, mode, blameRev: base.blameRev === undefined ? 'HEAD' : base.blameRev, blamePath: null, blameStack: [] });
   };
-  const fileViewItems = (file, kind, ctx) => {
+  const fileViewItems = (file: AnyFile, kind: FileKind, ctx?: { hash?: string | null; parent?: string | null }): MenuItem[] => {
     const v = fileViewsFor(file, kind, ctx);
     return [
       {
@@ -2400,10 +2695,10 @@ export default function App() {
     ];
   };
 
-  const buildFileMenu = (file, kind, list, extra) => {
-    const items = [{ header: file.path }];
+  const buildFileMenu = (file: AnyFile, kind: FileKind, list: AnyFile[], extra?: FileMenuExtra): MenuEntry[] | null => {
+    const items: MenuEntry[] = [{ header: file.path }];
     if (kind === 'stash') {
-      const st = extra?.stash ?? selected;
+      const st = (extra?.stash ?? selected) as StashLike;
       items.push(
         { label: tr('Показать изменения'), icon: FileDiff, onClick: () => openFile(file, 'stash', list) },
         ...fileViewItems(file, 'stash'),
@@ -2416,7 +2711,7 @@ export default function App() {
         },
       );
     } else if (kind === 'commit') {
-      const c = selected;
+      const c = selected as GraphEntry | null;
       if (!c || c.wip) return null;
       items.push(
         { label: tr('Показать изменения'), icon: FileDiff, onClick: () => openFile(file, 'commit', list) },
@@ -2464,7 +2759,7 @@ export default function App() {
     items.push({ separator: true }, { label: tr('Копировать путь'), icon: Copy, onClick: () => copy(file.path, tr('Путь')) });
     return items;
   };
-  const openFileContextMenu = (file, kind, list, x, y, extra) => {
+  const openFileContextMenu = (file: AnyFile, kind: FileKind, list: AnyFile[], x: number, y: number, extra?: FileMenuExtra) => {
     const items = buildFileMenu(file, kind, list, extra);
     if (items) setMenu({ x, y, items });
   };
@@ -2478,7 +2773,7 @@ export default function App() {
   useEffect(() => {
     if (!repo || !diffTarget || (diffTarget.kind !== 'staged' && diffTarget.kind !== 'unstaged')) return;
     const staged = diffTarget.kind === 'staged';
-    const group = repo.wipFiles.filter((f) => f.staged === staged);
+    const group = repo!.wipFiles.filter((f) => f.staged === staged);
     const still = group.find((f) => f.path === diffTarget.file.path);
     if (still) {
       if (group.length !== diffTarget.list.length || still.status !== diffTarget.file.status) {
@@ -2486,8 +2781,8 @@ export default function App() {
       }
       return;
     }
-    const other = repo.wipFiles.find((f) => f.path === diffTarget.file.path);
-    if (other) openFile(other, other.staged ? 'staged' : 'unstaged', repo.wipFiles.filter((f) => f.staged === other.staged));
+    const other = repo!.wipFiles.find((f) => f.path === diffTarget.file.path);
+    if (other) openFile(other, other.staged ? 'staged' : 'unstaged', repo!.wipFiles.filter((f) => f.staged === other.staged));
     else setDiffTarget(null);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [repo]);
@@ -2503,7 +2798,7 @@ export default function App() {
     const t = diffTarget;
     setDiffData((d) => (d && d.path === t.file.path && d.mode === t.mode ? d : null));
     api.repo
-      .fileDiff(repoRef.current.path, {
+      .fileDiff(repoRef.current!.path, {
         mode: t.mode,
         hash: t.hash,
         parent: t.parent,
@@ -2515,7 +2810,7 @@ export default function App() {
       })
       .then((res) => {
         if (cancelled) return;
-        setDiffData(res.ok ? { ...res.data, mode: t.mode } : { error: res.error.message, path: t.file.path, mode: t.mode });
+        setDiffData(res.ok ? { ...res.data, mode: t.mode } : ({ error: res.error.message, path: t.file.path, mode: t.mode } as DiffData));
       });
     return () => {
       cancelled = true;
@@ -2523,15 +2818,15 @@ export default function App() {
   }, [diffTarget, ignoreWs, diffFullFile, diffReload, diffNonce]);
 
   // Редактирование в окне изменений: файл рабочей копии (unstaged или новый), команды есть только в 2.0
-  const editorFor = (t) => {
+  const editorFor = (t: AppDiffTarget): DiffEditor | null => {
     if (!api?.repo.readFile || !api.repo.saveFile || !repoRef.current) return null;
     if (t.mode !== 'unstaged' && t.mode !== 'untracked') return null;
-    const dir = repoRef.current.path;
+    const dir = repoRef.current!.path;
     const path = t.file.path;
     return {
       key: `${dir}\0${path}`,
-      read: () => api.repo.readFile(dir, path),
-      save: (text, baseHash) => api.repo.saveFile(dir, { path, text, baseHash }),
+      read: () => api.repo.readFile!(dir, path),
+      save: (text, baseHash) => api.repo.saveFile!(dir, { path, text, baseHash: baseHash! }),
       saved: () => {
         setDiffNonce((n) => n + 1);
         refresh();
@@ -2545,21 +2840,21 @@ export default function App() {
   //  - ровно одна локальная ветка на коммите — checkout этой ветки;
   //  - локальной нет, есть одна remote — создать локальную отслеживающую (git switch --track);
   //  - веток несколько или ни одной — спросить (выбор ветки / «Создать ветку здесь» / detached)
-  const activateCommit = (node) => {
+  const activateCommit = (node: GraphEntry) => {
     if (node.wip || node.stash || busyRef.current) return null;
-    const cur = repo.currentBranch;
+    const cur = repo!.currentBranch;
     const locals = node.refs.filter((r) => r.type === 'local');
     if (locals.some((r) => r.name === cur)) return null; // уже на этой ветке
     const remotes = node.refs.filter((r) => r.type === 'remote' && !r.name.endsWith('/HEAD'));
     if (locals.length === 1) return checkout({ branch: locals[0].name });
     if (!locals.length && remotes.length === 1) return refActions.checkout(remotes[0]);
-    if (!locals.length && !remotes.length && node.hash === repo.headHash) return null; // HEAD уже здесь
+    if (!locals.length && !remotes.length && node.hash === repo!.headHash) return null; // HEAD уже здесь
     setDialog({ type: 'switchTo', node, locals, remotes });
     return null;
   };
 
   // HEAD прямо на коммит (detached) — только по явному выбору
-  const checkoutDetached = (node) =>
+  const checkoutDetached = (node: GraphEntry) =>
     run('checkoutCommit', { hash: node.hash }, {
       label: 'Checkout',
       success: tr('HEAD на {0} (detached) — Undo вернёт на ветку', node.hash.slice(0, 7)),
@@ -2568,9 +2863,9 @@ export default function App() {
 
   /* ---------- Stash: просмотр и действия ---------- */
 
-  const stashTitle = (st) => describeStash(st).title;
+  const stashTitle = (st: StashLike) => describeStash(st).title;
 
-  const stashAction = (action, st) => {
+  const stashAction = (action: string, st: StashLike) => {
     if (action === 'drop') {
       return confirm({
         title: tr('Удалить stash'),
@@ -2591,8 +2886,8 @@ export default function App() {
   };
 
   // Восстановить отдельные файлы из stash (без применения всего stash)
-  const restoreFromStash = (list, st) => {
-    if (!list?.length || !st) return Promise.resolve({ ok: false });
+  const restoreFromStash = (list: AnyFile[] | null | undefined, st: StashLike | null | undefined): Promise<UiResult<unknown>> => {
+    if (!list?.length || !st) return Promise.resolve({ ok: false } as UiResult<unknown>);
     const touched = new Set(list.flatMap((f) => [f.path, f.oldPath].filter(Boolean)));
     const dirty = (repo?.wipFiles ?? []).filter((f) => touched.has(f.path));
     const names = list.length === 1 ? list[0].path : `${list.length} ${plural(list.length, tr('файл'), tr('файла'), tr('файлов'))}`;
@@ -2612,7 +2907,7 @@ export default function App() {
     );
   };
 
-  const buildStashMenu = (st) => [
+  const buildStashMenu = (st: StashLike): MenuEntry[] => [
     { header: `${st.id} · ${stashTitle(st)}` },
     { label: tr('Применить (Apply)'), icon: Archive, onClick: () => stashAction('apply', st) },
     { label: tr('Применить и удалить (Pop)'), icon: Archive, onClick: () => stashAction('pop', st) },
@@ -2622,10 +2917,10 @@ export default function App() {
 
   /* ---------- Вернуть проект к коммиту ---------- */
 
-  const openRevertTo = (commitNode) => setDialog({ type: 'revertTo', commit: commitNode });
+  const openRevertTo = (commitNode: GraphEntry) => setDialog({ type: 'revertTo', commit: commitNode });
 
-  const confirmRevertTo = async ({ push: andPush }) => {
-    const target = dialog?.commit;
+  const confirmRevertTo = async ({ push: andPush }: { push: boolean }) => {
+    const target = (dialog as DialogOf<'revertTo'> | null)?.commit;
     if (!target) return;
     const res = await run('revertTo', { hash: target.hash }, {
       label: tr('Вернуть к коммиту'),
@@ -2642,12 +2937,12 @@ export default function App() {
   /* ---------- Поиск коммитов ---------- */
 
   const [searchOpen, setSearchOpen] = useState(false);
-  const [filter, setFilter] = useState(EMPTY_FILTER);
+  const [filter, setFilter] = useState<CommitFilter>(EMPTY_FILTER);
   const [matchIndex, setMatchIndex] = useState(0);
   const filterActive = isFilterActive(filter);
   // Поиск ещё и в изменённых строках файлов (git log -G по коммитам графа): где именно найдено
   const [inFiles, setInFiles] = useState(() => readPref('searchInFiles', '1') !== '0');
-  const [contentSearch, setContentSearch] = useState(null); // { query, loading, data: { commits, … }, error }
+  const [contentSearch, setContentSearch] = useState<ContentSearch | null>(null); // { query, loading, data: { commits, … }, error }
   const contentQuery = searchOpen && inFiles && repo ? filter.query.trim() : '';
   useEffect(() => {
     if (contentQuery.length < 2 || !api?.repo?.searchHistory) {
@@ -2659,8 +2954,8 @@ export default function App() {
     const t = setTimeout(async () => {
       const r = repoRef.current;
       if (!r) return;
-      const hashes = r.commits.filter((c) => !c.wip && !c.isStash).map((c) => c.hash);
-      const res = await api.repo.searchHistory(r.path, { hashes, query: contentQuery });
+      const hashes = r.commits.filter((c) => !(c as { wip?: boolean }).wip && !(c as { isStash?: boolean }).isStash).map((c) => c.hash);
+      const res = await api.repo.searchHistory!(r.path, { hashes, query: contentQuery });
       if (!alive) return;
       setContentSearch(res.ok ? { query: contentQuery, loading: false, data: res.data, error: null } : { query: contentQuery, loading: false, data: null, error: res.error });
     }, 350);
@@ -2678,14 +2973,14 @@ export default function App() {
   const searchMatches = useMemo(
     () =>
       repo && searchOpen && filterActive
-        ? repo.commits.filter((c) => matchCommit(c, filter) || (fileHits?.has(c.hash) && matchCommit(c, noQueryFilter))).map((c) => c.hash)
+        ? repo!.commits.filter((c) => matchCommit(c, filter) || (fileHits?.has(c.hash) && matchCommit(c, noQueryFilter))).map((c) => c.hash)
         : [],
     [repo, filter, searchOpen, filterActive, fileHits, noQueryFilter],
   );
   const matchSet = useMemo(() => new Set(searchMatches), [searchMatches]);
 
   // При изменении фильтра — к первому совпадению; пришли совпадения в файлах, а по описанию ничего — тоже к первому
-  const lastJump = useRef(null);
+  const lastJump = useRef<CommitFilter | null>(null);
   useEffect(() => {
     setMatchIndex(0);
     if (searchMatches.length) {
@@ -2704,7 +2999,7 @@ export default function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [fileHits]);
 
-  const gotoMatch = (delta) => {
+  const gotoMatch = (delta: number) => {
     if (!searchMatches.length) return;
     const i = (matchIndex + delta + searchMatches.length) % searchMatches.length;
     setMatchIndex(i);
@@ -2722,7 +3017,7 @@ export default function App() {
     });
   };
   // Открыть файл коммита на месте совпадения: diff сразу с поиском этого текста и прокруткой к строке
-  const openSearchHit = (hash, hitFile, line) => {
+  const openSearchHit = (hash: string, hitFile: HitFile, line?: HitFile['lines'][number] | null) => {
     const commit = allCommits.find((c) => c.hash === hash);
     if (!commit) return;
     const loaded = Array.isArray(filesByHash[hash]) ? filesByHash[hash] : null;
@@ -2747,13 +3042,13 @@ export default function App() {
 
   const [autoSync, setAutoSync] = useState(() => readPref('autoSync', '1') === '1');
   const [bgFetching, setBgFetching] = useState(false);
-  const [lastFetch, setLastFetch] = useState(null);
-  const [fetchError, setFetchError] = useState(null);
+  const [lastFetch, setLastFetch] = useState<string | null>(null);
+  const [fetchError, setFetchError] = useState<string | null>(null);
   const bgFetchingRef = useRef(false);
-  const syncKick = useRef(null); // «проверь сервер сейчас»
+  const syncKick = useRef<(() => void) | null>(null); // «проверь сервер сейчас»
   const syncFailures = useRef(0); // ошибок подряд — для паузы (backoff)
-  const refreshTimer = useRef(null);
-  const accessRef = useRef(null);
+  const refreshTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const accessRef = useRef<AccessState | null>(null);
   accessRef.current = access;
 
   // 1) Следим за папкой репозитория: коммиты, ветки, stash, правки файлов — граф обновляется сам
@@ -2765,7 +3060,7 @@ export default function App() {
       return undefined;
     }
     api.repo.watch(dir, { syncIndex: workflow.syncIndex });
-    return () => api.repo.watch(null);
+    return () => api.repo.watch!(null);
   }, [repo?.path, autoSync, workflow.syncIndex]);
 
   // Индекс подправлен под правки из внешней программы — коротко сообщаем, что произошло
@@ -2775,7 +3070,7 @@ export default function App() {
       if (ev.path !== repoRef.current?.path || !ev.synced?.length) return;
       const reset = ev.synced.filter((f) => f.action === 'reset').map((f) => f.file);
       const added = ev.synced.filter((f) => f.action === 'add').map((f) => f.file);
-      const names = (list) => list.slice(0, 3).map((f) => f.split('/').pop()).join(', ') + (list.length > 3 ? tr(' и ещё {0}', list.length - 3) : '');
+      const names = (list: string[]) => list.slice(0, 3).map((f) => f.split('/').pop()).join(', ') + (list.length > 3 ? tr(' и ещё {0}', list.length - 3) : '');
       notify({
         type: 'info',
         title: reset.length
@@ -2794,7 +3089,7 @@ export default function App() {
       // Изменилось что-то в .git (коммит, ветка, stash, fetch) — нужен полный перечит графа;
       // изменились только рабочие файлы — достаточно быстрого git status
       pendingFull = pendingFull || ev.git;
-      clearTimeout(refreshTimer.current);
+      clearTimeout(refreshTimer.current!);
       const tick = async () => {
         // Во время операции не мешаем — после неё граф и так перезагрузится
         if (busyRef.current) {
@@ -2860,14 +3155,14 @@ export default function App() {
     resetSyncStatus();
     syncFailures.current = 0;
     const path = repo?.path;
-    if (!autoSync || !path || repo.remotes.length === 0 || !api?.repo.remoteCheck) return undefined;
+    if (!autoSync || !path || repo!.remotes.length === 0 || !api?.repo.remoteCheck) return undefined;
     let stopped = false;
-    let timer = null;
+    let timer: ReturnType<typeof setTimeout> | null = null;
     let dueAt = 0;
     const focused = () => document.hasFocus() && document.visibilityState === 'visible';
-    const delay = (retryAfter) => nextDelay({ mode: syncModeRef.current, focused: focused(), failures: syncFailures.current, retryAfter });
-    const schedule = (ms) => {
-      clearTimeout(timer);
+    const delay = (retryAfter?: number | null) => nextDelay({ mode: syncModeRef.current, focused: focused(), failures: syncFailures.current, retryAfter });
+    const schedule = (ms: number) => {
+      clearTimeout(timer!);
       if (stopped) return;
       dueAt = Date.now() + ms;
       timer = setTimeout(tick, ms);
@@ -2879,10 +3174,10 @@ export default function App() {
       // Доступ на чтение не подтверждён — фоновая проверка не должна вызывать окно входа
       if (!accessRef.current?.data?.canRead) return schedule(accessRef.current?.status === 'checking' ? 2000 : delay());
       bgFetchingRef.current = true;
-      const res = await api.repo.remoteCheck(path);
+      const res = await api.repo.remoteCheck!(path);
       bgFetchingRef.current = false;
       if (stopped) return;
-      const data = res.ok ? res.data : { status: 'error', error: res.error };
+      const data: Omit<Partial<LightCheck_Serialize>, 'error'> & { status: string; error?: { message?: string; code?: string } | null } = res.ok ? res.data : { status: 'error', error: res.error };
       if (data.status === 'skipped') return schedule(2000);
       if (data.status === 'error') {
         // Без всплывающих ошибок: увеличиваем паузу 15 → 30 → 60 с → 5 мин до первого успеха
@@ -2912,7 +3207,7 @@ export default function App() {
     schedule(2500);
     return () => {
       stopped = true;
-      clearTimeout(timer);
+      clearTimeout(timer!);
       syncKick.current = null;
       window.removeEventListener('focus', onFocus);
       window.removeEventListener('blur', onFocus);
@@ -2921,7 +3216,7 @@ export default function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [repo?.path, autoSync, repo?.remotes.length, loadRepo]);
 
-  const changeSyncMode = (mode) => {
+  const changeSyncMode = (mode: string) => {
     setSyncMode(mode);
     writePref('syncMode', mode);
     syncFailures.current = 0;
@@ -2964,9 +3259,9 @@ export default function App() {
                 x,
                 y,
                 items: [
-                  { header: repo.path },
-                  ...repoFolderItems(repo.path),
-                  { label: tr('Скопировать путь'), icon: Copy, onClick: () => copy(repo.path, tr('Путь')) },
+                  { header: repo!.path },
+                  ...repoFolderItems(repo!.path),
+                  { label: tr('Скопировать путь'), icon: Copy, onClick: () => copy(repo!.path, tr('Путь')) },
                   { separator: true },
                   { label: tr('Открыть другой репозиторий…'), icon: FolderOpen, hint: 'Ctrl+O', onClick: openRepository },
                 ],
@@ -2993,8 +3288,8 @@ export default function App() {
               .map((a) => ({
                 id: a.id,
                 name: a.name || tr('Действие'),
-                icon: ACTION_ICONS[a.icon] ?? WandSparkles,
-                title: `${a.name}${a.hotkey ? ` (${a.hotkey})` : ''}\n${a.steps.map((st, i) => `${i + 1}. ${STEP_TYPES[st.type]?.describe(st.params) ?? st.type}`).join('\n')}`,
+                icon: ACTION_ICONS[a.icon as string] ?? WandSparkles,
+                title: `${a.name}${a.hotkey ? ` (${a.hotkey})` : ''}\n${a.steps.map((st, i) => `${i + 1}. ${STEP_TYPES[st.type as StepTypeId]?.describe(st.params) ?? st.type}`).join('\n')}`,
                 running: Boolean(actionRun && !actionRun.finished && actionRun.action.id === a.id),
               }))}
             onRunAction={(id) => {
@@ -3004,9 +3299,9 @@ export default function App() {
             onOpenActions={() => setDialog({ type: 'actions' })}
           />
 
-          {(repo.operation || conflictPaths.length > 0) && (
+          {(repo!.operation || conflictPaths.length > 0) && (
             <OperationBanner
-              operation={repo.operation}
+              operation={repo!.operation}
               conflicts={conflictPaths.length}
               onResolve={() => openConflict(conflictPaths[0])}
               busy={Boolean(busyAction)}
@@ -3039,7 +3334,7 @@ export default function App() {
                 dragSource={dragSource}
                 onDragSource={setDragSource}
                 onDropOnBranch={dropOnBranch}
-                refActions={refActions}
+                refActions={refActions as PropsOf<typeof Sidebar, 'refActions'>}
                 busy={Boolean(busyAction)}
                 onStashMenu={(st, x, y) => setMenu({ x, y, items: buildStashMenu(st) })}
                 onOpenCi={(file) => {
@@ -3048,7 +3343,7 @@ export default function App() {
                 }}
                 activeCiFile={ciView && ciView.mode !== 'pipelines' ? ciView.file : null}
                 forge={forge}
-                branchPipeline={branchPipeline}
+                branchPipeline={branchPipeline as PropsOf<typeof Sidebar, 'branchPipeline'>}
                 pipelinesError={pipelineMap?.error ?? null}
                 pipelinesActive={ciView?.mode === 'pipelines'}
                 onOpenPipelines={() => openPipelines(branchPipeline?.id ?? null)}
@@ -3066,11 +3361,11 @@ export default function App() {
             </div>
             <main className="relative flex min-w-0 flex-1 flex-col">
               {busyAction && PROGRESS_TEXT[busyAction] && (
-                <LoadingOverlay title={busyText ?? PROGRESS_TEXT[busyAction]} label={repo.name} />
+                <LoadingOverlay title={busyText ?? PROGRESS_TEXT[busyAction]} label={repo!.name} />
               )}
               {searchOpen && !diffTarget && !conflictPath && (
                 <SearchBar
-                  commits={repo.commits}
+                  commits={repo!.commits}
                   filter={filter}
                   onChange={setFilter}
                   matches={searchMatches}
@@ -3078,17 +3373,17 @@ export default function App() {
                   onPrev={() => gotoMatch(-1)}
                   onNext={() => gotoMatch(1)}
                   onClose={closeSearch}
-                  totalLoaded={repo.commits.length}
-                  truncated={repo.truncated}
+                  totalLoaded={repo!.commits.length}
+                  truncated={repo!.truncated}
                   inFiles={inFiles}
                   onToggleInFiles={toggleInFiles}
-                  content={contentQuery.length >= 2 ? { loading: Boolean(contentSearch?.loading), error: contentSearch?.error ?? null, commits: fileHits?.size ?? 0, partial: contentSearch?.data?.partial, truncated: contentSearch?.data?.truncated } : null}
+                  content={(contentQuery.length >= 2 ? { loading: Boolean(contentSearch?.loading), error: contentSearch?.error ?? null, commits: fileHits?.size ?? 0, partial: contentSearch?.data?.partial, truncated: contentSearch?.data?.truncated } : null) as PropsOf<typeof SearchBar, 'content'>}
                 />
               )}
               {conflictPath ? (
                 <ConflictView
                   key={conflictPath}
-                  repoPath={repo.path}
+                  repoPath={repo!.path}
                   path={conflictPath}
                   fileIndex={Math.max(0, conflictPaths.indexOf(conflictPath))}
                   fileCount={conflictPaths.length}
@@ -3139,7 +3434,7 @@ export default function App() {
                   hunkActions={hunkActionsFor(diffTarget)}
                   onHunkAction={onHunkAction}
                   fileActions={[
-                    ...fileViewItems(diffTarget.file, diffTarget.kind === 'compare' ? 'commit' : diffTarget.kind, { hash: diffTarget.hash, parent: diffTarget.parent }).map((it) => ({
+                    ...fileViewItems(diffTarget.file, diffTarget.kind === 'compare' ? 'commit' : (diffTarget.kind as FileKind), { hash: diffTarget.hash, parent: diffTarget.parent }).map((it) => ({
                       ...it,
                       label: it.label === 'Blame' ? 'Blame' : tr('История файла'),
                     })),
@@ -3149,20 +3444,20 @@ export default function App() {
                             label: tr('Вернуть файл…'),
                             icon: RotateCcw,
                             title: tr('Вернуть этот файл в рабочей папке к версии из коммита или до него — без коммита'),
-                            onClick: (e) => {
+                            onClick: (e: ReactMouseEvent<HTMLButtonElement>) => {
                               const r = e.currentTarget.getBoundingClientRect();
                               const items = buildFileMenu(diffTarget.file, 'commit', diffTarget.list);
-                              if (items) setMenu({ x: r.left, y: r.bottom + 4, items: items.filter((i) => i.label !== tr('Показать изменения') && i.icon !== FileClock && i.icon !== FileUser) });
+                              if (items) setMenu({ x: r.left, y: r.bottom + 4, items: items.filter((i) => (i as MenuItem).label !== tr('Показать изменения') && (i as MenuItem).icon !== FileClock && (i as MenuItem).icon !== FileUser) });
                             },
                           },
                         ]
                       : []),
-                  ]}
+                  ] as FileAction[]}
                 />
               ) : null}
               {compareView && (
                 <CompareView
-                  repoPath={repo.path}
+                  repoPath={repo!.path}
                   a={compareView.a}
                   b={compareView.b}
                   hidden={Boolean(conflictPath || diffTarget)}
@@ -3188,7 +3483,7 @@ export default function App() {
               )}
               {fileView && (
                 <FileView
-                  repoPath={repo.path}
+                  repoPath={repo!.path}
                   view={fileView}
                   hidden={Boolean(conflictPath || diffTarget)}
                   onChange={(patch) => setFileView({ ...fileView, ...patch })}
@@ -3206,7 +3501,7 @@ export default function App() {
               {rebaseView && (
                 <RebaseView
                   key={rebaseView.nonce}
-                  repoPath={repo.path}
+                  repoPath={repo!.path}
                   session={rebaseView}
                   hidden={Boolean(conflictPath || diffTarget)}
                   busy={Boolean(busyAction)}
@@ -3237,7 +3532,7 @@ export default function App() {
               )}
               {conflictPath || diffTarget || compareView || rebaseView || fileView ? null : ciView ? (
                 <CiView
-                  repoPath={repo.path}
+                  repoPath={repo!.path}
                   onEditLogin={() => openAuth({ actionLabel: tr('Сохранить и проверить'), forCi: true })}
                   initialFile={ciView.file}
                   initialMode={ciView.mode}
@@ -3246,7 +3541,7 @@ export default function App() {
                   version={ciVersion}
                   forge={forge}
                   remoteName={currentBranchInfo?.upstreamRemote}
-                  currentBranch={repo.currentBranch}
+                  currentBranch={repo!.currentBranch}
                   commitsBySha={commitsBySha}
                   branches={ciBranches}
                   onClose={() => setCiView(null)}
@@ -3263,7 +3558,7 @@ export default function App() {
               ) : (
                 <CommitGraph
                   commits={allCommits}
-                  introKey={repo.path}
+                  introKey={repo!.path}
                   focus={graphFocus}
                   selectedHash={selectedHash}
                   onSelect={setSelectedHash}
@@ -3278,14 +3573,14 @@ export default function App() {
                   dragSource={dragSource}
                   onDragSource={setDragSource}
                   onDropOnBranch={dropOnBranch}
-                  currentBranch={repo.currentBranch}
+                  currentBranch={repo!.currentBranch}
                   refActions={refActions}
-                  onActivate={activateCommit}
-                  onContextMenu={openMenu}
-                  wipCount={repo.wipFiles.length}
-                  truncated={repo.truncated}
+                  onActivate={activateCommit as (node: GraphRow) => void}
+                  onContextMenu={openMenu as (node: GraphRow, x: number, y: number) => void}
+                  wipCount={repo!.wipFiles.length}
+                  truncated={repo!.truncated}
                   matchSet={searchOpen && filterActive ? matchSet : null}
-                  fileHits={searchOpen && filterActive ? fileHits : null}
+                  fileHits={(searchOpen && filterActive ? fileHits : null) as PropsOf<typeof CommitGraph, 'fileHits'>}
                   pipelines={pipelineMap?.bySha ?? null}
                   pipelineTips={pipelineTips}
                   onPipelineHover={loadPipelineTip}
@@ -3308,9 +3603,9 @@ export default function App() {
                 className="-left-1"
               />
               <CommitDetails
-                commit={selected}
-                files={selected && !selected.wip ? filesByHash[selectedKey] : null}
-                searchHits={searchOpen && selected && !selected.wip ? fileHits?.get(selected.hash) ?? null : null}
+                commit={selected as SelectedRow | null}
+                files={(selected && !selected.wip ? filesByHash[selectedKey!] : null) as PropsOf<typeof CommitDetails, 'files'>}
+                searchHits={(searchOpen && selected && !selected.wip ? fileHits?.get(selected.hash) ?? null : null) as CommitHits | null}
                 searchQuery={contentQuery}
                 onOpenSearchHit={openSearchHit}
                 repo={repo}
@@ -3328,11 +3623,11 @@ export default function App() {
                 activeConflict={conflictPath}
                 onFileMenu={openFileContextMenu}
                 guardResult={guardResult}
-                guardState={!guardCfg.enabled ? 'off' : guardCfg.repoOff.includes(repo.path) ? 'repo-off' : 'on'}
+                guardState={!guardCfg.enabled ? 'off' : guardCfg.repoOff.includes(repo!.path) ? 'repo-off' : 'on'}
                 onGuardOpen={() => guardResult && setDialog({ type: 'guard', mode: 'view', result: guardResult })}
                 onGuardToggleRepo={() => {
-                  const off = guardCfg.repoOff.includes(repo.path);
-                  updateGuard({ ...guardCfg, repoOff: off ? guardCfg.repoOff.filter((p) => p !== repo.path) : [...guardCfg.repoOff, repo.path] });
+                  const off = guardCfg.repoOff.includes(repo!.path);
+                  updateGuard({ ...guardCfg, repoOff: off ? guardCfg.repoOff.filter((p) => p !== repo!.path) : [...guardCfg.repoOff, repo!.path] });
                   notify({ type: 'info', title: off ? tr('Проверка перед коммитом включена для этого репозитория') : tr('Проверка перед коммитом выключена для этого репозитория'), hint: off ? null : tr('Включить обратно — в строке над кнопкой Commit или в настройках.') });
                 }}
                 onGuardSettings={() => setDialog({ type: 'settings', tab: 'guard' })}
@@ -3390,15 +3685,15 @@ export default function App() {
           }}
           onJumpToHead={() => {
             setDiffTarget(null);
-            setSelectedHash(repo.headHash);
+            setSelectedHash(repo!.headHash);
           }}
-          onOpenFolder={api?.openFolder ? () => openRepoFolder(repo.path) : null}
-          onOpenTerminal={api?.openTerminal ? () => openRepoTerminal(repo.path) : null}
-          pipeline={ciReady ? branchPipeline : null}
+          onOpenFolder={api?.openFolder ? () => openRepoFolder(repo!.path) : null}
+          onOpenTerminal={api?.openTerminal ? () => openRepoTerminal(repo!.path) : null}
+          pipeline={(ciReady ? branchPipeline : null) as PropsOf<typeof StatusBar, 'pipeline'>}
           pipelineLabel={forge?.label ?? null}
           onOpenPipeline={(p) => openPipelines(p.id, p.status === 'failed')}
           onPathMenu={(x, y) =>
-            setMenu({ x, y, items: [...repoFolderItems(repo.path), { separator: true }, { label: tr('Скопировать путь'), icon: Copy, onClick: () => copy(repo.path, tr('Путь')) }] })
+            setMenu({ x, y, items: [...repoFolderItems(repo!.path), { separator: true }, { label: tr('Скопировать путь'), icon: Copy, onClick: () => copy(repo!.path, tr('Путь')) }] })
           }
         />
       )}
@@ -3408,7 +3703,7 @@ export default function App() {
           action={dialog.action}
           error={dialog.error}
           onClose={() => setDialog(null)}
-          onCheckAccess={repo?.remotes.length ? () => setDialog({ type: 'access' }) : null}
+          onCheckAccess={(repo?.remotes.length ? () => setDialog({ type: 'access' }) : null) as PropsOf<typeof ErrorDialog, 'onCheckAccess'>}
         />
       )}
       {dialog?.type === 'guide' && <GuideDialog initialSection={dialog.section} onClose={() => setDialog(null)} />}
@@ -3455,7 +3750,7 @@ export default function App() {
                   onAuthCurrent: () => openAuth({ actionLabel: tr('Сохранить и проверить') }),
                   onEdit: (url) => openAuth({ url, verify: true, actionLabel: tr('Сохранить и проверить') }),
                   onForgetLogin: async (login, label) => {
-                    const res = await api.creds.forgetLogin(login);
+                    const res = await api.creds!.forgetLogin(login);
                     if (res.ok) {
                       setServersTick((n) => n + 1);
                       refreshForge();
@@ -3463,7 +3758,7 @@ export default function App() {
                     }
                   },
                   onForgetServer: async (hostname) => {
-                    const res = await api.creds.forgetServer(hostname);
+                    const res = await api.creds!.forgetServer(hostname);
                     if (res.ok) {
                       setServersTick((n) => n + 1);
                       refreshForge();
@@ -3546,7 +3841,7 @@ export default function App() {
           access={access}
           onClose={() => setDialog(null)}
           onRecheck={checkAccess}
-          onCredentials={api?.creds ? () => openAuth({ actionLabel: tr('Сохранить и проверить') }) : null}
+          onCredentials={(api?.creds ? () => openAuth({ actionLabel: tr('Сохранить и проверить') }) : null) as PropsOf<typeof AccessDialog, 'onCredentials'>}
         />
       )}
       {dialog?.type === 'renameBranch' && (
@@ -3567,7 +3862,7 @@ export default function App() {
           onClose={() => setDialog(null)}
           onBranch={(ref) => {
             setDialog(null);
-            refActions.checkout(ref);
+            refActions.checkout(ref as CommitRef);
           }}
           onCreateBranch={() => openBranchDialog(dialog.node)}
           onDetached={() => {
@@ -3590,7 +3885,7 @@ export default function App() {
       )}
       {dialog?.type === 'rejected' && (
         <PushRejectedDialog
-          branch={dialog.branch}
+          branch={dialog.branch!}
           remote={dialog.remote}
           onClose={() => setDialog(null)}
           onPull={pullRebaseThenPush}
@@ -3602,7 +3897,7 @@ export default function App() {
       )}
       {dialog?.type === 'branch' && (
         <BranchDialog
-          startHash={dialog.startHash}
+          startHash={dialog.startHash!}
           startLabel={dialog.startLabel}
           branches={branchBases}
           flow={dialog.flow}
@@ -3616,11 +3911,11 @@ export default function App() {
       {dialog?.type === 'init' && (
         <InitRepoDialog
           key={dialog.info.path}
-          info={dialog.info}
+          info={dialog.info as PropsOf<typeof InitRepoDialog, 'info'>}
           reason={dialog.reason}
           initialMode={dialog.mode ?? 'init'}
           busy={initBusy}
-          error={dialog.error}
+          error={dialog.error as PropsOf<typeof InitRepoDialog, 'error'>}
           onClose={() => setDialog(null)}
           onSubmit={submitInit}
           onSubmitConnect={submitConnect}
@@ -3632,13 +3927,13 @@ export default function App() {
           onOpenParent={() => {
             const parent = dialog.info.parentRepo;
             setDialog(null);
-            openTab(parent);
+            openTab(parent!);
           }}
         />
       )}
       {dialog?.type === 'clone' && (
         <CloneDialog
-          onAuth={api?.creds ? (url, error, retry) => openAuth({ url, error, retry }) : null}
+          onAuth={(api?.creds ? (url, error, retry) => openAuth({ url, error, retry: retry as AuthOptions['retry'] }) : null) as PropsOf<typeof CloneDialog, 'onAuth'>}
           onClose={() => setDialog(null)}
           onCloned={(r) => {
             setDialog(null);
@@ -3649,7 +3944,7 @@ export default function App() {
       )}
       {dialog?.type === 'revertTo' && repo && (
         <RevertToDialog
-          repoPath={repo.path}
+          repoPath={repo!.path}
           commit={dialog.commit}
           busy={busyAction === 'revertTo' || busyAction === 'stash'}
           onClose={() => setDialog(null)}
@@ -3682,7 +3977,7 @@ export default function App() {
         <AuthDialog
           key={`${auth.url ?? auth.dir ?? ''}:${auth.nonce}`}
           target={auth.target}
-          error={auth.error}
+          error={auth.error as PropsOf<typeof AuthDialog, 'error'>}
           formError={auth.formError}
           notice={auth.notice}
           busy={auth.busy}
@@ -3690,7 +3985,7 @@ export default function App() {
           onSubmit={submitAuth}
           onForget={auth.target?.saved ? forgetAuth : null}
           onClose={() => setAuth(null)}
-          onKeyDefaults={(type, url) => api.creds.keyDefaults(auth.dir, url ?? auth.url, type)}
+          onKeyDefaults={(type, url) => api.creds!.keyDefaults(auth.dir, url ?? auth.url, type)}
           canEditRemote={Boolean(auth.dir && !auth.url)}
         />
       )}
@@ -3714,7 +4009,7 @@ export default function App() {
   );
 }
 
-function OperationBanner({ operation, conflicts, busy, onContinue, onAbort, onResolve }) {
+function OperationBanner({ operation, conflicts, busy, onContinue, onAbort, onResolve }: { operation: string | null; conflicts: number; busy: boolean; onContinue: () => void; onAbort: () => void; onResolve: () => void }) {
   return (
     <div className="glass flex shrink-0 animate-slide-up items-center gap-3 border-b border-gk-yellow/30 bg-gk-yellow/10 px-3 py-2 text-xs">
       <AlertTriangle size={14} className="shrink-0 text-gk-yellow" />
@@ -3745,7 +4040,7 @@ function OperationBanner({ operation, conflicts, busy, onContinue, onAbort, onRe
   );
 }
 
-function Welcome({ loading, onOpen, onCreate, onConnect, onClone, onGuide }) {
+function Welcome({ loading, onOpen, onCreate, onConnect, onClone, onGuide }: { loading?: boolean; onOpen: () => void; onCreate: () => void; onConnect: () => void; onClone: () => void; onGuide: () => void }) {
   return (
     <div className="flex flex-1 flex-col items-center justify-center gap-5">
       {loading ? (
@@ -3794,7 +4089,7 @@ function Welcome({ loading, onOpen, onCreate, onConnect, onClone, onGuide }) {
   );
 }
 
-function ErrorBanner({ error, onClose }) {
+function ErrorBanner({ error, onClose }: { error: LoadError; onClose: () => void }) {
   return (
     <div className="glass flex shrink-0 animate-slide-up items-start gap-2 border-b border-gk-red/40 bg-gk-red/10 px-3 py-2 text-xs text-gk-text">
       <AlertTriangle size={14} className="mt-0.5 shrink-0 text-gk-red" />

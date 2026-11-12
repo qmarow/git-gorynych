@@ -185,7 +185,7 @@ interface CiViewProps {
   initialFile?: string | null;
   initialMode?: string | null;
   initialPipelineId?: CiPanelProps['initialPipelineId'];
-  version: number;
+  version: string;
   forge: CiPanelProps['forge'];
   remoteName?: string | null;
   currentBranch?: string | null;

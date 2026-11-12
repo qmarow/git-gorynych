@@ -16,7 +16,9 @@ for (const name of names) {
   // Обе копии — как TypeScript: он убирает неиспользуемые импорты, и это не считается отличием (импорт без единого
   // используемого имени пропал бы целиком — у компонентов таких побочных импортов нет)
   const a = compile(path.join(oldDir, 'components', `${name}.jsx`), 'tsx');
-  const b = compile(path.join(repo, 'src', 'components', `${name}.tsx`), 'tsx');
+  // Файл без JSX переводится в .ts (`../main`)
+  const base = path.join(repo, 'src', 'components', name);
+  const b = compile(fs.existsSync(`${base}.tsx`) ? `${base}.tsx` : `${base}.ts`, 'tsx');
   if (a !== b) {
     const al = a.split('\n');
     const bl = b.split('\n');

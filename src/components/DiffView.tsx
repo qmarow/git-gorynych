@@ -30,7 +30,7 @@ export interface DiffTarget {
   file: { path: string; oldPath?: string | null; status: string; untracked?: boolean | null };
   list: unknown[];
   index: number;
-  search?: (CompareSearchJump & { nonce?: number }) | null;
+  search?: (CompareSearchJump & { nonce?: number; open?: boolean }) | null;
 }
 
 /** Действие с фрагментом (stage, unstage, отменить…) */
