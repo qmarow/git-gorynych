@@ -83,9 +83,9 @@ impl CiCdProvider for GiteaProvider {
         let write = input.can_write != Some(false);
         let admin = input.is_admin != Some(false);
         let mut why: BTreeMap<String, String> = reasons("Gitea", &["canCancel", "canRetry", "canRetryFailed", "canRerunSingleJob", "canCancelJob", "canPlayManualJob", "canRunWithVariables"]);
-        why.insert("canEditRunnerLabels".into(), t("В Gitea метки раннера задаются при регистрации (act_runner register --labels) или в его config.yaml", &[]));
-        why.insert("canPauseRunner".into(), t("В Gitea нет паузы раннера — остановите act_runner на сервере", &[]));
-        why.insert("canEditRunnerSettings".into(), t("Gitea не даёт менять настройки раннера через API", &[]));
+        why.insert("canEditRunnerLabels".into(), t("in-gitea-runner-labels-are", &[]));
+        why.insert("canPauseRunner".into(), t("gitea-has-no-runner-pause", &[]));
+        why.insert("canEditRunnerSettings".into(), t("gitea-doesnt-allow-changing-runner", &[]));
         Capabilities {
             can_list_pipelines: true,
             can_run_pipeline: write,
@@ -127,7 +127,7 @@ impl CiCdProvider for GiteaProvider {
         let n = id.number_text();
         let api = ctx.repo_api();
         let (r, jobs, arts) = tokio::join!(
-            request(&ctx.http, Method::GET, format!("{api}/actions/runs/{n}"), Opts::not_found(t("Запуск #{0} не найден", &[id]))),
+            request(&ctx.http, Method::GET, format!("{api}/actions/runs/{n}"), Opts::not_found(t("run-not-found", &[id]))),
             request(&ctx.http, Method::GET, format!("{api}/actions/runs/{n}/jobs"), Opts::query(&[("limit", Some("100".into()))])),
             request(&ctx.http, Method::GET, format!("{api}/actions/runs/{n}/artifacts"), Opts::default()),
         );
@@ -170,22 +170,22 @@ impl CiCdProvider for GiteaProvider {
     }
 
     async fn action(&self, _ctx: &Ctx, _action: &ActionRequest) -> Result<ActionResult> {
-        Err(GorynychError::new(ErrorCode::Unsupported, t("Gitea не даёт отменять и перезапускать запуски через API", &[])).with_hint(t("Откройте запуск в браузере", &[])))
+        Err(GorynychError::new(ErrorCode::Unsupported, t("gitea-doesnt-allow-canceling-or", &[])).with_hint(t("open-run-in-browser", &[])))
     }
 
     async fn run_pipeline(&self, ctx: &Ctx, input: &RunInput) -> Result<RunResult> {
         let Some(workflow) = input.workflow.as_deref().filter(|workflow| !workflow.is_empty()) else {
-            return Err(GorynychError::new(ErrorCode::BadArgs, t("Выберите workflow для запуска", &[])));
+            return Err(GorynychError::new(ErrorCode::BadArgs, t("choose-workflow-to-run", &[])));
         };
         let file = workflow.rsplit('/').next().unwrap_or_default();
-        let opts = Opts::body(json!({ "ref": input.reference, "inputs": inputs_as_text(input) })).with_not_found(t("Запуск workflow по API поддерживается в Gitea 1.23 и новее (и workflow должен быть отправлен на сервер)", &[]));
+        let opts = Opts::body(json!({ "ref": input.reference, "inputs": inputs_as_text(input) })).with_not_found(t("running-workflow-via-api-is", &[]));
         request(&ctx.http, Method::POST, format!("{}/actions/workflows/{}/dispatches", ctx.repo_api(), js::encode_uri_component(file)), opts).await?;
         Ok(RunResult { id: None, url: None })
     }
 
     async fn list_runners(&self, ctx: &Ctx) -> Result<Vec<CiRunner>> {
         let mut opts = Opts::query(&[("limit", Some("100".into()))]);
-        opts.not_found = Some(t("Список раннеров по API есть в Gitea 1.24 и новее", &[]));
+        opts.not_found = Some(t("runner-list-api-is-available", &[]));
         let data = request(&ctx.http, Method::GET, format!("{}/actions/runners", ctx.repo_api()), opts).await?;
         let list = match (field(&data, "runners"), data.as_array()) {
             (Some(Value::Array(list)), _) => list.as_slice(),
@@ -225,11 +225,11 @@ impl CiCdProvider for GiteaProvider {
     }
 
     async fn update_runner(&self, _ctx: &Ctx, _id: &CiId, _patch: &RunnerPatch) -> Result<RunnerResult> {
-        Err(GorynychError::new(ErrorCode::Unsupported, t("Gitea не даёт менять раннер через API", &[])).with_hint(t("Метки задаются в config.yaml раннера или при регистрации", &[])))
+        Err(GorynychError::new(ErrorCode::Unsupported, t("gitea-doesnt-allow-changing-runner-via", &[])).with_hint(t("labels-are-set-in-runners", &[])))
     }
 
     async fn delete_runner(&self, ctx: &Ctx, id: &CiId) -> Result<RunnerResult> {
-        request(&ctx.http, Method::DELETE, format!("{}/actions/runners/{id}", ctx.repo_api()), Opts::not_found(t("Раннер уже удалён или Gitea не поддерживает удаление по API", &[]))).await?;
+        request(&ctx.http, Method::DELETE, format!("{}/actions/runners/{id}", ctx.repo_api()), Opts::not_found(t("runner-is-already-deleted-or", &[]))).await?;
         Ok(RunnerResult { id: Some(id.clone()) })
     }
 

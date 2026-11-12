@@ -134,11 +134,11 @@ pub fn check_ci(root: &Path, system: &str, config: &CiConfig, gitlab_model: Opti
         let mut item = draft!(
             if is_error { "yaml-syntax" } else { "yaml-warning" },
             Warning,
-            title = if is_error { tr!("Ошибка синтаксиса YAML: {0}", error.message) } else { error.message.clone() },
-            when = tr!("Сразу при push — файл не читается"),
-            how = if is_error { tr!("Сервер CI не сможет прочитать файл и не запустит ни одного задания.") } else { tr!("Файл прочитается, но, возможно, не так, как задумано.") },
-            why = if is_error { tr!("Нарушена структура YAML: отступы, двоеточия, кавычки или табуляция вместо пробелов.") } else { tr!("Неоднозначная запись в YAML.") },
-            fix = tr!("Проверьте отступы (только пробелы, одинаковое число на уровне) и кавычки вокруг строк с «: » или «#»."),
+            title = if is_error { tr!("yaml-syntax-error", error.message) } else { error.message.clone() },
+            when = tr!("right-on-push-file-cant"),
+            how = if is_error { tr!("ci-server-wont-be-able") } else { tr!("file-will-be-read-but") },
+            why = if is_error { tr!("yaml-structure-is-broken-indentation") } else { tr!("ambiguous-yaml-entry") },
+            fix = tr!("check-indentation-spaces-only-same"),
             file = error.file.clone(),
             line = error.line,
         );
@@ -167,11 +167,11 @@ pub fn check_ci(root: &Path, system: &str, config: &CiConfig, gitlab_model: Opti
         _ => Ok(()),
     };
     if let Err(message) = outcome {
-        cx.add(draft!("check-failed", Info, title = tr!("Проверка прервалась"), when = "—".to_owned(), how = tr!("Часть проверок не выполнена."), why = message, fix = tr!("Сообщите об ошибке — проверка конфигурации не должна падать.")));
+        cx.add(draft!("check-failed", Info, title = tr!("check-was-interrupted"), when = "—".to_owned(), how = tr!("some-checks-werent-run"), why = message, fix = tr!("report-bug-configuration-check-shouldnt")));
     }
     if !matches!(system, "gitlab" | "github" | "gitea" | "forgejo" | "bitbucket" | "jenkins") {
         for warning in &config.warnings {
-            cx.add(draft!("loader-warning", Warning, title = warning.clone(), when = "—".to_owned(), how = tr!("Схема пайплайна может быть показана неполно."), why = warning.clone(), fix = tr!("Проверьте файл."), file = config.files.first().map(|file| file.path.clone())));
+            cx.add(draft!("loader-warning", Warning, title = warning.clone(), when = "—".to_owned(), how = tr!("pipeline-diagram-may-be-incomplete"), why = warning.clone(), fix = tr!("check-file"), file = config.files.first().map(|file| file.path.clone())));
         }
     }
 

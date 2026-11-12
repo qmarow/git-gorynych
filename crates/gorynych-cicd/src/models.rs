@@ -126,7 +126,7 @@ impl Capabilities {
 
 /// `reasons`: одна подсказка на несколько флагов.
 pub fn reasons(label: &str, list: &[&str]) -> BTreeMap<String, String> {
-    list.iter().map(|key| ((*key).to_owned(), t("{0} не даёт этого сделать через API", &[&label]))).collect()
+    list.iter().map(|key| ((*key).to_owned(), t("doesnt-allow-this-via-api", &[&label]))).collect()
 }
 
 /// Тот, кто запустил.

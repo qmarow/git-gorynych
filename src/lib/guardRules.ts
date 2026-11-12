@@ -23,37 +23,37 @@ export interface GuardRule {
 // Литерал списка читает и эталон Rust (crates/gorynych-ci-linter/tests/fixtures/gen-guard-parity.cjs): без типов внутри
 export const DEFAULT_RULES: readonly GuardRule[] = [
   // Секреты
-  { id: 'private-key', category: 'secret', label: t('Приватный ключ'), pattern: '-----BEGIN (?:RSA |EC |DSA |OPENSSH |PGP |ENCRYPTED )?PRIVATE KEY(?: BLOCK)?-----' },
+  { id: 'private-key', category: 'secret', label: t('private-key-2'), pattern: '-----BEGIN (?:RSA |EC |DSA |OPENSSH |PGP |ENCRYPTED )?PRIVATE KEY(?: BLOCK)?-----' },
   { id: 'aws-key-id', category: 'secret', label: 'AWS Access Key ID', pattern: '\\b(?:AKIA|ASIA)[0-9A-Z]{16}\\b' },
-  { id: 'aws-secret', category: 'secret', label: t('Ключ AWS (AWS_…)'), pattern: 'AWS_(?:SECRET_ACCESS_KEY|ACCESS_KEY_ID|SESSION_TOKEN)\\s*[:=]\\s*["\']?[A-Za-z0-9/+=]{16,}' },
-  { id: 'openai-key', category: 'secret', label: t('API-ключ sk-…'), pattern: '\\bsk-(?:proj-|live-|test-|ant-)?[A-Za-z0-9_-]{20,}' },
-  { id: 'github-token', category: 'secret', label: t('Токен GitHub'), pattern: '\\bgh[pousr]_[A-Za-z0-9]{30,}\\b' },
-  { id: 'gitlab-token', category: 'secret', label: t('Токен GitLab'), pattern: '\\bglpat-[A-Za-z0-9_-]{20,}' },
-  { id: 'slack-token', category: 'secret', label: t('Токен Slack'), pattern: '\\bxox[abpors]-[A-Za-z0-9-]{10,}' },
-  { id: 'google-key', category: 'secret', label: t('Ключ Google API'), pattern: '\\bAIza[0-9A-Za-z_-]{35}\\b' },
-  { id: 'bearer', category: 'secret', label: t('Bearer-токен'), pattern: '\\bBearer\\s+[A-Za-z0-9._~+/-]{20,}=*' },
+  { id: 'aws-secret', category: 'secret', label: t('aws-key-aws'), pattern: 'AWS_(?:SECRET_ACCESS_KEY|ACCESS_KEY_ID|SESSION_TOKEN)\\s*[:=]\\s*["\']?[A-Za-z0-9/+=]{16,}' },
+  { id: 'openai-key', category: 'secret', label: t('sk-api-key'), pattern: '\\bsk-(?:proj-|live-|test-|ant-)?[A-Za-z0-9_-]{20,}' },
+  { id: 'github-token', category: 'secret', label: t('github-token'), pattern: '\\bgh[pousr]_[A-Za-z0-9]{30,}\\b' },
+  { id: 'gitlab-token', category: 'secret', label: t('gitlab-token'), pattern: '\\bglpat-[A-Za-z0-9_-]{20,}' },
+  { id: 'slack-token', category: 'secret', label: t('slack-token-2'), pattern: '\\bxox[abpors]-[A-Za-z0-9-]{10,}' },
+  { id: 'google-key', category: 'secret', label: t('google-api-key-2'), pattern: '\\bAIza[0-9A-Za-z_-]{35}\\b' },
+  { id: 'bearer', category: 'secret', label: t('bearer-token'), pattern: '\\bBearer\\s+[A-Za-z0-9._~+/-]{20,}=*' },
   { id: 'jwt', category: 'secret', label: 'JWT', pattern: '\\beyJ[A-Za-z0-9_-]{10,}\\.[A-Za-z0-9_-]{10,}\\.[A-Za-z0-9_-]{10,}' },
-  { id: 'password-assign', category: 'secret', label: t('Пароль или ключ в коде'), flags: 'i', pattern: '(?:password|passwd|secret|api[_-]?key|access[_-]?token)\\s*[:=]\\s*["\'][^"\'\\s]{8,}["\']' },
+  { id: 'password-assign', category: 'secret', label: t('password-or-key-in-code'), flags: 'i', pattern: '(?:password|passwd|secret|api[_-]?key|access[_-]?token)\\s*[:=]\\s*["\'][^"\'\\s]{8,}["\']' },
   // Забытая отладка
-  { id: 'conflict-marker', category: 'debug', label: t('Маркер конфликта'), pattern: '^(?:<{7}|>{7}|={7})(?: |$)' },
+  { id: 'conflict-marker', category: 'debug', label: t('conflict-marker'), pattern: '^(?:<{7}|>{7}|={7})(?: |$)' },
   { id: 'console-log', category: 'debug', label: 'console.log', files: 'js,jsx,ts,tsx,mjs,cjs,vue,svelte', pattern: '\\bconsole\\.(?:log|debug|trace|dir|table)\\s*\\(' },
   { id: 'debugger', category: 'debug', label: 'debugger', files: 'js,jsx,ts,tsx,mjs,cjs,vue,svelte', pattern: '^\\s*debugger\\s*;?\\s*(?://.*)?$' },
   { id: 'print', category: 'debug', label: 'print()', files: 'py', pattern: '^\\s*print\\s*\\(' },
   { id: 'pdb', category: 'debug', label: 'breakpoint() / pdb', files: 'py', pattern: '\\b(?:breakpoint\\s*\\(\\)|pdb\\.set_trace\\s*\\(|import\\s+i?pdb)' },
   { id: 'php-dump', category: 'debug', label: 'var_dump / dd()', files: 'php', pattern: '\\b(?:var_dump|print_r|dd|dump)\\s*\\(' },
-  { id: 'test-only', category: 'debug', label: t('.only в тестах'), files: 'js,jsx,ts,tsx,mjs,cjs', pattern: '\\b(?:it|describe|test)\\.only\\s*\\(' },
+  { id: 'test-only', category: 'debug', label: t('only-in-tests'), files: 'js,jsx,ts,tsx,mjs,cjs', pattern: '\\b(?:it|describe|test)\\.only\\s*\\(' },
   // \b в JS понимает только ASCII и рядом с кириллицей не срабатывает, поэтому границы слова заданы явно через \p{…}
   { id: 'todo-remove', category: 'debug', label: 'TODO: remove', flags: 'iu', pattern: '(?<![\\p{L}\\p{N}_])(?:TODO|FIXME|XXX|HACK)(?![\\p{L}\\p{N}_]).*(?<![\\p{L}\\p{N}_])(?:remove|delete|убрать|удалить|temp|временн)' }, // gorynych-ignore
   { id: 'do-not-commit', category: 'debug', label: 'DO NOT COMMIT', flags: 'iu', pattern: '(?<![\\p{L}\\p{N}_])(?:DO\\s*NOT\\s*COMMIT|NOCOMMIT|НЕ\\s*КОММИТИТЬ)(?![\\p{L}\\p{N}_])' }, // gorynych-ignore
 ];
 
-export const CATEGORY_LABELS: Record<'secret' | 'debug' | 'other', string> = { secret: t('Похоже на секрет'), debug: t('Забытая отладка'), other: t('Свои правила') };
+export const CATEGORY_LABELS: Record<'secret' | 'debug' | 'other', string> = { secret: t('looks-like-secret'), debug: t('forgotten-debug-code'), other: t('custom-rules') };
 
 // Что делать при срабатывании правила
 export const LEVELS: readonly { id: GuardLevel; label: string; hint: string }[] = [
-  { id: 'off', label: t('Выкл'), hint: t('Правило не проверяется') },
-  { id: 'warn', label: t('Предупреждать'), hint: t('Показать и спросить, коммитить ли всё равно') },
-  { id: 'block', label: t('Запрещать'), hint: t('Коммит не создаётся, пока строка не исправлена или не помечена gorynych-ignore') },
+  { id: 'off', label: t('off'), hint: t('rule-isnt-checked') },
+  { id: 'warn', label: t('warn'), hint: t('show-and-ask-whether-to') },
+  { id: 'block', label: t('forbid'), hint: t('commit-isnt-created-until-line') },
 ];
 
 // Частые исключения — подсказки в настройках

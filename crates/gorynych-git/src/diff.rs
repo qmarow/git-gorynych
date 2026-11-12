@@ -201,7 +201,7 @@ pub async fn get_file_diff(dir: &Path, request: &FileDiffRequest) -> Result<File
             let hash = request.hash.as_deref().unwrap_or_default();
             let parent = request.parent.as_deref().filter(|parent| !parent.is_empty());
             if !is_hash(hash) || parent.is_some_and(|parent| !is_hash(parent)) {
-                return Err(GorynychError::new(ErrorCode::BadArgs, t("Некорректный коммит", &[])));
+                return Err(GorynychError::new(ErrorCode::BadArgs, t("invalid-commit", &[])));
             }
             args.extend_from_slice(&["diff-tree", "-p", "-M", "--no-commit-id", "--no-color"]);
             args.extend_from_slice(ws);
@@ -220,7 +220,7 @@ pub async fn get_file_diff(dir: &Path, request: &FileDiffRequest) -> Result<File
             args.push("--no-color");
             args.extend_from_slice(ws);
         }
-        _ => return Err(GorynychError::new(ErrorCode::BadArgs, t("Неизвестный режим diff", &[]))),
+        _ => return Err(GorynychError::new(ErrorCode::BadArgs, t("unknown-diff-mode", &[]))),
     }
 
     let mut paths: Vec<&str> = vec!["--"];

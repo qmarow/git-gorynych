@@ -52,7 +52,7 @@ fn safe(root: &Path, rel: &str) -> Result<std::path::PathBuf> {
 }
 
 fn require_hash(hash: Option<&str>) -> Result<&str> {
-    hash.filter(|hash| is_hash(hash)).ok_or_else(|| GorynychError::new(ErrorCode::BadArgs, t("Некорректный коммит", &[])))
+    hash.filter(|hash| is_hash(hash)).ok_or_else(|| GorynychError::new(ErrorCode::BadArgs, t("invalid-commit", &[])))
 }
 
 async fn first_parent(cwd: &Path, hash: &str) -> Result<Option<String>> {
@@ -125,11 +125,11 @@ pub async fn restore_file(cwd: &Path, request: &RestoreFile) -> Result<RestoredF
     } else if before.is_some() {
         remove_file_force(&full)?;
     } else {
-        return Err(GorynychError::new(ErrorCode::UpToDate, t("Файла нет ни в рабочей папке, ни в той версии — менять нечего", &[])));
+        return Err(GorynychError::new(ErrorCode::UpToDate, t("file-is-neither-in-working", &[])));
     }
     let snap = snapshot(&root, file, before)?;
     if snap.as_ref().is_some_and(|snap| snap.before.is_some() && snap.before == snap.after) {
-        return Err(GorynychError::new(ErrorCode::UpToDate, t("Файл уже совпадает с этой версией", &[])));
+        return Err(GorynychError::new(ErrorCode::UpToDate, t("file-already-matches-this-version", &[])));
     }
     Ok(RestoredFile { path: file.to_owned(), source: source.unwrap_or_else(|| EMPTY_TREE.to_owned()), side: side.to_owned(), deleted: !present, snapshot: snap })
 }
@@ -186,19 +186,19 @@ enum Step {
 /// `restoreFromStash`.
 pub async fn restore_from_stash(cwd: &Path, request: &RestoreFromStash) -> Result<RestoredStashFiles> {
     let hash = require_hash(request.hash.as_deref())?;
-    let files = request.files.as_deref().filter(|files| !files.is_empty()).ok_or_else(|| GorynychError::new(ErrorCode::BadArgs, t("Не выбраны файлы", &[])))?;
+    let files = request.files.as_deref().filter(|files| !files.is_empty()).ok_or_else(|| GorynychError::new(ErrorCode::BadArgs, t("no-files-selected", &[])))?;
     let root = resolve_repo_root(cwd).await?;
     let out = trimmed(&root, &["rev-list", "--parents", "-n", "1", hash]).await?;
     let parents: Vec<&str> = out.split(' ').skip(1).collect();
     if parents.len() < 2 {
-        return Err(GorynychError::new(ErrorCode::BadArgs, t("Это не stash", &[])));
+        return Err(GorynychError::new(ErrorCode::BadArgs, t("this-isnt-stash", &[])));
     }
     let untracked_commit = parents.get(2).copied();
 
     let mut plan: IndexMap<String, Step> = IndexMap::new();
     for file in files {
         let Some((file, path)) = file.as_ref().and_then(|file| Some((file, file.path.as_deref()?))) else {
-            return Err(GorynychError::new(ErrorCode::BadArgs, t("Некорректный файл", &[])));
+            return Err(GorynychError::new(ErrorCode::BadArgs, t("invalid-file", &[])));
         };
         safe(&root, path)?;
         if file.status.as_deref() == Some("D") {
@@ -206,7 +206,7 @@ pub async fn restore_from_stash(cwd: &Path, request: &RestoreFromStash) -> Resul
         } else {
             let source = if file.untracked == Some(true) { untracked_commit } else { Some(hash) };
             let Some(source) = source else {
-                return Err(GorynychError::new(ErrorCode::NotFound, t("Файла {0} нет в stash", &[&path])));
+                return Err(GorynychError::new(ErrorCode::NotFound, t("file-isnt-in-stash", &[&path])));
             };
             plan.insert(path.to_owned(), Step::Source(source.to_owned()));
         }
@@ -228,7 +228,7 @@ pub async fn restore_from_stash(cwd: &Path, request: &RestoreFromStash) -> Resul
             continue;
         };
         if !exists_in(&root, source, file).await {
-            return Err(GorynychError::new(ErrorCode::NotFound, t("Файла {0} нет в stash", &[file])));
+            return Err(GorynychError::new(ErrorCode::NotFound, t("file-isnt-in-stash", &[file])));
         }
         by_source.entry(source).or_default().push(file);
     }
@@ -260,7 +260,7 @@ pub async fn restore_from_stash(cwd: &Path, request: &RestoreFromStash) -> Resul
         }
     }
     if changed == 0 {
-        return Err(GorynychError::new(ErrorCode::UpToDate, t("Эти файлы в рабочей папке уже такие же, как в stash", &[])));
+        return Err(GorynychError::new(ErrorCode::UpToDate, t("these-files-in-working-folder", &[])));
     }
     let complete = snapshots.len() == changed;
     Ok(RestoredStashFiles { files: files.len(), changed, snapshots, complete })
@@ -364,7 +364,7 @@ async fn raw_diff(root: &Path, mode: &str, hash: Option<&str>, file: &str, old_p
             args.extend(base);
         }
         "unstaged" => args.extend(base),
-        _ => return Err(GorynychError::new(ErrorCode::BadArgs, t("Неизвестный режим", &[]))),
+        _ => return Err(GorynychError::new(ErrorCode::BadArgs, t("unknown-mode", &[]))),
     }
     args.extend(paths);
     git(root, &args).await
@@ -393,7 +393,7 @@ pub async fn apply_hunks(cwd: &Path, request: &ApplyHunks) -> Result<AppliedHunk
         _ => ("", &[], false),
     };
     if modes.is_empty() || modes != mode {
-        return Err(GorynychError::new(ErrorCode::BadArgs, t("Неизвестное действие с фрагментом", &[])));
+        return Err(GorynychError::new(ErrorCode::BadArgs, t("unknown-hunk-action", &[])));
     }
     let root = resolve_repo_root(cwd).await?;
     let file = request.path.as_deref().unwrap_or_default();
@@ -404,15 +404,15 @@ pub async fn apply_hunks(cwd: &Path, request: &ApplyHunks) -> Result<AppliedHunk
 
     let diff = raw_diff(&root, mode, request.hash.as_deref(), file, request.old_path.as_deref()).await?;
     if BINARY.is_match(&diff) {
-        let mut error = GorynychError::new(ErrorCode::Binary, t("Бинарный файл — по фрагментам не меняется", &[]));
+        let mut error = GorynychError::new(ErrorCode::Binary, t("binary-file-cant-be-changed", &[]));
         if op == "revert" {
-            error = error.with_hint(t("Используйте «Вернуть файл к версии…» для всего файла.", &[]));
+            error = error.with_hint(t("use-restore-file-to-its", &[]));
         }
         return Err(error);
     }
     let all = split_hunks(&diff);
     if all.is_empty() {
-        return Err(GorynychError::new(ErrorCode::UpToDate, t("В файле нет изменений", &[])));
+        return Err(GorynychError::new(ErrorCode::UpToDate, t("file-has-no-changes", &[])));
     }
 
     let mut chosen: Vec<&Hunk> = all.iter().collect();
@@ -420,26 +420,26 @@ pub async fn apply_hunks(cwd: &Path, request: &ApplyHunks) -> Result<AppliedHunk
         let keys: IndexSet<Option<String>> = wanted.iter().map(|header| hunk_key(header)).collect();
         chosen.retain(|hunk| keys.contains(&hunk.key));
         if chosen.len() != keys.len() {
-            return Err(GorynychError::new(ErrorCode::HunkStale, t("Фрагмент не найден — diff изменился", &[]))
-                .with_hint(t("Обновите просмотр. Если включено «игнорировать пробелы», выключите его: фрагменты считаются по точному тексту.", &[])));
+            return Err(GorynychError::new(ErrorCode::HunkStale, t("hunk-not-found-diff-changed", &[]))
+                .with_hint(t("refresh-view-if-ignore-whitespace", &[])));
         }
     }
 
     if worktree && !full.exists() {
-        let mut error = GorynychError::new(ErrorCode::NotFound, t("Файла нет в рабочей папке", &[]));
+        let mut error = GorynychError::new(ErrorCode::NotFound, t("file-isnt-in-working-folder", &[]));
         if op == "revert" {
-            error = error.with_hint(t("Используйте «Вернуть файл к версии до этого коммита» — он создаст файл заново.", &[]));
+            error = error.with_hint(t("use-restore-file-to-its-version", &[]));
         } else if op == "apply" {
-            error = error.with_hint(t("Восстановите файл из stash целиком.", &[]));
+            error = error.with_hint(t("restore-whole-file-from-stash", &[]));
         }
         return Err(error);
     }
     let before = if worktree { read_file_or_null(&full)? } else { None };
     if let Err(error) = apply_patch(&root, &build_patch(file, &chosen), args).await {
         let (message, hint) = match op {
-            "apply" => (t("Фрагмент не применяется: эти строки в рабочей папке уже другие", &[]), t("Восстановите файл из stash целиком (он заменит текущую версию; Undo вернёт).", &[])),
-            "revert" => (t("Этот фрагмент уже изменён в рабочей папке — автоматически отменить нельзя", &[]), t("Строки вокруг него поменялись после коммита. Можно вернуть файл целиком к версии до этого коммита.", &[])),
-            _ => (t("Фрагмент не применяется — файл изменился", &[]), t("Обновите просмотр и повторите.", &[])),
+            "apply" => (t("hunk-doesnt-apply-these-lines", &[]), t("restore-whole-file-from-stash-it", &[])),
+            "revert" => (t("this-hunk-is-already-changed", &[]), t("lines-around-it-changed-after", &[])),
+            _ => (t("hunk-doesnt-apply-file-changed", &[]), t("refresh-view-and-retry", &[])),
         };
         return Err(GorynychError::new(ErrorCode::PatchFailed, message).with_hint(hint).with_details(error.details));
     }
@@ -463,8 +463,8 @@ pub async fn write_snapshot(cwd: &Path, snap: &Snapshot, which: SnapshotSide) ->
         SnapshotSide::After => (&snap.before, &snap.after),
     };
     if read_file_or_null(&full)? != *expected {
-        return Err(GorynychError::new(ErrorCode::HistoryStale, t("Нельзя отменить: файл {0} изменился после операции", &[&snap.path]))
-            .with_hint(t("Файл правили после отката — верните его вручную или через diff.", &[])));
+        return Err(GorynychError::new(ErrorCode::HistoryStale, t("cant-undo-file-changed-after", &[&snap.path]))
+            .with_hint(t("file-was-edited-after-revert", &[])));
     }
     match data {
         None => remove_file_force(&full),

@@ -157,7 +157,7 @@ impl Gl<'_, '_> {
             if ok && rule.get("changes").is_some() {
                 let source = scenario.var("CI_PIPELINE_SOURCE");
                 if (source == Some("push") && !scenario.var("CI_COMMIT_TAG").is_some_and(|tag| !tag.is_empty())) || source == Some("merge_request_event") {
-                    uncertain.push(tr!("изменённые файлы (changes)"));
+                    uncertain.push(tr!("changed-files-changes"));
                 }
             }
             if ok {
@@ -209,7 +209,7 @@ impl Gl<'_, '_> {
             });
         }
         if spec.get("changes").is_some() && matched && scenario.var("CI_PIPELINE_SOURCE") == Some("push") && !scenario.var("CI_COMMIT_TAG").is_some_and(|tag| !tag.is_empty()) {
-            uncertain.push(tr!("изменённые файлы (changes)"));
+            uncertain.push(tr!("changed-files-changes"));
         }
         (matched, uncertain)
     }
@@ -243,7 +243,7 @@ impl Gl<'_, '_> {
             let blocked = matched.rule.as_ref().is_none_or(|rule| rule.get("when").and_then(Value::as_str) == Some("never"));
             if blocked {
                 result.workflow_blocked = Some(true);
-                result.reason = if matched.rule.is_none() { tr!("ни одно правило workflow:rules не подошло") } else { tr!("workflow:rules, правило {0}: when: never", matched.index + 1) };
+                result.reason = if matched.rule.is_none() { tr!("no-workflow-rules-rule-matched") } else { tr!("workflow-rules-rule-when-never", matched.index + 1) };
                 result.uncertain = joined_uncertain(&matched.uncertain);
                 return result;
             }
@@ -280,11 +280,11 @@ impl Gl<'_, '_> {
                 match &matched.rule {
                     None => {
                         included = false;
-                        why = tr!("ни одно правило rules не подошло");
+                        why = tr!("no-rules-rule-matched");
                     }
                     Some(rule) if rule.get("when").and_then(Value::as_str) == Some("never") => {
                         included = false;
-                        why = tr!("правило {0}: when: never", matched.index + 1);
+                        why = tr!("rule-when-never", matched.index + 1);
                     }
                     Some(rule) => {
                         included = true;
@@ -296,7 +296,7 @@ impl Gl<'_, '_> {
                             None if rule.get("when").and_then(Value::as_str) == Some("manual") => Value::Bool(false),
                             None => allow_failure,
                         };
-                        why = tr!("правило {0}", matched.index + 1);
+                        why = tr!("rule", matched.index + 1);
                     }
                 }
             } else if cfg_when == Some("never") {
@@ -318,13 +318,13 @@ impl Gl<'_, '_> {
                     allow_failure = non_null(cfg.get("allow_failure")).cloned().unwrap_or(Value::Bool(true));
                 }
                 why = if !only_match {
-                    if only_truthy { tr!("не подходит под only") } else { tr!("без rules задание по умолчанию только для веток и тегов (only: branches, tags)") }
+                    if only_truthy { tr!("doesnt-match-only") } else { tr!("without-rules-job-runs-by") }
                 } else if except_match {
-                    tr!("исключено except")
+                    tr!("excluded-by-except")
                 } else if only_truthy {
-                    tr!("подходит под only")
+                    tr!("matches-only")
                 } else {
-                    tr!("без условий")
+                    tr!("no-conditions")
                 };
                 let default_list = result.default_only.get_or_insert_with(Vec::new);
                 if !only_truthy && !except_truthy && !only_match {
@@ -343,13 +343,13 @@ impl Gl<'_, '_> {
         let real_jobs = result.jobs.iter().filter(|job| job.stage != ".pre" && job.stage != ".post").count();
         result.created = real_jobs > 0;
         result.reason = if result.jobs.is_empty() {
-            tr!("ни одно задание не подошло под условия")
+            tr!("no-job-matched-conditions")
         } else if real_jobs == 0 {
-            tr!("есть только задания этапов .pre/.post")
+            tr!("there-are-only-pre-post")
         } else if let Some(rule) = result.workflow_rule {
-            tr!("workflow:rules, правило {0}", rule)
+            tr!("workflow-rules-rule", rule)
         } else {
-            tr!("есть подходящие задания")
+            tr!("there-are-matching-jobs")
         };
         let mut all_uncertain = Vec::new();
         for item in result.jobs.iter().filter_map(|job| job.uncertain.clone()).chain(result.excluded.iter().filter_map(|job| job.uncertain.clone())) {
@@ -362,11 +362,11 @@ impl Gl<'_, '_> {
                 let mut item = draft!(
                     "scenario-empty",
                     Info,
-                    title = tr!("{0}: пайплайн не создастся", scenario.title),
+                    title = tr!("pipeline-wont-be-created", scenario.title),
                     when = scenario.title.clone(),
-                    how = if web { tr!("При нажатии «Run pipeline» GitLab ответит: «Pipeline will not run for the selected trigger. The rules configuration prevented any jobs from being added to the pipeline.»") } else { tr!("Пайплайн просто не появится.") },
+                    how = if web { tr!("on-run-pipeline-gitlab-will") } else { tr!("pipeline-just-wont-appear") },
                     why = format!("{}{}", result.reason, if result.jobs.is_empty() { "." } else { "" }),
-                    fix = if web { tr!("Если ручной запуск нужен — добавьте правило: - if: $CI_PIPELINE_SOURCE == \"web\"") } else { tr!("Проверьте rules заданий.") },
+                    fix = if web { tr!("if-manual-run-is-needed") } else { tr!("check-job-rules") },
                     file = self.main.clone(),
                     line = self.workflow_line(),
                     scenario = scenario.id.to_owned(),
@@ -377,7 +377,7 @@ impl Gl<'_, '_> {
                 self.cx.add(item);
             }
             if scenario.id == "mr" && result.default_only.as_ref().is_some_and(|list| !list.is_empty()) {
-                result.reason.push_str(&tr!(" (задания без rules попадают в пайплайн MR, только если его разрешает workflow:rules)"));
+                result.reason.push_str(&tr!("jobs-without-rules-get-into"));
             }
             return result;
         }
@@ -407,8 +407,8 @@ impl Gl<'_, '_> {
                 let excluded = result.excluded.iter().find(|item| item.name == target);
                 let message = format!("'{name}' job needs '{target}' job, but '{target}' does not exist in the pipeline. This might be because of the only, except, or rules keywords. To need a job that sometimes does not exist in the pipeline, use needs:optional.");
                 result.problems.push(message.clone());
-                let why = tr!("{0} попадает в пайплайн ({1}), а {2} — нет ({3}).", q(name), job.why, q(target), excluded.map_or_else(|| tr!("исключено"), |item| item.why.clone()));
-                let mut item = draft!("scenario-needs-missing", Error, title = tr!("{0}: {1} ждёт {2}, которого не будет", title, q(name), q(target)), when = title.clone(), how = tr!("GitLab не создаст пайплайн: «{0}»", message), why = why, fix = tr!("Сделайте условия {0} и {1} одинаковыми или добавьте optional: true:\nneeds:\n  - job: {2}\n    optional: true", q(name), q(target), target), scenario = id.clone());
+                let why = tr!("is-in-pipeline-and-isnt", q(name), job.why, q(target), excluded.map_or_else(|| tr!("excluded"), |item| item.why.clone()));
+                let mut item = draft!("scenario-needs-missing", Error, title = tr!("waits-for-which-wont-exist", title, q(name), q(target)), when = title.clone(), how = tr!("gitlab-wont-create-pipeline", message), why = why, fix = tr!("make-conditions-of-and-same", q(name), q(target), target), scenario = id.clone());
                 if job.uncertain.is_some() || excluded.is_some_and(|item| item.uncertain.is_some()) {
                     item.severity = crate::load::model::CiSeverity::Warning;
                 }
@@ -419,21 +419,21 @@ impl Gl<'_, '_> {
                     let Some(dep) = dep.as_str().filter(|dep| self.visible.iter().any(|item| item == dep) && !in_pipe.iter().any(|item| item == dep)) else { continue };
                     result.problems.push(format!("{name} job: undefined dependency: {dep}"));
                     let reason = result.excluded.iter().find(|item| item.name == dep).map_or_else(|| "—".to_owned(), |item| item.why.clone());
-                    self.job_issue(name, &kp!["dependencies"], draft!("scenario-dependency-missing", Error, title = tr!("{0}: {1} берёт артефакты у {2}, которого не будет", title, q(name), q(dep)), when = title.clone(), how = tr!("GitLab не создаст пайплайн: «{0} job: undefined dependency: {1}»", name, dep), why = tr!("{0} исключено в этом пайплайне ({1}).", q(dep), reason), fix = tr!("Согласуйте условия заданий или уберите зависимость."), scenario = id.clone()));
+                    self.job_issue(name, &kp!["dependencies"], draft!("scenario-dependency-missing", Error, title = tr!("takes-artifacts-from-which-wont", title, q(name), q(dep)), when = title.clone(), how = tr!("gitlab-wont-create-pipeline-job", name, dep), why = tr!("is-excluded-in-this-pipeline", q(dep), reason), fix = tr!("align-job-conditions-or-remove"), scenario = id.clone()));
                 }
             }
             if let Some(on_stop) = cfg.get("environment").filter(|env| matches!(env, Value::Map(_))).and_then(|env| env.get("on_stop")).filter(|value| value.truthy()) {
                 let stop = on_stop.js_string();
                 if self.visible.contains(&stop) && !in_pipe.contains(&stop) {
                     result.problems.push(format!("{name} job: on_stop job {stop} is not defined"));
-                    self.job_issue(name, &kp!["environment", "on_stop"], draft!("scenario-on-stop-missing", Error, title = tr!("{0}: задание остановки {1} не попадает в пайплайн", title, q(&stop)), when = title.clone(), how = tr!("GitLab не создаст пайплайн: «{0} job: on_stop job {1} is not defined»", name, stop), why = tr!("{0} есть в пайплайне, а {1} — нет.", q(name), q(&stop)), fix = tr!("Дайте {0} те же rules, что у {1} (с when: manual).", q(&stop), q(name)), scenario = id.clone()));
+                    self.job_issue(name, &kp!["environment", "on_stop"], draft!("scenario-on-stop-missing", Error, title = tr!("stop-job-isnt-in-pipeline", title, q(&stop)), when = title.clone(), how = tr!("gitlab-wont-create-pipeline-job-on", name, stop), why = tr!("is-in-pipeline-and-isnt-2", q(name), q(&stop)), fix = tr!("give-same-rules-as-with", q(&stop), q(name)), scenario = id.clone()));
                 }
             }
             if let Some(release @ Value::Map(_)) = cfg.get("release")
                 && re!(r"\$CI_COMMIT_TAG\b").test(&js_str(release.get("tag_name")))
                 && scenario.kind != "tag"
             {
-                self.job_issue(name, &kp!["release", "tag_name"], draft!("scenario-release-no-tag", Warning, title = tr!("{0}: {1} создаёт релиз без тега", title, q(name)), when = title.clone(), how = tr!("Задание упадёт: $CI_COMMIT_TAG пустой — «tag_name is missing» / «release tag name can't be blank»."), why = tr!("Задание с release: tag_name: $CI_COMMIT_TAG попадает в пайплайн без тега."), fix = "rules:\n  - if: $CI_COMMIT_TAG", scenario = id.clone()));
+                self.job_issue(name, &kp!["release", "tag_name"], draft!("scenario-release-no-tag", Warning, title = tr!("creates-release-without-tag", title, q(name)), when = title.clone(), how = tr!("job-will-fail-ci-commit"), why = tr!("job-with-release-tag-name"), fix = "rules:\n  - if: $CI_COMMIT_TAG", scenario = id.clone()));
             }
             if job.when.as_str() == Some("manual") && job.allow_failure == Value::Bool(false) {
                 let own_stage = self.stage_index(name);
@@ -446,8 +446,8 @@ impl Gl<'_, '_> {
                     .collect();
                 let has_rules = cfg.get("rules").is_some_and(Value::truthy);
                 let path = if has_rules { kp!["rules"] } else { kp!["when"] };
-                let tail = if later.is_empty() { String::new() } else { tr!("; задания {0} не стартуют до этого", later.join(", ")) };
-                self.job_issue(name, &path, draft!("manual-blocking", Info, title = tr!("{0} — ручное и блокирующее", q(name)), when = title.clone(), how = tr!("Пайплайн остановится в статусе «blocked» и будет ждать нажатия ▶{0}.", tail), why = if has_rules { tr!("У when: manual внутри rules allow_failure по умолчанию false (в отличие от when: manual у самого задания).") } else { tr!("allow_failure: false у ручного задания.") }, fix = tr!("Если ждать не нужно — добавьте allow_failure: true рядом с when: manual."), scenario = id.clone()));
+                let tail = if later.is_empty() { String::new() } else { tr!("jobs-wont-start-until-then", later.join(", ")) };
+                self.job_issue(name, &path, draft!("manual-blocking", Info, title = tr!("is-manual-and-blocking", q(name)), when = title.clone(), how = tr!("pipeline-will-stop-in-blocked", tail), why = if has_rules { tr!("for-when-manual-inside-rules") } else { tr!("allow-failure-false-on-manual") }, fix = tr!("if-no-waiting-is-needed"), scenario = id.clone()));
             }
         }
     }
@@ -487,8 +487,8 @@ impl Gl<'_, '_> {
         };
         let feature_slug = slug(feature);
         let list = vec![
-            Scenario { id: "push-default", title: tr!("Push в {0}", default), kind: "branch", name: default.clone(), vars: branch(&default, "push", &[]) },
-            Scenario { id: "push-branch", title: tr!("Push в {0}", feature), kind: "branch", name: feature.to_owned(), vars: branch(feature, "push", &[]) },
+            Scenario { id: "push-default", title: tr!("push-to", default), kind: "branch", name: default.clone(), vars: branch(&default, "push", &[]) },
+            Scenario { id: "push-branch", title: tr!("push-to", feature), kind: "branch", name: feature.to_owned(), vars: branch(feature, "push", &[]) },
             Scenario {
                 id: "mr",
                 title: format!("Merge request {feature} → {default}"),
@@ -511,15 +511,15 @@ impl Gl<'_, '_> {
             },
             Scenario {
                 id: "tag",
-                title: tr!("Тег v1.0.0"),
+                title: tr!("tag-v1-0-0"),
                 kind: "tag",
                 name: "v1.0.0".to_owned(),
                 vars: base(&[("CI_PIPELINE_SOURCE", "push"), ("CI_COMMIT_TAG", "v1.0.0"), ("CI_COMMIT_REF_NAME", "v1.0.0"), ("CI_COMMIT_REF_SLUG", "v1-0-0"), ("CI_COMMIT_REF_PROTECTED", "false"), ("CI_COMMIT_BEFORE_SHA", NO_SHA)]),
             },
-            Scenario { id: "schedule", title: tr!("Расписание ({0})", default), kind: "branch", name: default.clone(), vars: branch(&default, "schedule", &[]) },
-            Scenario { id: "web", title: tr!("Запуск вручную ({0})", default), kind: "branch", name: default.clone(), vars: branch(&default, "web", &[]) },
+            Scenario { id: "schedule", title: tr!("schedule", default), kind: "branch", name: default.clone(), vars: branch(&default, "schedule", &[]) },
+            Scenario { id: "web", title: tr!("manual-run", default), kind: "branch", name: default.clone(), vars: branch(&default, "web", &[]) },
         ];
-        let hidden = Scenario { id: "push-branch-mr", title: tr!("Push в {0} с открытым MR", feature), kind: "branch", name: feature.to_owned(), vars: branch(feature, "push", &[("CI_OPEN_MERGE_REQUESTS", "group/project!12")]) };
+        let hidden = Scenario { id: "push-branch-mr", title: tr!("push-to-with-open-mr", feature), kind: "branch", name: feature.to_owned(), vars: branch(feature, "push", &[("CI_OPEN_MERGE_REQUESTS", "group/project!12")]) };
 
         let global_vars: HashMap<String, Value> = match self.globals.get("variables") {
             Some(Value::Map(map)) => map
@@ -543,15 +543,15 @@ impl Gl<'_, '_> {
         let merge_request = find("mr").clone();
         if merge_request.created && !merge_request.jobs.is_empty() && open_mr.created && !open_mr.jobs.is_empty() {
             let (file, line) = if self.workflow.is_some() { let (file, line) = self.global_loc(&kp!["workflow"]); (file, line) } else { (self.main.clone(), Some(1)) };
-            self.cx.add(draft!("duplicate-pipelines", Warning, title = tr!("Двойные пайплайны: для ветки и для merge request"), when = tr!("При каждом push в ветку с открытым merge request"), how = tr!("Запустятся два пайплайна на один коммит: «branch» ({0} задан.) и «merge request» ({1} задан.) — раннеры заняты вдвое, статус MR может зависеть от любого из них.", open_mr.jobs.len(), merge_request.jobs.len()), why = tr!("Правила допускают и push-пайплайны для любой ветки, и пайплайны merge request, а условие «если MR уже открыт — не создавать пайплайн ветки» не задано."), fix = "workflow:\n  rules:\n    - if: $CI_PIPELINE_SOURCE == \"merge_request_event\"\n    - if: $CI_COMMIT_BRANCH && $CI_OPEN_MERGE_REQUESTS\n      when: never\n    - if: $CI_COMMIT_BRANCH", file = file, line = line));
+            self.cx.add(draft!("duplicate-pipelines", Warning, title = tr!("duplicate-pipelines-for-branch-and"), when = tr!("on-every-push-to-branch"), how = tr!("two-pipelines-will-run-for", open_mr.jobs.len(), merge_request.jobs.len()), why = tr!("rules-allow-both-push-pipelines"), fix = "workflow:\n  rules:\n    - if: $CI_PIPELINE_SOURCE == \"merge_request_event\"\n    - if: $CI_COMMIT_BRANCH && $CI_OPEN_MERGE_REQUESTS\n      when: never\n    - if: $CI_COMMIT_BRANCH", file = file, line = line));
         }
         if find("push-branch").created && !open_mr.created && !merge_request.created {
-            self.cx.add(draft!("mr-nothing-runs", Warning, title = tr!("При открытом merge request не запускается ничего"), when = tr!("При push в ветку, по которой открыт merge request"), how = tr!("Пайплайн ветки не создаётся ({0}), а пайплайн merge request пустой ({1}) — изменения уходят без проверок.", open_mr.reason, merge_request.reason), why = tr!("Правила запрещают пайплайн ветки при открытом MR, но задания не настроены для пайплайнов MR."), fix = tr!("Добавьте заданиям правило - if: $CI_PIPELINE_SOURCE == \"merge_request_event\" или разрешите MR в workflow:rules."), file = self.main.clone(), line = self.workflow_line()));
+            self.cx.add(draft!("mr-nothing-runs", Warning, title = tr!("nothing-runs-when-merge-request"), when = tr!("on-push-to-branch-with"), how = tr!("branch-pipeline-isnt-created-and", open_mr.reason, merge_request.reason), why = tr!("rules-forbid-branch-pipeline-when"), fix = tr!("add-rule-if-ci-pipeline"), file = self.main.clone(), line = self.workflow_line()));
         }
         let main_runs: Vec<&CiScenario> = out.iter().filter(|run| matches!(run.id.as_str(), "push-default" | "push-branch" | "mr" | "tag")).collect();
         if !self.visible.is_empty() && main_runs.iter().all(|run| !run.created) && !main_runs.iter().any(|run| run.uncertain.is_some()) {
             let why: Vec<String> = main_runs.iter().map(|run| format!("{}: {}", run.title, run.reason)).collect();
-            self.cx.add(draft!("pipeline-never", Warning, title = tr!("Пайплайн не создаётся ни при push, ни для MR, ни для тега"), when = tr!("При push, merge request и теге"), how = tr!("Ничего не будет запускаться — GitLab молча не создаст пайплайн."), why = why.join("; "), fix = tr!("Проверьте workflow:rules и rules заданий."), file = self.main.clone(), line = self.workflow_line()));
+            self.cx.add(draft!("pipeline-never", Warning, title = tr!("no-pipeline-is-created-on"), when = tr!("on-push-merge-request-and"), how = tr!("nothing-will-run-gitlab-will"), why = why.join("; "), fix = tr!("check-workflow-rules-and-job"), file = self.main.clone(), line = self.workflow_line()));
         }
         for name in self.visible.clone() {
             if out.iter().any(|run| run.jobs.iter().any(|job| job.name == name) || run.excluded.iter().any(|item| item.name == name && item.uncertain.is_some())) {
@@ -576,8 +576,8 @@ impl Gl<'_, '_> {
                 Vec::new()
             };
             let titles: Vec<&str> = out.iter().map(|run| run.title.as_str()).collect();
-            let why = out.iter().find_map(|run| run.excluded.iter().find(|item| item.name == name).map(|item| item.why.clone()).filter(|why| !why.is_empty())).unwrap_or_else(|| tr!("Условия rules/only не выполняются."));
-            self.job_issue(&name, &path, draft!("job-never-runs", Info, title = tr!("{0} не попадает ни в один типичный пайплайн", q(&name)), when = titles.join(", "), how = tr!("Задание не запустится при push, MR, теге, по расписанию и при ручном запуске."), why = why, fix = tr!("Если задание запускается через API/триггер или по особой переменной — всё в порядке; иначе проверьте условия.")));
+            let why = out.iter().find_map(|run| run.excluded.iter().find(|item| item.name == name).map(|item| item.why.clone()).filter(|why| !why.is_empty())).unwrap_or_else(|| tr!("rules-only-conditions-arent-met"));
+            self.job_issue(&name, &path, draft!("job-never-runs", Info, title = tr!("isnt-in-any-typical-pipeline", q(&name)), when = titles.join(", "), how = tr!("job-wont-run-on-push"), why = why, fix = tr!("if-job-runs-via-api")));
         }
         out
     }

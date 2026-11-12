@@ -158,34 +158,34 @@ export default function CommitForm({ repoPath, branch, stagedFiles, busy, onComm
   return (
     <div className="space-y-2 border-t border-gk-border p-3">
       <div className="flex items-center gap-1">
-        <div className="flex-1 text-[11px] font-semibold uppercase tracking-wider text-gk-muted">{tr('Коммит')}</div>
+        <div className="flex-1 text-[11px] font-semibold uppercase tracking-wider text-gk-muted">{tr('commit-4')}</div>
         <button
           onClick={(e) => {
             loadGitTemplate();
             setPop(pop?.kind === 'templates' ? null : { kind: 'templates', anchor: e.currentTarget });
           }}
-          title={tr('Шаблоны описания коммита')}
-          aria-label={tr('Шаблоны')}
+          title={tr('commit-message-templates')}
+          aria-label={tr('templates')}
           className={`flex items-center gap-1 rounded px-1.5 py-0.5 text-[11.5px] transition-colors hover:bg-gk-hover hover:text-gk-text ${
             pop?.kind === 'templates' ? 'bg-gk-hover text-gk-text' : 'text-gk-muted'
           }`}
         >
-          {tj('{0} Шаблоны', [<LayoutTemplate size={13} />])}</button>
-        <button onClick={onOpenSettings} title={tr('Настройки формы коммита')} className="rounded p-1 text-gk-dim hover:bg-gk-hover hover:text-gk-text">
+          {tj('templates-2', [<LayoutTemplate size={13} />])}</button>
+        <button onClick={onOpenSettings} title={tr('commit-form-settings')} className="rounded p-1 text-gk-dim hover:bg-gk-hover hover:text-gk-text">
           <Settings2 size={13} />
         </button>
       </div>
       {banner}
 
       {showChips && (
-        <div className="flex flex-wrap items-center gap-1" role="toolbar" aria-label={tr('Тип коммита')}>
+        <div className="flex flex-wrap items-center gap-1" role="toolbar" aria-label={tr('commit-type')}>
           {prefs.chips &&
             CC_TYPES.map((t) => (
               <Chip
                 key={t.id}
                 color={readable(t.color)}
                 active={parts.type === t.id}
-                title={`${t.id}: ${t.hint}${parts.type === t.id ? tr(' — клик уберёт') : ''}`}
+                title={`${t.id}: ${t.hint}${parts.type === t.id ? tr('click-to-remove') : ''}`}
                 onClick={() => applySummary(toggleType(summary, t.id, ctx))}
               >
                 {t.id}
@@ -196,7 +196,7 @@ export default function CommitForm({ repoPath, branch, stagedFiles, busy, onComm
               <button
                 disabled={!parts.type}
                 onClick={(e) => setPop(pop?.kind === 'scope' ? null : { kind: 'scope', anchor: e.currentTarget })}
-                title={parts.type ? tr('Scope — область изменений: feat(api): …') : tr('Сначала выберите тип коммита')}
+                title={parts.type ? tr('scope-area-of-changes-feat') : tr('choose-commit-type-first')}
                 className={`h-[22px] rounded-md px-1.5 font-mono text-[11px] ring-1 transition-colors disabled:opacity-35 ${
                   parts.scope && parts.scope !== ticket
                     ? 'bg-gk-fg/[0.06] text-gk-text ring-gk-fg/20'
@@ -208,7 +208,7 @@ export default function CommitForm({ repoPath, branch, stagedFiles, busy, onComm
               {parts.type && (
                 <button
                   onClick={() => applySummary(toggleBreaking(summary, ctx))}
-                  title={tr('Несовместимое изменение (BREAKING CHANGE): feat!: …')}
+                  title={tr('breaking-change-breaking-change-feat')}
                   className={`h-[22px] w-[22px] rounded-md font-mono text-[11px] font-bold ring-1 transition-colors ${
                     parts.breaking ? 'bg-gk-red/15 text-gk-red ring-gk-red/40' : 'text-gk-dim ring-gk-border hover:text-gk-red'
                   }`}
@@ -225,7 +225,7 @@ export default function CommitForm({ repoPath, branch, stagedFiles, busy, onComm
                   const res = toggleTicket(summary, description, ticket, prefs.ticketFormat);
                   applySummary(res);
                 }}
-                title={ticketOn ? tr('Убрать {0} из сообщения', ticket) : tr('Добавить номер задачи из ветки {0}', branch)}
+                title={ticketOn ? tr('remove-from-message', ticket) : tr('add-issue-number-from-branch', branch)}
                 className={`flex h-[22px] items-center gap-1 rounded-l-md border pl-1.5 pr-1 font-mono text-[11px] transition-colors ${
                   ticketOn ? 'border-gk-blue/40 bg-gk-blue/15 text-gk-blue' : 'border-dashed border-gk-fg/20 text-gk-muted hover:border-gk-blue/50 hover:text-gk-blue'
                 }`}
@@ -235,8 +235,8 @@ export default function CommitForm({ repoPath, branch, stagedFiles, busy, onComm
               </button>
               <button
                 onClick={(e) => setPop(pop?.kind === 'ticket' ? null : { kind: 'ticket', anchor: e.currentTarget })}
-                title={tr('Как добавлять номер задачи')}
-                aria-label={tr('Формат номера задачи')}
+                title={tr('how-to-add-issue-number')}
+                aria-label={tr('issue-number-format')}
                 className={`flex h-[22px] items-center rounded-r-md border border-l-0 px-0.5 transition-colors ${
                   ticketOn ? 'border-gk-blue/40 text-gk-blue hover:bg-gk-blue/10' : 'border-gk-fg/20 text-gk-dim hover:text-gk-text'
                 }`}
@@ -266,13 +266,13 @@ export default function CommitForm({ repoPath, branch, stagedFiles, busy, onComm
             });
           }}
           maxLength={200}
-          placeholder={parts.type ? tr('Кратко: что сделано') : tr('Заголовок коммита')}
-          aria-label={tr('Заголовок коммита')}
+          placeholder={parts.type ? tr('summary-what-was-done') : tr('commit-title')}
+          aria-label={tr('commit-title')}
           className={`${inputCls} pr-10`}
         />
         {len > 0 && (
           <span
-            title={tr('Git советует укладывать заголовок в 50 символов, максимум — 72')}
+            title={tr('git-recommends-keeping-title-within')}
             className={`pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 font-mono text-[10.5px] ${
               len > 72 ? 'text-gk-red' : len > 50 ? 'text-gk-yellow' : 'text-gk-dim'
             }`}
@@ -287,8 +287,8 @@ export default function CommitForm({ repoPath, branch, stagedFiles, busy, onComm
         onChange={(e) => setDraft((d) => ({ ...d, description: e.target.value }))}
         onKeyDown={(e) => e.key === 'Enter' && isMod(e) && submit()}
         rows={description.split('\n').length > 3 ? 6 : 3}
-        placeholder={gitTpl?.hint && prefs.useGitTemplate ? gitTpl.hint : tr('Описание')}
-        aria-label={tr('Описание')}
+        placeholder={gitTpl?.hint && prefs.useGitTemplate ? gitTpl.hint : tr('description')}
+        aria-label={tr('description')}
         className={`${inputCls} resize-y`}
       />
       <div className="flex items-center">
@@ -296,12 +296,12 @@ export default function CommitForm({ repoPath, branch, stagedFiles, busy, onComm
           onClick={toggleSkipCi}
           aria-pressed={skipCi}
           data-testid="skip-ci"
-          data-tip={skipCi ? tr('В сообщении есть [skip ci] — пайплайн для этого коммита не запустится. Клик — убрать') : tr('Добавить [skip ci]: коммит не запустит пайплайн CI/CD (GitLab, GitHub, Gitea, Bitbucket)')}
+          data-tip={skipCi ? tr('message-contains-skip-ci-pipeline') : tr('add-skip-ci-commit-wont')}
           className={`flex h-[22px] items-center gap-1 rounded-md px-1.5 text-[11px] ring-1 transition-colors ${
             skipCi ? 'bg-gk-yellow/15 text-gk-yellow ring-gk-yellow/40' : 'text-gk-dim ring-gk-border hover:text-gk-text'
           }`}
         >
-          {tj('{0} Пропустить CI <1>[skip ci]</1>', [<CircleSlash size={11} />, <span className="font-mono" />])}
+          {tj('skip-ci-skip-ci', [<CircleSlash size={11} />, <span className="font-mono" />])}
         </button>
       </div>
       <button
@@ -311,10 +311,10 @@ export default function CommitForm({ repoPath, branch, stagedFiles, busy, onComm
         className="w-full rounded py-2 text-[13px] font-semibold transition-colors enabled:bg-gk-green enabled:text-gk-ink enabled:shadow-lg enabled:shadow-gk-green/20 enabled:hover:brightness-110 disabled:bg-gk-hover disabled:text-gk-dim"
       >
         {stagedFiles.length === 0
-          ? tr('Добавьте файлы в индекс, чтобы закоммитить')
+          ? tr('stage-files-to-commit')
           : !subject
-            ? tr('Введите сообщение коммита')
-            : tr('Закоммитить {0} {1}', stagedFiles.length, plural(stagedFiles.length, tr('файл'), tr('файла'), tr('файлов')))}
+            ? tr('enter-commit-message')
+            : tr('commit-5', stagedFiles.length, plural(stagedFiles.length, tr('file'), tr('files-2'), tr('files')))}
       </button>
 
       {pop?.kind === 'scope' && (
@@ -446,7 +446,7 @@ function ScopePicker({ value, suggestions, onPick }: { value: string; suggestion
   const [text, setText] = useState(value);
   return (
     <div className="pb-2">
-      <PopTitle>{tr('Scope — что затронуто')}</PopTitle>
+      <PopTitle>{tr('scope-whats-affected')}</PopTitle>
       <div className="px-3">
         <input
           autoFocus
@@ -459,7 +459,7 @@ function ScopePicker({ value, suggestions, onPick }: { value: string; suggestion
       </div>
       {suggestions.length > 0 && (
         <>
-          <div className="px-3 pb-1 pt-2 text-[10.5px] text-gk-dim">{tr('По папкам staged-файлов')}</div>
+          <div className="px-3 pb-1 pt-2 text-[10.5px] text-gk-dim">{tr('by-staged-files-folders')}</div>
           <div className="flex flex-wrap gap-1 px-3">
             {suggestions.map((s) => (
               <button
@@ -477,10 +477,10 @@ function ScopePicker({ value, suggestions, onPick }: { value: string; suggestion
       )}
       <div className="mt-2 flex items-center gap-1 border-t border-gk-border px-3 pt-2">
         <button onClick={() => onPick(text)} className="rounded-md bg-gk-blue/15 px-2 py-1 text-[12px] font-medium text-gk-blue hover:bg-gk-blue/25">
-          {tr('Применить')}</button>
+          {tr('apply')}</button>
         {value && (
           <button onClick={() => onPick('')} className="rounded-md px-2 py-1 text-[12px] text-gk-muted hover:bg-gk-hover hover:text-gk-text">
-            {tr('Убрать scope')}</button>
+            {tr('remove-scope')}</button>
         )}
         <span className="ml-auto text-[10.5px] text-gk-dim">Enter</span>
       </div>
@@ -502,10 +502,10 @@ function TicketOptions({ ticket, branch, prefs, onFormat, onOpenSettings }: Tick
   return (
     <div className="pb-2">
       <PopTitle>
-        {tj('Номер задачи <0>{1}</0>', [<span className="font-mono normal-case tracking-normal text-gk-blue" />, ticket])}
+        {tj('issue-number', [<span className="font-mono normal-case tracking-normal text-gk-blue" />, ticket])}
       </PopTitle>
       <div className="px-3 pb-1.5 text-[11px] leading-snug text-gk-dim">
-        {tj('Найден в имени ветки <0>{1}</0>', [<span className="font-mono text-gk-muted" />, branch])}
+        {tj('found-in-branch-name', [<span className="font-mono text-gk-muted" />, branch])}
       </div>
       {TICKET_FORMATS.map((f) => (
         <button
@@ -521,10 +521,10 @@ function TicketOptions({ ticket, branch, prefs, onFormat, onOpenSettings }: Tick
         </button>
       ))}
       <label className="mt-1 flex cursor-pointer items-center gap-2 border-t border-gk-border px-3 pt-2">
-        {tj('{0}<1>Автоматически добавлять номер задачи</1>', [<Switch small checked={prefs.ticketAuto} onChange={(v) => setCommitPrefs({ ticketAuto: v })} />, <span className="text-gk-text" />])}
+        {tj('add-issue-number-automatically', [<Switch small checked={prefs.ticketAuto} onChange={(v) => setCommitPrefs({ ticketAuto: v })} />, <span className="text-gk-text" />])}
       </label>
       <button onClick={onOpenSettings} className="mt-1.5 px-3 text-[11px] text-gk-dim hover:text-gk-text">
-        {tr('Своё правило распознавания — в настройках →')}</button>
+        {tr('your-own-recognition-rule-in')}</button>
     </div>
   );
 }
@@ -556,7 +556,7 @@ function TemplatesMenu({ prefs, gitTpl, ticket, description, onInsert }: Templat
     <div className="pb-1.5">
       {gitTpl && (
         <>
-          <PopTitle>{tr('Из git config')}</PopTitle>
+          <PopTitle>{tr('from-git-config')}</PopTitle>
           {gitTpl.error ? (
             <div className="flex items-start gap-1.5 px-3 pb-1.5 text-[11.5px] leading-snug text-gk-yellow">
               <AlertTriangle size={12} className="mt-0.5 shrink-0" /> {gitTpl.error}
@@ -581,28 +581,28 @@ function TemplatesMenu({ prefs, gitTpl, ticket, description, onInsert }: Templat
         right={
           <button
             onClick={() => setEdit({ name: '', body: '' })}
-            title={tr('Новый шаблон')}
+            title={tr('new-template')}
             className="flex items-center gap-0.5 rounded px-1 normal-case tracking-normal text-gk-muted hover:bg-gk-hover hover:text-gk-text"
           >
-            {tj('{0} новый', [<Plus size={11} />])}</button>
+            {tj('new-2', [<Plus size={11} />])}</button>
         }
       >
-        {tr('Мои шаблоны')}</PopTitle>
-      {prefs.templates.length === 0 && <div className="px-3 pb-1 text-[11.5px] text-gk-dim">{tr('Пока пусто — сохраните описание как шаблон.')}</div>}
+        {tr('my-templates')}</PopTitle>
+      {prefs.templates.length === 0 && <div className="px-3 pb-1 text-[11.5px] text-gk-dim">{tr('empty-for-now-save-description')}</div>}
       <div className="max-h-64 overflow-y-auto">
         {prefs.templates.map((t) => (
           <div key={t.id} className="group flex items-center hover:bg-gk-hover">
             <button onClick={() => onInsert(t.body)} title={t.body} className="min-w-0 flex-1 px-3 py-1.5 text-left">
-              <span className="block truncate text-gk-text">{t.name || tr('Без названия')}</span>
+              <span className="block truncate text-gk-text">{t.name || tr('untitled')}</span>
               <span className="block truncate text-[10.5px] text-gk-dim">{t.body.replace(/\s*\n\s*/g, ' · ')}</span>
             </button>
             <span className="flex shrink-0 gap-0.5 pr-2 opacity-0 transition-opacity group-hover:opacity-100">
-              <button onClick={() => setEdit(t)} title={tr('Изменить')} className="rounded p-1 text-gk-muted hover:bg-gk-fg/10 hover:text-gk-text">
+              <button onClick={() => setEdit(t)} title={tr('edit-2')} className="rounded p-1 text-gk-muted hover:bg-gk-fg/10 hover:text-gk-text">
                 <Pencil size={12} />
               </button>
               <button
                 onClick={() => setCommitPrefs({ templates: prefs.templates.filter((x) => x.id !== t.id) })}
-                title={tr('Удалить')}
+                title={tr('delete-2')}
                 className="rounded p-1 text-gk-muted hover:bg-gk-red/15 hover:text-gk-red"
               >
                 <Trash2 size={12} />
@@ -619,12 +619,12 @@ function TemplatesMenu({ prefs, gitTpl, ticket, description, onInsert }: Templat
             const body = ticket ? current.split(ticket).join('{ticket}') : current;
             setEdit({ name: current.split('\n')[0].slice(0, 40), body });
           }}
-          title={current ? tr('Сохранить то, что сейчас в описании') : tr('Сначала напишите описание')}
+          title={current ? tr('save-whats-currently-in-description') : tr('write-description-first')}
           className="flex w-full items-center gap-2 rounded px-1.5 py-1 text-left text-gk-muted hover:bg-gk-hover hover:text-gk-text disabled:opacity-40 disabled:hover:bg-transparent"
         >
-          {tj('{0} Сохранить текущее описание как шаблон', [<Save size={13} />])}</button>
+          {tj('save-current-description-as-template', [<Save size={13} />])}</button>
         <div className="px-1.5 pb-0.5 pt-1 text-[10.5px] leading-snug text-gk-dim">
-          {tj('<0>{ticket}</0> и <1>{branch}</1> подставятся при вставке', [<span className="font-mono" />, <span className="font-mono" />])}</div>
+          {tj('ticket-and-branch-are-substituted', [<span className="font-mono" />, <span className="font-mono" />])}</div>
       </div>
     </div>
   );
@@ -636,12 +636,12 @@ function TemplateEditor({ value, onSave, onCancel, inline }: { value: TemplateDr
   const ok = name.trim() && body.trim();
   return (
     <div className={inline ? 'space-y-1.5' : 'space-y-1.5 p-3'}>
-      {!inline && <div className="text-[10px] font-semibold uppercase tracking-wider text-gk-dim">{value.id ? tr('Изменить шаблон') : tr('Новый шаблон')}</div>}
+      {!inline && <div className="text-[10px] font-semibold uppercase tracking-wider text-gk-dim">{value.id ? tr('edit-template') : tr('new-template')}</div>}
       <input
         autoFocus
         value={name}
         onChange={(e) => setName(e.target.value)}
-        placeholder={tr('Название')}
+        placeholder={tr('name-2')}
         maxLength={80}
         className="w-full rounded-md bg-gk-bg px-2 py-1 text-[12.5px] text-gk-text outline-none ring-1 ring-gk-border placeholder:text-gk-dim focus:ring-gk-blue"
       />
@@ -650,7 +650,7 @@ function TemplateEditor({ value, onSave, onCancel, inline }: { value: TemplateDr
         onChange={(e) => setBody(e.target.value)}
         onKeyDown={(e) => e.key === 'Enter' && isMod(e) && ok && onSave({ ...value, name: name.trim(), body })}
         rows={6}
-        placeholder={tr('Что сделано:\n- \n\nКак проверить:\n\nЗадача: {ticket}')}
+        placeholder={tr('what-was-done-how-to')}
         className="w-full resize-y rounded-md bg-gk-bg px-2 py-1 font-mono text-[12px] leading-relaxed text-gk-text outline-none ring-1 ring-gk-border placeholder:text-gk-dim focus:ring-gk-blue"
       />
       <div className="flex items-center gap-1">
@@ -659,9 +659,9 @@ function TemplateEditor({ value, onSave, onCancel, inline }: { value: TemplateDr
           onClick={() => onSave({ ...value, name: name.trim(), body })}
           className="rounded-md bg-gk-green/15 px-2 py-1 text-[12px] font-medium text-gk-green hover:bg-gk-green/25 disabled:opacity-40"
         >
-          {tr('Сохранить')}</button>
+          {tr('save')}</button>
         <button onClick={onCancel} className="rounded-md px-2 py-1 text-[12px] text-gk-muted hover:bg-gk-hover hover:text-gk-text">
-          {tr('Отмена')}</button>
+          {tr('cancel')}</button>
         <span className="ml-auto text-[10.5px] text-gk-dim">{'{ticket} {branch}'}</span>
       </div>
     </div>
@@ -705,19 +705,19 @@ export function CommitSettings({ repoPath, branch }: { repoPath?: string | null;
       <section className="space-y-3">
         <H3>Conventional Commits</H3>
         <label className="flex cursor-pointer items-start gap-3">
-          {tj('{0}<1><2>Панель типов над заголовком коммита</2>{3}</1>', [<Switch checked={prefs.chips} onChange={(v) => setCommitPrefs({ chips: v })} />, <span />, <span className="block font-medium text-gk-text" />, <span className="mt-0.5 block leading-relaxed text-gk-muted">
-              {tj('Чипсы {0} {1} {2} и др. ставят префикс в начало заголовка, повторный клик убирает его. Рядом — {3} с подсказками по папкам staged-файлов и {4} для несовместимых изменений.', [<Mono>feat</Mono>, <Mono>fix</Mono>, <Mono>refactor</Mono>, <Mono>(scope)</Mono>, <Mono>!</Mono>])}</span>])}
+          {tj('type-bar-above-commit-title', [<Switch checked={prefs.chips} onChange={(v) => setCommitPrefs({ chips: v })} />, <span />, <span className="block font-medium text-gk-text" />, <span className="mt-0.5 block leading-relaxed text-gk-muted">
+              {tj('chips-etc-put-prefix-at', [<Mono>feat</Mono>, <Mono>fix</Mono>, <Mono>refactor</Mono>, <Mono>(scope)</Mono>, <Mono>!</Mono>])}</span>])}
         </label>
       </section>
 
       <section className="space-y-3">
-        <H3>{tr('Номер задачи из имени ветки')}</H3>
+        <H3>{tr('issue-number-from-branch-name')}</H3>
         <label className="flex cursor-pointer items-start gap-3">
-          {tj('{0}<1><2>Автоматически добавлять номер задачи</2>{3}</1>', [<Switch checked={prefs.ticketAuto} onChange={(v) => setCommitPrefs({ ticketAuto: v })} />, <span />, <span className="block font-medium text-gk-text" />, <span className="mt-0.5 block leading-relaxed text-gk-muted">
-              {tj('Если в имени ветки есть номер ({0}, {1}, {2}), он сразу появится в новом сообщении. Выключено — номер добавляется кликом по кнопке {3}.', [<Mono>feature/PROJ-123-…</Mono>, <Mono>bugfix/1234-…</Mono>, <Mono>issue-42</Mono>, <Mono>+ [PROJ-123]</Mono>])}</span>])}
+          {tj('add-issue-number-automatically-2', [<Switch checked={prefs.ticketAuto} onChange={(v) => setCommitPrefs({ ticketAuto: v })} />, <span />, <span className="block font-medium text-gk-text" />, <span className="mt-0.5 block leading-relaxed text-gk-muted">
+              {tj('if-branch-name-has-number', [<Mono>feature/PROJ-123-…</Mono>, <Mono>bugfix/1234-…</Mono>, <Mono>issue-42</Mono>, <Mono>+ [PROJ-123]</Mono>])}</span>])}
         </label>
         <div className="ml-11 space-y-1">
-          <div className="text-[11.5px] text-gk-muted">{tr('Куда ставить')}</div>
+          <div className="text-[11.5px] text-gk-muted">{tr('where-to-put-it')}</div>
           {TICKET_FORMATS.map((f) => (
             <label key={f.id} className="flex cursor-pointer items-center gap-2 py-0.5">
               <input type="radio" name="ticketFormat" checked={prefs.ticketFormat === f.id} onChange={() => setCommitPrefs({ ticketFormat: f.id })} className="accent-[var(--color-gk-blue)]" />
@@ -728,17 +728,17 @@ export function CommitSettings({ repoPath, branch }: { repoPath?: string | null;
         </div>
         <div className="ml-11 space-y-1.5 rounded-lg border border-gk-border bg-gk-fg/[0.02] p-3">
           <div className="text-[11.5px] text-gk-muted">
-            {tr('Своё правило — регулярное выражение, номер берётся из первой группы. Пусто — встроенное распознавание.')}</div>
+            {tr('your-own-rule-regular-expression')}</div>
           <input
             value={prefs.ticketPattern}
             onChange={(e) => setCommitPrefs({ ticketPattern: e.target.value })}
-            placeholder={tr('например: (TASK-\\d+)  или  /(\\d+)-')}
+            placeholder={tr('for-example-task-d-or')}
             spellCheck={false}
             className={`w-full rounded-md bg-gk-bg px-2 py-1 font-mono text-[12px] text-gk-text outline-none ring-1 placeholder:text-gk-dim focus:ring-gk-blue ${patternError ? 'ring-gk-red/60' : 'ring-gk-border'}`}
           />
-          {patternError && <div className="text-[11px] text-gk-red">{tr('Ошибка в выражении — используется встроенное распознавание')}</div>}
+          {patternError && <div className="text-[11px] text-gk-red">{tr('error-in-expression-built-in')}</div>}
           <div className="flex items-center gap-2">
-            {tj('<0>Проверить на ветке</0>{1}<2>{3}</2>', [<span className="shrink-0 text-[11.5px] text-gk-dim" />, <input
+            {tj('test-on-branch', [<span className="shrink-0 text-[11.5px] text-gk-dim" />, <input
               value={testBranch}
               onChange={(e) => setTestBranch(e.target.value)}
               spellCheck={false}
@@ -749,45 +749,45 @@ export function CommitSettings({ repoPath, branch }: { repoPath?: string | null;
                   {found}
                 </>
               ) : (
-                tr('не найдено')
+                tr('not-found-3')
               )])}
           </div>
         </div>
       </section>
 
       <section className="space-y-3">
-        <H3>{tr('Шаблоны описания')}</H3>
+        <H3>{tr('description-templates')}</H3>
         <label className="flex cursor-pointer items-start gap-3">
-          {tj('{0}<1><2>Брать шаблон из git config (commit.template)</2>{3}<4>{5}</4></1>', [<Switch checked={prefs.useGitTemplate} onChange={(v) => setCommitPrefs({ useGitTemplate: v })} />, <span />, <span className="block font-medium text-gk-text" />, <span className="mt-0.5 block leading-relaxed text-gk-muted">
-              {tj('Как в обычном {0}: текст шаблона предзаполняет описание, строки с {1} становятся подсказкой.', [<Mono>git commit</Mono>, <Mono>#</Mono>])}</span>, <span className="mt-1 block text-[11.5px]" />, gitTpl === undefined ? (
-                <span className="text-gk-dim">{tr('Проверяем…')}</span>
+          {tj('take-template-from-git-config', [<Switch checked={prefs.useGitTemplate} onChange={(v) => setCommitPrefs({ useGitTemplate: v })} />, <span />, <span className="block font-medium text-gk-text" />, <span className="mt-0.5 block leading-relaxed text-gk-muted">
+              {tj('as-in-regular-template-text', [<Mono>git commit</Mono>, <Mono>#</Mono>])}</span>, <span className="mt-1 block text-[11.5px]" />, gitTpl === undefined ? (
+                <span className="text-gk-dim">{tr('checking')}</span>
               ) : !repoPath ? (
-                <span className="text-gk-dim">{tr('Откройте репозиторий, чтобы увидеть его шаблон.')}</span>
+                <span className="text-gk-dim">{tr('open-repository-to-see-its')}</span>
               ) : gitTpl?.error ? (
                 <span className="text-gk-yellow">{gitTpl.error}</span>
               ) : gitTpl ? (
                 <span className="text-gk-green">
-                  {tj('В этом репозитории: <0>{1}</0>', [<span className="font-mono" />, gitTpl.path])}
+                  {tj('in-this-repository', [<span className="font-mono" />, gitTpl.path])}
                 </span>
               ) : (
                 <span className="text-gk-dim">
-                  {tj('В этом репозитории не задан. Задать: {0}', [<Mono>git config commit.template .gitmessage</Mono>])}
+                  {tj('not-set-in-this-repository', [<Mono>git config commit.template .gitmessage</Mono>])}
                 </span>
               )])}
         </label>
 
         <div className="space-y-1.5">
           <div className="flex items-center">
-            {tj('<0>Мои шаблоны — вставляются кнопкой «Шаблоны» над формой коммита</0>{1}{2}', [<span className="flex-1 text-[11.5px] text-gk-muted" />, <button
+            {tj('my-templates-inserted-with-templates', [<span className="flex-1 text-[11.5px] text-gk-muted" />, <button
               onClick={() => setCommitPrefs({ templates: BUILTIN_TEMPLATES })}
-              title={tr('Вернуть стандартные шаблоны (свои будут удалены)')}
+              title={tr('restore-default-templates-yours-will')}
               className="mr-1 flex items-center gap-1 rounded px-1.5 py-0.5 text-[11.5px] text-gk-dim hover:bg-gk-hover hover:text-gk-text"
             >
-              {tj('{0} По умолчанию', [<RotateCcw size={11} />])}</button>, <button
+              {tj('default-3', [<RotateCcw size={11} />])}</button>, <button
               onClick={() => setEdit({ name: '', body: '' })}
               className="flex items-center gap-1 rounded bg-gk-hover px-1.5 py-0.5 text-[11.5px] text-gk-text hover:bg-gk-fg/10"
             >
-              {tj('{0} Новый', [<Plus size={11} />])}</button>])}
+              {tj('new-3', [<Plus size={11} />])}</button>])}
           </div>
           {edit && !edit.id && (
             <div className="rounded-lg border border-gk-blue/30 bg-gk-fg/[0.02] p-2.5">
@@ -805,12 +805,12 @@ export function CommitSettings({ repoPath, branch }: { repoPath?: string | null;
                   <div className="font-medium text-gk-text">{t.name}</div>
                   <pre className="mt-0.5 max-h-20 overflow-hidden whitespace-pre-wrap font-mono text-[11px] leading-snug text-gk-dim">{t.body}</pre>
                 </div>
-                <button onClick={() => setEdit(t)} title={tr('Изменить')} className="rounded p-1 text-gk-muted hover:bg-gk-hover hover:text-gk-text">
+                <button onClick={() => setEdit(t)} title={tr('edit-2')} className="rounded p-1 text-gk-muted hover:bg-gk-hover hover:text-gk-text">
                   <Pencil size={12} />
                 </button>
                 <button
                   onClick={() => setCommitPrefs({ templates: prefs.templates.filter((x) => x.id !== t.id) })}
-                  title={tr('Удалить')}
+                  title={tr('delete-2')}
                   className="rounded p-1 text-gk-muted hover:bg-gk-red/15 hover:text-gk-red"
                 >
                   <Trash2 size={12} />
@@ -826,7 +826,7 @@ export function CommitSettings({ repoPath, branch }: { repoPath?: string | null;
           onClick={() => setCommitPrefs({ ...DEFAULT_COMMIT_PREFS, templates: prefs.templates })}
           className="flex items-center gap-1 rounded px-2 py-1 text-[11.5px] text-gk-dim hover:bg-gk-hover hover:text-gk-text"
         >
-          {tj('{0} Сбросить настройки (шаблоны останутся)', [<X size={11} />])}</button>
+          {tj('reset-settings-templates-stay', [<X size={11} />])}</button>
       </div>
     </div>
   );

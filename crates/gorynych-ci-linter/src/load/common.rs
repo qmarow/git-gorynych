@@ -61,7 +61,7 @@ impl Ctx<'_> {
         let size = fs::metadata(&full).map_err(io_error)?.len();
         if size > MAX_FILE_SIZE {
             let kilobytes = (size as f64 / 1024.0).round();
-            return Err(GorynychError::new(ErrorCode::TooLarge, self.t("Файл {0} слишком большой ({1} КБ)", &[&rel, &kilobytes])));
+            return Err(GorynychError::new(ErrorCode::TooLarge, self.t("file-is-too-large-kb", &[&rel, &kilobytes])));
         }
         let bytes = fs::read(&full).map_err(io_error)?;
         let text = String::from_utf8_lossy(&bytes);
@@ -216,25 +216,25 @@ pub(crate) fn rule_text(ctx: &Ctx<'_>, rule: &Value) -> CiRule {
     }
     let mut parts = Vec::new();
     if let Some(condition) = truthy(rule.get("if")) {
-        parts.push(ctx.t("если {0}", &[&Ctx::arg(condition)]));
+        parts.push(ctx.t("if", &[&Ctx::arg(condition)]));
     }
     if let Some(changes) = truthy(rule.get("changes")) {
         let list = if is_map(Some(changes)) { joined(changes.get("paths"), ", ") } else { joined(Some(changes), ", ") };
-        parts.push(ctx.t("изменены {0}", &[&list]));
+        parts.push(ctx.t("changed", &[&list]));
     }
     if let Some(exists) = truthy(rule.get("exists")) {
         let list = if is_map(Some(exists)) { joined(exists.get("paths"), ", ") } else { joined(Some(exists), ", ") };
-        parts.push(ctx.t("существует {0}", &[&list]));
+        parts.push(ctx.t("exists", &[&list]));
     }
     if parts.is_empty() {
-        parts.push(ctx.t("во всех остальных случаях", &[]));
+        parts.push(ctx.t("in-all-other-cases", &[]));
     }
     let variables = match rule.get("variables") {
         Some(Value::Map(map)) => map.keys().cloned().collect(),
         _ => Vec::new(),
     };
     CiRule {
-        text: parts.join(&ctx.t(" и ", &[])),
+        text: parts.join(&ctx.t("and", &[])),
         when: Some(non_null(rule.get("when")).cloned().unwrap_or_else(|| Value::String("on_success".to_owned()))),
         allow_failure: non_null(rule.get("allow_failure")).cloned(),
         variables: Some(variables),
@@ -294,7 +294,7 @@ pub(crate) fn levelize(ctx: &Ctx<'_>, jobs: Vec<CiJob>) -> Vec<CiStage> {
         .enumerate()
         .filter(|(_, jobs)| !jobs.is_empty())
         .map(|(index, jobs)| {
-            let name = if index == 0 { ctx.t("Старт", &[]) } else { ctx.t("После шага {0}", &[&index]) };
+            let name = if index == 0 { ctx.t("start", &[]) } else { ctx.t("after-step", &[&index]) };
             CiStage::new(name, jobs)
         })
         .collect()

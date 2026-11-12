@@ -67,9 +67,9 @@ interface ToolbarProps {
 }
 
 export const PULL_MODES = [
-  { id: 'merge', label: t('Pull — перемотать, иначе слить (merge)') },
-  { id: 'ff-only', label: t('Pull — только перемотка (fast-forward)') },
-  { id: 'rebase', label: t('Pull — перебазировать (rebase)') },
+  { id: 'merge', label: t('pull-fast-forward-otherwise-merge') },
+  { id: 'ff-only', label: t('pull-fast-forward-only') },
+  { id: 'rebase', label: t('pull-rebase') },
 ];
 
 export default function Toolbar({
@@ -113,25 +113,25 @@ export default function Toolbar({
       : '—';
 
   const pullTitle = !hasRemote
-    ? t('Нет remote')
+    ? t('no-remote')
     : !onBranchHead
-      ? t('Нужна активная ветка')
-      : `${PULL_MODES.find((m) => m.id === pullMode)?.label}${current?.upstream ? t(' из {0}', current.upstream) : ''}`;
+      ? t('active-branch-is-required')
+      : `${PULL_MODES.find((m) => m.id === pullMode)?.label}${current?.upstream ? t('from-6', current.upstream) : ''}`;
   const pushTitle = !hasRemote
-    ? t('Нет remote')
+    ? t('no-remote')
     : !onBranchHead
-      ? t('Нужна активная ветка')
+      ? t('active-branch-is-required')
       : current?.upstream
-        ? t('Push в {0}', current.upstream)
-        : t('Push — опубликовать ветку и установить upstream');
+        ? t('push-to', current.upstream)
+        : t('push-publish-branch-and-set');
 
   return (
     <div className="glass relative z-20 flex h-14 shrink-0 items-center border-b border-gk-border bg-gk-panel px-3">
       <div className="flex min-w-0 items-center gap-1">
         <Selector
-          label={t('репозиторий')}
+          label={t('repository-2')}
           value={repo.name}
-          data-tip={t('{0}\nКлик — открыть другой репозиторий, правый клик — открыть папку или терминал', repo.path)}
+          data-tip={t('click-open-another-repository-right', repo.path)}
           icon={FolderGit2}
           onClick={onOpenRepository}
           onContextMenu={(e) => {
@@ -143,7 +143,7 @@ export default function Toolbar({
         <span className="text-gk-dim">/</span>
         <BranchSelector
           repo={repo}
-          label={repo.detached ? 'detached HEAD' : t('ветка')}
+          label={repo.detached ? 'detached HEAD' : t('branch-5')}
           value={branchLabel}
           disabled={busy}
           onCheckout={onCheckout}
@@ -156,16 +156,16 @@ export default function Toolbar({
       <div className="flex flex-1 items-center justify-center gap-1">
         <ActionButton
           icon={Undo2}
-          label={t('Отменить')}
-          title={repo.history?.undo ? t('Отменить: {0}', repo.history.undo) : t('Нечего отменять')}
+          label={t('undo-2')}
+          title={repo.history?.undo ? t('undo', repo.history.undo) : t('nothing-to-undo')}
           disabled={blocked || !repo.history?.undo}
           loading={busyAction === 'undo'}
           onClick={onUndo}
         />
         <ActionButton
           icon={Redo2}
-          label={t('Повторить')}
-          title={repo.history?.redo ? t('Повторить: {0}', repo.history.redo) : t('Нечего повторять')}
+          label={t('redo-2')}
+          title={repo.history?.redo ? t('redo', repo.history.redo) : t('nothing-to-redo')}
           disabled={blocked || !repo.history?.redo}
           loading={busyAction === 'redo'}
           onClick={onRedo}
@@ -193,8 +193,8 @@ export default function Toolbar({
         <Divider />
         <ActionButton
           icon={GitBranch}
-          label={t('Ветка')}
-          title={t('Создать ветку')}
+          label={t('branch')}
+          title={t('create-branch-4')}
           disabled={blocked || !repo.headHash}
           loading={busyAction === 'createBranch'}
           onClick={onBranch}
@@ -202,7 +202,7 @@ export default function Toolbar({
         <ActionButton
           icon={Archive}
           label="Stash"
-          title={repo.wipFiles.length ? t('Спрятать {0} изменений', repo.wipFiles.length) : t('Нет изменений')}
+          title={repo.wipFiles.length ? t('stash-changes-2', repo.wipFiles.length) : t('no-changes')}
           disabled={blocked || repo.wipFiles.length === 0 || !repo.headHash}
           loading={busyAction === 'stash'}
           onClick={onStash}
@@ -210,7 +210,7 @@ export default function Toolbar({
         <ActionButton
           icon={ArchiveRestore}
           label="Pop"
-          title={repo.stashes[0] ? t('Применить {0}: {1}', repo.stashes[0].id, repo.stashes[0].message) : t('Нет спрятанных изменений')}
+          title={repo.stashes[0] ? t('apply-3', repo.stashes[0].id, repo.stashes[0].message) : t('no-stashed-changes')}
           disabled={blocked || repo.stashes.length === 0}
           loading={busyAction === 'stashPop'}
           onClick={onPop}
@@ -238,12 +238,12 @@ export default function Toolbar({
         <AccessChip repo={repo} access={access} onClick={onAccessClick} />
         <IconButton
           icon={Search}
-          title={kb(t('Поиск коммитов (Ctrl+F)'))}
+          title={kb(t('search-commits-ctrl-f'))}
           onClick={onSearch}
           iconClass={searchOpen ? 'text-gk-blue' : ''}
         />
-        <IconButton icon={RefreshCw} title={t('Обновить')} onClick={onRefresh} iconClass={loading ? 'animate-spin' : ''} />
-        <IconButton icon={Settings} title={kb(t('Настройки (Ctrl+,)'))} onClick={onSettings} />
+        <IconButton icon={RefreshCw} title={t('refresh')} onClick={onRefresh} iconClass={loading ? 'animate-spin' : ''} />
+        <IconButton icon={Settings} title={kb(t('settings-ctrl'))} onClick={onSettings} />
       </div>
     </div>
   );
@@ -254,23 +254,23 @@ export default function Toolbar({
 function AccessChip({ repo, access, onClick }: { repo: RepoData; access?: AccessState | null; onClick?: () => void }) {
   if (repo.remotes.length === 0) {
     return (
-      <span title={t('У репозитория нет remote')} className="mr-1 flex items-center gap-1.5 px-2 text-xs text-gk-dim">
-        {tj('{0} нет remote', [<Shield size={14} />])}</span>
+      <span title={t('repository-has-no-remote')} className="mr-1 flex items-center gap-1.5 px-2 text-xs text-gk-dim">
+        {tj('has-no-remote', [<Shield size={14} />])}</span>
     );
   }
 
   let view: { icon: Icon; spin?: boolean; cls: string; text: ReactNode; title?: string };
   const d = access?.data;
   if (!access || (access.status === 'checking' && !d)) {
-    view = { icon: Loader2, spin: true, cls: 'text-gk-muted', text: t('проверка…'), title: t('Проверяем доступ к remote') };
+    view = { icon: Loader2, spin: true, cls: 'text-gk-muted', text: t('checking-3'), title: t('checking-access-to-remote') };
   } else if (access.error || !d?.canRead) {
-    view = { icon: ShieldX, cls: 'text-gk-red', text: t('нет доступа'), title: (access.error ?? d?.error)?.message };
+    view = { icon: ShieldX, cls: 'text-gk-red', text: t('no-access'), title: (access.error ?? d?.error)?.message };
   } else if (d.canWrite === false) {
-    view = { icon: ShieldAlert, cls: 'text-gk-yellow', text: t('только чтение'), title: d.writeError?.message };
+    view = { icon: ShieldAlert, cls: 'text-gk-yellow', text: t('read-only'), title: d.writeError?.message };
   } else if (d.canWrite === true) {
-    view = { icon: ShieldCheck, cls: 'text-gk-green', text: d.remote, title: t('{0}: чтение и запись', d.remote) };
+    view = { icon: ShieldCheck, cls: 'text-gk-green', text: d.remote, title: t('read-and-write', d.remote) };
   } else {
-    view = { icon: Shield, cls: 'text-gk-blue', text: d.remote, title: t('{0}: чтение (запись не проверялась)', d.remote) };
+    view = { icon: Shield, cls: 'text-gk-blue', text: d.remote, title: t('read-write-not-checked', d.remote) };
   }
   const Icon = view.icon;
   const spinning = view.spin || access?.status === 'checking';
@@ -278,7 +278,7 @@ function AccessChip({ repo, access, onClick }: { repo: RepoData; access?: Access
   return (
     <button
       onClick={onClick}
-      title={t('{0}\nНажмите для подробностей', view.title ?? '')}
+      title={t('click-for-details', view.title ?? '')}
       className={`mr-1 flex h-8 max-w-40 items-center gap-1.5 rounded px-2 text-xs transition-colors hover:bg-gk-hover ${view.cls}`}
     >
       <Icon size={14} className={`shrink-0 ${spinning ? 'animate-spin' : ''}`} />
@@ -315,7 +315,7 @@ function PullButton({ title, disabled, pullDisabled, loading, badge, pullMode, o
       <button
         disabled={disabled}
         onClick={() => setOpen((v) => !v)}
-        title={t('Режимы Pull и Fetch')}
+        title={t('pull-and-fetch-modes')}
         className="flex w-4 items-end justify-center rounded-r pb-2 text-gk-muted enabled:hover:bg-gk-hover enabled:hover:text-gk-text disabled:opacity-35"
       >
         <ChevronDown size={11} />
@@ -346,7 +346,7 @@ function PullButton({ title, disabled, pullDisabled, loading, badge, pullMode, o
               {mode.label}
             </MenuItem>
           ))}
-          <div className="px-3 pb-1 pt-1.5 text-[10px] text-gk-dim">{t('Выбранный режим станет режимом по умолчанию')}</div>
+          <div className="px-3 pb-1 pt-1.5 text-[10px] text-gk-dim">{t('selected-mode-becomes-default')}</div>
         </div>
       )}
     </div>
@@ -407,7 +407,7 @@ function BranchSelector({ repo, label, value, disabled, onCheckout, onCreate, on
         label={label}
         value={value}
         icon={GitBranch}
-        title={kb(t('Переключить ветку (Ctrl+B)'))}
+        title={kb(t('switch-branch-ctrl-b'))}
         disabled={disabled}
         active={open}
         onClick={() => setOpen((v) => !v)}

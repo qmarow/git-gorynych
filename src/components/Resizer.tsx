@@ -97,7 +97,7 @@ export function ResizeHandle({ width, onResize, onCommit, onReset, direction = 1
     <div
       role="separator"
       aria-orientation="vertical"
-      title={title ?? t('Потяните, чтобы изменить ширину. Двойной клик — по умолчанию')}
+      title={title ?? t('drag-to-change-width-double-click')}
       onMouseDown={(e) => {
         if (e.button !== 0) return;
         e.preventDefault();

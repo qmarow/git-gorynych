@@ -31,7 +31,7 @@ pub trait SecretStore: Send + Sync {
 fn encryption_error(error: impl std::fmt::Display) -> GorynychError {
     GorynychError::new(
         ErrorCode::NoEncryption,
-        t("Шифрование недоступно в системе — данные нельзя сохранить безопасно", &[]),
+        t("encryption-isnt-available-in-system", &[]),
     )
     .with_details(error.to_string())
 }

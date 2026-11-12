@@ -108,7 +108,7 @@ pub async fn detect_server(client: &reqwest::Client, input: &str) -> Result<Dete
     if reachable {
         return Ok(make(Some(ServerKind::Other), None, true, None, None));
     }
-    let error = if timed_out { t("{0} не ответил за {1} с", &[&host, &PROBE_TIMEOUT.as_secs()]) } else { t("Нет связи с {0}", &[&host]) };
+    let error = if timed_out { t("didnt-respond-within-s", &[&host, &PROBE_TIMEOUT.as_secs()]) } else { t("no-connection-to", &[&host]) };
     Ok(make(None, None, false, None, Some(error)))
 }
 

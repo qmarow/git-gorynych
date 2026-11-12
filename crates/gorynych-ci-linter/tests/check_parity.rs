@@ -292,14 +292,9 @@ fn runner_tags_match_electron() {
     assert!(seen.contains("runner-untagged") && seen.contains("runner-tags-missing"), "{seen:?}");
 }
 
-/// Ключи, которых нет в словаре и в 1.x: там такие строки тоже показываются по-русски.
-const ALLOWED_MISSING_KEYS: [&str; 0] = [];
-
-/// Каждый ключ перевода в коде проверки есть в словаре: опечатка в русском тексте иначе дала бы молча непереведённую строку.
+/// Каждый ключ `tr!("…")` в коде проверки есть в `main.ftl`: опечатка в ключе иначе показала бы сам ключ.
 #[test]
 fn every_translation_key_exists() {
-    let dictionary: Json = serde_json::from_str(include_str!("../../../electron/i18n/en.json")).unwrap();
-    let dictionary = dictionary.as_object().unwrap();
     let source_dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("src/check");
     let mut missing = Vec::new();
     let mut sources = Vec::new();
@@ -325,11 +320,10 @@ fn every_translation_key_exists() {
                     other => key.push(other),
                 }
             }
-            if !dictionary.contains_key(&key) {
+            if !gorynych_core::i18n::has_message(&key) {
                 missing.push(key);
             }
         }
     }
-    missing.retain(|key| !ALLOWED_MISSING_KEYS.contains(&key.as_str()));
     assert!(missing.is_empty(), "нет в словаре ({}):\n{}", missing.len(), missing.join("\n"));
 }

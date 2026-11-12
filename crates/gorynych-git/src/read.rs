@@ -100,7 +100,7 @@ pub async fn locate_repo(dir: &Path) -> Result<RepoLocation> {
             RepoLocation { root, git_dir }
         }
         Err(error) if error.code == ErrorCode::GitMissing => return Err(error),
-        Err(_) => return Err(GorynychError::new(ErrorCode::NotARepo, t("Папка не является Git-репозиторием: {0}", &[&dir.display()]))),
+        Err(_) => return Err(GorynychError::new(ErrorCode::NotARepo, t("folder-isnt-git-repository", &[&dir.display()]))),
     };
     let mut cache = LOCATIONS.lock().expect("расположения репозиториев");
     if cache.len() >= MAX_LOCATIONS {
@@ -826,7 +826,7 @@ pub struct CommitFile {
 pub async fn get_commit_files(dir: &Path, hash: &str, parent: Option<&str>) -> Result<Vec<CommitFile>> {
     let parent = parent.filter(|parent| !parent.is_empty());
     if !is_hash(hash) || parent.is_some_and(|parent| !is_hash(parent)) {
-        return Err(GorynychError::unknown(t("Некорректный хэш коммита", &[])));
+        return Err(GorynychError::unknown(t("invalid-commit-hash", &[])));
     }
     let range: [&str; 2] = match parent {
         Some(parent) => [parent, hash],
@@ -896,7 +896,7 @@ pub struct StashDetails {
 /// `getStashDetails`.
 pub async fn get_stash_details(dir: &Path, hash: &str) -> Result<StashDetails> {
     if !is_hash(hash) {
-        return Err(GorynychError::new(ErrorCode::BadArgs, t("Некорректный stash", &[])));
+        return Err(GorynychError::new(ErrorCode::BadArgs, t("invalid-stash", &[])));
     }
     let listed = git(dir, &["rev-list", "--parents", "-n", "1", hash]).await?;
     let parents: Vec<&str> = gorynych_core::js::trim(&listed).split(' ').skip(1).collect();

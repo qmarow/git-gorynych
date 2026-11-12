@@ -27,28 +27,28 @@ export interface ViewOption<Id extends string> {
 }
 
 export const COLUMNS: readonly Column[] = [
-  { id: 'refs', label: t('Ветка / тег') },
-  { id: 'graph', label: t('Граф') },
-  { id: 'message', label: t('Сообщение коммита'), locked: true }, // всегда видна и забирает свободное место
-  { id: 'sha', label: 'SHA', menuLabel: t('SHA (хэш коммита)') },
-  { id: 'author', label: t('Автор') },
-  { id: 'date', label: t('Дата / время') },
+  { id: 'refs', label: t('branch-tag') },
+  { id: 'graph', label: t('graph') },
+  { id: 'message', label: t('commit-message-2'), locked: true }, // всегда видна и забирает свободное место
+  { id: 'sha', label: 'SHA', menuLabel: t('sha-commit-hash') },
+  { id: 'author', label: t('author-3') },
+  { id: 'date', label: t('date-time') },
 ];
 export const COLUMN_IDS: readonly ColumnId[] = COLUMNS.map((c) => c.id);
 export const columnById = (id: unknown): Column | undefined => COLUMNS.find((c) => c.id === id);
 
 export const DENSITY_OPTIONS: readonly ViewOption<DensityId>[] = [
-  { id: 'compact', label: t('Компактный'), hint: '26px' },
-  { id: 'standard', label: t('Стандартный'), hint: '34px' },
-  { id: 'relaxed', label: t('Свободный'), hint: '42px' },
+  { id: 'compact', label: t('compact'), hint: '26px' },
+  { id: 'standard', label: t('standard'), hint: '34px' },
+  { id: 'relaxed', label: t('roomy'), hint: '42px' },
 ];
 export const DATE_FORMAT_OPTIONS: readonly ViewOption<DateFormat>[] = [
-  { id: 'absolute', label: t('Абсолютный'), hint: '26.10.26 23:13' },
-  { id: 'relative', label: t('Относительный'), hint: t('15 мин назад, вчера') },
+  { id: 'absolute', label: t('absolute'), hint: '26.10.26 23:13' },
+  { id: 'relative', label: t('relative'), hint: t('n-15-min-ago-yesterday') },
 ];
 export const NODE_STYLE_OPTIONS: readonly ViewOption<NodeStyle>[] = [
-  { id: 'avatar', label: t('Аватары / инициалы') },
-  { id: 'dots', label: t('Компактные точки') },
+  { id: 'avatar', label: t('avatars-initials') },
+  { id: 'dots', label: t('compact-dots') },
 ];
 
 export interface GraphView {

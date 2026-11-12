@@ -239,7 +239,7 @@ pub(crate) fn load_jenkins(ctx: &Ctx<'_>, file: &str) -> LoadResult<CiConfig> {
         leaves(root, &stages, &mut list);
         if PARALLEL.find(&stage.own).is_some() {
             let jobs = list.iter().map(|leaf| make_job(*leaf, &stages, &text, file)).collect();
-            columns.push(CiStage::new(ctx.t("{0} · параллельно", &[&stage.name]), jobs));
+            columns.push(CiStage::new(ctx.t("parallel", &[&stage.name]), jobs));
         } else {
             for leaf in list {
                 columns.push(CiStage::new(format!("{} › {}", stage.name, stages[leaf].name), vec![make_job(leaf, &stages, &text, file)]));
@@ -250,12 +250,12 @@ pub(crate) fn load_jenkins(ctx: &Ctx<'_>, file: &str) -> LoadResult<CiConfig> {
     let mut info = Vec::new();
     let top_agent = TOP_AGENT.captures(&text).and_then(|groups| groups.get(1).cloned().flatten()).map(|range| text_of(&text[range]));
     if let Some(agent) = top_agent.filter(|agent| !agent.is_empty()) {
-        info.push(CiInfo { label: ctx.t("Агент", &[]), value: Value::String(normalize_spaces(&agent)) });
+        info.push(CiInfo { label: ctx.t("agent", &[]), value: Value::String(normalize_spaces(&agent)) });
     }
     if DECLARATIVE.find(&text).is_some() {
-        info.push(CiInfo { label: ctx.t("Синтаксис", &[]), value: Value::String("Declarative Pipeline".to_owned()) });
+        info.push(CiInfo { label: ctx.t("syntax", &[]), value: Value::String("Declarative Pipeline".to_owned()) });
     } else if SCRIPTED.find(&text).is_some() {
-        info.push(CiInfo { label: ctx.t("Синтаксис", &[]), value: Value::String("Scripted Pipeline".to_owned()) });
+        info.push(CiInfo { label: ctx.t("syntax", &[]), value: Value::String("Scripted Pipeline".to_owned()) });
     }
     let triggers = block_of(&text, "triggers").unwrap_or_default().iter().map(|line| js::trim(line)).filter(|line| !line.is_empty()).map(CiRule::text).collect();
     let includes = LIBRARY
@@ -272,11 +272,11 @@ pub(crate) fn load_jenkins(ctx: &Ctx<'_>, file: &str) -> LoadResult<CiConfig> {
         })
         .collect();
     Ok(CiConfig {
-        warnings: if columns.is_empty() { vec![ctx.t("Не удалось найти этапы stage(...) — показан только файл", &[])] } else { Vec::new() },
+        warnings: if columns.is_empty() { vec![ctx.t("couldnt-find-stage-blocks-showing", &[])] } else { Vec::new() },
         includes,
         info,
         triggers,
-        triggers_title: Some(ctx.t("Триггеры", &[])),
+        triggers_title: Some(ctx.t("triggers", &[])),
         pipelines: vec![CiPipeline { id: "main".to_owned(), title: "Pipeline".to_owned(), stages: columns }],
         files: vec![CiFile { path: file.to_owned(), text: source, hash: None, draft: false }],
         ..CiConfig::default()

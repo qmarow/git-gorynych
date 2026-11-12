@@ -140,7 +140,7 @@ export default function CommitDetails({
   return (
     <aside className="glass flex w-full min-w-0 flex-col border-l border-gk-border bg-gk-panel">
       {!commit ? (
-        <div className="flex flex-1 items-center justify-center text-xs text-gk-dim">{t('Выберите коммит')}</div>
+        <div className="flex flex-1 items-center justify-center text-xs text-gk-dim">{t('select-commit')}</div>
       ) : commit.isStash ? (
         <StashPanel
           key={commit.hash}
@@ -218,24 +218,24 @@ function CommitPanel({ commit, files, activeFile, onOpenFile, onSelectCommit, on
   return (
     <>
       <div className="flex h-9 shrink-0 items-center gap-2 border-b border-gk-border px-3 text-xs text-gk-muted">
-        {tj('{0}<1>коммит:</1><2>{3}</2>{4}{5}', [<GitCommitHorizontal size={14} />, <span />, <span className="select-text font-mono text-gk-text" />, commit.hash.slice(0, 7), onRevertTo && (
+        {tj('commit-3', [<GitCommitHorizontal size={14} />, <span />, <span className="select-text font-mono text-gk-text" />, commit.hash.slice(0, 7), onRevertTo && (
           <button
             onClick={() => onRevertTo(commit)}
             disabled={busy || commit.isHead}
-            aria-label={t('Восстановить файлы из коммита…')}
+            aria-label={t('restore-files-from-commit')}
             data-testid="restore-files"
             data-tip={
               commit.isHead
-                ? t('Это текущий коммит — восстанавливать нечего')
-                : t('Восстановить файлы из коммита… (checkout files)\nНовый коммит, в котором все файлы проекта — как в этом. История не переписывается, ветка не переключается.')
+                ? t('this-is-current-commit-nothing')
+                : t('restore-files-from-commit-checkout')
             }
             className="ml-auto rounded p-1 hover:bg-gk-yellow/10 hover:text-gk-yellow disabled:opacity-40 disabled:hover:bg-transparent disabled:hover:text-gk-muted"
           >
             <FolderSync size={13} />
           </button>
         ), <button
-          data-tip={t('Скопировать хэш коммита (SHA)')}
-          aria-label={t('Скопировать хэш коммита')}
+          data-tip={t('copy-commit-hash-sha')}
+          aria-label={t('copy-commit-hash')}
           onClick={() => navigator.clipboard?.writeText(commit.hash)}
           className={`${onRevertTo ? '' : 'ml-auto '}rounded p-1 hover:bg-gk-hover hover:text-gk-text`}
         >
@@ -259,13 +259,13 @@ function CommitPanel({ commit, files, activeFile, onOpenFile, onSelectCommit, on
             <div className="truncate font-medium text-gk-text" title={commit.author.email}>
               {commit.author.name}
             </div>
-            <div className="text-gk-muted">{tj('автор · {0}', [fullDate(commit.date)])}</div>
+            <div className="text-gk-muted">{tj('author', [fullDate(commit.date)])}</div>
           </div>
         </div>
 
         {commit.parents.length > 0 && (
           <div className="flex flex-wrap items-center gap-2 text-xs text-gk-muted">
-            <span>{commit.parents.length > 1 ? t('родители:') : t('родитель:')}</span>
+            <span>{commit.parents.length > 1 ? t('parents') : t('parent')}</span>
             {commit.parents.map((p) => (
               <button key={p} onClick={() => onSelectCommit(p)} className="font-mono text-gk-blue hover:underline">
                 {p.slice(0, 7)}
@@ -285,7 +285,7 @@ function CommitPanel({ commit, files, activeFile, onOpenFile, onSelectCommit, on
             {n}
           </span>
         ))}
-        {commit.parents.length > 1 && <span className="text-[11px] text-gk-dim">{t('vs 1-й родитель')}</span>}
+        {commit.parents.length > 1 && <span className="text-[11px] text-gk-dim">{t('vs-1st-parent')}</span>}
         <div className="ml-auto flex overflow-hidden rounded ring-1 ring-gk-border">
           <ViewToggle active={!treeView} onClick={() => setTreeView(false)} icon={List} title="Path" />
           <ViewToggle active={treeView} onClick={() => setTreeView(true)} icon={ListTree} title="Tree" />
@@ -296,7 +296,7 @@ function CommitPanel({ commit, files, activeFile, onOpenFile, onSelectCommit, on
         {files === undefined && <FilesSkeleton />}
         {(files as { error?: string } | undefined)?.error && <div className="px-3 py-2 text-xs text-gk-red">{(files as { error: string }).error}</div>}
         {Array.isArray(files) && files.length === 0 && (
-          <div className="px-3 py-2 text-xs italic text-gk-dim">{t('Нет изменённых файлов')}</div>
+          <div className="px-3 py-2 text-xs italic text-gk-dim">{t('no-changed-files')}</div>
         )}
         {list.map((file) => {
           const hit = hitByPath.get(file.path);
@@ -316,7 +316,7 @@ function CommitPanel({ commit, files, activeFile, onOpenFile, onSelectCommit, on
             >
               <span className="ml-auto flex shrink-0 items-center gap-1.5">
                 {hit && (
-                  <span data-tip={t('«{0}» найдено здесь: {1}', searchQuery, hit.count)} className="flex items-center gap-0.5 rounded-full bg-gk-yellow/20 px-1.5 text-[10.5px] font-medium text-gk-yellow">
+                  <span data-tip={t('found-here', searchQuery, hit.count)} className="flex items-center gap-0.5 rounded-full bg-gk-yellow/20 px-1.5 text-[10.5px] font-medium text-gk-yellow">
                     <FileSearch size={10} />
                     {hit.count}
                   </span>
@@ -340,7 +340,7 @@ function SearchHits({ hits, query, onOpen }: { hits: CommitHits; query: string; 
   return (
     <div data-testid="search-hits" className="max-h-[40%] shrink-0 overflow-y-auto border-b border-gk-border bg-gk-yellow/[0.04]">
       <button onClick={() => setOpen((v) => !v)} className="flex w-full items-center gap-1.5 px-3 py-1.5 text-left text-[11.5px] text-gk-yellow">
-        {tj('{0}{1}<2>«{3}» найдено: {4} в {5} {6}</2>', [open ? <ChevronDown size={12} /> : <ChevronRight size={12} />, <FileSearch size={12} />, <span className="min-w-0 flex-1 truncate" />, query, hits.count, totalFiles, plural(totalFiles, t('файле'), t('файлах'), t('файлах'))])}
+        {tj('found-in', [open ? <ChevronDown size={12} /> : <ChevronRight size={12} />, <FileSearch size={12} />, <span className="min-w-0 flex-1 truncate" />, query, hits.count, totalFiles, plural(totalFiles, t('file-5'), t('files-4'), t('files-4'))])}
       </button>
       {open && (
         <div className="pb-1.5">
@@ -349,7 +349,7 @@ function SearchHits({ hits, query, onOpen }: { hits: CommitHits; query: string; 
               <button
                 onClick={() => onOpen(f)}
                 className="flex w-full items-center gap-1.5 px-3 py-0.5 text-left text-[12px] hover:bg-gk-hover"
-                data-tip={t('{0}\nОткрыть изменения на месте совпадения', f.path)}
+                data-tip={t('open-changes-at-match', f.path)}
               >
                 <StatusBadge status={f.status} />
                 <span className="min-w-0 flex-1 truncate font-medium text-gk-text">
@@ -363,7 +363,7 @@ function SearchHits({ hits, query, onOpen }: { hits: CommitHits; query: string; 
                   key={i}
                   data-testid="search-hit-line"
                   onClick={() => onOpen(f, l)}
-                  data-tip={l.t === '+' ? t('Добавлено, строка {0}', l.n) : t('Удалено, было на строке {0}', l.o)}
+                  data-tip={l.t === '+' ? t('added-line', l.n) : t('deleted-was-on-line', l.o)}
                   className="flex w-full items-baseline gap-1.5 py-px pl-7 pr-3 text-left font-mono text-[11px] leading-[18px] hover:bg-gk-hover"
                 >
                   <span className={`w-9 shrink-0 text-right tabular-nums ${l.t === '+' ? 'text-gk-green' : 'text-gk-red'}`}>
@@ -375,10 +375,10 @@ function SearchHits({ hits, query, onOpen }: { hits: CommitHits; query: string; 
                   </span>
                 </button>
               ))}
-              {f.count > f.lines.length && <div className="py-px pl-[3.25rem] text-[10.5px] text-gk-dim">{tj('…и ещё {0}', [f.count - f.lines.length])}</div>}
+              {f.count > f.lines.length && <div className="py-px pl-[3.25rem] text-[10.5px] text-gk-dim">{tj('and-more-2', [f.count - f.lines.length])}</div>}
             </div>
           ))}
-          {hits.moreFiles > 0 && <div className="px-3 py-0.5 text-[10.5px] text-gk-dim">{tj('…и ещё {0} {1}', [hits.moreFiles, plural(hits.moreFiles, t('файл'), t('файла'), t('файлов'))])}</div>}
+          {hits.moreFiles > 0 && <div className="px-3 py-0.5 text-[10.5px] text-gk-dim">{tj('and-more-3', [hits.moreFiles, plural(hits.moreFiles, t('file'), t('files-2'), t('files'))])}</div>}
         </div>
       )}
     </div>
@@ -455,15 +455,15 @@ function StashPanel({ stash, details, busy, activeFile, onOpenFile, onAction, on
       <div data-testid="stash-panel" className="flex h-9 shrink-0 items-center gap-2 border-b border-gk-border px-3 text-xs text-gk-muted">
         <Archive size={14} className="text-gk-yellow" />
         <span className="font-mono text-gk-text">{stash.id}</span>
-        {branch && <span className="truncate">{tj('на ветке {0}', [branch])}</span>}
+        {branch && <span className="truncate">{tj('on-branch', [branch])}</span>}
       </div>
 
       <div className="shrink-0 space-y-2.5 border-b border-gk-border p-3">
         <div className="pb-0.5">
-          <h2 className="select-text text-[14px] font-semibold leading-snug text-gk-strong">{message || t('Без названия')}</h2>
+          <h2 className="select-text text-[14px] font-semibold leading-snug text-gk-strong">{message || t('untitled')}</h2>
           {stash.date && (
             <div className="mt-1 text-xs text-gk-muted" title={fullDate(stash.date)}>
-              {tj('спрятано {0} · {1}', [relativeTime(stash.date), fullDate(stash.date)])}
+              {tj('stashed', [relativeTime(stash.date), fullDate(stash.date)])}
             </div>
           )}
         </div>
@@ -473,18 +473,18 @@ function StashPanel({ stash, details, busy, activeFile, onOpenFile, onAction, on
             accent
             disabled={busy}
             onClick={() => restore(chosen)}
-            title={t('Восстановить только выбранные файлы в рабочую папку. Stash остаётся в списке, индекс не меняется. Undo вернёт.')}
+            title={t('restore-only-selected-files-to')}
           >
-            {tj('Применить выбранные ({0})', [chosen.length])}</StashButton>
+            {tj('apply-selected', [chosen.length])}</StashButton>
         )}
         <div className="grid grid-cols-3 gap-1.5">
-          <StashButton icon={ArrowDownToLine} disabled={busy} onClick={() => onAction('apply', stash)} title={t('Применить весь stash (Apply), он остаётся в списке. Чтобы взять отдельные файлы — отметьте их ниже.')}>
-            {chosen.length > 0 ? t('Применить всё') : t('Применить')}
+          <StashButton icon={ArrowDownToLine} disabled={busy} onClick={() => onAction('apply', stash)} title={t('apply-whole-stash-apply-it')}>
+            {chosen.length > 0 ? t('apply-all') : t('apply')}
           </StashButton>
-          <StashButton icon={ArchiveRestore} disabled={busy} onClick={() => onAction('pop', stash)} title={t('Применить весь stash и удалить его из списка (Pop)')}>
-            {t('Забрать')}</StashButton>
-          <StashButton icon={Trash2} danger disabled={busy} onClick={() => onAction('drop', stash)} title={t('Удалить stash (Drop) — можно вернуть через Undo')}>
-            {t('Удалить')}</StashButton>
+          <StashButton icon={ArchiveRestore} disabled={busy} onClick={() => onAction('pop', stash)} title={t('apply-whole-stash-and-remove')}>
+            {t('pop')}</StashButton>
+          <StashButton icon={Trash2} danger disabled={busy} onClick={() => onAction('drop', stash)} title={t('delete-stash-drop-undo-can')}>
+            {t('delete-2')}</StashButton>
         </div>
       </div>
 
@@ -494,26 +494,26 @@ function StashPanel({ stash, details, busy, activeFile, onOpenFile, onAction, on
             checked={all}
             mixed={!all && chosen.length > 0}
             onChange={() => setPicked(all ? new Set<string>() : new Set(files.map(keyOf)))}
-            title={all ? t('Снять выбор') : t('Выбрать все файлы')}
+            title={all ? t('clear-selection') : t('select-all-files')}
           />
         )}
         {Array.isArray((details as StashDetails_Serialize | undefined)?.files) && (
           <span className="truncate">
             {chosen.length > 0 ? (
               <>
-                {tj('выбрано <0>{1}</0> из {2}', [<span className="text-gk-text" />, chosen.length, files.length])}
+                {tj('selected-of', [<span className="text-gk-text" />, chosen.length, files.length])}
               </>
             ) : (
               <>
-                {files.length} {plural(files.length, t('файл'), t('файла'), t('файлов'))}
-                {files.some((f) => f.untracked) && <span className="text-gk-dim"> {t(' · включая новые')}</span>}
+                {files.length} {plural(files.length, t('file'), t('files-2'), t('files'))}
+                {files.some((f) => f.untracked) && <span className="text-gk-dim"> {t('including-new')}</span>}
               </>
             )}
           </span>
         )}
         {chosen.length > 0 && (
           <button onClick={() => setPicked(new Set())} className="ml-auto shrink-0 rounded px-1.5 py-0.5 text-[11px] text-gk-dim hover:bg-gk-hover hover:text-gk-text">
-            {t('сбросить')}</button>
+            {t('reset')}</button>
         )}
       </div>
 
@@ -521,7 +521,7 @@ function StashPanel({ stash, details, busy, activeFile, onOpenFile, onAction, on
         {details === undefined && <FilesSkeleton />}
         {(details as { error?: string } | undefined)?.error && <div className="px-3 py-2 text-xs text-gk-red">{(details as { error: string }).error}</div>}
         {files.length > 0 && chosen.length === 0 && (
-          <div className="px-3 pb-1 pt-0.5 text-[11px] leading-snug text-gk-dim">{t('Отметьте файлы, чтобы восстановить только их, или наведите на файл.')}</div>
+          <div className="px-3 pb-1 pt-0.5 text-[11px] leading-snug text-gk-dim">{t('check-files-to-restore-only')}</div>
         )}
         {files.map((file) => (
           <FileRow
@@ -534,13 +534,13 @@ function StashPanel({ stash, details, busy, activeFile, onOpenFile, onAction, on
               e.preventDefault();
               onFileMenu?.(file, 'stash', files, e.clientX, e.clientY, { stash, restore: () => restore([file]) });
             }}
-            lead={<Checkbox checked={picked.has(keyOf(file))} onChange={() => toggle(file)} title={t('Выбрать для восстановления')} />}
+            lead={<Checkbox checked={picked.has(keyOf(file))} onChange={() => toggle(file)} title={t('select-for-restoring')} />}
           >
             <span className="ml-auto flex shrink-0 items-center gap-1.5">
-              {file.untracked && <span className="shrink-0 rounded bg-gk-green/10 px-1 text-[10px] text-gk-green">{t('новый')}</span>}
+              {file.untracked && <span className="shrink-0 rounded bg-gk-green/10 px-1 text-[10px] text-gk-green">{t('new')}</span>}
               <DiffStat file={file} />
               <button
-                title={t('Восстановить этот файл в рабочую папку (Undo вернёт)')}
+                title={t('restore-this-file-to-working')}
                 disabled={busy}
                 onClick={(e) => {
                   e.stopPropagation();
@@ -647,10 +647,10 @@ function WipPanel({ repo, busy, activeFile, onOpenFile, onStage, onUnstage, onCo
       <div className="flex h-9 shrink-0 items-center gap-2 border-b border-gk-border px-3 text-xs text-gk-muted">
         {busy ? <Loader2 size={14} className="animate-spin" /> : <FileText size={14} />}
         <span className="truncate">
-          {repo.wipFiles.length} {plural(repo.wipFiles.length, t('изменение'), t('изменения'), t('изменений'))}
+          {repo.wipFiles.length} {plural(repo.wipFiles.length, t('change'), t('changes-4'), t('changes-5'))}
           {repo.currentBranch && (
             <>
-              {tj(' в <0>{1}</0>', [<span className="font-medium text-gk-text" />, repo.currentBranch])}
+              {tj('in-4', [<span className="font-medium text-gk-text" />, repo.currentBranch])}
             </>
           )}
         </span>
@@ -660,11 +660,11 @@ function WipPanel({ repo, busy, activeFile, onOpenFile, onStage, onUnstage, onCo
         {conflictFiles.length > 0 && (
           <div className="shrink-0 border-b border-gk-red/30 bg-gk-red/[0.06]">
             <div className="flex h-9 items-center justify-between px-3">
-              {tj('<0>Конфликты <1>({2})</1></0>{3}', [<span className="text-xs font-medium text-gk-red" />, <span className="text-gk-red/70" />, conflictFiles.length, <button
+              {tj('conflicts-2', [<span className="text-xs font-medium text-gk-red" />, <span className="text-gk-red/70" />, conflictFiles.length, <button
                 onClick={() => onOpenConflict?.(conflictFiles[0].path)}
                 className="rounded bg-gk-red/15 px-2 py-1 text-[11px] font-medium text-gk-red hover:bg-gk-red/25"
               >
-                {t('Решить конфликты')}</button>])}
+                {t('resolve-conflicts')}</button>])}
             </div>
             <div className="max-h-48 overflow-y-auto pb-1">
               {conflictFiles.map((file) => (
@@ -674,40 +674,40 @@ function WipPanel({ repo, busy, activeFile, onOpenFile, onStage, onUnstage, onCo
                   active={activeConflict === file.path}
                   onClick={() => onOpenConflict?.(file.path)}
                 >
-                  {tj('<0>решить →</0>', [<span className="ml-auto shrink-0 text-[11px] text-gk-red/80 group-hover:underline" />])}
+                  {tj('resolve', [<span className="ml-auto shrink-0 text-[11px] text-gk-red/80 group-hover:underline" />])}
                 </FileRow>
               ))}
             </div>
           </div>
         )}
         <FileGroup
-          title={t('Неиндексированные файлы')}
+          title={t('unstaged-files')}
           kind="unstaged"
           files={unstagedFiles}
           busy={busy}
           activeFile={activeFile}
           onOpenFile={onOpenFile}
-          actionLabel={t('Добавить все')}
+          actionLabel={t('stage-all')}
           actionClass="bg-gk-green/15 text-gk-green hover:bg-gk-green/25"
           onAction={() => onStage('all')}
           onFileAction={(f) => onStage([f.path])}
           fileActionIcon={Plus}
-          fileActionTitle={t('Добавить в индекс (Stage)')}
+          fileActionTitle={t('stage-3')}
           onFileMenu={onFileMenu}
         />
         <FileGroup
-          title={t('Индексированные файлы')}
+          title={t('staged-files')}
           kind="staged"
           files={stagedFiles}
           busy={busy}
           activeFile={activeFile}
           onOpenFile={onOpenFile}
-          actionLabel={t('Убрать все')}
+          actionLabel={t('unstage-all')}
           actionClass="bg-gk-red/15 text-gk-red hover:bg-gk-red/25"
           onAction={() => onUnstage('all')}
           onFileAction={(f) => onUnstage(f.oldPath ? [f.path, f.oldPath] : [f.path])}
           fileActionIcon={Minus}
-          fileActionTitle={t('Убрать из индекса (Unstage)')}
+          fileActionTitle={t('unstage-2')}
           onFileMenu={onFileMenu}
           flagged={guardFiles}
         />
@@ -790,7 +790,7 @@ function FileGroup({
           >
             <span className="ml-auto flex shrink-0 items-center gap-1.5">
               {flagged?.get(file.path) && (
-                <span title={t('Pre-commit Guard: {0} — см. предупреждение над кнопкой Commit', flagged.get(file.path))} className="shrink-0">
+                <span title={t('pre-commit-guard-see-warning', flagged.get(file.path))} className="shrink-0">
                   <AlertTriangle size={12} className="text-gk-yellow" />
                 </span>
               )}
@@ -823,7 +823,7 @@ function FileRow({ file, tree, active, selected, found = false, lead, children, 
   const dir = parts.join('/');
   const renamed = Boolean(file.oldPath && file.oldPath !== file.path);
   const title = renamed
-    ? `${file.oldPath} → ${file.path}\n${file.moved ? t('Перенесён без изменений содержимого') : t('Перенесён и изменён')}`
+    ? `${file.oldPath} → ${file.path}\n${file.moved ? t('moved-without-content-changes') : t('moved-and-changed')}`
     : file.path;
   return (
     <div
@@ -904,14 +904,14 @@ export function DiffStat({ file }: { file: RowFile }) {
   if (file.additions === undefined) return null;
   if (file.moved) {
     return (
-      <span title={t('Файл только перенесён или переименован — содержимое не менялось')} className="shrink-0 rounded bg-gk-blue/10 px-1 text-[10px] font-medium text-gk-blue/90">
+      <span title={t('file-was-only-moved-or')} className="shrink-0 rounded bg-gk-blue/10 px-1 text-[10px] font-medium text-gk-blue/90">
         moved
       </span>
     );
   }
   if (file.additions === null) {
     return (
-      <span title={t('Бинарный или слишком большой файл — строки не считаются')} className="shrink-0 text-[11px] text-gk-dim">
+      <span title={t('binary-or-too-large-file')} className="shrink-0 text-[11px] text-gk-dim">
         bin
       </span>
     );

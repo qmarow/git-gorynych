@@ -90,7 +90,7 @@ pub struct AccessInfo {
 pub async fn check_access(network: &Network, cwd: &Path, write: bool) -> Result<AccessInfo> {
     let state = current_state(cwd).await?;
     let Some(remote) = pick_remote(&state) else {
-        return Err(GorynychError::new(ErrorCode::NoRemote, t("У репозитория нет remote", &[])).with_hint(t("Добавьте remote: git remote add origin <url>", &[])));
+        return Err(GorynychError::new(ErrorCode::NoRemote, t("repository-has-no-remote", &[])).with_hint(t("add-remote-git-remote-add", &[])));
     };
     let raw_url = trimmed(cwd, &["remote", "get-url", &remote]).await?;
     let upstream_ref = state.branch.as_ref().and_then(|branch| branch.upstream_ref.clone()).filter(|text| !text.is_empty());
@@ -162,10 +162,10 @@ fn rebuilt(source: Option<&GorynychError>, code: ErrorCode, message: impl FnOnce
 /// `accessError`.
 fn access_error(access: &AccessInfo, push: bool) -> Option<GorynychError> {
     if !access.can_read {
-        return Some(rebuilt(access.error.as_ref(), ErrorCode::Auth, || t("Нет доступа к {0}", &[&access.remote])));
+        return Some(rebuilt(access.error.as_ref(), ErrorCode::Auth, || t("no-access-to", &[&access.remote])));
     }
     if push && access.can_write == Some(false) {
-        return Some(rebuilt(access.write_error.as_ref(), ErrorCode::Forbidden, || t("Нет прав на запись", &[])));
+        return Some(rebuilt(access.write_error.as_ref(), ErrorCode::Forbidden, || t("no-write-access", &[])));
     }
     None
 }
@@ -180,7 +180,7 @@ pub struct FetchResult {
 pub async fn fetch_all(network: &Network, cwd: &Path) -> Result<FetchResult> {
     let state = current_state(cwd).await?;
     if state.remotes.is_empty() {
-        return Err(GorynychError::new(ErrorCode::NoRemote, t("У репозитория нет remote", &[])));
+        return Err(GorynychError::new(ErrorCode::NoRemote, t("repository-has-no-remote", &[])));
     }
     network.git(cwd, &["fetch", "--all", "--prune", "--tags"]).await?;
     Ok(FetchResult { remotes: state.remotes })
@@ -211,17 +211,17 @@ pub async fn pull(network: &Network, cwd: &Path, request: &PullRequest) -> Resul
         "merge" => &["pull", "--no-rebase"],
         "ff-only" => &["pull", "--ff-only"],
         "rebase" => &["pull", "--rebase", "--autostash"],
-        _ => return Err(GorynychError::new(ErrorCode::BadArgs, t("Неизвестный режим pull", &[]))),
+        _ => return Err(GorynychError::new(ErrorCode::BadArgs, t("unknown-pull-mode", &[]))),
     };
     let state = current_state(cwd).await?;
     require_branch(&state, "pull")?;
     let name = state.branch_name.clone().unwrap_or_default();
     let upstream = state.branch.as_ref().and_then(|branch| branch.upstream.clone());
     let Some(upstream) = upstream else {
-        return Err(GorynychError::new(ErrorCode::NoUpstream, t("У ветки «{0}» нет upstream", &[&name])).with_hint(t("Сделайте Push — ветка будет опубликована и связана с remote.", &[])));
+        return Err(GorynychError::new(ErrorCode::NoUpstream, t("branch-has-no-upstream", &[&name])).with_hint(t("push-it-branch-will-be", &[])));
     };
     if state.branch.as_ref().is_some_and(|branch| branch.gone) {
-        return Err(GorynychError::new(ErrorCode::UpstreamGone, t("Remote-ветка {0} удалена", &[&upstream])).with_hint(t("Сделайте Push, чтобы создать её заново, или переключитесь на другую ветку.", &[])));
+        return Err(GorynychError::new(ErrorCode::UpstreamGone, t("remote-branch-was-deleted", &[&upstream])).with_hint(t("push-to-create-it-again", &[])));
     }
     let access = check_access(network, cwd, false).await?;
     if let Some(denied) = access_error(&access, false) {
@@ -261,7 +261,7 @@ pub async fn push(network: &Network, cwd: &Path, request: &PushRequest) -> Resul
         return Err(denied);
     }
     if access.diverged && !force {
-        return Err(GorynychError::new(ErrorCode::RejectedNonFf, t("На {0} есть коммиты, которых нет в вашей ветке", &[&access.remote])).with_hint(t("Сделайте Pull и повторите Push, либо Force Push (with lease), чтобы перезаписать remote-ветку.", &[])));
+        return Err(GorynychError::new(ErrorCode::RejectedNonFf, t("has-commits-that-your-branch", &[&access.remote])).with_hint(t("pull-and-push-again-or", &[])));
     }
     let branch = state.branch_name.clone().unwrap_or_default();
     let set_upstream = state.branch.as_ref().is_none_or(|item| item.upstream.is_none() || item.gone);
@@ -303,11 +303,11 @@ pub struct RemoteBranchDeleted {
 pub async fn delete_remote_branch(network: &Network, cwd: &Path, request: &DeleteRemoteBranch) -> Result<RemoteBranchDeleted> {
     let usable = |value: &Option<String>| value.clone().filter(|text| !text.is_empty() && !text.starts_with('-'));
     let (Some(remote), Some(branch)) = (usable(&request.remote), usable(&request.branch)) else {
-        return Err(GorynychError::new(ErrorCode::BadArgs, t("Не указана ветка", &[])));
+        return Err(GorynychError::new(ErrorCode::BadArgs, t("no-branch-specified", &[])));
     };
     let state = current_state(cwd).await?;
     if !state.remotes.contains(&remote) {
-        return Err(GorynychError::new(ErrorCode::NoRemote, t("Remote «{0}» не найден", &[&remote])));
+        return Err(GorynychError::new(ErrorCode::NoRemote, t("remote-not-found", &[&remote])));
     }
     // Узнаём реальное состояние сервера: ветку могли уже удалить или передвинуть
     let full = format!("refs/heads/{branch}");
@@ -315,16 +315,16 @@ pub async fn delete_remote_branch(network: &Network, cwd: &Path, request: &Delet
     let out = network.git(cwd, &["ls-remote", "--heads", &remote, &full]).await?;
     let Some(line) = out.split('\n').find(|line| line.split('\t').nth(1) == Some(&full)) else {
         let _ = git(cwd, &["update-ref", "-d", &tracking_ref]).await;
-        return Err(GorynychError::new(ErrorCode::NotFoundRef, t("Ветки {0} уже нет на {1}", &[&branch, &remote])).with_hint(t("Её удалили раньше — список веток обновлён.", &[])));
+        return Err(GorynychError::new(ErrorCode::NotFoundRef, t("branch-no-longer-exists-on", &[&branch, &remote])).with_hint(t("it-was-deleted-earlier-branch", &[])));
     };
     let hash = gorynych_core::js::trim(line.split('\t').next().unwrap_or_default()).to_owned();
     if let Err(error) = network.git(cwd, &["push", "--porcelain", &remote, "--delete", &full]).await {
         let text = format!("{}\n{}", error.details, error.message);
         if DEFAULT_BRANCH.is_match(&text) {
-            return Err(GorynychError::new(ErrorCode::DefaultBranch, t("Нельзя удалить {0}: это основная ветка репозитория на сервере", &[&branch])).with_hint(t("Сначала смените ветку по умолчанию в настройках проекта на GitLab/GitHub.", &[])).with_details(error.details));
+            return Err(GorynychError::new(ErrorCode::DefaultBranch, t("cant-delete-its-repositorys-default", &[&branch])).with_hint(t("change-default-branch-in-project", &[])).with_details(error.details));
         }
         if PROTECTED.is_match(&text) {
-            return Err(GorynychError::new(ErrorCode::Protected, t("Ветка {0} защищена на сервере — удалить её нельзя", &[&branch])).with_hint(t("Снимите защиту ветки в настройках проекта (Settings → Repository → Protected branches) или удалите её в веб-интерфейсе.", &[])).with_details(error.details));
+            return Err(GorynychError::new(ErrorCode::Protected, t("branch-is-protected-on-server", &[&branch])).with_hint(t("remove-branch-protection-in-project", &[])).with_details(error.details));
         }
         return Err(error);
     }
@@ -362,11 +362,11 @@ fn is_ahead(state: &State, branch: &str) -> u32 {
 /// `updateBranch`: перемотка из upstream без переключения. Не текущая ветка обновляется через `fetch`, рабочая папка не трогается.
 pub async fn update_branch(network: &Network, cwd: &Path, request: &UpdateBranch) -> Result<BranchUpdated> {
     let Some(branch) = request.branch.clone().filter(|text| !text.is_empty() && !text.starts_with('-')) else {
-        return Err(GorynychError::new(ErrorCode::BadArgs, t("Не указана ветка", &[])));
+        return Err(GorynychError::new(ErrorCode::BadArgs, t("no-branch-specified", &[])));
     };
     let state = current_state(cwd).await?;
     let Some(item) = state.refs.local_branches.iter().find(|item| item.name == branch).cloned() else {
-        return Err(GorynychError::new(ErrorCode::NotFoundRef, t("Ветка «{0}» не найдена", &[&branch])));
+        return Err(GorynychError::new(ErrorCode::NotFoundRef, t("branch-not-found", &[&branch])));
     };
     let parts = (filled(item.upstream.as_deref()), filled(item.upstream_remote.as_deref()), filled(item.upstream_ref.as_deref()));
     let (Some(upstream), Some(remote), Some(upstream_ref)) = parts else {
@@ -376,16 +376,16 @@ pub async fn update_branch(network: &Network, cwd: &Path, request: &UpdateBranch
         return Err(no_server_branch(&branch));
     }
     if item.gone {
-        return Err(GorynychError::new(ErrorCode::UpstreamGone, t("{0} удалена на сервере", &[&upstream])).with_hint(t("Обновлять неоткуда: ветку на сервере удалили.", &[])));
+        return Err(GorynychError::new(ErrorCode::UpstreamGone, t("was-deleted-on-server", &[&upstream])).with_hint(t("nothing-to-update-from-branch", &[])));
     }
     if !state.remotes.iter().any(|name| name == remote) {
-        return Err(GorynychError::new(ErrorCode::NoRemote, t("Remote «{0}» не найден", &[&remote])));
+        return Err(GorynychError::new(ErrorCode::NoRemote, t("remote-not-found", &[&remote])));
     }
     let current = state.branch_name.as_deref() == Some(&branch);
     let from = item.hash.clone();
 
     if current {
-        require_no_operation(&state, &t("обновление", &[]))?;
+        require_no_operation(&state, &t("update-2", &[]))?;
         let tracking = format!("refs/remotes/{upstream}");
         network.git(cwd, &["fetch", "--no-tags", remote, &format!("+{upstream_ref}:{tracking}")]).await?;
         let target = commit_of(cwd, &tracking).await;
@@ -393,27 +393,27 @@ pub async fn update_branch(network: &Network, cwd: &Path, request: &UpdateBranch
             return Ok(BranchUpdated { to: Some(from.clone()), from, branch, current, count: 0, upstream: None });
         };
         if !crate::common::succeeds(cwd, &["merge-base", "--is-ancestor", &from, &target]).await {
-            return Err(GorynychError::new(ErrorCode::NotFastForward, t("В {0} есть свои коммиты — перемотать нельзя", &[&branch])).with_hint(t("Используйте Pull (merge или rebase), чтобы объединить изменения.", &[])));
+            return Err(GorynychError::new(ErrorCode::NotFastForward, t("has-its-own-commits-cant", &[&branch])).with_hint(t("use-pull-merge-or-rebase", &[])));
         }
         if let Err(error) = git(cwd, &["merge", "--ff-only", "-q", &target]).await {
             if OVERWRITTEN.is_match(&error.details) {
-                return Err(GorynychError::new(ErrorCode::LocalChanges, t("Обновление затронет файлы с вашими незакоммиченными правками", &[])).with_hint(t("Закоммитьте или спрячьте правки (Stash) и повторите.", &[])).with_details(error.details));
+                return Err(GorynychError::new(ErrorCode::LocalChanges, t("update-would-touch-files-with", &[])).with_hint(t("commit-or-stash-your-changes", &[])).with_details(error.details));
             }
             return Err(error);
         }
     } else {
         let ahead = is_ahead(&state, &branch);
         if ahead > 0 {
-            return Err(GorynychError::new(ErrorCode::NotFastForward, t("В {0} есть неотправленные коммиты ({1})", &[&branch, &ahead])).with_hint(t("Без переключения обновить нельзя: переключитесь на ветку и сделайте Pull (merge или rebase).", &[])));
+            return Err(GorynychError::new(ErrorCode::NotFastForward, t("has-unpushed-commits", &[&branch, &ahead])).with_hint(t("cant-update-without-switching-switch", &[])));
         }
         // Без «+»: Git сам откажется, если это не перемотка вперёд
         if let Err(error) = network.git(cwd, &["fetch", "--no-tags", remote, &format!("{upstream_ref}:refs/heads/{branch}")]).await {
             let text = format!("{}\n{}", error.message, error.details);
             if NON_FF.is_match(&text) {
-                return Err(GorynychError::new(ErrorCode::NotFastForward, t("{0} разошлась с {1}", &[&branch, &upstream])).with_hint(t("Переключитесь на ветку и сделайте Pull (merge или rebase).", &[])).with_details(error.details));
+                return Err(GorynychError::new(ErrorCode::NotFastForward, t("has-diverged-from", &[&branch, &upstream])).with_hint(t("switch-to-branch-and-pull", &[])).with_details(error.details));
             }
             if IN_USE.is_match(&text) {
-                return Err(GorynychError::new(ErrorCode::BranchInUse, t("{0} открыта в другой рабочей папке (worktree)", &[&branch])).with_details(error.details));
+                return Err(GorynychError::new(ErrorCode::BranchInUse, t("is-checked-out-in-another", &[&branch])).with_details(error.details));
             }
             return Err(error);
         }
@@ -430,7 +430,7 @@ pub async fn update_branch(network: &Network, cwd: &Path, request: &UpdateBranch
 }
 
 fn no_server_branch(branch: &str) -> GorynychError {
-    GorynychError::new(ErrorCode::NoUpstream, t("У ветки «{0}» нет ветки на сервере", &[&branch])).with_hint(t("Сделайте Push, чтобы опубликовать её.", &[]))
+    GorynychError::new(ErrorCode::NoUpstream, t("branch-has-no-branch-on", &[&branch])).with_hint(t("push-to-publish-it", &[]))
 }
 
 /// Вернуть удалённую ветку на сервер: Undo `deleteRemoteBranch`.

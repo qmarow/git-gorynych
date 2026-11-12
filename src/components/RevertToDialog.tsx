@@ -76,7 +76,7 @@ export default function RevertToDialog({ repoPath, commit, busy, onClose, onConf
 
   return (
     <Modal
-      title={t('Вернуть проект к коммиту')}
+      title={t('restore-project-to-commit')}
       icon={History}
       iconClass="text-gk-yellow"
       onClose={busy ? () => {} : onClose}
@@ -84,9 +84,9 @@ export default function RevertToDialog({ repoPath, commit, busy, onClose, onConf
       footer={
         <>
           <Button onClick={onClose} disabled={busy}>
-            {t('Отмена')}</Button>
+            {t('cancel')}</Button>
           <Button variant="primary" disabled={!preview || blocked || busy} onClick={() => onConfirm({ push })}>
-            {tj('{0}Вернуть к {1}', [busy ? <Loader2 size={13} className="animate-spin" /> : <Check size={14} />, short])}
+            {tj('restore-to', [busy ? <Loader2 size={13} className="animate-spin" /> : <Check size={14} />, short])}
           </Button>
         </>
       }
@@ -104,7 +104,7 @@ export default function RevertToDialog({ repoPath, commit, busy, onClose, onConf
 
       {!preview && !error && (
         <div className="flex items-center gap-2 text-xs text-gk-muted">
-          {tj('{0} Считаем, что изменится…', [<Loader2 size={13} className="animate-spin" />])}</div>
+          {tj('computing-what-will-change', [<Loader2 size={13} className="animate-spin" />])}</div>
       )}
       {error && <ErrorBox error={error} />}
 
@@ -112,20 +112,20 @@ export default function RevertToDialog({ repoPath, commit, busy, onClose, onConf
         <>
           {preview.identical ? (
             <Note icon={Info} tone="blue">
-              {t('Файлы проекта уже совпадают с этим коммитом — откатывать нечего.')}</Note>
+              {t('project-files-already-match-this')}</Note>
           ) : (
             <div className="space-y-2 text-[13px] leading-relaxed">
               <p>
-                {tj('Все файлы станут такими, как в этом коммите{0}. Изменится <1>{2} {3}</1> (<4>+{5}</4> <6>−{7}</6>).', [preview.branch ? (
+                {tj('all-files-will-become-as', [preview.branch ? (
                   <>
-                    {tj(' на ветке <0>{1}</0>', [<b />, preview.branch])}
+                    {tj('on-branch-2', [<b />, preview.branch])}
                   </>
-                ) : null, <b />, preview.filesChanged, plural(preview.filesChanged, t('файл'), t('файла'), t('файлов')), <span className="text-gk-green" />, preview.insertions, <span className="text-gk-red" />, preview.deletions])}</p>
+                ) : null, <b />, preview.filesChanged, plural(preview.filesChanged, t('file'), t('files-2'), t('files')), <span className="text-gk-green" />, preview.insertions, <span className="text-gk-red" />, preview.deletions])}</p>
 
               {preview.ancestor && preview.count > 0 && (
                 <div className="rounded-lg bg-gk-sink/20 p-2.5 ring-1 ring-gk-border">
                   <div className="mb-1.5 text-xs text-gk-muted">
-                    {tj('Будут отменены изменения {0} {1}:', [preview.count, plural(preview.count, t('коммита'), t('коммитов'), t('коммитов'))])}</div>
+                    {tj('changes-of-will-be-undone', [preview.count, plural(preview.count, t('commits'), t('commits-2'), t('commits-2'))])}</div>
                   <div className="max-h-36 space-y-0.5 overflow-y-auto">
                     {preview.commits.map((c) => (
                       <div key={c.hash} className="flex items-center gap-2 text-xs">
@@ -136,7 +136,7 @@ export default function RevertToDialog({ repoPath, commit, busy, onClose, onConf
                       </div>
                     ))}
                     {preview.count > preview.commits.length && (
-                      <div className="text-xs text-gk-dim">{tj('… и ещё {0}', [preview.count - preview.commits.length])}</div>
+                      <div className="text-xs text-gk-dim">{tj('and-more-4', [preview.count - preview.commits.length])}</div>
                     )}
                   </div>
                 </div>
@@ -144,18 +144,18 @@ export default function RevertToDialog({ repoPath, commit, busy, onClose, onConf
 
               {!preview.ancestor && (
                 <Note icon={AlertTriangle} tone="yellow">
-                  {t('Этот коммит не из истории текущей ветки. Файлы всё равно станут как в нём — убедитесь, что это нужно.')}</Note>
+                  {t('this-commit-isnt-from-current')}</Note>
               )}
 
               <Note icon={ShieldCheck} tone="green">
-                {tj('Безопасно: история не переписывается. Сверху появится новый коммит «Revert to {0}», старые коммиты останутся. Передумали — нажмите Undo.{1}', [short, preview.pushedCount > 0 && t(' Подходит и для уже отправленных на сервер коммитов.')])}
+                {tj('safe-history-isnt-rewritten-new', [short, preview.pushedCount > 0 && t('suitable-for-commits-already-pushed')])}
               </Note>
             </div>
           )}
 
           {preview.dirtyCount > 0 && (
             <Note icon={AlertTriangle} tone="yellow">
-              {tj('Есть незакоммиченные изменения ({0}). Их нужно убрать перед откатом.{1}', [preview.dirtyCount, <button
+              {tj('there-are-uncommitted-changes-they', [preview.dirtyCount, <button
                 onClick={async () => {
                   const ok = await onStashFirst();
                   if (ok) setReload((n) => n + 1);
@@ -163,17 +163,17 @@ export default function RevertToDialog({ repoPath, commit, busy, onClose, onConf
                 disabled={busy}
                 className="ml-2 inline-flex items-center gap-1 font-medium text-gk-blue hover:underline"
               >
-                {tj('{0} Спрятать в Stash и продолжить', [<Archive size={12} />])}</button>])}
+                {tj('stash-and-continue', [<Archive size={12} />])}</button>])}
             </Note>
           )}
           {preview.collisions.length > 0 && (
             <Note icon={AlertTriangle} tone="yellow">
-              {tj('Неотслеживаемые файлы совпадают по имени с файлами коммита и будут мешать: <0>{1}</0>. Переместите их или спрячьте в Stash.', [<span className="font-mono text-[11px]" />, preview.collisions.slice(0, 5).join(', ')])}</Note>
+              {tj('untracked-files-have-same-names', [<span className="font-mono text-[11px]" />, preview.collisions.slice(0, 5).join(', ')])}</Note>
           )}
 
           {preview.hasUpstream && !blocked && (
             <label className="flex cursor-pointer items-center gap-2 text-xs text-gk-muted">
-              {tj('{0}{1}Сразу отправить на сервер (push)', [<input type="checkbox" checked={push} onChange={(e) => setPush(e.target.checked)} className="accent-gk-green" />, <CloudUpload size={13} />])}</label>
+              {tj('push-to-server-right-away-2', [<input type="checkbox" checked={push} onChange={(e) => setPush(e.target.checked)} className="accent-gk-green" />, <CloudUpload size={13} />])}</label>
           )}
         </>
       )}

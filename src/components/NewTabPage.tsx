@@ -66,24 +66,24 @@ export default function NewTabPage({ loading, loadingPath, openPaths = [], onOpe
     <div className="flex min-h-0 flex-1 animate-fade-in bg-gk-bg/80" data-testid="new-tab-page">
       {/* Репозитории */}
       <section className="flex min-w-0 flex-1 flex-col overflow-y-auto px-[clamp(24px,6vw,96px)] py-9">
-        <h1 className="mb-4 text-[19px] font-medium text-gk-strong">{t('Репозитории')}</h1>
+        <h1 className="mb-4 text-[19px] font-medium text-gk-strong">{t('repositories')}</h1>
         <div className="flex flex-wrap gap-2">
-          <ActionButton icon={FolderOpen} label={t('Открыть')} hint={kb('Ctrl+O')} onClick={onOpen} disabled={loading} />
-          <ActionButton icon={CloudDownload} label={t('Клонировать')} hint={kb('Ctrl+Shift+O')} onClick={onClone} disabled={loading} />
-          <ActionButton icon={Plus} label={t('Создать')} hint={kb('Ctrl+N')} onClick={onCreate} disabled={loading} />
-          <ActionButton icon={Link2} label={t('Подключить к GitLab / GitHub')} onClick={onConnect} disabled={loading} subtle />
+          <ActionButton icon={FolderOpen} label={t('open')} hint={kb('Ctrl+O')} onClick={onOpen} disabled={loading} />
+          <ActionButton icon={CloudDownload} label={t('clone-2')} hint={kb('Ctrl+Shift+O')} onClick={onClone} disabled={loading} />
+          <ActionButton icon={Plus} label={t('create')} hint={kb('Ctrl+N')} onClick={onCreate} disabled={loading} />
+          <ActionButton icon={Link2} label={t('connect-to-gitlab-github')} onClick={onConnect} disabled={loading} subtle />
         </div>
 
         <div className="mt-7 flex items-center gap-3">
-          <h2 className="text-[13px] font-medium text-gk-text">{t('Недавние')}</h2>
+          <h2 className="text-[13px] font-medium text-gk-text">{t('recent')}</h2>
           {recent && recent.length > 6 && (
             <label className="flex w-56 items-center gap-1.5 rounded-md border border-gk-border bg-gk-sink/20 px-2 py-1 focus-within:border-gk-blue/60">
               <Search size={12} className="shrink-0 text-gk-dim" />
               <input
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
-                placeholder={t('Найти репозиторий…')}
-                aria-label={t('Найти репозиторий')}
+                placeholder={t('find-repository')}
+                aria-label={t('find-repository-2')}
                 className="min-w-0 flex-1 bg-transparent text-[12px] text-gk-text outline-none placeholder:text-gk-dim"
               />
             </label>
@@ -93,12 +93,12 @@ export default function NewTabPage({ loading, loadingPath, openPaths = [], onOpe
         <div className="mt-2 min-h-0" data-testid="recent-list">
           {recent === null ? (
             <div className="flex items-center gap-2 py-1 text-[12.5px] text-gk-dim">
-              {tj('{0} Загружаем список…', [<Loader2 size={12} className="animate-spin" />])}</div>
+              {tj('loading-list', [<Loader2 size={12} className="animate-spin" />])}</div>
           ) : recent.length === 0 ? (
             <p className="py-1 text-[12.5px] leading-relaxed text-gk-dim">
-              {t('Здесь появятся репозитории, которые вы открывали. Начните с «Открыть» — если в папке нет Git, программа предложит его создать.')}</p>
+              {t('repositories-youve-opened-will-appear')}</p>
           ) : shown.length === 0 ? (
-            <p className="py-1 text-[12.5px] text-gk-dim">{t('Ничего не найдено')}</p>
+            <p className="py-1 text-[12.5px] text-gk-dim">{t('nothing-found')}</p>
           ) : (
             <ul className="-mx-2">
               {shown.map((r) => {
@@ -108,7 +108,7 @@ export default function NewTabPage({ loading, loadingPath, openPaths = [], onOpe
                     <button
                       onClick={() => onOpenPath(r.path)}
                       disabled={loading}
-                      data-tip={`${r.path}${r.openedAt ? t('\nОткрывали {0}', relativeTime(r.openedAt)) : ''}${isOpen(r.path) ? t('\nУже открыт — переключиться на вкладку') : ''}`}
+                      data-tip={`${r.path}${r.openedAt ? t('opened', relativeTime(r.openedAt)) : ''}${isOpen(r.path) ? t('already-open-switch-to-tab') : ''}`}
                       className="flex min-w-0 flex-1 items-baseline gap-2.5 px-2 py-[3px] text-left disabled:cursor-wait"
                     >
                       {busy ? (
@@ -121,8 +121,8 @@ export default function NewTabPage({ loading, loadingPath, openPaths = [], onOpe
                     </button>
                     <button
                       onClick={() => forget(r.path)}
-                      aria-label={t('Убрать {0} из недавних', r.name)}
-                      data-tip={t('Убрать из списка (сам репозиторий не трогается)')}
+                      aria-label={t('remove-from-recent', r.name)}
+                      data-tip={t('remove-from-list-repository-itself')}
                       className="mr-1 flex h-5 w-5 shrink-0 items-center justify-center rounded text-gk-dim opacity-0 hover:bg-gk-fg/10 hover:text-gk-text group-hover:opacity-100"
                     >
                       <X size={11} />
@@ -139,29 +139,29 @@ export default function NewTabPage({ loading, loadingPath, openPaths = [], onOpe
       <aside className="hidden w-[min(42%,520px)] shrink-0 overflow-y-auto border-l border-gk-border/70 px-9 py-9 md:block">
         <div className="mb-3 flex items-center gap-2.5">
           <AppLogo size={26} />
-          <h2 className="text-[16px] font-medium text-gk-strong">{t('Работайте быстрее с git-Горынычем')}</h2>
+          <h2 className="text-[16px] font-medium text-gk-strong">{t('work-faster-with-git-gorynych')}</h2>
         </div>
         <p className="text-[12.5px] leading-relaxed text-gk-muted">
-          {t('Перетаскивайте ветки на ветки для merge и rebase, переключайтесь без stash вручную, проверяйте коммиты на забытые console.log и ключи до отправки, следите за пайплайнами GitLab и правьте .gitlab-ci.yml — всё в одном окне.')}</p>
+          {t('drag-branches-onto-branches-to')}</p>
         <button
           onClick={onGuide}
           className="mt-3 flex items-center gap-2 rounded-md bg-gk-fg/[0.06] px-3 py-1.5 text-[13px] text-gk-text ring-1 ring-gk-border transition hover:bg-gk-hover"
         >
-          {tj('{0} Открыть руководство', [<BookOpen size={14} className="text-gk-muted" />])}</button>
+          {tj('open-guide', [<BookOpen size={14} className="text-gk-muted" />])}</button>
 
-        <h3 className="mb-1.5 mt-7 text-[13px] font-medium text-gk-text">{t('Ресурсы')}</h3>
+        <h3 className="mb-1.5 mt-7 text-[13px] font-medium text-gk-text">{t('resources')}</h3>
         <ul className="space-y-1 text-[13px]">
           <li>
             <button onClick={onGuide} className="flex items-center gap-1.5 text-gk-blue hover:underline">
-              {t('Как пользоваться программой (F1)')}</button>
+              {t('how-to-use-app-f1-2')}</button>
           </li>
           <li>
             <button onClick={onShortcuts} className="flex items-center gap-1.5 text-gk-blue hover:underline">
-              {tj('{0} Горячие клавиши', [<Keyboard size={12} />])}</button>
+              {tj('keyboard-shortcuts-2', [<Keyboard size={12} />])}</button>
           </li>
           <li>
             <button onClick={onSettings} className="flex items-center gap-1.5 text-gk-blue hover:underline">
-              {tj('{0} Настройки и оформление', [<Settings size={12} />])}</button>
+              {tj('settings-and-appearance-2', [<Settings size={12} />])}</button>
           </li>
         </ul>
       </aside>

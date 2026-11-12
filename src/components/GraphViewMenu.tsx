@@ -56,12 +56,12 @@ export default function GraphViewMenu({ x, y, view, onChange, onResetLayout, onC
     <div
       ref={ref}
       role="menu"
-      aria-label={t('Вид таблицы коммитов')}
+      aria-label={t('commit-table-view')}
       style={pos}
       onContextMenu={(e) => e.preventDefault()}
       className="glass-strong fixed z-50 max-h-[calc(100vh-8px)] w-80 origin-top-left animate-pop-in overflow-y-auto rounded-lg border border-gk-border bg-gk-panel-2 py-1 text-[13px]"
     >
-      <Header>{t('Колонки')}</Header>
+      <Header>{t('columns')}</Header>
       {ordered.map((col) => {
         const shown = col.locked || !view.hidden.includes(col.id);
         return (
@@ -71,7 +71,7 @@ export default function GraphViewMenu({ x, y, view, onChange, onResetLayout, onC
             aria-checked={shown}
             disabled={col.locked}
             onClick={() => toggle(col.id)}
-            data-tip={col.locked ? t('Сообщение видно всегда и забирает место скрытых колонок') : undefined}
+            data-tip={col.locked ? t('message-is-always-visible-and') : undefined}
             className="flex w-full items-center gap-2.5 px-3 py-[5px] text-left text-gk-text enabled:hover:bg-gk-hover disabled:cursor-default disabled:text-gk-muted"
           >
             <span
@@ -87,16 +87,16 @@ export default function GraphViewMenu({ x, y, view, onChange, onResetLayout, onC
         );
       })}
       <div className="flex items-center gap-1.5 px-3 pb-1 pt-1 text-[11px] text-gk-dim">
-        {tj('{0}Порядок — перетащите заголовок колонки', [<GripVertical size={11} className="shrink-0" />])}</div>
+        {tj('order-drag-column-header', [<GripVertical size={11} className="shrink-0" />])}</div>
 
       <Separator />
-      <Header>{t('Плотность строк')}</Header>
+      <Header>{t('row-density')}</Header>
       <Segmented options={DENSITY_OPTIONS} value={view.density} onPick={(density) => onChange({ density })} />
 
-      <Header>{t('Дата и время')}</Header>
+      <Header>{t('date-and-time')}</Header>
       <Segmented options={DATE_FORMAT_OPTIONS} value={view.dateFormat} onPick={(dateFormat) => onChange({ dateFormat })} />
 
-      <Header>{t('Узлы графа')}</Header>
+      <Header>{t('graph-nodes')}</Header>
       <Segmented options={NODE_STYLE_OPTIONS} value={view.nodeStyle} onPick={(nodeStyle) => onChange({ nodeStyle })} />
 
       <Separator />
@@ -108,7 +108,7 @@ export default function GraphViewMenu({ x, y, view, onChange, onResetLayout, onC
         }}
         className="flex w-full items-center gap-2.5 px-3 py-1.5 text-left text-gk-text hover:bg-gk-hover"
       >
-        {tj('{0}Сбросить ширину и вид колонок', [<RotateCcw size={14} className="shrink-0 text-gk-muted" />])}</button>
+        {tj('reset-column-widths-and-view', [<RotateCcw size={14} className="shrink-0 text-gk-muted" />])}</button>
     </div>
   );
 }

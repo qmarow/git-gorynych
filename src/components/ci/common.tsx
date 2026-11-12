@@ -47,7 +47,7 @@ export function Duration({ startedAt, duration, running, className = '', prefix 
   const text = formatDuration(sec);
   if (!text) return null;
   return (
-    <span className={`tabular-nums ${className}`} data-testid={running ? 'live-duration' : 'duration'} title={running ? tr('Идёт сейчас') : tr('Длительность')}>
+    <span className={`tabular-nums ${className}`} data-testid={running ? 'live-duration' : 'duration'} title={running ? tr('running-now') : tr('duration')}>
       {prefix}
       {text}
     </span>
@@ -56,11 +56,11 @@ export function Duration({ startedAt, duration, running, className = '', prefix 
 
 export function formatSize(bytes: number | null | undefined): string {
   if (bytes == null) return '';
-  if (bytes < 1024) return tr('{0} Б', bytes);
+  if (bytes < 1024) return tr('b', bytes);
   const num = (n: number, digits: number) => n.toLocaleString(locale(), { maximumFractionDigits: digits, minimumFractionDigits: digits });
-  if (bytes < 1024 * 1024) return tr('{0} КБ', num(bytes / 1024, bytes < 10240 ? 1 : 0));
-  if (bytes < 1024 ** 3) return tr('{0} МБ', num(bytes / 1024 / 1024, 1));
-  return tr('{0} ГБ', num(bytes / 1024 ** 3, 2));
+  if (bytes < 1024 * 1024) return tr('kb', num(bytes / 1024, bytes < 10240 ? 1 : 0));
+  if (bytes < 1024 ** 3) return tr('mb', num(bytes / 1024 / 1024, 1));
+  return tr('gb', num(bytes / 1024 ** 3, 2));
 }
 
 export function ErrorNote({ error, className = 'm-4' }: { error: { message?: ReactNode; hint?: ReactNode } | null | undefined; className?: string }) {
@@ -198,7 +198,7 @@ export function Toggle({ checked, onChange, label, hint, disabled, why, testid }
 }
 
 /** Ввод тегов чипсами: Enter, запятая или пробел — добавить, Backspace — убрать последний */
-export function ChipsInput({ value, onChange, suggestions = [], placeholder = tr('тег'), locked = [], disabled, testid }: { value: string[]; onChange: (value: string[]) => void; suggestions?: readonly unknown[]; placeholder?: string; locked?: string[]; disabled?: boolean; testid?: string }) {
+export function ChipsInput({ value, onChange, suggestions = [], placeholder = tr('tag-4'), locked = [], disabled, testid }: { value: string[]; onChange: (value: string[]) => void; suggestions?: readonly unknown[]; placeholder?: string; locked?: string[]; disabled?: boolean; testid?: string }) {
   const [text, setText] = useState('');
   const [focus, setFocus] = useState(false);
   const [open, setOpen] = useState(false); // список подсказок: открыт, пока печатают; после добавления тега — закрыт
@@ -234,13 +234,13 @@ export function ChipsInput({ value, onChange, suggestions = [], placeholder = tr
               key={t}
               data-testid="chip"
               className={`flex items-center gap-1 rounded px-1.5 py-0.5 font-mono text-[11.5px] ${isLocked ? 'bg-gk-fg/5 text-gk-dim' : 'bg-gk-blue/15 text-gk-blue'}`}
-              data-tip={isLocked ? tr('Метку задаёт сам сервер — её не убрать') : undefined}
+              data-tip={isLocked ? tr('label-is-set-by-server') : undefined}
             >
               {t}
               {!isLocked && !disabled && (
                 <button
                   type="button"
-                  aria-label={tr('Убрать {0}', t)}
+                  aria-label={tr('remove', t)}
                   onClick={(e) => {
                     e.stopPropagation();
                     onChange(value.filter((x) => x !== t));

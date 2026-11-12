@@ -213,7 +213,7 @@ fn path_text(path: &Path) -> String {
 #[specta::specta]
 pub async fn repo_open_dialog(window: WebviewWindow, state: State<'_, AppState>, title: Option<String>) -> Result<Option<String>> {
     let services = state.services()?;
-    let title = title.unwrap_or_else(|| t("Открыть Git-репозиторий", &[]));
+    let title = title.unwrap_or_else(|| t("open-git-repository", &[]));
     let picked = ask(&window, services, Ask { picker: Picker::Folder, title, directory: None, file_name: None, filter: None }).await?;
     Ok(picked.as_deref().map(path_text))
 }
@@ -224,7 +224,7 @@ pub async fn creds_pick_key(window: WebviewWindow, state: State<'_, AppState>) -
     let services = state.services()?;
     let keys = PathBuf::from(list_ssh_keys(&services.ssh_dir).dir);
     let directory = if keys.exists() { keys } else { std::env::home_dir().unwrap_or_default() };
-    let picked = ask(&window, services, Ask { picker: Picker::File, title: t("Приватный SSH-ключ", &[]), directory: Some(directory), file_name: None, filter: None }).await?;
+    let picked = ask(&window, services, Ask { picker: Picker::File, title: t("private-ssh-key", &[]), directory: Some(directory), file_name: None, filter: None }).await?;
     Ok(picked.as_deref().map(path_text))
 }
 
@@ -249,12 +249,12 @@ fn mime_of(path: &Path) -> &'static str {
 fn store_image(data_dir: &Path, source: &Path) -> Result<String> {
     let ext = source.extension().map(|ext| ext.to_string_lossy().to_lowercase()).unwrap_or_default();
     if !IMAGE_TYPES.iter().any(|(known, _)| *known == ext) {
-        return Err(GorynychError::new(ErrorCode::Unsupported, t("Этот формат не поддерживается", &[])));
+        return Err(GorynychError::new(ErrorCode::Unsupported, t("this-format-isnt-supported", &[])));
     }
     let size = fs::metadata(source).map_err(GorynychError::unknown)?.len();
     if size > MAX_IMAGE {
         let megabytes = (size as f64 / 1_048_576.0).round();
-        return Err(GorynychError::new(ErrorCode::TooLarge, t("Картинка слишком большая ({0} МБ, максимум 25 МБ)", &[&megabytes])));
+        return Err(GorynychError::new(ErrorCode::TooLarge, t("image-is-too-large-mb", &[&megabytes])));
     }
     let dir = backgrounds(data_dir);
     fs::create_dir_all(&dir).map_err(GorynychError::unknown)?;
@@ -271,8 +271,8 @@ fn store_image(data_dir: &Path, source: &Path) -> Result<String> {
 #[specta::specta]
 pub async fn appearance_pick_image(window: WebviewWindow, state: State<'_, AppState>) -> Result<PickedImage> {
     let services = state.services()?;
-    let filter = (t("Изображения", &[]), IMAGE_TYPES.iter().map(|(ext, _)| *ext).collect());
-    let picked = ask(&window, services, Ask { picker: Picker::File, title: t("Картинка для фона", &[]), directory: None, file_name: None, filter: Some(filter) }).await?;
+    let filter = (t("images", &[]), IMAGE_TYPES.iter().map(|(ext, _)| *ext).collect());
+    let picked = ask(&window, services, Ask { picker: Picker::File, title: t("background-image", &[]), directory: None, file_name: None, filter: Some(filter) }).await?;
     let Some(source) = picked else {
         return Ok(PickedImage { canceled: true, name: None });
     };
@@ -347,10 +347,10 @@ pub async fn cicd_artifact_download(window: WebviewWindow, state: State<'_, AppS
     let downloads = window.path().download_dir().ok();
     let request = Ask {
         picker: Picker::Save,
-        title: t("Сохранить артефакт", &[]),
+        title: t("save-artifact", &[]),
         directory: downloads,
         file_name: Some(name.clone()),
-        filter: Some((t("Архив", &[]), vec!["zip"])),
+        filter: Some((t("archive", &[]), vec!["zip"])),
     };
     let Some(dest) = ask(&window, services, request).await? else {
         return Ok(ArtifactSaved { canceled: true, ..ArtifactSaved::default() });
@@ -367,7 +367,7 @@ fn require_dir(dir: Option<&str>) -> Result<PathBuf> {
     let text = dir.unwrap_or_default();
     let path = Path::new(text);
     if text.is_empty() || !path.is_dir() {
-        return Err(GorynychError::new(ErrorCode::NotFound, t("Папка не найдена", &[])).with_hint(text.to_owned()));
+        return Err(GorynychError::new(ErrorCode::NotFound, t("folder-not-found-2", &[])).with_hint(text.to_owned()));
     }
     std::path::absolute(path).map_err(GorynychError::unknown)
 }
@@ -397,7 +397,7 @@ pub async fn repo_open_path(state: State<'_, AppState>, dir: String, rel: String
 pub async fn shell_open_folder(state: State<'_, AppState>, dir: Option<String>) -> Result<OpenedPath> {
     let services = state.services()?;
     let target = require_dir(dir.as_deref())?;
-    open_with_shell(services, &target).map_err(|error| GorynychError::new(ErrorCode::OpenFailed, t("Не удалось открыть папку", &[])).with_details(error))?;
+    open_with_shell(services, &target).map_err(|error| GorynychError::new(ErrorCode::OpenFailed, t("couldnt-open-folder", &[])).with_details(error))?;
     Ok(OpenedPath { path: path_text(&target) })
 }
 
@@ -488,7 +488,7 @@ pub(crate) fn terminal_candidates(dir: &Path, platform: Platform, exists: impl F
             item("Windows Terminal", "wt.exe", &["-d", &text], false),
             item("PowerShell", "powershell.exe", &["-NoExit", "-NoLogo"], true),
             // Папка уже рабочая: лишние кавычки в аргументах cmd.exe разбирает плохо
-            item(&t("Командная строка", &[]), "cmd.exe", &["/K"], true),
+            item(&t("command-prompt", &[]), "cmd.exe", &["/K"], true),
         ],
         Platform::Other => vec![
             item("x-terminal-emulator", "x-terminal-emulator", &[], true),
@@ -544,8 +544,8 @@ pub async fn shell_open_terminal(state: State<'_, AppState>, dir: Option<String>
             Err(error) => last_error = error.to_string(),
         }
     }
-    Err(GorynychError::new(ErrorCode::NoTerminal, t("Не удалось открыть терминал", &[]))
-        .with_hint(t("Не найден ни один из известных терминалов. Откройте папку вручную.", &[]))
+    Err(GorynychError::new(ErrorCode::NoTerminal, t("couldnt-open-terminal", &[]))
+        .with_hint(t("none-of-known-terminals-was", &[]))
         .with_details(last_error))
 }
 

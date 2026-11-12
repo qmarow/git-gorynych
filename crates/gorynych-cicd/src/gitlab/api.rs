@@ -493,14 +493,14 @@ pub(crate) async fn gl_list_pipelines(ctx: &GlCtx, reference: Option<&str>) -> R
 }
 
 pub(crate) fn check_pipeline_id(id: &CiId) -> Result<()> {
-    if id.is_positive_integer() { Ok(()) } else { Err(bad_args(t("Некорректный номер пайплайна", &[]))) }
+    if id.is_positive_integer() { Ok(()) } else { Err(bad_args(t("invalid-pipeline-number", &[]))) }
 }
 
 pub(crate) async fn gl_pipeline_detail(ctx: &GlCtx, id: &CiId) -> Result<GlPipelineDetail> {
     let n = id.number_text();
     let pid = ctx.project_path();
     let (p, jobs, bridges) = tokio::join!(
-        ctx.request(Method::GET, format!("{pid}/pipelines/{n}"), Opts::not_found(t("Пайплайн #{0} не найден — возможно, его удалили", &[&n]))),
+        ctx.request(Method::GET, format!("{pid}/pipelines/{n}"), Opts::not_found(t("pipeline-not-found-it-may", &[&n]))),
         ctx.fetch_all(format!("{pid}/pipelines/{n}/jobs"), 3),
         ctx.fetch_all(format!("{pid}/pipelines/{n}/bridges"), 1),
     );
@@ -546,14 +546,14 @@ pub(crate) async fn gl_pipeline_detail(ctx: &GlCtx, id: &CiId) -> Result<GlPipel
 }
 
 pub(crate) fn check_job_id(id: &CiId) -> Result<()> {
-    if id.is_positive_integer() { Ok(()) } else { Err(bad_args(t("Некорректный номер задания", &[]))) }
+    if id.is_positive_integer() { Ok(()) } else { Err(bad_args(t("invalid-job-number", &[]))) }
 }
 
 pub(crate) async fn gl_job_log(ctx: &GlCtx, id: &CiId) -> Result<GlJobLog> {
     let n = id.number_text();
     let pid = ctx.project_path();
     let (job, trace) = tokio::join!(
-        ctx.request(Method::GET, format!("{pid}/jobs/{n}"), Opts::not_found(t("Задание #{0} не найдено — возможно, его удалили", &[&n]))),
+        ctx.request(Method::GET, format!("{pid}/jobs/{n}"), Opts::not_found(t("job-not-found-it-may", &[&n]))),
         super::http::request_text(&ctx.client, &ctx.remote.base, &ctx.token, format!("{pid}/jobs/{n}/trace")),
     );
     let job = job?;
@@ -568,21 +568,21 @@ pub(crate) async fn gl_job_log(ctx: &GlCtx, id: &CiId) -> Result<GlJobLog> {
 pub(crate) fn check_action(action: &ActionRequest) -> Result<()> {
     let known = matches!(action.kind.as_deref(), Some("job.retry" | "job.cancel" | "job.play" | "pipeline.retry" | "pipeline.cancel" | "pipeline.create"));
     if !known {
-        return Err(bad_args(t("Неизвестное действие", &[])));
+        return Err(bad_args(t("unknown-action", &[])));
     }
     if action.kind.as_deref() == Some("pipeline.create") {
         if action.reference.as_deref().is_none_or(|reference| js::trim(reference).is_empty()) {
-            return Err(bad_args(t("Не указана ветка", &[])));
+            return Err(bad_args(t("no-branch-specified", &[])));
         }
     } else if !action.id.as_ref().is_some_and(CiId::is_positive_integer) {
-        return Err(bad_args(t("Некорректный номер", &[])));
+        return Err(bad_args(t("invalid-number", &[])));
     }
     Ok(())
 }
 
 pub(crate) async fn gl_action(ctx: &GlCtx, action: &ActionRequest) -> Result<GlActionResult> {
     if !ctx.can_write() {
-        return Err(GorynychError::new(ErrorCode::Forbidden, t("Токен только для чтения", &[])).with_hint(t("Для запуска и отмены нужен токен со scope «api» — создайте новый и сохраните его", &[])));
+        return Err(GorynychError::new(ErrorCode::Forbidden, t("read-only-token", &[])).with_hint(t("running-and-canceling-require-token", &[])));
     }
     let pid = ctx.project_path();
     let id = action.id.as_ref().map_or_else(|| "undefined".to_owned(), ToString::to_string);
@@ -691,9 +691,9 @@ impl CicdService {
 
     /// `variableValue`.
     pub async fn gitlab_variable_value(&self, root: &Path, variable: &GlVariableRef, preferred: Option<&str>) -> Result<GlVariableValue> {
-        let key = variable.key.as_ref().and_then(Value::as_str).filter(|key| valid_var_key(key)).ok_or_else(|| bad_args(t("Некорректное имя переменной", &[])))?;
+        let key = variable.key.as_ref().and_then(Value::as_str).filter(|key| valid_var_key(key)).ok_or_else(|| bad_args(t("invalid-variable-name", &[])))?;
         let ctx = self.gitlab_context(root, preferred).await?;
-        let opts = scope_query(variable.scope.as_deref()).with_not_found(t("Переменная {0} не найдена — возможно, её удалили", &[&key]));
+        let opts = scope_query(variable.scope.as_deref()).with_not_found(t("variable-not-found-it-may", &[&key]));
         let v = ctx.request(Method::GET, format!("{}/variables/{key}", ctx.project_path()), opts).await?;
         let value = field(&v, "value").filter(|_| !crate::json::flag(&v, "hidden"));
         Ok(GlVariableValue { key: key.to_owned(), hidden: value.is_none(), value: value.map(crate::json::js_string) })
@@ -723,13 +723,13 @@ impl CicdService {
 
     /// `lintCi`.
     pub async fn gitlab_lint(&self, root: &Path, draft: &GlLintRequest, preferred: Option<&str>) -> Result<GlLintResult> {
-        let content = draft.content.as_ref().and_then(Value::as_str).ok_or_else(|| bad_args(t("Нет содержимого", &[])))?;
+        let content = draft.content.as_ref().and_then(Value::as_str).ok_or_else(|| bad_args(t("no-content", &[])))?;
         let ctx = self.gitlab_context(root, preferred).await?;
         let mut body = json!({ "content": content, "dry_run": true, "include_jobs": true });
         if let Some(reference) = draft.reference.as_deref().filter(|reference| !reference.is_empty()) {
             body["ref"] = json!(reference);
         }
-        let opts = Opts::body(body).with_not_found(t("Этот сервер GitLab не поддерживает проверку CI по API (нужен GitLab 13.6 или новее)", &[]));
+        let opts = Opts::body(body).with_not_found(t("this-gitlab-server-doesnt-support", &[]));
         let res = ctx.request(Method::POST, format!("{}/ci/lint", ctx.project_path()), opts).await?;
         Ok(GlLintResult {
             valid: flag(&res, "valid"),
@@ -766,11 +766,11 @@ impl CicdService {
 
     async fn save_variable_raw(&self, root: &Path, original: Option<&GlVariableOriginal>, v: &GlVariableInput, preferred: Option<&str>) -> Result<GlVariableSaved> {
         if !v.key.as_deref().is_some_and(valid_var_key) {
-            return Err(GorynychError::new(ErrorCode::InvalidName, t("Имя переменной: только латинские буквы, цифры и _", &[])));
+            return Err(GorynychError::new(ErrorCode::InvalidName, t("variable-name-only-latin-letters", &[])));
         }
         let new_value = str_value(v.value.as_ref());
         if new_value.as_deref().is_some_and(|value| js::utf16_len(value) > 10_000) {
-            return Err(bad_args(t("Значение слишком длинное", &[])));
+            return Err(bad_args(t("value-is-too-long", &[])));
         }
         let ctx = self.gitlab_context(root, preferred).await?;
         ctx.require_write()?;
@@ -779,7 +779,7 @@ impl CicdService {
 
         let Some(original) = original else {
             let Some(value) = new_value else {
-                return Err(bad_args(t("Введите значение", &[])));
+                return Err(bad_args(t("enter-value", &[])));
             };
             let mut body = variable_body(v, Some(value));
             if v.hidden {
@@ -797,7 +797,7 @@ impl CicdService {
                 let current = ctx.request(Method::GET, format!("{base}/{original_key}"), scope_query(original.scope.as_deref())).await?;
                 match field(&current, "value").filter(|_| !flag(&current, "hidden")) {
                     Some(value) => crate::json::js_string(value),
-                    None => return Err(bad_args(t("Значение скрытой переменной нельзя прочитать — введите его заново", &[]))),
+                    None => return Err(bad_args(t("value-of-hidden-variable-cant", &[]))),
                 }
             }
         };
@@ -816,10 +816,10 @@ impl CicdService {
 
     /// `deleteVariable`.
     pub async fn gitlab_delete_variable(&self, root: &Path, variable: &GlVariableRef, preferred: Option<&str>) -> Result<GlVariableSaved> {
-        let key = variable.key.as_ref().and_then(Value::as_str).filter(|key| valid_var_key(key)).ok_or_else(|| bad_args(t("Некорректное имя переменной", &[])))?;
+        let key = variable.key.as_ref().and_then(Value::as_str).filter(|key| valid_var_key(key)).ok_or_else(|| bad_args(t("invalid-variable-name", &[])))?;
         let ctx = self.gitlab_context(root, preferred).await?;
         ctx.require_write()?;
-        let opts = scope_query(variable.scope.as_deref()).with_not_found(t("Переменная {0} уже удалена", &[&key]));
+        let opts = scope_query(variable.scope.as_deref()).with_not_found(t("variable-is-already-deleted", &[&key]));
         ctx.request(Method::DELETE, format!("{}/variables/{key}", ctx.project_path()), opts).await?;
         Ok(GlVariableSaved { key: Some(key.to_owned()), scope: Some(variable.scope.clone().unwrap_or_else(|| "*".to_owned())), deleted: Some(true), ..GlVariableSaved::default() })
     }
@@ -848,13 +848,13 @@ impl CicdService {
         let trimmed = |value: &Option<String>| js::trim(value.as_deref().unwrap_or_default()).to_owned();
         let (description, reference, cron) = (trimmed(&s.description), trimmed(&s.reference), trimmed(&s.cron));
         if description.is_empty() {
-            return Err(bad_args(t("Введите описание расписания", &[])));
+            return Err(bad_args(t("enter-schedule-description", &[])));
         }
         if reference.is_empty() {
-            return Err(bad_args(t("Выберите ветку", &[])));
+            return Err(bad_args(t("choose-branch", &[])));
         }
         if !CRON.is_match(&cron) {
-            return Err(bad_args(t("Неверный формат cron", &[])).with_hint(t("Пять полей через пробел: минуты часы день месяц день_недели, например «0 3 * * *»", &[])));
+            return Err(bad_args(t("invalid-cron-format", &[])).with_hint(t("five-space-separated-fields-minute", &[])));
         }
         let ctx = self.gitlab_context(root, preferred).await?;
         ctx.require_write()?;
@@ -868,7 +868,7 @@ impl CicdService {
         let base = format!("{}/pipeline_schedules", ctx.project_path());
         let existing = s.id.as_ref().filter(|id| id.number() != 0.0 && !id.number().is_nan() && !matches!(id, CiId::Text(text) if text.is_empty()));
         let res = match existing {
-            Some(id) => ctx.request(Method::PUT, format!("{base}/{}", id.number_text()), Opts::body(body).with_not_found(t("Расписание не найдено — возможно, его удалили", &[]))).await?,
+            Some(id) => ctx.request(Method::PUT, format!("{base}/{}", id.number_text()), Opts::body(body).with_not_found(t("schedule-not-found-it-may", &[]))).await?,
             None => ctx.request(Method::POST, &base, Opts::body(body)).await?,
         };
         Ok(schedule_summary(&res))
@@ -876,32 +876,32 @@ impl CicdService {
 
     /// `scheduleAction`.
     pub async fn gitlab_schedule_action(&self, root: &Path, action: &GlScheduleAction, preferred: Option<&str>) -> Result<GlScheduleActionResult> {
-        let id = action.id.as_ref().filter(|id| id.is_positive_integer()).ok_or_else(|| bad_args(t("Некорректный номер расписания", &[])))?;
+        let id = action.id.as_ref().filter(|id| id.is_positive_integer()).ok_or_else(|| bad_args(t("invalid-schedule-number", &[])))?;
         let n = id.number() as i64;
         let ctx = self.gitlab_context(root, preferred).await?;
         ctx.require_write()?;
         let base = format!("{}/pipeline_schedules/{n}", ctx.project_path());
-        let not_found = || Opts::not_found(t("Расписание не найдено — возможно, его удалили", &[]));
+        let not_found = || Opts::not_found(t("schedule-not-found-it-may", &[]));
         let kind = action.kind.as_deref().unwrap_or_default();
         match kind {
             "delete" => ctx.request(Method::DELETE, &base, not_found()).await?,
             "play" => ctx.request(Method::POST, format!("{base}/play"), not_found()).await?,
             "own" => ctx.request(Method::POST, format!("{base}/take_ownership"), not_found()).await?,
-            _ => return Err(bad_args(t("Неизвестное действие", &[]))),
+            _ => return Err(bad_args(t("unknown-action", &[]))),
         };
         Ok(GlScheduleActionResult { id: n, kind: kind.to_owned() })
     }
 
     /// `createMergeRequest`.
     pub async fn gitlab_create_merge_request(&self, root: &Path, mr: &GlMergeRequestInput, preferred: Option<&str>) -> Result<GlMergeRequest> {
-        for (value, what) in [(&mr.source, t("исходная ветка", &[])), (&mr.target, t("целевая ветка", &[]))] {
+        for (value, what) in [(&mr.source, t("source-branch", &[])), (&mr.target, t("target-branch", &[]))] {
             if value.as_deref().is_none_or(|value| js::trim(value).is_empty() || value.starts_with('-')) {
-                return Err(bad_args(t("Не указана {0}", &[&what])));
+                return Err(bad_args(t("no-specified", &[&what])));
             }
         }
         let (source, target) = (mr.source.as_deref().unwrap_or_default(), mr.target.as_deref().unwrap_or_default());
         if source == target {
-            return Err(bad_args(t("Исходная и целевая ветки совпадают", &[])));
+            return Err(bad_args(t("source-and-target-branches-are", &[])));
         }
         let ctx = self.gitlab_context(root, preferred).await?;
         ctx.require_write()?;
@@ -928,7 +928,7 @@ impl CicdService {
                     }
                 }
                 if error.code == ErrorCode::Validation && MR_NO_BRANCH.is_match(&error.details) {
-                    error.hint = Some(t("Сначала отправьте ветку на сервер (Push).", &[]));
+                    error.hint = Some(t("push-branch-to-server-first", &[]));
                 }
                 Err(error)
             }

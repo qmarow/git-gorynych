@@ -88,21 +88,21 @@ pub struct PickedAuth {
 /// `loginProblem`: почему вход репозитория не подходит для CI/CD.
 pub fn login_problem(rejected: &[Rejected], other: Option<&UnusableLogin>) -> Option<LoginProblem> {
     if let Some(item) = rejected.iter().find(|item| item.source != "login-shared").or(rejected.first()) {
-        let which = if item.via_api_token { t("Токен для пайплайнов в авторизации репозитория", &[]) } else { t("Токен авторизации репозитория", &[]) };
+        let which = if item.via_api_token { t("pipeline-token-in-repository-sign", &[]) } else { t("repository-sign-in-token", &[]) };
         let reason = item.reason.clone().unwrap_or_else(|| "undefined".to_owned());
-        return Some(LoginProblem { method: Some(item.method), reason: Some(t("{0} не подходит для пайплайнов: {1}.", &[&which, &reason])) });
+        return Some(LoginProblem { method: Some(item.method), reason: Some(t("doesnt-work-for-pipelines", &[&which, &reason])) });
     }
     match other {
         Some(login) if login.method == AuthMethod::Ssh => Some(LoginProblem {
             method: Some(AuthMethod::Ssh),
-            reason: Some(t("Репозиторий авторизован SSH-ключом — его принимает git, но не API GitLab. Добавьте в авторизацию репозитория токен для пайплайнов.", &[])),
+            reason: Some(t("repository-is-signed-in-with", &[])),
         }),
         Some(login) if login.method == AuthMethod::Password => Some(LoginProblem {
             method: Some(AuthMethod::Password),
             reason: Some(if login.unreadable {
-                t("Пароль авторизации репозитория не расшифровывается — авторизуйтесь заново.", &[])
+                t("repository-sign-in-password-cant", &[])
             } else {
-                t("Репозиторий авторизован логином и паролем — API GitLab принимает только токены. Добавьте в авторизацию репозитория токен для пайплайнов.", &[])
+                t("repository-is-signed-in-with-username", &[])
             }),
         }),
         _ => None,
@@ -128,7 +128,7 @@ async fn token_info(client: &reqwest::Client, base: &str, token: &GlToken) -> Re
 }
 
 fn scope_error(scopes: &[String]) -> String {
-    t("у токена нет права на API: есть только {0}, а нужен «api» или «read_api»", &[&scopes.join(", ")])
+    t("token-has-no-api-scope", &[&scopes.join(", ")])
 }
 
 fn has_api_scope(scopes: &[String]) -> bool {
@@ -165,9 +165,9 @@ async fn verify(client: reqwest::Client, base: String, secret: String) -> CheckF
                     let reason = match error.code {
                         ErrorCode::Forbidden => match scopes.filter(|scopes| !scopes.is_empty()) {
                             Some(scopes) => scope_error(&scopes),
-                            None => t("у токена нет права на API (нужен scope «api» или «read_api»)", &[]),
+                            None => t("token-has-no-api-scope-api", &[]),
                         },
-                        ErrorCode::Auth => t("GitLab не принимает этот токен для API — он отозван, истёк или это не личный токен", &[]),
+                        ErrorCode::Auth => t("gitlab-doesnt-accept-this-token", &[]),
                         _ => error.message,
                     };
                     return CheckFlow::Keep(done(CheckState::Bad, None, false, Some(reason)));
@@ -395,7 +395,7 @@ impl CicdService {
         let check = match tokio::time::timeout(Duration::from_secs(8), self.gitlab_verify_login(base, &repo.secret)).await {
             Ok(check) => check,
             Err(_) => {
-                return Ok(LoginCheckResult { state: "unknown".to_owned(), reason: Some(t("сервер не ответил", &[])), user: None, scopes: None, method: None, via_api_token: Some(repo.via_api_token) });
+                return Ok(LoginCheckResult { state: "unknown".to_owned(), reason: Some(t("server-didnt-respond", &[])), user: None, scopes: None, method: None, via_api_token: Some(repo.via_api_token) });
             }
         };
         let problem = (check.state == CheckState::Bad).then(|| login_problem(&[rejected_of("login", &repo, check.reason.clone())], None)).flatten();

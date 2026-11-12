@@ -178,10 +178,10 @@ impl CiCdProvider for GitlabProvider {
         let why: BTreeMap<String, String> = if !write {
             ["canRunPipeline", "canCancel", "canRetry", "canRetryFailed", "canEditRunnerLabels", "canPauseRunner", "canDeleteRunner", "canCreateRunnerToken"]
                 .iter()
-                .map(|key| ((*key).to_owned(), t("Токен только для чтения (read_api) — для действий нужен scope «api»", &[])))
+                .map(|key| ((*key).to_owned(), t("read-only-token-read-api", &[])))
                 .collect()
         } else if !maintainer {
-            ["canEditRunnerLabels", "canPauseRunner", "canEditRunnerSettings", "canDeleteRunner", "canCreateRunnerToken"].iter().map(|key| ((*key).to_owned(), t("Раннеры проекта меняет роль Maintainer и выше", &[]))).collect()
+            ["canEditRunnerLabels", "canPauseRunner", "canEditRunnerSettings", "canDeleteRunner", "canCreateRunnerToken"].iter().map(|key| ((*key).to_owned(), t("project-runners-can-be-changed", &[]))).collect()
         } else {
             BTreeMap::new()
         };
@@ -273,12 +273,12 @@ impl CiCdProvider for GitlabProvider {
     async fn run_pipeline(&self, ctx: &Ctx, input: &RunInput) -> Result<RunResult> {
         let glc = gl(ctx);
         if !glc.can_write() {
-            return Err(GorynychError::new(ErrorCode::Forbidden, t("Токен только для чтения", &[])).with_hint(t("Для запуска нужен токен со scope «api»", &[])));
+            return Err(GorynychError::new(ErrorCode::Forbidden, t("read-only-token", &[])).with_hint(t("running-needs-token-with-api", &[])));
         }
         let vars: Vec<&RunVariable> = input.variables.iter().filter(|v| v.key.as_deref().is_some_and(|key| !key.is_empty())).collect();
         if let Some(bad) = vars.iter().find(|v| !valid_var_key(v.key.as_deref().unwrap_or_default())) {
             let key = bad.key.as_deref().unwrap_or_default();
-            return Err(GorynychError::new(ErrorCode::BadArgs, t("Некорректное имя переменной: {0}", &[&key])).with_hint(t("Только латинские буквы, цифры и _", &[])));
+            return Err(GorynychError::new(ErrorCode::BadArgs, t("invalid-variable-name-2", &[&key])).with_hint(t("only-latin-letters-digits-and", &[])));
         }
         let mut body = Map::new();
         body.insert("ref".into(), json!(input.reference));
@@ -335,26 +335,26 @@ impl CiCdProvider for GitlabProvider {
                 Some(_) => Some(f64::NAN),
             };
             if number.is_some_and(|value| !value.is_finite() || value.fract() != 0.0 || value < 600.0) {
-                return Err(GorynychError::new(ErrorCode::BadArgs, t("Максимальный тайм-аут — не меньше 600 секунд (10 минут)", &[])));
+                return Err(GorynychError::new(ErrorCode::BadArgs, t("maximum-timeout-is-at-least", &[])));
             }
             body.insert("maximum_timeout".into(), number.map_or(Value::Null, |value| json!(value as i64)));
         }
         if body.get("run_untagged") == Some(&json!(false)) && body.get("tag_list") == Some(&json!("")) {
-            return Err(GorynychError::new(ErrorCode::BadArgs, t("Раннер без тегов должен брать задания без тегов", &[])).with_hint(t("Добавьте тег или включите «Брать задания без тегов»", &[])));
+            return Err(GorynychError::new(ErrorCode::BadArgs, t("runner-without-tags-must-pick", &[])).with_hint(t("add-tag-or-turn-on", &[])));
         }
-        let opts = Opts::body(Value::Object(body)).with_not_found(t("Раннер не найден или у вас нет прав его менять", &[]));
+        let opts = Opts::body(Value::Object(body)).with_not_found(t("runner-not-found-or-you", &[]));
         gl(ctx).request(Method::PUT, format!("/runners/{}", id.number_text()), opts).await?;
         Ok(RunnerResult { id: Some(id.clone()) })
     }
 
     async fn delete_runner(&self, ctx: &Ctx, id: &CiId) -> Result<RunnerResult> {
-        gl(ctx).request(Method::DELETE, format!("/runners/{}", id.number_text()), Opts::not_found(t("Раннер не найден — возможно, его уже удалили", &[]))).await?;
+        gl(ctx).request(Method::DELETE, format!("/runners/{}", id.number_text()), Opts::not_found(t("runner-not-found-it-may", &[]))).await?;
         Ok(RunnerResult { id: Some(id.clone()) })
     }
 
     async fn registration_token(&self, ctx: &Ctx, request: &RegistrationRequest) -> Result<RegistrationToken> {
         let glc = gl(ctx);
-        let description = request.description.clone().filter(|text| !text.is_empty()).unwrap_or_else(|| t("git-Горыныч", &[]));
+        let description = request.description.clone().filter(|text| !text.is_empty()).unwrap_or_else(|| t("git-gorynych", &[]));
         let body = json!({
             "runner_type": "project_type",
             "project_id": glc.project.id,
@@ -370,7 +370,7 @@ impl CiCdProvider for GitlabProvider {
             Err(error) if error.code == ErrorCode::NotFound => {
                 let project = glc.request(Method::GET, &glc.project_path(), Opts::default()).await?;
                 let Some(token) = non_empty(&project, "runners_token") else {
-                    return Err(GorynychError::new(ErrorCode::Forbidden, t("Не удалось получить токен раннера", &[])).with_hint(t("Нужна роль Maintainer в проекте", &[])));
+                    return Err(GorynychError::new(ErrorCode::Forbidden, t("couldnt-get-runner-token", &[])).with_hint(t("maintainer-role-in-project-is", &[])));
                 };
                 Ok(RegistrationToken { token: Some(token), runner_id: None, expires_at: None, kind: "registration".to_owned(), url })
             }
@@ -383,7 +383,7 @@ impl CiCdProvider for GitlabProvider {
         let (name, value) = glc.token.header();
         let http = HttpCtx { client: glc.client.clone(), api_base: format!("{}/api/v4", glc.remote.base), headers: vec![(name, value)], label: "GitLab".to_owned(), scope_hint: None };
         let id = artifact.job_id.as_ref().or(artifact.id.as_ref()).map_or_else(|| "NaN".to_owned(), CiId::number_text);
-        download(&http, &format!("{}/jobs/{id}/artifacts", glc.project_path()), dest, Opts::not_found(t("Артефакты задания удалены или истекли", &[]))).await
+        download(&http, &format!("{}/jobs/{id}/artifacts", glc.project_path()), dest, Opts::not_found(t("jobs-artifacts-were-deleted-or", &[]))).await
     }
 
     async fn list_secrets(&self, ctx: &Ctx) -> Result<Vec<CiSecretVariable>> {

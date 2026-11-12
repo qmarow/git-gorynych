@@ -149,7 +149,7 @@ pub fn commands(provider: &str, url: &str, token: &str, labels: &[String], name:
                     "  gitea/act_runner:latest",
                 ]),
                 command("linux", "Linux", "bash", lines![
-                    t("# Свежая версия act_runner: https://gitea.com/gitea/act_runner/releases", &[]),
+                    t("latest-act-runner-version-https", &[]),
                     "curl -L -o act_runner https://dl.gitea.com/act_runner/nightly/act_runner-nightly-linux-amd64 && chmod +x act_runner",
                     register("./act_runner"),
                     "nohup ./act_runner daemon > act_runner.log 2>&1 &",
@@ -221,7 +221,7 @@ impl Docker {
         let output = match tokio::time::timeout(timeout, command.output()).await {
             Err(_) => return Err(docker_failure(&format!("Command failed: {shown}"))),
             Ok(Err(error)) if error.kind() == std::io::ErrorKind::NotFound => {
-                return Err(GorynychError::new(ErrorCode::NoDocker, t("Docker не установлен", &[])).with_hint(t("Установите Docker Desktop и запустите его", &[])));
+                return Err(GorynychError::new(ErrorCode::NoDocker, t("docker-isnt-installed", &[])).with_hint(t("install-docker-desktop-and-start", &[])));
             }
             Ok(Err(error)) => return Err(docker_failure(&error.to_string())),
             Ok(Ok(output)) => output,
@@ -327,7 +327,7 @@ impl Docker {
                 let args = [head, env, sock, vec!["-v".to_owned(), format!("{name}-data:/data"), "gitea/act_runner:latest".to_owned()]].concat();
                 self.run(&args, long).await?;
             }
-            _ => return Err(GorynychError::new(ErrorCode::Unsupported, t("Локальный раннер для этого провайдера не поддерживается", &[]))),
+            _ => return Err(GorynychError::new(ErrorCode::Unsupported, t("local-runner-isnt-supported-for", &[]))),
         }
         Ok(name)
     }
@@ -351,14 +351,14 @@ impl Docker {
 fn docker_failure(text: &str) -> GorynychError {
     let text = gorynych_core::js::trim(text);
     if NOT_RUNNING.is_match(text) {
-        return GorynychError::new(ErrorCode::NoDocker, t("Docker не запущен", &[])).with_hint(t("Запустите Docker Desktop и попробуйте снова", &[]));
+        return GorynychError::new(ErrorCode::NoDocker, t("docker-isnt-running", &[])).with_hint(t("start-docker-desktop-and-try", &[]));
     }
     let last: String = text.rsplit('\n').next().unwrap_or_default().chars().take(300).collect();
-    GorynychError::new(ErrorCode::Docker, t("Docker вернул ошибку", &[])).with_details(text).with_hint(last)
+    GorynychError::new(ErrorCode::Docker, t("docker-returned-error", &[])).with_details(text).with_hint(last)
 }
 
 fn check_runner_name(name: &str) -> Result<()> {
-    if RUNNER_NAME.is_match(name) { Ok(()) } else { Err(GorynychError::new(ErrorCode::BadArgs, t("Это не раннер приложения", &[]))) }
+    if RUNNER_NAME.is_match(name) { Ok(()) } else { Err(GorynychError::new(ErrorCode::BadArgs, t("this-isnt-app-runner", &[]))) }
 }
 
 /// `String(v)` для меток.

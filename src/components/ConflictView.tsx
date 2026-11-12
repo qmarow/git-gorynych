@@ -119,8 +119,8 @@ export default function ConflictView({ repoPath, path, fileIndex, fileCount, onP
   const blocks = useMemo(() => (data?.segments ?? []).filter((s): s is Block => s.type === 'conflict'), [data]);
   const decidedCount = choices.filter((c) => c.decided).length;
   const allDecided = blocks.length > 0 && decidedCount === blocks.length;
-  const L: SideInfo = data?.labels?.ours ?? { title: t('Моё'), sub: '' };
-  const R: SideInfo = data?.labels?.theirs ?? { title: t('Их'), sub: '' };
+  const L: SideInfo = data?.labels?.ours ?? { title: t('mine'), sub: '' };
+  const R: SideInfo = data?.labels?.theirs ?? { title: t('theirs'), sub: '' };
 
   const setChoice = (i: number, patch: Partial<Choice> | ((c: Choice) => Partial<Choice>)) =>
     setChoices((list) => list.map((c, k) => (k === i ? { ...c, ...(typeof patch === 'function' ? patch(c) : patch), decided: true } : c)));
@@ -171,21 +171,21 @@ export default function ConflictView({ repoPath, path, fileIndex, fileCount, onP
   const save = async () => {
     if (!allDecided || saving) return;
     setSaving(true);
-    const res = await runAction('saveResolution', { path, content: resultText }, { label: t('Сохранение') });
+    const res = await runAction('saveResolution', { path, content: resultText }, { label: t('saving') });
     setSaving(false);
     if (res.ok) onResolved(path);
   };
 
   const whole = async (side: string | null) => {
     setSaving(true);
-    const res = await runAction('resolveWhole', { path, side }, { label: t('Конфликт') });
+    const res = await runAction('resolveWhole', { path, side }, { label: t('conflict') });
     setSaving(false);
     if (res.ok) onResolved(path);
   };
 
   const markResolved = async () => {
     setSaving(true);
-    const res = await runAction('markResolved', { path }, { label: t('Конфликт') });
+    const res = await runAction('markResolved', { path }, { label: t('conflict') });
     setSaving(false);
     if (res.ok) onResolved(path);
   };
@@ -230,9 +230,9 @@ export default function ConflictView({ repoPath, path, fileIndex, fileCount, onP
 
         {fileCount > 1 && (
           <span className="flex items-center gap-0.5 text-[11px] text-gk-muted">
-            {tj('{0}файл {1} из {2}{3}', [<IconBtn title={t('Предыдущий конфликтный файл')} onClick={onPrevFile!} disabled={!onPrevFile}>
+            {tj('file-of', [<IconBtn title={t('previous-conflicted-file')} onClick={onPrevFile!} disabled={!onPrevFile}>
               <ChevronLeft size={14} />
-            </IconBtn>, fileIndex + 1, fileCount, <IconBtn title={t('Следующий конфликтный файл')} onClick={onNextFile!} disabled={!onNextFile}>
+            </IconBtn>, fileIndex + 1, fileCount, <IconBtn title={t('next-conflicted-file')} onClick={onNextFile!} disabled={!onNextFile}>
               <ChevronRight size={14} />
             </IconBtn>])}
           </span>
@@ -240,23 +240,23 @@ export default function ConflictView({ repoPath, path, fileIndex, fileCount, onP
 
         {data?.kind === 'text' && (
           <>
-            {tj('<0>Решено {1} из {2}</0>{3}{4}{5}', [<span
+            {tj('resolved-of', [<span
               className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${
                 allDecided ? 'bg-gk-green/15 text-gk-green' : 'bg-gk-red/15 text-gk-red'
               }`}
-             />, decidedCount, blocks.length, <IconBtn title={kb(t('Предыдущий нерешённый (Alt+↑)'))} onClick={() => nextUnresolved(-1)}>
+             />, decidedCount, blocks.length, <IconBtn title={kb(t('previous-unresolved-alt'))} onClick={() => nextUnresolved(-1)}>
               <ChevronUp size={15} />
-            </IconBtn>, <IconBtn title={kb(t('Следующий нерешённый (Alt+↓)'))} onClick={() => nextUnresolved(1)}>
+            </IconBtn>, <IconBtn title={kb(t('next-unresolved-alt'))} onClick={() => nextUnresolved(1)}>
               <ChevronDown size={15} />
-            </IconBtn>, <IconBtn title={preview ? t('Показать блоки') : t('Предпросмотр итогового файла')} onClick={() => setPreview((v) => !v)} active={preview}>
+            </IconBtn>, <IconBtn title={preview ? t('show-blocks') : t('preview-resulting-file')} onClick={() => setPreview((v) => !v)} active={preview}>
               {preview ? <Columns2 size={14} /> : <Eye size={14} />}
             </IconBtn>])}
           </>
         )}
-        <IconBtn title={t('Открыть файл во внешнем редакторе')} onClick={openInEditor}>
+        <IconBtn title={t('open-file-in-external-editor')} onClick={openInEditor}>
           <ExternalLink size={14} />
         </IconBtn>
-        <IconBtn title={t('Перечитать файл с диска')} onClick={() => setReloadKey((k) => k + 1)}>
+        <IconBtn title={t('reload-file-from-disk')} onClick={() => setReloadKey((k) => k + 1)}>
           <RefreshCw size={14} />
         </IconBtn>
 
@@ -264,14 +264,14 @@ export default function ConflictView({ repoPath, path, fileIndex, fileCount, onP
           <button
             onClick={save}
             disabled={!allDecided || saving}
-            title={allDecided ? t('Сохранить файл и отметить конфликт решённым (Ctrl+S)') : t('Сначала решите все конфликты в файле')}
+            title={allDecided ? t('save-file-and-mark-conflict') : t('resolve-all-conflicts-in-file')}
             className="flex items-center gap-1.5 rounded-md bg-gk-green px-3 py-1.5 text-[12px] font-semibold text-gk-ink shadow-lg shadow-gk-green/20 transition hover:brightness-110 disabled:bg-gk-fg/10 disabled:text-gk-dim disabled:shadow-none"
           >
             {saving ? <Loader2 size={13} className="animate-spin" /> : <Check size={14} />}
-            {fileCount > 1 ? t('Сохранить и дальше') : t('Сохранить')}
+            {fileCount > 1 ? t('save-and-next') : t('save')}
           </button>
         )}
-        <IconBtn title={t('Закрыть (Esc)')} onClick={onClose}>
+        <IconBtn title={t('close-esc')} onClick={onClose}>
           <X size={15} />
         </IconBtn>
       </div>
@@ -287,7 +287,7 @@ export default function ConflictView({ repoPath, path, fileIndex, fileCount, onP
       <div className="min-h-0 flex-1 overflow-y-auto">
         {!data && !error && (
           <div className="flex h-full items-center justify-center gap-2 text-[13px] text-gk-muted">
-            {tj('{0} Читаем конфликт…', [<Loader2 size={15} className="animate-spin" />])}</div>
+            {tj('reading-conflict', [<Loader2 size={15} className="animate-spin" />])}</div>
         )}
         {error && <div className="p-4 text-[13px] text-gk-red">{error.message}</div>}
 
@@ -389,7 +389,7 @@ function CommonLines({ lines, isFirst, isLast }: { lines: string[]; isFirst: boo
         onClick={() => setOpen(true)}
         className="my-0.5 w-full rounded bg-gk-fg/[0.03] py-1 text-center text-[11px] text-gk-dim hover:bg-gk-fg/[0.06] hover:text-gk-muted"
       >
-        {tj('⋯ {0} строк без конфликтов — показать', [lines.length - head - tail])}</button>
+        {tj('lines-without-conflicts-show', [lines.length - head - tail])}</button>
       {tail > 0 && <Code lines={lines.slice(lines.length - tail)} />}
     </div>
   );
@@ -433,17 +433,17 @@ function ConflictCard({ refFn, index, total, block, choice, L, R, onPick, onTogg
     >
       {/* Заголовок и быстрые решения */}
       <div className="flex flex-wrap items-center gap-1.5 border-b border-gk-border bg-gk-sink/15 px-3 py-2">
-        {tj('<0>{1} Конфликт {2} из {3}</0><4>строка {5}</4>{6}{7}{8}{9}{10}{11}', [<span className={`text-xs font-semibold ${decided ? 'text-gk-green' : 'text-gk-red'}`} />, decided ? '✓' : '●', index + 1, total, <span className="mr-auto text-[11px] text-gk-dim" />, block.startLine, <QuickBtn color={readable(LEFT)} active={decided && choice.manual == null && choice.ours.every(Boolean) && !choice.theirs.some(Boolean)} onClick={() => onPick('left')}>
+        {tj('conflict-of-line', [<span className={`text-xs font-semibold ${decided ? 'text-gk-green' : 'text-gk-red'}`} />, decided ? '✓' : '●', index + 1, total, <span className="mr-auto text-[11px] text-gk-dim" />, block.startLine, <QuickBtn color={readable(LEFT)} active={decided && choice.manual == null && choice.ours.every(Boolean) && !choice.theirs.some(Boolean)} onClick={() => onPick('left')}>
           <ArrowLeft size={12} /> {L.title}
         </QuickBtn>, <QuickBtn color={readable(RIGHT)} active={decided && choice.manual == null && choice.theirs.every(Boolean) && !choice.ours.some(Boolean)} onClick={() => onPick('right')}>
           {R.title} <ArrowRight size={12} />
-        </QuickBtn>, <QuickBtn onClick={() => onPick('leftRight')} title={t('Оставить обе версии: сначала «{0}», потом «{1}»', L.title, R.title)}>
-          {tj('Оба: {0} + {1}', [L.title, R.title])}
-        </QuickBtn>, <QuickBtn onClick={() => onPick('rightLeft')} title={t('Оставить обе версии: сначала «{0}», потом «{1}»', R.title, L.title)}>
+        </QuickBtn>, <QuickBtn onClick={() => onPick('leftRight')} title={t('keep-both-versions-first-then', L.title, R.title)}>
+          {tj('both', [L.title, R.title])}
+        </QuickBtn>, <QuickBtn onClick={() => onPick('rightLeft')} title={t('keep-both-versions-first-then', R.title, L.title)}>
           {R.title} + {L.title}
-        </QuickBtn>, <QuickBtn onClick={() => onPick('none')} title={t('Убрать обе версии')}>
-          {tj('{0} Ничего', [<Trash2 size={12} />])}</QuickBtn>, decided && (
-          <button onClick={onReset} title={t('Сбросить решение')} className="rounded p-1 text-gk-dim hover:bg-gk-hover hover:text-gk-text">
+        </QuickBtn>, <QuickBtn onClick={() => onPick('none')} title={t('remove-both-versions')}>
+          {tj('neither', [<Trash2 size={12} />])}</QuickBtn>, decided && (
+          <button onClick={onReset} title={t('reset-resolution')} className="rounded p-1 text-gk-dim hover:bg-gk-hover hover:text-gk-text">
             <RotateCcw size={12} />
           </button>
         )])}
@@ -472,7 +472,7 @@ function ConflictCard({ refFn, index, total, block, choice, L, R, onPick, onTogg
       {block.base && (
         <div className="border-t border-gk-border">
           <button onClick={() => setShowBase((v) => !v)} className="flex w-full items-center gap-1 px-3 py-1 text-left text-[11px] text-gk-dim hover:text-gk-muted">
-            {tj('{0} Как было до обоих изменений (общий предок)', [showBase ? <ChevronDown size={11} /> : <ChevronRight size={11} />])}</button>
+            {tj('as-before-both-changes-common', [showBase ? <ChevronDown size={11} /> : <ChevronRight size={11} />])}</button>
           {showBase && <Code lines={block.base} />}
         </div>
       )}
@@ -480,9 +480,9 @@ function ConflictCard({ refFn, index, total, block, choice, L, R, onPick, onTogg
       {/* Результат */}
       <div className="border-t border-gk-border bg-gk-sink/20 px-3 py-2">
         <div className="mb-1 flex items-center gap-2 text-[11px] text-gk-muted">
-          {tj('<0>Результат</0>{1}{2}{3}', [<span className="font-semibold uppercase tracking-wider" />, choice.manual == null && choice.ours.some(Boolean) && choice.theirs.some(Boolean) && (
+          {tj('result-2', [<span className="font-semibold uppercase tracking-wider" />, choice.manual == null && choice.ours.some(Boolean) && choice.theirs.some(Boolean) && (
             <span className="flex items-center gap-1">
-              {tj('порядок:{0}/{1}', [<button onClick={() => onOrder('ours')} className={choice.order === 'ours' ? 'text-gk-text underline' : 'hover:text-gk-text'}>
+              {tj('order', [<button onClick={() => onOrder('ours')} className={choice.order === 'ours' ? 'text-gk-text underline' : 'hover:text-gk-text'}>
                 {L.title} → {R.title}
               </button>, <button onClick={() => onOrder('theirs')} className={choice.order === 'theirs' ? 'text-gk-text underline' : 'hover:text-gk-text'}>
                 {R.title} → {L.title}
@@ -490,10 +490,10 @@ function ConflictCard({ refFn, index, total, block, choice, L, R, onPick, onTogg
             </span>
           ), <span className="ml-auto" />, choice.manual == null ? (
             <button onClick={onEditManual} className="flex items-center gap-1 hover:text-gk-text">
-              {tj('{0} Править вручную', [<Pencil size={11} />])}</button>
+              {tj('edit-manually', [<Pencil size={11} />])}</button>
           ) : (
             <button onClick={() => onManual(null)} className="flex items-center gap-1 hover:text-gk-text">
-              {tj('{0} Вернуться к выбору строк', [<RotateCcw size={11} />])}</button>
+              {tj('back-to-choosing-lines', [<RotateCcw size={11} />])}</button>
           )])}
         </div>
         {choice.manual != null ? (
@@ -506,9 +506,9 @@ function ConflictCard({ refFn, index, total, block, choice, L, R, onPick, onTogg
             className="w-full resize-y rounded bg-gk-bg px-2 py-1.5 font-mono text-[12px] leading-5 outline-none ring-1 ring-gk-blue/50 focus:ring-gk-blue [tab-size:4]"
           />
         ) : !decided ? (
-          <div className="text-[12px] italic text-gk-dim">{t('Выберите версию кнопками выше или отметьте нужные строки')}</div>
+          <div className="text-[12px] italic text-gk-dim">{t('choose-version-with-buttons-above')}</div>
         ) : result.length === 0 ? (
-          <div className="text-[12px] italic text-gk-dim">{t('— блок будет удалён —')}</div>
+          <div className="text-[12px] italic text-gk-dim">{t('block-will-be-deleted')}</div>
         ) : (
           <pre className="select-text overflow-x-auto whitespace-pre rounded bg-gk-green/[0.06] px-2 py-1 font-mono text-[12px] leading-5 text-gk-text [tab-size:4]">
             <HighlightedLines lines={result} />
@@ -541,7 +541,7 @@ function SideLines({ color, lines, selected, disabled, onToggle, onToggleAll }: 
           onChange={(e) => onToggleAll(e.target.checked)}
           style={{ accentColor: color }}
         />
-        {lines.length === 0 ? t('пусто — с этой стороны строки удалены') : t('все строки ({0})', lines.length)}
+        {lines.length === 0 ? t('empty-lines-were-deleted-on') : t('all-lines', lines.length)}
       </label>
       <div className="overflow-x-auto py-0.5">
         {lines.map((line, k) => (
@@ -585,13 +585,13 @@ function ResultPreview({ data, choices }: { data: TextConflictData; choices: Cho
         if (!ch.decided) {
           return (
             <div key={si} className="my-0.5 rounded bg-gk-red/15 px-2 py-0.5 text-gk-red">
-              {tj('● конфликт {0} ещё не решён', [bi + 1])}</div>
+              {tj('conflict-isnt-resolved-yet', [bi + 1])}</div>
           );
         }
         const lines = blockResult(seg, ch);
         return (
           <pre key={si} className="select-text whitespace-pre rounded bg-gk-green/10 text-gk-text">
-            {lines.length ? <HighlightedLines lines={lines} /> : <span className="italic text-gk-dim">{t('(блок удалён)')}</span>}
+            {lines.length ? <HighlightedLines lines={lines} /> : <span className="italic text-gk-dim">{t('block-deleted')}</span>}
           </pre>
         );
       })}
@@ -620,54 +620,54 @@ function SpecialConflict({ data, L, R, busy, onWhole, onMarkResolved, onOpen, on
   if (data.kind === 'deleted') {
     const del = sideOf(data.deletedSide);
     const keep = sideOf(data.keepSide);
-    title = t('Файл удалён в «{0}», но изменён в «{1}»', del.title, keep.title);
-    text = t('{0}: {1}. {2}: {3}. Решите, нужен ли файл.', del.title, del.sub, keep.title, keep.sub);
+    title = t('file-was-deleted-in-but', del.title, keep.title);
+    text = t('decide-whether-file-is-needed', del.title, del.sub, keep.title, keep.sub);
     actions = (
       <>
         <BigButton color={data.keepSide === 'ours' ? readable(LEFT) : readable(RIGHT)} disabled={busy} onClick={() => onWhole(data.keepSide)}>
-          {tj('{0} Оставить файл (версия «{1}»)', [<Check size={14} />, keep.title])}</BigButton>
+          {tj('keep-file-version', [<Check size={14} />, keep.title])}</BigButton>
         <BigButton danger disabled={busy} onClick={() => onWhole('delete')}>
-          {tj('{0} Удалить файл', [<Trash2 size={14} />])}</BigButton>
+          {tj('delete-file', [<Trash2 size={14} />])}</BigButton>
       </>
     );
   } else if (data.kind === 'binary') {
-    title = t('Бинарный файл изменён с обеих сторон');
-    text = t('Объединить картинку или другой бинарный файл построчно нельзя — выберите одну версию целиком.');
+    title = t('binary-file-changed-on-both');
+    text = t('image-or-other-binary-file');
     actions = (
       <>
         <BigButton color={readable(LEFT)} disabled={busy} onClick={() => onWhole('ours')}>
-          {tj('{0} Взять «{1}» ({2})', [<ArrowLeft size={14} />, L.title, L.sub])}</BigButton>
+          {tj('take', [<ArrowLeft size={14} />, L.title, L.sub])}</BigButton>
         <BigButton color={readable(RIGHT)} disabled={busy} onClick={() => onWhole('theirs')}>
-          {tj('Взять «{0}» ({1}) {2}', [R.title, R.sub, <ArrowRight size={14} />])}
+          {tj('take-2', [R.title, R.sub, <ArrowRight size={14} />])}
         </BigButton>
       </>
     );
   } else if (data.kind === 'both-deleted') {
-    title = t('Файл удалён с обеих сторон');
-    text = t('Осталось подтвердить удаление.');
+    title = t('file-was-deleted-on-both');
+    text = t('it-remains-to-confirm-deletion');
     actions = (
       <BigButton danger disabled={busy} onClick={() => onWhole('delete')}>
-        {tj('{0} Удалить файл', [<Trash2 size={14} />])}</BigButton>
+        {tj('delete-file', [<Trash2 size={14} />])}</BigButton>
     );
   } else if (data.kind === 'no-markers') {
-    title = data.exists ? t('Маркеров конфликта в файле нет') : t('Файла нет на диске');
+    title = data.exists ? t('there-are-no-conflict-markers') : t('file-isnt-on-disk');
     text = data.exists
-      ? t('Похоже, вы уже исправили файл (например, в редакторе). Проверьте и отметьте его решённым.')
-      : t('Отметьте конфликт решённым — файл будет удалён из репозитория.');
+      ? t('it-looks-like-youve-already')
+      : t('mark-conflict-resolved-file-will');
     actions = (
       <>
         <BigButton color={readable('#3cf0a0')} disabled={busy} onClick={onMarkResolved}>
-          {tj('{0} Отметить решённым', [<Check size={14} />])}</BigButton>
+          {tj('mark-resolved', [<Check size={14} />])}</BigButton>
         <BigButton color={readable(LEFT)} disabled={busy} onClick={() => onWhole('ours')}>
-          {tj('Взять «{0}» целиком', [L.title])}</BigButton>
+          {tj('take-entirely', [L.title])}</BigButton>
         <BigButton color={readable(RIGHT)} disabled={busy} onClick={() => onWhole('theirs')}>
-          {tj('Взять «{0}» целиком', [R.title])}</BigButton>
+          {tj('take-entirely', [R.title])}</BigButton>
       </>
     );
   } else {
-    title = t('Конфликт в этом файле уже решён');
+    title = t('conflict-in-this-file-is');
     text = '';
-    actions = <BigButton onClick={onClose}>{t('Закрыть')}</BigButton>;
+    actions = <BigButton onClick={onClose}>{t('close')}</BigButton>;
   }
   return (
     <div className="flex h-full items-center justify-center p-6">
@@ -682,7 +682,7 @@ function SpecialConflict({ data, L, R, busy, onWhole, onMarkResolved, onOpen, on
         <div className="flex flex-wrap gap-2 pl-7">{actions}</div>
         {data.exists !== false && data.kind !== 'resolved' && (
           <button onClick={onOpen} className="ml-7 flex items-center gap-1 text-xs text-gk-blue hover:underline">
-            {tj('{0} Открыть файл в редакторе', [<ExternalLink size={12} />])}</button>
+            {tj('open-file-in-editor', [<ExternalLink size={12} />])}</button>
         )}
       </div>
     </div>
@@ -701,11 +701,11 @@ function SideLabel({ color, side, onTakeAll }: { color: string; side: SideInfo; 
       <span className="min-w-0 truncate text-gk-muted">{side.sub}</span>
       <button
         onClick={onTakeAll}
-        title={t('Во всех конфликтах этого файла взять «{0}»', side.title)}
+        title={t('take-in-all-conflicts-of', side.title)}
         className="ml-auto shrink-0 rounded px-2 py-0.5 text-[11px] text-gk-muted ring-1 transition hover:bg-gk-fg/10 hover:text-gk-text"
         style={{ '--tw-ring-color': `${color}66` } as CSSProperties}
       >
-        {tj('Взять «{0}» везде', [side.title])}</button>
+        {tj('take-everywhere', [side.title])}</button>
     </div>
   );
 }

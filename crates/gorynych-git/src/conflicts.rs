@@ -78,11 +78,11 @@ async fn side_labels(cwd: &Path) -> SideLabels {
             let sub = current_branch(cwd).await.or(head_short).unwrap_or_else(|| "HEAD".to_owned());
             SideLabels {
                 operation: Some("merge".to_owned()),
-                ours: side(t("Моё", &[]), sub, t("Ваша текущая ветка", &[])),
+                ours: side(t("mine", &[]), sub, t("your-current-branch", &[])),
                 theirs: side(
-                    t("Их", &[]),
+                    t("theirs", &[]),
                     other.as_ref().and_then(|other| other.name.clone().or_else(|| Some(other.short.clone()))).unwrap_or_else(|| "MERGE_HEAD".to_owned()),
-                    other.as_ref().map_or_else(|| t("Вливаемая ветка", &[]), |other| t("Вливаемая ветка · «{0}»", &[&other.subject])),
+                    other.as_ref().map_or_else(|| t("incoming-branch", &[]), |other| t("incoming-branch-2", &[&other.subject])),
                 ),
                 swapped: None,
             }
@@ -91,8 +91,8 @@ async fn side_labels(cwd: &Path) -> SideLabels {
             let mine = rev_info(cwd, "REBASE_HEAD").await;
             SideLabels {
                 operation: Some("rebase".to_owned()),
-                ours: side(t("Их", &[]), head.as_ref().and_then(|head| head.name.clone()).or(head_short).unwrap_or_else(|| "upstream".to_owned()), t("Ветка, на которую вы перебазируете (уже на сервере / в upstream)", &[])),
-                theirs: side(t("Моё", &[]), mine.map_or_else(|| t("ваш коммит", &[]), |mine| format!("{} · {}", mine.short, mine.subject)), t("Ваш коммит, который сейчас переносится", &[])),
+                ours: side(t("theirs", &[]), head.as_ref().and_then(|head| head.name.clone()).or(head_short).unwrap_or_else(|| "upstream".to_owned()), t("branch-youre-rebasing-onto-already", &[])),
+                theirs: side(t("mine", &[]), mine.map_or_else(|| t("your-commit", &[]), |mine| format!("{} · {}", mine.short, mine.subject)), t("your-commit-thats-being-moved", &[])),
                 swapped: Some(true),
             }
         }
@@ -102,11 +102,11 @@ async fn side_labels(cwd: &Path) -> SideLabels {
             let sub = current_branch(cwd).await.or(head_short).unwrap_or_else(|| "HEAD".to_owned());
             SideLabels {
                 operation: Some(kind.to_owned()),
-                ours: side(t("Моё", &[]), sub, t("Ваша текущая ветка", &[])),
+                ours: side(t("mine", &[]), sub, t("your-current-branch", &[])),
                 theirs: side(
-                    if cherry { t("Переносимый коммит", &[]) } else { t("Отмена коммита", &[]) },
+                    if cherry { t("commit-being-moved", &[]) } else { t("commit-revert", &[]) },
                     pick.map_or_else(String::new, |pick| format!("{} · {}", pick.short, pick.subject)),
-                    if cherry { t("Изменения из cherry-pick", &[]) } else { t("Изменения revert", &[]) },
+                    if cherry { t("changes-from-cherry-pick", &[]) } else { t("revert-changes", &[]) },
                 ),
                 swapped: None,
             }
@@ -114,8 +114,8 @@ async fn side_labels(cwd: &Path) -> SideLabels {
         // Конфликт после stash apply/pop: операции нет, но в индексе есть конфликтующие файлы
         _ => SideLabels {
             operation: None,
-            ours: side(t("Текущее", &[]), current_branch(cwd).await.unwrap_or_else(|| t("рабочая версия", &[])), t("Файл до применения stash", &[])),
-            theirs: side(t("Из stash", &[]), t("спрятанные изменения", &[]), t("Изменения из stash", &[])),
+            ours: side(t("current", &[]), current_branch(cwd).await.unwrap_or_else(|| t("working-version", &[])), t("file-before-applying-stash", &[])),
+            theirs: side(t("from-stash", &[]), t("stashed-changes", &[]), t("changes-from-stash", &[])),
             swapped: None,
         },
     }
@@ -333,13 +333,13 @@ pub struct ResolveResult {
 /// `saveResolution`.
 pub async fn save_resolution(dir: &Path, request: &SaveResolution) -> Result<ResolveResult> {
     let Some(content) = request.content.as_ref().and_then(Value::as_str) else {
-        return Err(GorynychError::new(ErrorCode::BadArgs, t("Нет содержимого", &[])));
+        return Err(GorynychError::new(ErrorCode::BadArgs, t("no-content", &[])));
     };
     let root = resolve_repo_root(dir).await?;
     let file = request.path.as_deref().unwrap_or_default();
     let full = safe_relative(&root, file, i18n::language())?;
     if has_marker(content, '<') || has_marker(content, '>') {
-        return Err(GorynychError::new(ErrorCode::MarkersLeft, t("В результате остались маркеры конфликта", &[])).with_hint(t("Решите все блоки конфликта.", &[])));
+        return Err(GorynychError::new(ErrorCode::MarkersLeft, t("conflict-markers-remain-in-result", &[])).with_hint(t("resolve-all-conflict-blocks", &[])));
     }
     std::fs::write(&full, content).map_err(GorynychError::unknown)?;
     git(&root, &["add", "--", file]).await?;
@@ -370,7 +370,7 @@ pub async fn resolve_whole(dir: &Path, request: &ResolveWhole) -> Result<Resolve
     let stage = match side {
         "ours" => "2",
         "theirs" => "3",
-        _ => return Err(GorynychError::new(ErrorCode::BadArgs, t("Некорректная сторона", &[]))),
+        _ => return Err(GorynychError::new(ErrorCode::BadArgs, t("invalid-side", &[]))),
     };
     if !stages.contains_key(stage) {
         // С этой стороны файл удалён: выбрать её значит удалить файл
@@ -402,7 +402,7 @@ pub async fn mark_resolved(dir: &Path, request: &MarkResolved) -> Result<Resolve
     let bytes = std::fs::read(&full).map_err(GorynychError::unknown)?;
     let text = String::from_utf8_lossy(&bytes);
     if !request.force && has_marker(&text, '<') && has_marker(&text, '>') {
-        return Err(GorynychError::new(ErrorCode::MarkersLeft, t("В файле ещё есть маркеры конфликта", &[])).with_hint(t("Решите конфликт в редакторе или отметьте принудительно.", &[])));
+        return Err(GorynychError::new(ErrorCode::MarkersLeft, t("file-still-has-conflict-markers", &[])).with_hint(t("resolve-conflict-in-editor-or", &[])));
     }
     git(&root, &["add", "--", file]).await?;
     Ok(ResolveResult { path: file.to_owned(), ..ResolveResult::default() })

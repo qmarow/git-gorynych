@@ -73,9 +73,16 @@ fn from_process_error_matches_electron() {
     }
 }
 
+/// Случаи `t` сняты с 1.x по русским ключам; в фикстуре ключ заменён ключом Fluent (каталог 2026-11-12), ответ 1.x
+/// тот же. Сообщения интерфейса (`ui.ftl`) здесь пропускаются: их проверяет `tests/ui-parity/i18n-t.mjs`.
 #[test]
 fn t_matches_electron() {
+    let mut checked = 0;
     for case in cases("t") {
+        if !gorynych_core::i18n::has_message(str_of(case, "msg")) {
+            continue;
+        }
+        checked += 1;
         let args: Vec<String> = case["args"]
             .as_array()
             .unwrap()
@@ -89,6 +96,7 @@ fn t_matches_electron() {
         let refs: Vec<&dyn Display> = args.iter().map(|s| s as &dyn Display).collect();
         assert_eq!(tr(language_of(case), str_of(case, "msg"), &refs), str_of(case, "out"), "{case}");
     }
+    assert!(checked > 200, "случаев с ключами main.ftl: {checked}");
 }
 
 #[test]

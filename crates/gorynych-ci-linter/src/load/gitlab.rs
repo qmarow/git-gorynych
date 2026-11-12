@@ -101,7 +101,7 @@ impl GitlabModel {
         let entry = self.jobs.get(name)?;
         if stack.iter().any(|item| item == name) {
             let path: Vec<&str> = stack.iter().map(String::as_str).chain([name]).collect();
-            self.warnings.borrow_mut().push(self.t("Циклическое наследование: {0}", &[&path.join(" → ")]));
+            self.warnings.borrow_mut().push(self.t("circular-inheritance", &[&path.join(" → ")]));
             return Some(Rc::new(ResolvedJob { config: entry.config.clone(), chain: Vec::new() }));
         }
         let mut merged = Value::Map(JsMap::new());
@@ -111,7 +111,7 @@ impl GitlabModel {
             let found = parent.as_str().and_then(|parent| self.resolve_job_inner(parent, stack));
             stack.pop();
             let Some(found) = found else {
-                self.warnings.borrow_mut().push(self.t("«{0}»: extends ссылается на неизвестное задание «{1}»", &[&name, &Ctx::arg(parent)]));
+                self.warnings.borrow_mut().push(self.t("extends-refers-to-unknown-job", &[&name, &Ctx::arg(parent)]));
                 continue;
             };
             let parent = parent.as_str().unwrap_or_default();
@@ -156,7 +156,7 @@ impl GitlabModel {
             Value::Map(map) => {
                 if let Some(reference) = reference_of(value) {
                     return self.reference_target(reference, depth).unwrap_or_else(|| {
-                        let message = self.t("!reference [{0}] ссылается на то, чего нет", &[&crate::yaml::js_join(reference.iter(), ", ")]);
+                        let message = self.t("reference-refers-to-something-that", &[&crate::yaml::js_join(reference.iter(), ", ")]);
                         let mut warnings = self.warnings.borrow_mut();
                         if !warnings.contains(&message) {
                             warnings.push(message);
@@ -308,7 +308,7 @@ impl Collector<'_, '_> {
         let text = match self.ctx.read_text(rel) {
             Ok(text) => text,
             Err(error) => {
-                let message = self.ctx.t("Не удалось прочитать {0}: {1}", &[&rel, &error.message]);
+                let message = self.ctx.t("couldnt-read", &[&rel, &error.message]);
                 self.errors.push(CiFileError { file: via.to_owned(), message, line: None, severity: CiSeverity::Error });
                 return Ok(());
             }
@@ -329,14 +329,14 @@ impl Collector<'_, '_> {
                 continue;
             }
             if depth >= MAX_INCLUDE_DEPTH {
-                self.includes[at].error = Some(self.ctx.t("Слишком глубокая вложенность include", &[]));
+                self.includes[at].error = Some(self.ctx.t("include-is-nested-too-deeply", &[]));
                 continue;
             }
             let matched = expand_local_glob(self.ctx, &self.includes[at].value)?;
             let files: Vec<String> = matched.into_iter().filter(|file| detect::is_file(&detect::join(self.ctx.root, file))).collect();
             self.includes[at].files = Some(files.clone());
             if files.is_empty() {
-                self.includes[at].error = Some(self.ctx.t("Файл не найден в репозитории", &[]));
+                self.includes[at].error = Some(self.ctx.t("file-not-found-in-repository", &[]));
                 continue;
             }
             self.includes[at].resolved = true;
@@ -442,7 +442,7 @@ pub(crate) fn load_gitlab(ctx: &Ctx<'_>, main_file: &str) -> LoadResult<(CiConfi
         .iter()
         .flat_map(|job| job.needs.iter().flatten().map(move |need| (job, need)))
         .filter(|(_, need)| need.optional != Some(true) && need.external != Some(true) && !visible.iter().any(|other| need.job.as_str() == Some(other.name.as_str())))
-        .map(|(job, need)| ctx.t("«{0}»: needs ссылается на задание «{1}», которого нет", &[&job.name, &Ctx::arg(&need.job)]))
+        .map(|(job, need)| ctx.t("needs-refers-to-job-which", &[&job.name, &Ctx::arg(&need.job)]))
         .collect();
 
     let mut stages: Vec<(String, Vec<CiJob>, bool)> = model.stage_names.iter().map(|name| (name.clone(), Vec::new(), false)).collect();
@@ -451,7 +451,7 @@ pub(crate) fn load_gitlab(ctx: &Ctx<'_>, main_file: &str) -> LoadResult<(CiConfi
         let at = match stages.iter().position(|stage| stage.0 == stage_name) {
             Some(at) => at,
             None => {
-                warnings.push(ctx.t("«{0}»: этап «{1}» не объявлен в stages — GitLab не запустит пайплайн", &[&job.name, &stage_name]));
+                warnings.push(ctx.t("stage-isnt-declared-in-stages", &[&job.name, &stage_name]));
                 let at = stages.len() - 1;
                 stages.insert(at, (stage_name, Vec::new(), true));
                 at
@@ -469,13 +469,13 @@ pub(crate) fn load_gitlab(ctx: &Ctx<'_>, main_file: &str) -> LoadResult<(CiConfi
     let workflow = globals.get("workflow").filter(|value| matches!(value, Value::Map(_)));
     let mut info = Vec::new();
     if let Some(name) = workflow.and_then(|workflow| truthy(workflow.get("name"))) {
-        info.push(CiInfo { label: ctx.t("Название пайплайна", &[]), value: Value::String(name.js_string()) });
+        info.push(CiInfo { label: ctx.t("pipeline-name", &[]), value: Value::String(name.js_string()) });
     }
     if let Some(image) = image_name(non_null(defaults.get("image")).or_else(|| globals.get("image"))) {
-        info.push(CiInfo { label: ctx.t("Образ по умолчанию", &[]), value: image });
+        info.push(CiInfo { label: ctx.t("default-image", &[]), value: image });
     }
     if let Some(tags) = truthy(defaults.get("tags")) {
-        info.push(CiInfo { label: ctx.t("Теги раннеров", &[]), value: Value::String(joined(Some(tags), ", ")) });
+        info.push(CiInfo { label: ctx.t("runner-tags", &[]), value: Value::String(joined(Some(tags), ", ")) });
     }
     let triggers = workflow
         .and_then(|workflow| truthy(workflow.get("rules")))
@@ -491,9 +491,9 @@ pub(crate) fn load_gitlab(ctx: &Ctx<'_>, main_file: &str) -> LoadResult<(CiConfi
         includes,
         info,
         triggers,
-        triggers_title: Some(ctx.t("Когда создаётся пайплайн (workflow:rules)", &[])),
+        triggers_title: Some(ctx.t("when-pipeline-is-created-workflow", &[])),
         variables: variables_list(globals.get("variables")),
-        pipelines: vec![CiPipeline { id: "main".to_owned(), title: ctx.t("Пайплайн", &[]), stages: used }],
+        pipelines: vec![CiPipeline { id: "main".to_owned(), title: ctx.t("pipeline", &[]), stages: used }],
         templates,
         scheme_unsupported: None,
     };
@@ -522,7 +522,7 @@ fn gitlab_job(ctx: &Ctx<'_>, name: &str, cfg: &Value, entry: &JobEntry, chain: V
                 return (Some(value), Some("default".to_owned()));
             }
             if let Some(value) = globals.get(key) {
-                return (Some(value), Some(ctx.t("глобально", &[])));
+                return (Some(value), Some(ctx.t("global", &[])));
             }
         }
         (None, None)
@@ -568,7 +568,7 @@ fn gitlab_job(ctx: &Ctx<'_>, name: &str, cfg: &Value, entry: &JobEntry, chain: V
     let services_source = non_null(cfg.get("services"))
         .or_else(|| if inherit_default { non_null(defaults.get("services")).or_else(|| globals.get("services")) } else { None });
     let tags_source = non_null(cfg.get("tags")).or_else(|| if inherit_default { defaults.get("tags") } else { None });
-    let times = |count: &Value| ctx.t("{0} раз", &[&Ctx::arg(count)]);
+    let times = |count: &Value| ctx.t("times", &[&Ctx::arg(count)]);
 
     Ok(CiJob {
         id: name.to_owned(),

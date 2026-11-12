@@ -246,7 +246,7 @@ pub(crate) fn suggest<'a>(word: &str, known: impl IntoIterator<Item = &'a str>) 
 
 /// `didYouMean`.
 pub(crate) fn did_you_mean<'a>(word: &str, known: impl IntoIterator<Item = &'a str>) -> String {
-    suggest(word, known).map_or_else(String::new, |found| tr!(" Возможно, имелось в виду {0}.", q(found)))
+    suggest(word, known).map_or_else(String::new, |found| tr!("perhaps-you-meant", q(found)))
 }
 
 /* ------------------------------- Позиции в файлах ------------------------------- */
@@ -514,7 +514,7 @@ pub(crate) fn parse_expr(source: &str) -> Result<(Expr, Vec<String>), String> {
                 }
             }
             if end == start || (braced && units.get(end) != Some(&u16::from(b'}'))) {
-                return Err(tr!("после $ должно идти имя переменной (позиция {0})", i + 1));
+                return Err(tr!("must-be-followed-by-variable", i + 1));
             }
             tokens.push(Token::Expr(Expr::Var(text_of(&units[start..end]))));
             i = end + usize::from(braced);
@@ -522,7 +522,7 @@ pub(crate) fn parse_expr(source: &str) -> Result<(Expr, Vec<String>), String> {
         }
         if c == u16::from(b'"') || c == u16::from(b'\'') {
             let Some(found) = units[i + 1..].iter().position(|unit| *unit == c) else {
-                return Err(tr!("не закрыта кавычка {0} (позиция {1})", text_of(&[c]), i + 1));
+                return Err(tr!("unclosed-quote-position", text_of(&[c]), i + 1));
             };
             tokens.push(Token::Expr(Expr::Str(text_of(&units[i + 1..i + 1 + found]))));
             i += found + 2;
@@ -534,13 +534,13 @@ pub(crate) fn parse_expr(source: &str) -> Result<(Expr, Vec<String>), String> {
                 j += 1;
             }
             if j >= units.len() {
-                return Err(tr!("не закрыта регулярка /…/ (позиция {0})", i + 1));
+                return Err(tr!("unclosed-regex-position", i + 1));
             }
             let body = text_of(&units[i + 1..j]);
             let flags_end = units[j + 1..].iter().position(|unit| !matches!(unit, 0x61..=0x7A)).map_or(units.len(), |at| j + 1 + at);
             let flags = text_of(&units[j + 1..flags_end]);
             if let Err(error) = ExprRegex::new(&body, &gitlab_flags(&flags)) {
-                return Err(tr!("неверная регулярка /{0}/: {1}", body, error));
+                return Err(tr!("invalid-regex", body, error));
             }
             i = flags_end;
             tokens.push(Token::Expr(Expr::Re { body, flags }));
@@ -568,22 +568,22 @@ pub(crate) fn parse_expr(source: &str) -> Result<(Expr, Vec<String>), String> {
             continue;
         }
         if c == u16::from(b'=') {
-            return Err(tr!("одиночный «=» (позиция {0}) — для сравнения нужен «==»", i + 1));
+            return Err(tr!("single-position-comparison-needs", i + 1));
         }
         let word_end = units[i..].iter().position(|unit| !(is_word(*unit) || matches!(unit, 0x2E | 0x2D))).map_or(units.len(), |at| i + at);
         if word_end > i {
             let word = text_of(&units[i..word_end]);
-            return Err(tr!("{0} без кавычек (позиция {1}) — строки в выражениях пишутся в кавычках: \"{2}\"", q(&word), i + 1, word));
+            return Err(tr!("without-quotes-position-strings-in", q(&word), i + 1, word));
         }
-        return Err(tr!("непонятный символ {0} (позиция {1})", q(text_of(&[c])), i + 1));
+        return Err(tr!("unexpected-character-position", q(text_of(&[c])), i + 1));
     }
     if tokens.is_empty() {
-        return Err(tr!("пустое выражение"));
+        return Err(tr!("empty-expression"));
     }
     let mut parser = ExprParser { tokens: &tokens, at: 0 };
     let ast = parser.or_expr()?;
     if let Some(extra) = tokens.get(parser.at) {
-        return Err(tr!("лишнее после выражения: {0} — не хватает && или ||?", q(extra.shown())));
+        return Err(tr!("extra-text-after-expression-missing", q(extra.shown())));
     }
     let vars = tokens
         .iter()
@@ -602,13 +602,13 @@ struct ExprParser<'a> {
 
 impl ExprParser<'_> {
     fn operand(&mut self) -> Result<Expr, String> {
-        let Some(token) = self.tokens.get(self.at) else { return Err(tr!("выражение обрывается")) };
+        let Some(token) = self.tokens.get(self.at) else { return Err(tr!("expression-is-cut-off")) };
         match token {
             Token::Open => {
                 self.at += 1;
                 let inner = self.or_expr()?;
                 if self.tokens.get(self.at) != Some(&Token::Close) {
-                    return Err(tr!("не закрыта скобка ("));
+                    return Err(tr!("unclosed-parenthesis"));
                 }
                 self.at += 1;
                 Ok(inner)
@@ -617,7 +617,7 @@ impl ExprParser<'_> {
                 self.at += 1;
                 Ok(expr.clone())
             }
-            other => Err(tr!("ожидалось значение, а встретилось {0}", q(other.shown()))),
+            other => Err(tr!("expected-value-but-found", q(other.shown()))),
         }
     }
 
@@ -627,8 +627,8 @@ impl ExprParser<'_> {
             self.at += 1;
             let right = self.operand()?;
             if matches!(*op, "=~" | "!~") && !matches!(right, Expr::Re { .. } | Expr::Var(_)) {
-                let what = if matches!(right, Expr::Str(_)) { tr!("строка в кавычках") } else { tr!("значение") };
-                return Err(tr!("справа от {0} должна быть регулярка /…/, а не {1}", op, what));
+                let what = if matches!(right, Expr::Str(_)) { tr!("quoted-string") } else { tr!("value") };
+                return Err(tr!("right-side-of-must-be", op, what));
             }
             return Ok(Expr::Cmp { op, left: Box::new(left), right: Box::new(right) });
         }
@@ -772,14 +772,14 @@ pub(crate) fn is_secret_name(name: &str) -> bool {
 /// `SECRET_VALUE`: выражение и ключ перевода.
 pub(crate) static SECRET_VALUE: LazyLock<Vec<(JsRegex, &'static str)>> = LazyLock::new(|| {
     [
-        (r"\bglpat-[0-9A-Za-z_-]{20,}", "токен GitLab (glpat-…)"),
-        (r"\bgh[pousr]_[0-9A-Za-z]{30,}", "токен GitHub (ghp_…)"),
-        (r"\bgithub_pat_[0-9A-Za-z_]{40,}", "токен GitHub (github_pat_…)"),
-        (r"\bAKIA[0-9A-Z]{16}\b", "ключ доступа AWS (AKIA…)"),
-        (r"\bxox[baprs]-[0-9A-Za-z-]{10,}", "токен Slack"),
-        (r"-----BEGIN (?:RSA |EC |OPENSSH |DSA )?PRIVATE KEY-----", "приватный ключ"),
-        (r"\bAIza[0-9A-Za-z_-]{35}\b", "ключ Google API"),
-        (r"\bsk_live_[0-9A-Za-z]{20,}", "секретный ключ Stripe"),
+        (r"\bglpat-[0-9A-Za-z_-]{20,}", "gitlab-token-glpat"),
+        (r"\bgh[pousr]_[0-9A-Za-z]{30,}", "github-token-ghp"),
+        (r"\bgithub_pat_[0-9A-Za-z_]{40,}", "github-token-github-pat"),
+        (r"\bAKIA[0-9A-Z]{16}\b", "aws-access-key-akia"),
+        (r"\bxox[baprs]-[0-9A-Za-z-]{10,}", "slack-token"),
+        (r"-----BEGIN (?:RSA |EC |OPENSSH |DSA )?PRIVATE KEY-----", "private-key"),
+        (r"\bAIza[0-9A-Za-z_-]{35}\b", "google-api-key"),
+        (r"\bsk_live_[0-9A-Za-z]{20,}", "stripe-secret-key"),
     ]
     .into_iter()
     .map(|(pattern, what)| (JsRegex::new(pattern, "").expect("шаблон из кода"), what))

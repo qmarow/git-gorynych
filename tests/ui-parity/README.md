@@ -52,6 +52,21 @@ node tests/ui-parity/lib-small.mjs $old $PWD
 Проверять сами сверки: внести в старую копию заведомое изменение и убедиться, что сверка падает.
 Ключи React (`key`) в `renderToStaticMarkup` не видны, такое изменение сверка не ловит.
 
+## Переводы (Fluent, `src/i18n/index.ts`)
+
+С 2026-11-12 ключ сообщения — семантический (`t('branch-already-exists', name)`), тексты — `crates/gorynych-core/i18n/{ru,en}/ui.ftl`.
+`i18n-t.mjs` сверяет `t()` интерфейса с ответами настоящего `electron/i18n.cjs` (случаи `t` эталона ядра, ключ в них заменён
+ключом Fluent); случаи с ключами `main.ftl` проверяет Rust (`gorynych-core/tests/parity.rs`).
+
+```powershell
+node tests/ui-parity/i18n-t.mjs $PWD
+```
+
+Сверки модулей со старыми копиями (таблицы ниже) — история перевода на TypeScript, они проходили на своих коммитах.
+К коду после перехода на Fluent они как есть не применимы: старая копия вызывает `t()` с русским текстом, а
+`components-compiled.mjs` сравнивает JS, в котором теперь ключи. Сверки состояния (`repo-store`, `sync-store`, `ci-store`)
+держат прежний код у себя и идут на русском — они проходят. `hooks.mjs` достаёт `en.json` для старых копий из истории git.
+
 ## Состояние репозитория (`src/state/repoStore.ts`)
 
 Прежнего модуля нет: код жил в `App.jsx`. Сверка `repo-store.mjs` держит прежний код (`loadRepo`, `showBlank`, `showTab`,

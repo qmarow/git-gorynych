@@ -96,7 +96,7 @@ interface CiPanelProps {
 
 const PROVIDER_COLORS: Record<string, string> = { gitlab: '#fc6d26', github: '#8b949e', gitea: '#609926', bitbucket: '#2684ff' };
 const PROVIDERS = [
-  { id: '', label: tr('Определять автоматически') },
+  { id: '', label: tr('detect-automatically') },
   { id: 'gitlab', label: 'GitLab CI (gitlab.com, Self-Managed)' },
   { id: 'github', label: 'GitHub Actions (github.com, Enterprise Server)' },
   { id: 'gitea', label: 'Gitea / Forgejo Actions' },
@@ -138,12 +138,12 @@ export default function CiPanel({
           <div>
             <div className="mb-1 flex items-center gap-2">
               <span className="h-2.5 w-2.5 rounded-full" style={{ background: PROVIDER_COLORS[provider!] ?? '#8a92a2' }} />
-              <h3 className="text-[15px] font-semibold text-gk-strong">{provider ? tr('Пайплайны {0}', label) : tr('Пайплайны CI/CD')}</h3>
+              <h3 className="text-[15px] font-semibold text-gk-strong">{provider ? tr('pipelines-2', label) : tr('ci-cd-pipelines')}</h3>
             </div>
             <p className="text-[13px] leading-relaxed text-gk-muted">
               {provider
-                ? tr('Статусы пайплайнов в графе, логи, запуск, раннеры и секреты работают от авторизации репозитория — той же, что для Pull и Push. Отдельно входить не нужно.')
-                : tr('Не удалось определить, где выполняется CI этого репозитория. Укажите сервис и, для своего сервера, адрес API.')}
+                ? tr('pipeline-statuses-in-graph-logs')
+                : tr('couldnt-determine-where-this-repositorys')}
             </p>
           </div>
           {provider && <CiAuth forge={forge as Parameters<typeof CiAuth>[0]["forge"]} onEditLogin={onEditLogin} />}
@@ -154,11 +154,11 @@ export default function CiPanel({
   }
 
   const tabs: { id: string; label: string; icon: LucideIcon; why?: string | null }[] = [
-    { id: 'pipelines', label: tr('Пайплайны'), icon: Zap },
-    { id: 'runners', label: tr('Раннеры'), icon: Server, why: caps.canListRunners ? null : caps.why?.canListRunners },
-    { id: 'secrets', label: tr('Секреты и переменные'), icon: Variable, why: caps.canManageSecrets ? null : caps.why?.canManageSecrets ?? tr('Секреты видны только администраторам репозитория') },
-    ...(caps.hasSchedules ? [{ id: 'schedules', label: tr('Расписания'), icon: CalendarClock }] : []),
-    { id: 'settings', label: tr('Подключение'), icon: Settings2 },
+    { id: 'pipelines', label: tr('pipelines'), icon: Zap },
+    { id: 'runners', label: tr('runners'), icon: Server, why: caps.canListRunners ? null : caps.why?.canListRunners },
+    { id: 'secrets', label: tr('secrets-and-variables'), icon: Variable, why: caps.canManageSecrets ? null : caps.why?.canManageSecrets ?? tr('secrets-are-visible-only-to') },
+    ...(caps.hasSchedules ? [{ id: 'schedules', label: tr('schedules'), icon: CalendarClock }] : []),
+    { id: 'settings', label: tr('connection'), icon: Settings2 },
   ];
 
   return (
@@ -187,18 +187,18 @@ export default function CiPanel({
         <button
           onClick={() => api.openExternal(forge.webUrl!)}
           className="flex items-center gap-1 truncate rounded px-2 py-1 font-mono text-[11px] text-gk-dim hover:bg-gk-hover hover:text-gk-text"
-          title={tr('Открыть репозиторий в {0}', label)}
+          title={tr('open-repository-in', label)}
         >
           {forge.path} <ExternalLink size={11} />
         </button>
         <span
           data-testid="gl-auth-source"
           className="truncate text-[11px] text-gk-dim"
-          title={`${forge.token.source?.startsWith('legacy') ? tr('Токен CI/CD из прежней версии') : tr('Авторизация репозитория — та же, что для Pull и Push')}${forge.token.scopes ? ` · ${forge.token.scopes.join(', ')}` : ''}`}
+          title={`${forge.token.source?.startsWith('legacy') ? tr('ci-cd-token-from-previous') : tr('repository-sign-in-same-as')}${forge.token.scopes ? ` · ${forge.token.scopes.join(', ')}` : ''}`}
         >
           {forge.token.user?.username ? `@${forge.token.user.username}` : ''}
-          {(forge.token.source === 'login' || forge.token.source === 'login-shared') && <span className="ml-1">{tr('· авторизация репозитория')}</span>}
-          {forge.token.scopes && !forge.token.scopes.includes('api') && <span className="ml-1 text-gk-yellow">{tr('· только просмотр')}</span>}
+          {(forge.token.source === 'login' || forge.token.source === 'login-shared') && <span className="ml-1">{tr('repository-sign-in-3')}</span>}
+          {forge.token.scopes && !forge.token.scopes.includes('api') && <span className="ml-1 text-gk-yellow">{tr('view-only')}</span>}
         </span>
       </div>
 
@@ -294,7 +294,7 @@ function CiSettings({ repoPath, opts, forge, onSaved, notify, compact }: { repoP
     setBusy(false);
     if (!res.ok) return setError(res.error);
     setData(res.data);
-    notify?.({ type: 'success', title: tr('Подключение CI/CD сохранено') });
+    notify?.({ type: 'success', title: tr('ci-cd-connection-saved') });
     onSaved?.();
   };
 
@@ -302,15 +302,15 @@ function CiSettings({ repoPath, opts, forge, onSaved, notify, compact }: { repoP
   if (!open) {
     return (
       <button onClick={() => setOpen(true)} className="flex items-center gap-1.5 text-[12px] text-gk-blue hover:underline" data-testid="ci-settings-open">
-        {tj('{0} Свой сервер: указать сервис и адрес API', [<Settings2 size={12} />])}</button>
+        {tj('own-server-specify-service-and', [<Settings2 size={12} />])}</button>
     );
   }
   const changed = (data.provider ?? '') !== provider || (data.apiBase ?? '') !== apiBase.trim();
   return (
     <div className="space-y-3 rounded-lg border border-gk-border p-3.5" data-testid="ci-settings">
-      <div className="text-[12.5px] font-medium text-gk-text">{tr('Подключение CI/CD')}</div>
+      <div className="text-[12.5px] font-medium text-gk-text">{tr('ci-cd-connection')}</div>
       <label className="block">
-        {tj('<0>Сервис</0>{1}', [<span className="mb-1 block text-[12px] text-gk-muted" />, <select
+        {tj('service-2', [<span className="mb-1 block text-[12px] text-gk-muted" />, <select
           value={provider}
           onChange={(e) => setProvider(e.target.value)}
           data-testid="ci-settings-provider"
@@ -318,27 +318,27 @@ function CiSettings({ repoPath, opts, forge, onSaved, notify, compact }: { repoP
         >
           {PROVIDERS.map((p) => (
             <option key={p.id} value={p.id}>
-              {p.id === '' && data.detected ? tr('{0} (сейчас: {1})', p.label, PROVIDERS.find((x) => x.id === data.detected)?.label.split(' (')[0] ?? data.detected) : p.label}
+              {p.id === '' && data.detected ? tr('currently-2', p.label, PROVIDERS.find((x) => x.id === data.detected)?.label.split(' (')[0] ?? data.detected) : p.label}
             </option>
           ))}
         </select>])}
       </label>
       <label className="block">
-        {tj('<0>Base API URL — для своего сервера (GitLab Self-Managed, GitHub Enterprise, Gitea)</0>{1}<2>Пусто — {3}. Токен — из авторизации репозитория, отдельно его вводить не нужно.</2>', [<span className="mb-1 block text-[12px] text-gk-muted" />, <input
+        {tj('base-api-url-for-your', [<span className="mb-1 block text-[12px] text-gk-muted" />, <input
           value={apiBase}
           onChange={(e) => setApiBase(e.target.value)}
           placeholder={data.defaultApiBase ?? 'https://git.company.ru'}
           data-testid="ci-settings-api"
           className="w-full rounded-md bg-gk-bg px-2 py-1.5 font-mono text-[12px] outline-none ring-1 ring-gk-border focus:ring-gk-blue"
-        />, <span className="mt-1 block text-[11.5px] leading-snug text-gk-dim" />, data.defaultApiBase ? <span className="font-mono">{data.defaultApiBase}</span> : tr('по адресу remote')])}
+        />, <span className="mt-1 block text-[11.5px] leading-snug text-gk-dim" />, data.defaultApiBase ? <span className="font-mono">{data.defaultApiBase}</span> : tr('by-remote-address')])}
       </label>
       {error && <ErrorNote error={error} className="" />}
       <div className="flex gap-2">
         <ActionButton tone="blue" busy={busy} disabled={!changed} onClick={save} data-testid="ci-settings-save">
-          {tr('Сохранить')}</ActionButton>
+          {tr('save')}</ActionButton>
         {compact && (
           <ActionButton onClick={() => setOpen(false)} disabled={busy}>
-            {tr('Свернуть')}</ActionButton>
+            {tr('minimize')}</ActionButton>
         )}
       </div>
     </div>
@@ -400,25 +400,25 @@ function PipelinesTab({ repoPath, opts, caps, provider, providerLabel, currentBr
         <div className="flex shrink-0 items-center gap-1.5 border-b border-gk-border px-2 py-1.5">
           <div className="flex overflow-hidden rounded ring-1 ring-gk-border">
             <SegButton active={!onlyBranch} onClick={() => setOnlyBranch(false)}>
-              {tr('Все')}</SegButton>
+              {tr('all-2')}</SegButton>
             <SegButton active={onlyBranch} onClick={() => setOnlyBranch(true)} disabled={!currentBranch} title={currentBranch as string | undefined}>
-              <GitBranch size={11} /> <span className="max-w-[110px] truncate">{currentBranch ?? tr('ветка')}</span>
+              <GitBranch size={11} /> <span className="max-w-[110px] truncate">{currentBranch ?? tr('branch-5')}</span>
             </SegButton>
           </div>
           <div className="flex-1" />
-          <IconBtn title={tr('Обновить')} onClick={() => setRefreshKey((k) => k + 1)}>
+          <IconBtn title={tr('refresh')} onClick={() => setRefreshKey((k) => k + 1)}>
             <RefreshCw size={13} className={list.loading ? 'animate-spin' : ''} />
           </IconBtn>
-          <ActionButton icon={Play} tone="green" why={live.canRunPipeline ? (currentBranch ? null : tr('Нет активной ветки')) : live.why?.canRunPipeline ?? tr('Нет прав на запуск')} onClick={() => setRunOpen(true)} data-testid="run-open">
-            {tr('Запустить')}</ActionButton>
+          <ActionButton icon={Play} tone="green" why={live.canRunPipeline ? (currentBranch ? null : tr('no-active-branch')) : live.why?.canRunPipeline ?? tr('no-permission-to-run')} onClick={() => setRunOpen(true)} data-testid="run-open">
+            {tr('run-3')}</ActionButton>
         </div>
 
         <div className="min-h-0 flex-1 overflow-y-auto" data-testid="pipeline-list">
           {list.error && !list.data && <ErrorNote error={list.error} />}
-          {list.error && list.data && <div className="border-b border-gk-border px-3 py-1.5 text-[11px] text-gk-yellow">{tj('Не удалось обновить: {0}', [list.error.message])}</div>}
+          {list.error && list.data && <div className="border-b border-gk-border px-3 py-1.5 text-[11px] text-gk-yellow">{tj('couldnt-refresh', [list.error.message])}</div>}
           {list.loading && !list.data && <ListSkeleton />}
           {list.data && pipelines.length === 0 && (
-            <div className="px-4 py-8 text-center text-[12px] text-gk-dim">{onlyBranch ? tr('В ветке {0} пайплайнов ещё не было', currentBranch) : tr('Пайплайнов ещё не было')}</div>
+            <div className="px-4 py-8 text-center text-[12px] text-gk-dim">{onlyBranch ? tr('branch-has-had-no-pipelines', currentBranch) : tr('no-pipelines-yet')}</div>
           )}
           {pipelines.map((p, i) => {
             const commit = commitsBySha?.get(p.sha);
@@ -467,7 +467,7 @@ function PipelinesTab({ repoPath, opts, caps, provider, providerLabel, currentBr
             onOpenPipeline={setSelected}
           />
         ) : (
-          <div className="flex flex-1 items-center justify-center text-[13px] text-gk-dim">{tr('Выберите пайплайн слева')}</div>
+          <div className="flex flex-1 items-center justify-center text-[13px] text-gk-dim">{tr('select-pipeline-on-left')}</div>
         )}
       </div>
 
@@ -482,7 +482,7 @@ function PipelinesTab({ repoPath, opts, caps, provider, providerLabel, currentBr
           onClose={() => setRunOpen(false)}
           onStarted={(res, params) => {
             setRunOpen(false);
-            notify?.({ type: 'success', title: res?.id ? tr('Пайплайн #{0} запущен', res.id) : tr('Пайплайн запущен'), hint: tr('Ветка {0}', params.ref) });
+            notify?.({ type: 'success', title: res?.id ? tr('pipeline-started', res.id) : tr('pipeline-started-2'), hint: tr('branch-4', params.ref) });
             if (res?.id) setSelected(res.id);
             setRefreshKey((k) => k + 1);
             setTimeout(() => load(), 3000);
@@ -559,13 +559,13 @@ function PipelineDetail({ repoPath, opts, pipelineId, initialJobId, focusFailed,
     setBusy(null);
     if (!res.ok) return notify?.({ type: 'error', title: res.error.message, hint: res.error.hint });
     if (res.data.canceled) return;
-    notify?.({ type: 'success', title: tr('Артефакт {0} скачан', a.name), hint: res.data.path, action: { label: tr('Показать'), onClick: () => api.cicd.showFile(res.data.path!) } });
+    notify?.({ type: 'success', title: tr('artifact-downloaded', a.name), hint: res.data.path, action: { label: tr('show'), onClick: () => api.cicd.showFile(res.data.path!) } });
   };
 
   if (state.loading && !state.data) {
     return (
       <div className="flex flex-1 items-center justify-center gap-2 text-[13px] text-gk-muted">
-        {tj('{0} Загружаем пайплайн #{1}…', [<Loader2 size={15} className="animate-spin" />, pipelineId])}</div>
+        {tj('loading-pipeline', [<Loader2 size={15} className="animate-spin" />, pipelineId])}</div>
     );
   }
   if (!state.data) return <ErrorNote error={state.error} />;
@@ -589,40 +589,40 @@ function PipelineDetail({ repoPath, opts, pipelineId, initialJobId, focusFailed,
                 <ActionButton
                   icon={RotateCcw}
                   busy={busy === `pipeline.retry-failed:${p.id}`}
-                  why={caps.canRetryFailed ? null : caps.why?.canRetryFailed ?? tr('Недоступно')}
-                  onClick={() => act({ type: 'pipeline.retry-failed', id: p.id }, tr('Упавшие задания пайплайна #{0} перезапущены', p.number ?? p.id))}
+                  why={caps.canRetryFailed ? null : caps.why?.canRetryFailed ?? tr('unavailable-2')}
+                  onClick={() => act({ type: 'pipeline.retry-failed', id: p.id }, tr('failed-jobs-of-pipeline-restarted', p.number ?? p.id))}
                   data-testid="retry-failed"
                 >
-                  {tj('Перезапустить упавшие ({0})', [failedCount])}</ActionButton>
+                  {tj('retry-failed', [failedCount])}</ActionButton>
               )}
               {!running && (
                 <ActionButton
                   icon={RotateCcw}
                   busy={busy === `pipeline.retry:${p.id}`}
-                  why={caps.canRetry ? null : caps.why?.canRetry ?? tr('Недоступно')}
-                  onClick={() => act({ type: 'pipeline.retry', id: p.id }, tr('Пайплайн #{0} перезапущен', p.number ?? p.id))}
+                  why={caps.canRetry ? null : caps.why?.canRetry ?? tr('unavailable-2')}
+                  onClick={() => act({ type: 'pipeline.retry', id: p.id }, tr('pipeline-restarted', p.number ?? p.id))}
                   data-testid="retry-all"
                 >
-                  {tr('Перезапустить')}</ActionButton>
+                  {tr('retry')}</ActionButton>
               )}
               {running && (
                 <ConfirmAction
                   icon={Square}
                   busy={busy === `pipeline.cancel:${p.id}`}
-                  label={tr('Отменить')}
-                  confirmLabel={tr('Точно отменить?')}
+                  label={tr('undo-2')}
+                  confirmLabel={tr('cancel-for-sure')}
                   testid="pipeline-cancel"
-                  why={caps.canCancel ? null : caps.why?.canCancel ?? tr('Недоступно')}
-                  onConfirm={() => act({ type: 'pipeline.cancel', id: p.id }, tr('Пайплайн #{0} отменён', p.number ?? p.id))}
+                  why={caps.canCancel ? null : caps.why?.canCancel ?? tr('unavailable-2')}
+                  onConfirm={() => act({ type: 'pipeline.cancel', id: p.id }, tr('pipeline-canceled', p.number ?? p.id))}
                 />
               )}
               {p.url && (
                 <ActionButton icon={ExternalLink} onClick={() => api.openExternal(p.url)}>
-                  {tj('В {0}', [providerLabel.split(' ')[0]])}
+                  {tj('in-2', [providerLabel.split(' ')[0]])}
                 </ActionButton>
               )}
             </div>
-            <div className="mt-2 text-[15px] font-medium text-gk-strong">{commit?.message ?? p.name ?? tr('Пайплайн')}</div>
+            <div className="mt-2 text-[15px] font-medium text-gk-strong">{commit?.message ?? p.name ?? tr('pipeline')}</div>
             <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-[12px] text-gk-muted">
               {p.branch && (
                 <span className="flex items-center gap-1">
@@ -633,32 +633,32 @@ function PipelineDetail({ repoPath, opts, pipelineId, initialJobId, focusFailed,
                 <button
                   onClick={() => onLocate?.(p.sha)}
                   disabled={!commit}
-                  title={commit ? tr('Показать коммит в графе') : tr('Коммита нет в загруженной истории')}
+                  title={commit ? tr('show-commit-in-graph') : tr('commit-isnt-in-loaded-history')}
                   className="flex items-center gap-1 font-mono text-gk-blue enabled:hover:underline disabled:text-gk-dim"
                 >
                   <GitCommitHorizontal size={12} /> {p.sha.slice(0, 8)}
                 </button>
               )}
               {p.workflow && <span>{p.workflow}</span>}
-              {p.triggeredBy && <span>{tj('запустил {0}', [p.triggeredBy.name])}</span>}
+              {p.triggeredBy && <span>{tj('started-by', [p.triggeredBy.name])}</span>}
               {p.source && <span>{SOURCE_LABELS[p.source] ?? p.source}</span>}
               <span title={p.createdAt}>{relativeTime(p.createdAt)}</span>
               <Duration startedAt={p.startedAt ?? p.createdAt} duration={p.duration} running={running} prefix="⏱ " />
-              {p.coverage != null && <span>{tj('покрытие {0}%', [p.coverage as number])}</span>}
+              {p.coverage != null && <span>{tj('coverage', [p.coverage as number])}</span>}
             </div>
           </div>
 
           {p.yamlErrors && (
             <div className="rounded-lg border border-gk-red/30 bg-gk-red/10 px-3 py-2 text-[12px] text-gk-text">
               <div className="mb-1 flex items-center gap-1.5 font-semibold text-gk-red">
-                {tj('{0} Ошибка в конфигурации CI', [<AlertTriangle size={13} />])}</div>
+                {tj('ci-configuration-error', [<AlertTriangle size={13} />])}</div>
               {p.yamlErrors as string}
             </div>
           )}
-          {state.error && <div className="text-[11px] text-gk-yellow">{tj('Не удалось обновить: {0}', [state.error.message])}</div>}
+          {state.error && <div className="text-[11px] text-gk-yellow">{tj('couldnt-refresh', [state.error.message])}</div>}
 
           {state.data.stages.length === 0 ? (
-            <div className="rounded-lg border border-dashed border-gk-border p-6 text-center text-[13px] text-gk-dim">{tr('В пайплайне нет заданий')}</div>
+            <div className="rounded-lg border border-dashed border-gk-border p-6 text-center text-[13px] text-gk-dim">{tr('pipeline-has-no-jobs')}</div>
           ) : (
             <div className="overflow-x-auto pb-2">
               <div className="flex min-w-max gap-3">
@@ -691,10 +691,10 @@ function PipelineDetail({ repoPath, opts, pipelineId, initialJobId, focusFailed,
           {(artifacts.length > 0 || caps.canDownloadArtifacts) && !running && (
             <div data-testid="artifacts">
               <div className="mb-1.5 flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wider text-gk-dim">
-                {tj('{0} Артефакты <1>{2}</1>', [<Package size={12} />, <span className="font-normal" />, artifacts.length])}
+                {tj('artifacts', [<Package size={12} />, <span className="font-normal" />, artifacts.length])}
               </div>
               {artifacts.length === 0 ? (
-                <div className="text-[12px] text-gk-dim">{tr('Пайплайн не сохранил артефактов')}</div>
+                <div className="text-[12px] text-gk-dim">{tr('pipeline-saved-no-artifacts')}</div>
               ) : (
                 <div className="overflow-hidden rounded-lg border border-gk-border">
                   {artifacts.map((a) => (
@@ -706,11 +706,11 @@ function PipelineDetail({ repoPath, opts, pipelineId, initialJobId, focusFailed,
                       <ActionButton
                         icon={a.expired ? FolderOpen : Download}
                         busy={busy === `artifact:${a.id}`}
-                        why={a.expired ? tr('Срок хранения истёк — артефакт удалён') : caps.canDownloadArtifacts ? null : caps.why?.canDownloadArtifacts}
+                        why={a.expired ? tr('retention-period-expired-artifact-was') : caps.canDownloadArtifacts ? null : caps.why?.canDownloadArtifacts}
                         onClick={() => download(a)}
                         data-testid="artifact-download"
                       >
-                        {tr('Скачать')}</ActionButton>
+                        {tr('download')}</ActionButton>
                     </div>
                   ))}
                 </div>
@@ -746,9 +746,9 @@ function JobRow({ job, caps, selected, busy, onOpen, onAction }: { job: Job; cap
   const running = ACTIVE_STATUSES.has(job.status);
   const actions: { type: string; icon: LucideIcon; title: string; label: string }[] = [];
   if (job.kind === 'job') {
-    if (job.status === 'manual' && caps.canPlayManualJob) actions.push({ type: 'job.play', icon: Play, title: tr('Запустить'), label: tr('Задание {0} запущено', job.name) });
-    if (['failed', 'canceled', 'success'].includes(job.status) && caps.canRerunSingleJob) actions.push({ type: 'job.retry', icon: RotateCcw, title: tr('Перезапустить'), label: tr('Задание {0} перезапущено', job.name) });
-    if (running && caps.canCancelJob) actions.push({ type: 'job.cancel', icon: Square, title: tr('Отменить'), label: tr('Задание {0} отменено', job.name) });
+    if (job.status === 'manual' && caps.canPlayManualJob) actions.push({ type: 'job.play', icon: Play, title: tr('run-3'), label: tr('job-started', job.name) });
+    if (['failed', 'canceled', 'success'].includes(job.status) && caps.canRerunSingleJob) actions.push({ type: 'job.retry', icon: RotateCcw, title: tr('retry'), label: tr('job-restarted', job.name) });
+    if (running && caps.canCancelJob) actions.push({ type: 'job.cancel', icon: Square, title: tr('undo-2'), label: tr('job-canceled', job.name) });
   }
   return (
     <div
@@ -756,7 +756,7 @@ function JobRow({ job, caps, selected, busy, onOpen, onAction }: { job: Job; cap
       data-testid="job-row"
       data-status={job.status}
       className={`group flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 transition-colors ${selected ? 'bg-gk-blue/15 ring-1 ring-gk-blue/40' : 'hover:bg-gk-hover'}`}
-      title={job.kind === 'bridge' ? tr('Запускает другой пайплайн — открыть в браузере') : tr('Открыть лог')}
+      title={job.kind === 'bridge' ? tr('starts-another-pipeline-open-in') : tr('open-log')}
     >
       <StatusIcon status={job.allowFailure && job.status === 'failed' ? 'warning' : job.status} size={15} />
       <div className="min-w-0 flex-1">
@@ -766,7 +766,7 @@ function JobRow({ job, caps, selected, busy, onOpen, onAction }: { job: Job; cap
         </div>
         <div className="flex items-center gap-1 truncate text-[10.5px] text-gk-dim">
           {job.kind === 'bridge' ? (
-            job.downstream ? tr('→ пайплайн #{0} · {1}', job.downstream.id, statusInfo(job.downstream.status).label) : statusInfo(job.status).label
+            job.downstream ? tr('pipeline-4', job.downstream.id, statusInfo(job.downstream.status).label) : statusInfo(job.status).label
           ) : running && job.startedAt ? (
             <Duration startedAt={job.startedAt} running className="text-gk-blue" />
           ) : job.duration != null ? (
@@ -774,7 +774,7 @@ function JobRow({ job, caps, selected, busy, onOpen, onAction }: { job: Job; cap
           ) : (
             statusInfo(job.status).label
           )}
-          {job.allowFailure && job.status === 'failed' && tr(' · можно упасть')}
+          {job.allowFailure && job.status === 'failed' && tr('allowed-to-fail')}
           {job.runnerName && <span className="truncate">· {job.runnerName}</span>}
         </div>
       </div>

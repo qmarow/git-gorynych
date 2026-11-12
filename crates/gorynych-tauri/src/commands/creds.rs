@@ -286,7 +286,7 @@ fn bad_args(message: &str) -> GorynychError {
 async fn repo_root(dir: Option<&str>) -> Result<PathBuf> {
     match given(dir) {
         Some(dir) => resolve_repo_root(Path::new(dir)).await,
-        None => Err(GorynychError::new(ErrorCode::NotARepo, t("Папка не является Git-репозиторием: {0}", &[&""]))),
+        None => Err(GorynychError::new(ErrorCode::NotARepo, t("folder-isnt-git-repository", &[&""]))),
     }
 }
 
@@ -328,7 +328,7 @@ async fn cred_target(dir: Option<&str>, url: Option<&str>) -> Result<Target> {
             return Ok(Target { url: raw, remote: Some(remote.to_owned()) });
         }
     }
-    Err(GorynychError::new(ErrorCode::NoRemote, t("У репозитория нет remote", &[])))
+    Err(GorynychError::new(ErrorCode::NoRemote, t("repository-has-no-remote", &[])))
 }
 
 /// `apiState`: состояние проверки без сети. Любая ошибка — `None`.
@@ -398,7 +398,7 @@ async fn check_saved(services: &Services, dir: Option<&str>, target: &mut Remote
         Ok(result) => result.ok().flatten().map(ApiState::Checked),
         Err(_) => Some(ApiState::Checked(LoginCheckResult {
             state: "unknown".to_owned(),
-            reason: Some(t("сервер не ответил", &[])),
+            reason: Some(t("server-didnt-respond", &[])),
             user: None,
             scopes: None,
             method: None,
@@ -536,7 +536,7 @@ pub async fn creds_save(state: State<'_, AppState>, dir: Option<String>, url: Op
         Some(remote_url) => {
             let next = js::trim(remote_url).to_owned();
             if parse_target(&next).host.is_none() || repo_key_of(&next).is_none() {
-                return Err(bad_args("Укажите полный адрес репозитория").with_hint(t("Например: https://gitlab.company.ru/group/project.git", &[])));
+                return Err(bad_args("specify-full-repository-address").with_hint(t("for-example-https-gitlab-company-com", &[])));
             }
             let root = repo_root(dir).await?;
             let current = cred_target(dir, None).await.ok();
@@ -582,7 +582,7 @@ pub async fn creds_check_url(state: State<'_, AppState>, url: Option<String>) ->
     let services = state.services()?;
     let url = url.unwrap_or_default();
     if repo_key_of(&url).is_none() {
-        return Err(bad_args("Укажите адрес репозитория"));
+        return Err(bad_args("specify-repository-address"));
     }
     let home = home();
     let net = services.engine.network().options(&home, Some(&url)).await;
@@ -704,7 +704,7 @@ pub async fn creds_switch_to_ssh(state: State<'_, AppState>, dir: Option<String>
     let dir = dir.as_deref();
     let current = cred_target(dir, None).await?;
     let (Some(next), Some(remote)) = (ssh_url_for(&current.url), current.remote) else {
-        return Err(bad_args("Адрес remote уже не https:// — менять нечего"));
+        return Err(bad_args("remote-address-is-no-longer"));
     };
     let root = repo_root(dir).await?;
     git(&root, &["remote", "set-url", &remote, &next]).await?;
@@ -718,7 +718,7 @@ pub async fn creds_copy_public_key(app: AppHandle, state: State<'_, AppState>, k
     let services = state.services()?;
     let path = key_path.unwrap_or_default();
     let Some(public_key) = blocking(move || Ok(public_key_of(&path))).await? else {
-        return Err(GorynychError::new(ErrorCode::NotFound, t("Рядом с ключом нет файла .pub", &[])));
+        return Err(GorynychError::new(ErrorCode::NotFound, t("theres-no-pub-file-next", &[])));
     };
     let copied = copy_text(&app, services, &public_key);
     Ok(PublicKeyCopied { public_key, copied })

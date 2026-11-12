@@ -74,7 +74,7 @@ fn io_error(error: std::io::Error) -> GorynychError {
 fn editable_path(root: &Path, rel: &str) -> Result<PathBuf> {
     let full = safe_relative(root, rel, i18n::language())?;
     if relative_inside(root, &full).split('/').any(|part| part.eq_ignore_ascii_case(".git")) {
-        return Err(GorynychError::new(ErrorCode::BadArgs, t("Сюда писать нельзя", &[])));
+        return Err(GorynychError::new(ErrorCode::BadArgs, t("writing-here-isnt-allowed", &[])));
     }
     Ok(full)
 }
@@ -83,17 +83,17 @@ fn editable_path(root: &Path, rel: &str) -> Result<PathBuf> {
 fn read_bytes(full: &Path) -> Result<Vec<u8>> {
     let meta = match fs::symlink_metadata(full) {
         Ok(meta) => meta,
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Err(GorynychError::new(ErrorCode::NotFoundPath, t("Файл не найден в рабочей папке", &[]))),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Err(GorynychError::new(ErrorCode::NotFoundPath, t("file-is-not-in-working", &[]))),
         Err(error) => return Err(io_error(error)),
     };
     if meta.file_type().is_symlink() {
-        return Err(GorynychError::new(ErrorCode::Unsupported, t("Символическую ссылку нельзя редактировать как файл", &[])));
+        return Err(GorynychError::new(ErrorCode::Unsupported, t("symbolic-link-cant-be-edited", &[])));
     }
     if !meta.is_file() {
-        return Err(GorynychError::new(ErrorCode::NotFoundPath, t("Файл не найден в рабочей папке", &[])));
+        return Err(GorynychError::new(ErrorCode::NotFoundPath, t("file-is-not-in-working", &[])));
     }
     if meta.len() > MAX_EDIT_BYTES {
-        return Err(GorynychError::new(ErrorCode::TooLarge, t("Файл слишком большой", &[])));
+        return Err(GorynychError::new(ErrorCode::TooLarge, t("file-is-too-large", &[])));
     }
     fs::read(full).map_err(io_error)
 }
@@ -101,10 +101,10 @@ fn read_bytes(full: &Path) -> Result<Vec<u8>> {
 /// Байты → текст для редактора.
 fn decode(path: &str, bytes: &[u8]) -> Result<WorktreeText> {
     if bytes[..bytes.len().min(8000)].contains(&0) {
-        return Err(GorynychError::new(ErrorCode::Binary, t("Двоичный файл нельзя редактировать как текст", &[])));
+        return Err(GorynychError::new(ErrorCode::Binary, t("binary-file-cant-be-edited", &[])));
     }
     let Ok(raw) = std::str::from_utf8(bytes) else {
-        return Err(GorynychError::new(ErrorCode::Binary, t("Файл не в кодировке UTF-8 — редактирование недоступно", &[])));
+        return Err(GorynychError::new(ErrorCode::Binary, t("file-isnt-utf-8-encoded", &[])));
     };
     let (bom, body) = match raw.strip_prefix(BOM) {
         Some(body) => (true, body),
@@ -142,8 +142,8 @@ pub async fn save_worktree_file(dir: &Path, request: &WorktreeSave) -> Result<Wo
 
 fn save(full: &Path, request: &WorktreeSave) -> Result<WorktreeSaved> {
     let changed = || {
-        GorynychError::new(ErrorCode::ChangedOnDisk, t("Файл изменился на диске, пока вы его редактировали", &[]))
-            .with_hint(t("Нажмите «Перечитать», чтобы загрузить свежую версию, или сохраните поверх (ваши правки заменят изменения на диске).", &[]))
+        GorynychError::new(ErrorCode::ChangedOnDisk, t("file-changed-on-disk-while", &[]))
+            .with_hint(t("click-reload-to-load-fresh", &[]))
     };
     let current = match read_bytes(full) {
         Ok(bytes) => bytes,
@@ -163,7 +163,7 @@ fn save(full: &Path, request: &WorktreeSave) -> Result<WorktreeSaved> {
         out.insert_str(0, BOM);
     }
     if out.len() as u64 > MAX_EDIT_BYTES {
-        return Err(GorynychError::new(ErrorCode::TooLarge, t("Файл слишком большой", &[])));
+        return Err(GorynychError::new(ErrorCode::TooLarge, t("file-is-too-large", &[])));
     }
     let mut temp = full.as_os_str().to_owned();
     temp.push(format!(".gk-tmp-{}", std::process::id()));

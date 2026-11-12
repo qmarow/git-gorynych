@@ -29,10 +29,10 @@ fn github_triggers(ctx: &Ctx<'_>, on: Option<&Value>) -> Vec<CiRule> {
                     }
                     if let Some(Value::Map(inputs)) = cfg.get("inputs") {
                         let names: Vec<&str> = inputs.keys().map(String::as_str).collect();
-                        details.push(ctx.t("параметры: {0}", &[&names.join(", ")]));
+                        details.push(ctx.t("parameters", &[&names.join(", ")]));
                     }
                     if let Some(workflows) = truthy(cfg.get("workflows")) {
-                        details.push(ctx.t("после: {0}", &[&joined(Some(workflows), ", ")]));
+                        details.push(ctx.t("after", &[&joined(Some(workflows), ", ")]));
                     }
                 }
                 if let Value::Seq(items) = cfg {
@@ -60,7 +60,7 @@ fn steps(ctx: &Ctx<'_>, cfg: &Value) -> Vec<CiStep> {
             let name = non_null(step.get("name")).cloned().unwrap_or_else(|| match (uses, run) {
                 (Some(uses), _) => uses.clone(),
                 (None, Some(run)) => first_line(run),
-                (None, None) => Value::String(ctx.t("Шаг {0}", &[&(index + 1)])),
+                (None, None) => Value::String(ctx.t("step-4", &[&(index + 1)])),
             });
             let with_args = match step.get("with") {
                 Some(Value::Map(map)) => map
@@ -130,7 +130,7 @@ fn job(ctx: &Ctx<'_>, id: &str, raw_cfg: &Value, file: &str, line: Option<u32>) 
             _ => Vec::new(),
         }),
         parallel: (!matrix.is_empty()).then(|| format!("matrix: {}", matrix.join("; "))),
-        timeout: non_null(cfg.get("timeout-minutes")).map(|timeout| Value::String(ctx.t("{0} мин", &[&Ctx::arg(timeout)]))),
+        timeout: non_null(cfg.get("timeout-minutes")).map(|timeout| Value::String(ctx.t("min", &[&Ctx::arg(timeout)]))),
         permissions: truthy(cfg.get("permissions")).map(to_yaml),
         outputs: Some(match cfg.get("outputs") {
             Some(Value::Map(map)) => map.keys().cloned().collect(),
@@ -149,7 +149,7 @@ pub(crate) fn load_github(ctx: &Ctx<'_>, file: &str) -> LoadResult<CiConfig> {
     let data = &parsed.data;
     let mut warnings = Vec::new();
     if truthy(data.get("jobs")).is_none() {
-        warnings.push(ctx.t("В файле нет раздела jobs", &[]));
+        warnings.push(ctx.t("file-has-no-jobs-section", &[]));
     }
     let mut jobs: Vec<CiJob> = match data.get("jobs") {
         Some(Value::Map(map)) => map.iter().map(|(id, cfg)| job(ctx, id, cfg, file, job_lines.get(id).copied())).collect(),
@@ -159,7 +159,7 @@ pub(crate) fn load_github(ctx: &Ctx<'_>, file: &str) -> LoadResult<CiConfig> {
         for need in job.needs.iter().flatten() {
             let wanted = need.job.as_str().unwrap_or_default();
             if !jobs.iter().any(|other| other.job_id.as_deref() == Some(wanted)) {
-                warnings.push(ctx.t("«{0}»: needs ссылается на «{1}», которого нет", &[&job.id, &wanted]));
+                warnings.push(ctx.t("needs-refers-to-which-doesnt", &[&job.id, &wanted]));
             }
         }
     }
@@ -177,7 +177,7 @@ pub(crate) fn load_github(ctx: &Ctx<'_>, file: &str) -> LoadResult<CiConfig> {
         info.push(CiInfo { label: "Workflow".to_owned(), value: Value::String(name.js_string()) });
     }
     if let Some(name) = truthy(data.get("run-name")) {
-        info.push(CiInfo { label: ctx.t("Имя запуска", &[]), value: Value::String(name.js_string()) });
+        info.push(CiInfo { label: ctx.t("run-name", &[]), value: Value::String(name.js_string()) });
     }
     if let Some(concurrency) = truthy(data.get("concurrency")) {
         let value = match concurrency {
@@ -194,7 +194,7 @@ pub(crate) fn load_github(ctx: &Ctx<'_>, file: &str) -> LoadResult<CiConfig> {
                 Value::String(parts.join(", "))
             }
         };
-        info.push(CiInfo { label: ctx.t("Права токена", &[]), value });
+        info.push(CiInfo { label: ctx.t("token-permissions", &[]), value });
     }
 
     let title = truthy(data.get("name")).map_or_else(|| file.to_owned(), Value::js_string);
@@ -203,7 +203,7 @@ pub(crate) fn load_github(ctx: &Ctx<'_>, file: &str) -> LoadResult<CiConfig> {
         warnings,
         info,
         triggers: github_triggers(ctx, non_null(data.get("on")).or_else(|| data.get("true"))),
-        triggers_title: Some(ctx.t("Когда запускается (on)", &[])),
+        triggers_title: Some(ctx.t("when-it-runs-on", &[])),
         variables: variables_list(data.get("env")),
         pipelines: vec![CiPipeline { id: "main".to_owned(), title, stages: levelize(ctx, jobs) }],
         files: vec![CiFile { path: file.to_owned(), text, hash: None, draft: false }],

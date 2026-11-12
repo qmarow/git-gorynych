@@ -93,13 +93,13 @@ export function RunnerCard({ run, onClose, onRetry }: { run: ActionRun; onClose:
               onClick={() => onRetry(failed)}
               className="mt-2 flex items-center gap-1.5 rounded-md bg-gk-fg/10 px-2.5 py-1 text-[12px] text-gk-text hover:bg-gk-fg/15"
             >
-              {tj('{0} Повторить с шага {1}', [<RotateCcw size={12} />, failed + 1])}
+              {tj('retry-from-step', [<RotateCcw size={12} />, failed + 1])}
             </button>
           )}
         </div>
       )}
       {run.finished && !run.error && (
-        <div className="border-t border-gk-green/25 bg-gk-green/[0.07] px-3 py-1.5 text-[12px] text-gk-green">{tj('Готово{0}', [run.summary ? ` — ${run.summary}` : ''])}</div>
+        <div className="border-t border-gk-green/25 bg-gk-green/[0.07] px-3 py-1.5 text-[12px] text-gk-green">{tj('done-2', [run.summary ? ` — ${run.summary}` : ''])}</div>
       )}
     </div>
   );
@@ -164,14 +164,14 @@ export function RunDialog({ action, inputs, branches, onRun, onClose }: { action
         </div>
         <div className="flex justify-end gap-2 border-t border-gk-border px-4 py-2.5">
           <button type="button" onClick={onClose} className="rounded px-3 py-1.5 text-[12.5px] text-gk-muted hover:bg-gk-hover hover:text-gk-text">
-            {tr('Отмена')}</button>
+            {tr('cancel')}</button>
           <button
             type="submit"
             autoFocus={inputs.length === 0}
             disabled={!ready}
             className="flex items-center gap-1.5 rounded-md bg-gk-green px-3 py-1.5 text-[12.5px] font-semibold text-gk-ink hover:brightness-110 disabled:opacity-40"
           >
-            {tj('{0} Запустить', [<Play size={13} />])}</button>
+            {tj('run-2', [<Play size={13} />])}</button>
         </div>
       </form>
     </div>

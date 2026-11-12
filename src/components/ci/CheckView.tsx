@@ -39,9 +39,9 @@ interface SeverityStyle {
 }
 
 export const SEVERITY: Record<CiSeverity, SeverityStyle> = {
-  error: { label: t('Ошибки'), one: t('ошибка'), icon: CircleX, text: 'text-gk-red', bg: 'bg-gk-red/10', ring: 'ring-gk-red/30', dot: 'bg-gk-red' },
-  warning: { label: t('Предупреждения'), one: t('предупреждение'), icon: AlertTriangle, text: 'text-gk-yellow', bg: 'bg-gk-yellow/10', ring: 'ring-gk-yellow/30', dot: 'bg-gk-yellow' },
-  info: { label: t('Советы'), one: t('совет'), icon: Info, text: 'text-gk-blue', bg: 'bg-gk-blue/10', ring: 'ring-gk-blue/25', dot: 'bg-gk-blue' },
+  error: { label: t('errors'), one: t('error'), icon: CircleX, text: 'text-gk-red', bg: 'bg-gk-red/10', ring: 'ring-gk-red/30', dot: 'bg-gk-red' },
+  warning: { label: t('warnings'), one: t('warning'), icon: AlertTriangle, text: 'text-gk-yellow', bg: 'bg-gk-yellow/10', ring: 'ring-gk-yellow/30', dot: 'bg-gk-yellow' },
+  info: { label: t('tips'), one: t('tip'), icon: Info, text: 'text-gk-blue', bg: 'bg-gk-blue/10', ring: 'ring-gk-blue/25', dot: 'bg-gk-blue' },
 };
 const ORDER: CiSeverity[] = ['error', 'warning', 'info'];
 
@@ -55,9 +55,9 @@ const plural = (n: number, one: string, few: string, many: string) => {
 };
 export const countText = (stats: Partial<CiCheckStats>) =>
   [
-    stats.error && `${stats.error} ${plural(stats.error, t('ошибка'), t('ошибки'), t('ошибок'))}`,
-    stats.warning && `${stats.warning} ${plural(stats.warning, t('предупреждение'), t('предупреждения'), t('предупреждений'))}`,
-    stats.info && `${stats.info} ${plural(stats.info, t('совет'), t('совета'), t('советов'))}`,
+    stats.error && `${stats.error} ${plural(stats.error, t('error'), t('errors-2'), t('errors-3'))}`,
+    stats.warning && `${stats.warning} ${plural(stats.warning, t('warning'), t('warnings-2'), t('warnings-3'))}`,
+    stats.info && `${stats.info} ${plural(stats.info, t('tip'), t('tips-2'), t('tips-3'))}`,
   ]
     .filter(Boolean)
     .join(' · ');
@@ -97,7 +97,7 @@ export default function CheckView({ check, systemTitle, draft, onShowLine, onSel
 
   const shown = useMemo(() => (filter === 'all' ? issues : issues.filter((i) => i.severity === filter)), [issues, filter]);
   if (!check) {
-    return <div className="flex flex-1 items-center justify-center text-[13px] text-gk-muted">{t('Проверка конфигурации недоступна для этого файла')}</div>;
+    return <div className="flex flex-1 items-center justify-center text-[13px] text-gk-muted">{t('configuration-check-isnt-available-for')}</div>;
   }
   const toggle = (key: string) =>
     setOpen((s) => {
@@ -127,16 +127,16 @@ export default function CheckView({ check, systemTitle, draft, onShowLine, onSel
           <div className="min-w-0 flex-1">
             <div className="text-[14px] font-semibold text-gk-strong">
               {tone === 'error'
-                ? t('{0} {1} — пайплайн не создастся или задания упадут', stats.error, plural(stats.error, t('ошибка'), t('ошибки'), t('ошибок')))
+                ? t('pipeline-wont-be-created-or', stats.error, plural(stats.error, t('error'), t('errors-2'), t('errors-3')))
                 : tone === 'warning'
-                  ? t('Явных ошибок нет, но есть то, что может сломаться')
-                  : t('Проверка пройдена — ошибок не найдено')}
+                  ? t('no-obvious-errors-but-some')
+                  : t('check-passed-no-errors-found')}
             </div>
             <div className="mt-0.5 text-[12px] text-gk-muted">
-              {tj('{0} · {1}, проверено локально, без отправки на сервер{2}', [countText(stats) || t('Замечаний нет'), systemTitle, draft ? t(' · по несохранённому черновику') : ''])}
+              {tj('checked-locally-without-sending-to', [countText(stats) || t('no-remarks'), systemTitle, draft ? t('on-unsaved-draft') : ''])}
             </div>
             <div className="mt-1 text-[11.5px] text-gk-dim">
-              {t('Проверяются синтаксис и ключи, ссылки между заданиями, правила запуска, а также команды скриптов — против файлов репозитория и образов заданий.')}</div>
+              {t('checked-syntax-and-keys-references')}</div>
           </div>
         </div>
 
@@ -144,7 +144,7 @@ export default function CheckView({ check, systemTitle, draft, onShowLine, onSel
         {issues.length > 0 && (
           <div className="flex flex-wrap items-center gap-1.5">
             <FilterChip active={filter === 'all'} onClick={() => setFilter('all')}>
-              {tj('Все · {0}', [issues.length])}
+              {tj('all', [issues.length])}
             </FilterChip>
             {ORDER.filter((s) => stats[s]).map((s) => {
               const S = SEVERITY[s];
@@ -157,10 +157,10 @@ export default function CheckView({ check, systemTitle, draft, onShowLine, onSel
             <div className="flex-1" />
             {open.size > 0 ? (
               <button onClick={() => setOpen(new Set())} className="text-[11.5px] text-gk-muted hover:text-gk-text">
-                {t('Свернуть все')}</button>
+                {t('collapse-all')}</button>
             ) : (
               <button onClick={() => setOpen(new Set(shown.map(issueKey)))} className="text-[11.5px] text-gk-muted hover:text-gk-text">
-                {t('Развернуть все')}</button>
+                {t('expand-all')}</button>
             )}
           </div>
         )}
@@ -235,16 +235,16 @@ function IssueRow({ issue, open, focused, onToggle, onShowLine, onSelectJob }: {
       {open && (
         <div data-testid="issue-details" className="animate-fade-in border-t border-gk-border/70 px-3 pb-3 pt-2.5">
           <div className="grid gap-x-6 gap-y-2.5 md:grid-cols-2">
-            <Part icon={Clock} label={t('Когда')}>
+            <Part icon={Clock} label={t('when')}>
               {issue.when}
             </Part>
-            <Part icon={SquareTerminal} label={t('Как проявится')} tone={S.text}>
+            <Part icon={SquareTerminal} label={t('how-it-shows-up')} tone={S.text}>
               {issue.how}
             </Part>
-            <Part icon={Lightbulb} label={t('Почему')}>
+            <Part icon={Lightbulb} label={t('why')}>
               {issue.why}
             </Part>
-            <Part icon={Wrench} label={t('Как исправить')} tone="text-gk-green">
+            <Part icon={Wrench} label={t('how-to-fix')} tone="text-gk-green">
               {issue.fix?.includes('\n') ? (
                 <pre className="mt-0.5 overflow-x-auto whitespace-pre rounded-md bg-gk-fg/[0.045] px-2.5 py-1.5 font-mono text-[11.5px] leading-5 text-gk-text/90 ring-1 ring-gk-border">
                   {issue.fix}
@@ -261,7 +261,7 @@ function IssueRow({ issue, open, focused, onToggle, onShowLine, onSelectJob }: {
                 onClick={() => onShowLine(issue.file!, issue.line)}
                 className="flex items-center gap-1 rounded-md bg-gk-blue/15 px-2 py-1 text-[12px] text-gk-blue transition-colors hover:bg-gk-blue/25"
               >
-                {tj('{0} Показать в файле{1}', [<FileCode size={12} />, issue.line ? t(' · строка {0}', issue.line) : ''])}
+                {tj('show-in-file', [<FileCode size={12} />, issue.line ? t('line', issue.line) : ''])}
               </button>
             )}
             {issue.job && onSelectJob && (
@@ -269,10 +269,10 @@ function IssueRow({ issue, open, focused, onToggle, onShowLine, onSelectJob }: {
                 onClick={() => onSelectJob(issue.job!)}
                 className="flex items-center gap-1 rounded-md px-2 py-1 text-[12px] text-gk-muted transition-colors hover:bg-gk-hover hover:text-gk-text"
               >
-                {tj('Задание «{0}» на схеме {1}', [issue.job, <ArrowRight size={11} />])}
+                {tj('job-on-diagram', [issue.job, <ArrowRight size={11} />])}
               </button>
             )}
-            <span className="ml-auto font-mono text-[10.5px] text-gk-dim" title={t('Код проверки')}>
+            <span className="ml-auto font-mono text-[10.5px] text-gk-dim" title={t('check-code')}>
               {issue.id}
             </span>
           </div>
@@ -300,9 +300,9 @@ function Scenarios({ scenarios, issues }: { scenarios: CiScenario_Serialize[]; i
   return (
     <section data-testid="check-scenarios" className="space-y-1.5 pt-2">
       <div className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wider text-gk-dim">
-        {tj('{0} Что запустится при разных событиях', [<ListChecks size={12} />])}</div>
+        {tj('what-runs-on-different-events', [<ListChecks size={12} />])}</div>
       <div className="text-[11.5px] text-gk-dim">
-        {t('Правила workflow, rules и only/except прогнаны для типичных событий. Значения переменных из настроек проекта и список изменённых файлов заранее неизвестны — такие задания помечены «?».')}</div>
+        {t('workflow-rules-rules-and-only')}</div>
       <div className="overflow-hidden rounded-lg border border-gk-border">
         {scenarios.map((s, idx) => {
           const Icon = SCENARIO_ICONS[s.id] ?? GitBranch;
@@ -317,20 +317,20 @@ function Scenarios({ scenarios, issues }: { scenarios: CiScenario_Serialize[]; i
                 </span>
                 {problems > 0 ? (
                   <span className="flex shrink-0 items-center gap-1 rounded-full bg-gk-red/15 px-2 py-0.5 text-[11px] text-gk-red">
-                    {tj('{0} не создастся', [<CircleX size={11} />])}</span>
+                    {tj('wont-be-created', [<CircleX size={11} />])}</span>
                 ) : s.created ? (
                   <span className="flex shrink-0 items-center gap-1 rounded-full bg-gk-green/15 px-2 py-0.5 text-[11px] text-gk-green">
-                    <CircleCheck size={11} /> {s.jobs.length} {plural(s.jobs.length, t('задание'), t('задания'), t('заданий'))}
+                    <CircleCheck size={11} /> {s.jobs.length} {plural(s.jobs.length, t('job-3'), t('jobs'), t('jobs-3'))}
                   </span>
                 ) : (
                   <span className="flex shrink-0 items-center gap-1 rounded-full bg-gk-fg/5 px-2 py-0.5 text-[11px] text-gk-muted">
-                    {tj('{0} нет пайплайна', [<Ban size={11} />])}</span>
+                    {tj('no-pipeline', [<Ban size={11} />])}</span>
                 )}
                 <span className="flex min-w-0 flex-1 flex-wrap gap-1">
                   {s.jobs.slice(0, 8).map((j) => (
                     <span
                       key={j.name}
-                      title={`${j.why}${j.uncertain ? t(' · зависит от: {0}', j.uncertain) : ''}`}
+                      title={`${j.why}${j.uncertain ? t('depends-on-2', j.uncertain) : ''}`}
                       className="flex items-center gap-0.5 rounded bg-gk-fg/5 px-1.5 py-px font-mono text-[10.5px] text-gk-text/85"
                     >
                       {j.when === 'manual' && <Hand size={9} className="text-gk-yellow" />}
@@ -355,13 +355,13 @@ function Scenarios({ scenarios, issues }: { scenarios: CiScenario_Serialize[]; i
                   </div>
                   <div className="text-gk-muted">
                     {s.problems.length
-                      ? t('Пайплайн: не создастся — GitLab отклонит его с ошибкой ниже')
-                      : t('Пайплайн: {0} — {1}', s.created ? t('создаётся') : t('не создаётся'), s.reason)}
+                      ? t('pipeline-wont-be-created-gitlab')
+                      : t('pipeline-3', s.created ? t('created-2') : t('not-created'), s.reason)}
                   </div>
                   {s.jobs.length > 0 && (
-                    <JobList title={t('Попадут в пайплайн')} jobs={s.jobs as ScenarioJobRow[]} tone="text-gk-green" />
+                    <JobList title={t('will-be-in-pipeline')} jobs={s.jobs as ScenarioJobRow[]} tone="text-gk-green" />
                   )}
-                  {s.excluded.length > 0 && <JobList title={t('Не попадут')} jobs={s.excluded as ScenarioJobRow[]} tone="text-gk-dim" />}
+                  {s.excluded.length > 0 && <JobList title={t('wont-be-in-it')} jobs={s.excluded as ScenarioJobRow[]} tone="text-gk-dim" />}
                   {s.problems.length > 0 && (
                     <div className="space-y-1 rounded-md bg-gk-red/[0.07] px-2.5 py-1.5 text-gk-red ring-1 ring-gk-red/25">
                       {s.problems.map((p, i) => (
@@ -397,7 +397,7 @@ function JobList({ title, jobs, tone }: { title: ReactNode; jobs: ScenarioJobRow
             </span>
             <span className="text-[11.5px] text-gk-muted">
               {j.why}
-              {j.uncertain && <span className="text-gk-yellow"> {tj(' · зависит от {0}', [j.uncertain])}</span>}
+              {j.uncertain && <span className="text-gk-yellow"> {tj('depends-on-3', [j.uncertain])}</span>}
             </span>
           </div>
         ))}
@@ -417,7 +417,7 @@ export function CheckBanner({ check, onOpen }: { check: CiCheck_Serialize | null
         onClick={() => onOpen()}
         className="flex w-full animate-fade-in items-center gap-2 rounded-lg border border-gk-green/25 bg-gk-green/[0.06] px-3 py-2 text-left text-[12px] text-gk-green transition-colors hover:bg-gk-green/10"
       >
-        {tj('{0}<1>Проверка конфигурации: ошибок не найдено</1>{2}<3>Подробнее {4}</3>', [<CircleCheck size={14} />, <span className="font-medium" />, check.stats.info > 0 && <span className="text-gk-muted">· {countText({ info: check.stats.info })}</span>, <span className="ml-auto flex items-center gap-1 text-gk-muted" />, <ArrowRight size={12} />])}
+        {tj('configuration-check-no-errors-found', [<CircleCheck size={14} />, <span className="font-medium" />, check.stats.info > 0 && <span className="text-gk-muted">· {countText({ info: check.stats.info })}</span>, <span className="ml-auto flex items-center gap-1 text-gk-muted" />, <ArrowRight size={12} />])}
       </button>
     );
   }
@@ -429,9 +429,9 @@ export function CheckBanner({ check, onOpen }: { check: CiCheck_Serialize | null
     >
       <div className={`flex items-start gap-2 font-semibold ${err ? 'text-gk-red' : 'text-gk-yellow'}`}>
         {err ? <CircleX size={14} className="mt-px shrink-0" /> : <AlertTriangle size={14} className="mt-px shrink-0" />}
-        <span className="min-w-0 flex-1">{err ? t('Проверка нашла ошибки — CI не запустится или задания упадут') : t('Проверка: есть то, что может сломаться')}</span>
+        <span className="min-w-0 flex-1">{err ? t('check-found-errors-ci-wont') : t('check-some-things-may-break')}</span>
         <button data-testid="check-banner-open" onClick={() => onOpen()} className="flex shrink-0 items-center gap-1 font-normal text-gk-blue hover:underline">
-          {tj('Все проблемы {0}', [<ArrowRight size={12} />])}
+          {tj('all-problems', [<ArrowRight size={12} />])}
         </button>
       </div>
       <div className="mb-1.5 pl-6 text-[11.5px] text-gk-muted">{countText(check.stats)}</div>
@@ -442,11 +442,11 @@ export function CheckBanner({ check, onOpen }: { check: CiCheck_Serialize | null
             <button key={issueKey(i)} onClick={() => onOpen(i)} className="flex w-full items-start gap-2 text-left text-gk-text/85 hover:text-gk-text">
               <span className={`mt-[7px] h-1.5 w-1.5 shrink-0 rounded-full ${S.dot}`} />
               <span className="min-w-0 flex-1 break-words">{i.title}</span>
-              {i.line && <span className="shrink-0 font-mono text-[11px] text-gk-dim">{tj('стр. {0}', [i.line])}</span>}
+              {i.line && <span className="shrink-0 font-mono text-[11px] text-gk-dim">{tj('line-2', [i.line])}</span>}
             </button>
           );
         })}
-        {top.length > 4 && <div className="text-gk-dim">{tj('…и ещё {0}', [top.length - 4])}</div>}
+        {top.length > 4 && <div className="text-gk-dim">{tj('and-more-2', [top.length - 4])}</div>}
       </div>
     </div>
   );

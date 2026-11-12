@@ -34,11 +34,11 @@ pub(super) fn extend(base: &[PathItem], more: Vec<PathItem>) -> Vec<PathItem> {
 }
 
 pub(super) fn config_when() -> String {
-    tr!("Сразу при push — GitLab проверяет весь файл ещё до создания пайплайна")
+    tr!("right-on-push-gitlab-checks")
 }
 
 pub(super) fn rejected(message: impl std::fmt::Display) -> String {
-    tr!("GitLab не создаст пайплайн и покажет ошибку: «{0}». Ни одно задание не запустится.", message)
+    tr!("gitlab-wont-create-pipeline-and", message)
 }
 
 /// `has`: есть ли значение по пути.
@@ -149,16 +149,16 @@ impl Gl<'_, '_> {
     fn top_level(&mut self) -> Vec<String> {
         for file in &self.config.files {
             for duplicate in self.cx.pos.duplicates(&file.path) {
-                let place = if duplicate.path.is_empty() { tr!("на верхнем уровне") } else { tr!("в {0}", q(duplicate.path.join(" → "))) };
-                let how = format!("{}{}{}", tr!("Ошибки не будет: YAML молча возьмёт последнее значение, а первое (строка "), duplicate.first, tr!(") будет потеряно целиком."));
+                let place = if duplicate.path.is_empty() { tr!("at-top-level") } else { tr!("in", q(duplicate.path.join(" → "))) };
+                let how = format!("{}{}{}", tr!("there-will-be-no-error"), duplicate.first, tr!("is-lost-entirely"));
                 self.cx.add(draft!(
                     "yaml-duplicate-key",
                     Warning,
-                    title = tr!("Ключ {0} повторяется {1}", q(&duplicate.key), place),
+                    title = tr!("key-is-repeated", q(&duplicate.key), place),
                     when = config_when(),
                     how = how,
-                    why = tr!("В одном блоке YAML ключ может встречаться только один раз; повтор обычно — результат копирования."),
-                    fix = tr!("Удалите лишний блок или объедините их в один."),
+                    why = tr!("key-may-appear-only-once"),
+                    fix = tr!("remove-extra-block-or-merge"),
                     file = file.path.clone(),
                     line = Some(duplicate.line),
                 ));
@@ -176,16 +176,16 @@ impl Gl<'_, '_> {
                 let name = &definition.name;
                 let id = if near.is_some() { "global-typo" } else { "job-not-hash" };
                 let title = match near {
-                    Some(near) => tr!("Неизвестный раздел {0} — похоже на {1}", q(name), q(near)),
-                    None => tr!("{0}: задание должно быть набором ключей", q(name)),
+                    Some(near) => tr!("unknown-section-looks-like", q(name), q(near)),
+                    None => tr!("job-must-be-set-of", q(name)),
                 };
                 let why = match near {
-                    Some(near) => tr!("Всё, что не является служебным разделом ({0} и др.), GitLab считает заданием, а задание не может быть {1}.", near, if matches!(definition.value, Value::Seq(_)) { tr!("списком") } else { tr!("строкой") }),
-                    None => tr!("На верхнем уровне все ключи, кроме служебных (stages, variables, default…), — это задания; задание описывается картой с script/stage и т.д."),
+                    Some(near) => tr!("anything-that-isnt-reserved-section", near, if matches!(definition.value, Value::Seq(_)) { tr!("list") } else { tr!("string") }),
+                    None => tr!("at-top-level-all-keys"),
                 };
                 let fix = match near {
-                    Some(near) => tr!("Переименуйте {0} в {1}.", q(name), q(near)),
-                    None => tr!("Оформите как задание:\n{0}:\n  script:\n    - {1}", name, definition.value.as_str().unwrap_or("…")),
+                    Some(near) => tr!("rename-to", q(name), q(near)),
+                    None => tr!("write-it-as-job-script", name, definition.value.as_str().unwrap_or("…")),
                 };
                 self.cx.add(draft!(id, Error, title = title, when = config_when(), how = rejected(format!("jobs:{name} config should be a hash")), why = why, fix = fix, file = definition.source.clone(), line = definition.line));
                 continue;
@@ -198,11 +198,11 @@ impl Gl<'_, '_> {
             self.cx.add(draft!(
                 "no-visible-jobs",
                 Error,
-                title = tr!("В конфигурации нет ни одного задания"),
+                title = tr!("configuration-has-no-jobs"),
                 when = config_when(),
                 how = rejected("jobs config should contain at least one visible job"),
-                why = if self.raw.jobs.is_empty() { tr!("В файле только служебные разделы.") } else { tr!("Есть только скрытые задания (имя начинается с точки) — они служат шаблонами и сами не запускаются.") },
-                fix = tr!("Добавьте задание без точки в начале имени, например:\nbuild:\n  script:\n    - echo \"ok\""),
+                why = if self.raw.jobs.is_empty() { tr!("file-has-only-reserved-sections") } else { tr!("there-are-only-hidden-jobs") },
+                fix = tr!("add-job-whose-name-doesnt"),
                 file = self.main.clone(),
                 line = Some(1u32),
             ));
@@ -210,24 +210,24 @@ impl Gl<'_, '_> {
 
         let globals = self.globals.clone();
         if globals.get("stages").is_some_and(|value| !matches!(value, Value::Seq(_))) {
-            self.glob_issue(&kp!["stages"], draft!("stages-not-list", Error, title = tr!("stages должен быть списком"), how = rejected("stages config should be an array of strings"), why = tr!("Этапы перечисляются списком в порядке выполнения."), fix = "stages:\n  - build\n  - test\n  - deploy"));
+            self.glob_issue(&kp!["stages"], draft!("stages-not-list", Error, title = tr!("stages-must-be-list"), how = rejected("stages config should be an array of strings"), why = tr!("stages-are-listed-in-order"), fix = "stages:\n  - build\n  - test\n  - deploy"));
         }
         if globals.get("types").is_some() {
-            self.glob_issue(&kp!["types"], draft!("types-removed", Warning, title = tr!("Раздел types устарел"), how = tr!("В новых версиях GitLab (17.0+) ключ удалён — файл перестанет проходить проверку."), why = tr!("types — старое название stages."), fix = tr!("Переименуйте types в stages.")));
+            self.glob_issue(&kp!["types"], draft!("types-removed", Warning, title = tr!("types-section-is-deprecated"), how = tr!("in-newer-gitlab-versions-17"), why = tr!("types-is-old-name-of"), fix = tr!("rename-types-to-stages")));
         }
         if globals.get("variables").is_some_and(|value| !matches!(value, Value::Map(_))) {
-            self.glob_issue(&kp!["variables"], draft!("variables-not-hash", Error, title = tr!("variables должен быть набором «ИМЯ: значение»"), how = rejected("variables config should be a hash of key value pairs"), why = tr!("Переменные задаются картой, а не списком."), fix = "variables:\n  NODE_ENV: production"));
+            self.glob_issue(&kp!["variables"], draft!("variables-not-hash", Error, title = tr!("variables-must-be-set-of"), how = rejected("variables config should be a hash of key value pairs"), why = tr!("variables-are-given-as-map"), fix = "variables:\n  NODE_ENV: production"));
         }
         for key in ["image", "services", "cache", "before_script", "after_script"] {
             if globals.get(key).is_some() && self.raw.global_defs.iter().any(|item| item.key == key) {
-                self.glob_issue(&kp![key], draft!("global-deprecated", Info, title = tr!("Глобальный {0} устарел — используйте default:", key), how = tr!("Сейчас работает, но GitLab пометил такую запись устаревшей и может убрать её."), why = tr!("Ключи заданий на верхнем уровне ({0}) заменены разделом default.", key), fix = format!("default:\n  {key}: …")));
+                self.glob_issue(&kp![key], draft!("global-deprecated", Info, title = tr!("global-is-deprecated-use-default", key), how = tr!("it-works-for-now-but-gitlab"), why = tr!("top-level-job-keys-were", key), fix = format!("default:\n  {key}: …")));
             }
         }
         if let Some(Value::Map(default)) = globals.get("default") {
             for key in default.keys() {
                 if !DEFAULT_KEYS.contains(&key.as_str()) {
-                    let hint = if matches!(key.as_str(), "stage" | "variables" | "rules" | "only") { tr!(" {0} задаётся в каждом задании (variables — на верхнем уровне).", q(key)) } else { String::new() };
-                    self.glob_issue(&kp!["default", key], draft!("default-unknown-key", Error, title = tr!("default: неизвестный ключ {0}", q(key)), how = rejected(format!("default config contains unknown keys: {key}")), why = tr!("В default допустимы только: {0}.{1}{2}", DEFAULT_KEYS.join(", "), hint, did_you_mean(key, DEFAULT_KEYS)), fix = tr!("Уберите ключ из default или перенесите в задания.")));
+                    let hint = if matches!(key.as_str(), "stage" | "variables" | "rules" | "only") { tr!("is-set-in-each-job", q(key)) } else { String::new() };
+                    self.glob_issue(&kp!["default", key], draft!("default-unknown-key", Error, title = tr!("default-unknown-key", q(key)), how = rejected(format!("default config contains unknown keys: {key}")), why = tr!("only-these-are-allowed-in", DEFAULT_KEYS.join(", "), hint, did_you_mean(key, DEFAULT_KEYS)), fix = tr!("remove-key-from-default-or")));
                 }
             }
         }
@@ -252,31 +252,31 @@ impl Gl<'_, '_> {
             match include.kind.as_str() {
                 "local" => {
                     if value.contains('$') {
-                        at!("include-variable", Info, title = tr!("include {0}: путь с переменной", value), how = tr!("Проверить файл заранее нельзя: он определяется переменной в момент создания пайплайна."), why = tr!("В include разрешены только некоторые переменные (проекта, группы, предопределённые)."), fix = tr!("Убедитесь, что при всех значениях переменной файл существует."));
+                        at!("include-variable", Info, title = tr!("include-path-with-variable", value), how = tr!("file-cant-be-checked-in"), why = tr!("only-some-variables-are-allowed"), fix = tr!("make-sure-file-exists-for"));
                     } else if !re!(r"\.ya?ml$", "i").test(&value) && !value.ends_with('*') {
-                        at!("include-not-yaml", Error, title = tr!("include {0}: не YAML-файл", value), how = rejected(format!("Included file `{value}` does not have YAML extension!")), why = tr!("Подключать можно только файлы .yml / .yaml."), fix = tr!("Переименуйте файл в .yml или укажите правильный."));
+                        at!("include-not-yaml", Error, title = tr!("include-not-yaml-file", value), how = rejected(format!("Included file `{value}` does not have YAML extension!")), why = tr!("only-yml-yaml-files-can"), fix = tr!("rename-file-to-yml-or"));
                     } else if let Some(error) = &include.error {
-                        if error.contains(&tr!("не найден")) {
-                            let hint = if value.contains('*') { tr!("; под шаблон не подходит ни один файл") } else { String::new() };
-                            at!("include-local-missing", Error, title = tr!("include {0}: файла нет в репозитории", value), how = rejected(format!("Local file `{value}` does not exist!")), why = tr!("Файл ищется от корня репозитория в той же ветке/коммите{0}.", hint), fix = tr!("Проверьте путь (от корня, регистр букв) и что файл закоммичен."));
+                        if error.contains(&tr!("not-found")) {
+                            let hint = if value.contains('*') { tr!("no-file-matches-pattern") } else { String::new() };
+                            at!("include-local-missing", Error, title = tr!("include-file-isnt-in-repository", value), how = rejected(format!("Local file `{value}` does not exist!")), why = tr!("file-is-looked-up-from", hint), fix = tr!("check-path-from-root-letter"));
                         } else {
-                            at!("include-depth", Error, title = format!("include {value}: {error}"), how = rejected("Maximum of nested includes reached"), why = tr!("GitLab ограничивает вложенность подключений."), fix = tr!("Сократите цепочку include."));
+                            at!("include-depth", Error, title = format!("include {value}: {error}"), how = rejected("Maximum of nested includes reached"), why = tr!("gitlab-limits-nesting-of-includes"), fix = tr!("shorten-include-chain"));
                         }
                     }
                 }
                 "remote" => {
                     if re!(r"^http:\/\/", "i").test(&value) {
-                        at!("include-http", Warning, title = tr!("include {0}: по незащищённому http", value), how = tr!("Файл может быть подменён по дороге — и подменённые задания выполнятся с вашими переменными и токенами."), why = tr!("remote-файлы скачиваются при каждом создании пайплайна."), fix = tr!("Используйте https:// или храните файл в репозитории (include: local / project)."));
+                        at!("include-http", Warning, title = tr!("include-over-insecure-http", value), how = tr!("file-can-be-tampered-with"), why = tr!("remote-files-are-downloaded-every"), fix = tr!("use-https-or-keep-file"));
                     }
                     self.offline.push(include.clone());
                 }
                 "unknown" => {
-                    at!("include-unknown", Error, title = tr!("include: непонятная запись"), how = rejected("Include config contains unknown keys"), why = tr!("Подключение должно содержать один из ключей: local, project (+ file), remote, template, component."), fix = "include:\n  - local: ci/build.yml");
+                    at!("include-unknown", Error, title = tr!("include-unrecognized-entry"), how = rejected("Include config contains unknown keys"), why = tr!("include-must-contain-one-of"), fix = "include:\n  - local: ci/build.yml");
                 }
                 _ => self.offline.push(include.clone()),
             }
             if include.kind == "project" && !re!(r":\s*\S").test(&value) {
-                at!("include-project-no-file", Error, title = tr!("include project без file"), how = rejected("Include config is missing the file key"), why = tr!("Для подключения из другого проекта нужно указать file."), fix = "include:\n  - project: group/ci\n    file: /templates/build.yml");
+                at!("include-project-no-file", Error, title = tr!("include-project-without-file"), how = rejected("Include config is missing the file key"), why = tr!("including-from-another-project-requires"), fix = "include:\n  - project: group/ci\n    file: /templates/build.yml");
             }
         }
         if let Some(first) = self.offline.first().cloned() {
@@ -287,11 +287,11 @@ impl Gl<'_, '_> {
             self.cx.add(draft!(
                 "include-offline",
                 Info,
-                title = tr!("Не проверены подключения из сети: {0}", count),
+                title = tr!("network-includes-not-checked", count),
                 when = config_when(),
-                how = tr!("Если такой файл недоступен или в нём ошибка, GitLab не создаст пайплайн."),
-                why = tr!("{0}{1} — эти файлы лежат вне репозитория, без сети их не проверить; задания из них в проверке не учтены.", list.join("; "), if count > 4 { "…" } else { "" }),
-                fix = tr!("Проверьте итоговую конфигурацию в GitLab: CI/CD → Editor → Full configuration (или Validate)."),
+                how = tr!("if-such-file-is-unavailable"),
+                why = tr!("these-files-are-outside-repository", list.join("; "), if count > 4 { "…" } else { "" }),
+                fix = tr!("check-merged-configuration-in-gitlab"),
                 file = from,
                 line = line,
             ));
@@ -317,11 +317,11 @@ impl Gl<'_, '_> {
                 self.cx.add(draft!(
                     "job-redefined",
                     Info,
-                    title = tr!("{0} описано в нескольких файлах", q(name)),
+                    title = tr!("is-defined-in-several-files", q(name)),
                     when = config_when(),
-                    how = tr!("Итоговое задание — слияние описаний: ключи из {0} перекрывают ключи из {1}; списки (script, rules) заменяются целиком.", if last_file == self.main { tr!("основного файла") } else { q(last_file) }, others.join(", ")),
-                    why = tr!("Так работает include: одноимённые задания объединяются."),
-                    fix = tr!("Если это сделано намеренно — всё в порядке; иначе переименуйте одно из заданий."),
+                    how = tr!("final-job-is-merge-of", if last_file == self.main { tr!("main-file") } else { q(last_file) }, others.join(", ")),
+                    why = tr!("thats-how-include-works-jobs"),
+                    fix = tr!("if-this-is-intended-all"),
                     file = last.source.clone(),
                     line = last.line,
                     job = name.to_owned(),
@@ -334,12 +334,12 @@ impl Gl<'_, '_> {
         let workflow_value = self.globals.get("workflow").cloned();
         let workflow = workflow_value.clone().filter(|value| matches!(value, Value::Map(_)));
         if workflow_value.is_some() && workflow.is_none() {
-            self.glob_issue(&kp!["workflow"], draft!("workflow-not-hash", Error, title = tr!("workflow должен быть картой"), how = rejected("workflow config should be a hash"), why = tr!("workflow содержит rules / name / auto_cancel."), fix = "workflow:\n  rules:\n    - if: $CI_COMMIT_BRANCH"));
+            self.glob_issue(&kp!["workflow"], draft!("workflow-not-hash", Error, title = tr!("workflow-must-be-map"), how = rejected("workflow config should be a hash"), why = tr!("workflow-contains-rules-name-auto"), fix = "workflow:\n  rules:\n    - if: $CI_COMMIT_BRANCH"));
         }
         if let Some(Value::Map(map)) = &workflow {
             for key in map.keys() {
                 if !WORKFLOW_KEYS.contains(&key.as_str()) {
-                    self.glob_issue(&kp!["workflow", key], draft!("workflow-unknown-key", Error, title = tr!("workflow: неизвестный ключ {0}", q(key)), how = rejected(format!("workflow config contains unknown keys: {key}")), why = tr!("Допустимы: {0}.{1}", WORKFLOW_KEYS.join(", "), did_you_mean(key, WORKFLOW_KEYS)), fix = tr!("Уберите или переименуйте ключ.")));
+                    self.glob_issue(&kp!["workflow", key], draft!("workflow-unknown-key", Error, title = tr!("workflow-unknown-key", q(key)), how = rejected(format!("workflow config contains unknown keys: {key}")), why = tr!("allowed", WORKFLOW_KEYS.join(", "), did_you_mean(key, WORKFLOW_KEYS)), fix = tr!("remove-or-rename-key")));
                 }
             }
         }

@@ -35,7 +35,7 @@ class ErrorBoundary extends Component<{ children?: ReactNode }, { error: unknown
       <div className="flex h-full items-center justify-center p-8">
         <div className="app-backdrop" />
         <div className="glass-strong w-full max-w-xl rounded-xl border border-gk-border bg-gk-panel-2 p-5">
-          <div className="text-[15px] font-semibold text-gk-strong">{t('Интерфейс упал с ошибкой')}</div>
+          <div className="text-[15px] font-semibold text-gk-strong">{t('interface-crashed-with-error')}</div>
           <pre className="mt-3 max-h-72 select-text overflow-auto whitespace-pre-wrap rounded bg-gk-sink/30 p-3 font-mono text-xs text-gk-red">
             {String((error as Error | null)?.stack || error)}
           </pre>
@@ -44,12 +44,12 @@ class ErrorBoundary extends Component<{ children?: ReactNode }, { error: unknown
               onClick={() => location.reload()}
               className="rounded bg-gk-green px-3 py-1.5 text-[13px] font-semibold text-gk-ink"
             >
-              {t('Перезагрузить')}</button>
+              {t('reload')}</button>
             <button
               onClick={() => navigator.clipboard?.writeText(String((error as Error | null)?.stack || error))}
               className="rounded bg-gk-fg/10 px-3 py-1.5 text-[13px] text-gk-text"
             >
-              {t('Скопировать ошибку')}</button>
+              {t('copy-error')}</button>
           </div>
         </div>
       </div>

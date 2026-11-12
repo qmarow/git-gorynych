@@ -52,7 +52,7 @@ export interface Appearance {
 export const THEMES: readonly Theme[] = [
   {
     id: 'kraken',
-    name: tr('Тёмная'),
+    name: tr('dark'),
     base: '#0e1117',
     surface: [20, 23, 31],
     panel: [24, 27, 36],
@@ -70,7 +70,7 @@ export const THEMES: readonly Theme[] = [
   },
   {
     id: 'light',
-    name: tr('Светлая'),
+    name: tr('light'),
     scheme: 'light',
     base: '#eceff4',
     surface: [246, 247, 250],
@@ -92,7 +92,7 @@ export const THEMES: readonly Theme[] = [
   },
   {
     id: 'midnight',
-    name: tr('Полночь'),
+    name: tr('midnight'),
     base: '#11151f',
     surface: [22, 27, 38],
     panel: [27, 33, 46],
@@ -110,7 +110,7 @@ export const THEMES: readonly Theme[] = [
   },
   {
     id: 'dracula',
-    name: tr('Дракула'),
+    name: tr('dracula'),
     base: '#191a21',
     surface: [33, 34, 44],
     panel: [40, 42, 54],
@@ -128,7 +128,7 @@ export const THEMES: readonly Theme[] = [
   },
   {
     id: 'monokai',
-    name: tr('Монокай'),
+    name: tr('monokai'),
     base: '#1b1916',
     surface: [34, 31, 27],
     panel: [41, 37, 33],
@@ -146,7 +146,7 @@ export const THEMES: readonly Theme[] = [
   },
   {
     id: 'forest',
-    name: tr('Лес'),
+    name: tr('forest'),
     base: '#0b1410',
     surface: [16, 26, 22],
     panel: [20, 32, 27],
@@ -164,7 +164,7 @@ export const THEMES: readonly Theme[] = [
   },
   {
     id: 'sakura',
-    name: tr('Сакура'),
+    name: tr('sakura'),
     base: '#171118',
     surface: [30, 22, 31],
     panel: [37, 27, 38],
@@ -182,7 +182,7 @@ export const THEMES: readonly Theme[] = [
   },
   {
     id: 'oled',
-    name: tr('Чёрная'),
+    name: tr('black'),
     base: '#000000',
     surface: [6, 6, 8],
     panel: [11, 11, 14],
@@ -201,17 +201,17 @@ export const THEMES: readonly Theme[] = [
 ];
 
 export const BACKGROUNDS: readonly { id: BackgroundId; name: string; hint: string }[] = [
-  { id: 'glow', name: tr('Сияние'), hint: tr('Мягкие цветные пятна за стеклом') },
-  { id: 'aurora', name: tr('Аврора'), hint: tr('Переливающиеся полосы, как северное сияние') },
-  { id: 'grid', name: tr('Сетка'), hint: tr('Тонкая сетка и свечение сверху') },
-  { id: 'gradient', name: tr('Градиент'), hint: tr('Спокойный статичный градиент') },
-  { id: 'solid', name: tr('Однотонный'), hint: tr('Без эффектов') },
-  { id: 'image', name: tr('Картинка'), hint: tr('Своё изображение с размытием и затемнением') },
-  { id: 'system', name: 'Windows', hint: tr('Сквозь окно видно рабочий стол (Mica / Acrylic, Windows 11)') },
+  { id: 'glow', name: tr('glow'), hint: tr('soft-colored-spots-behind-glass') },
+  { id: 'aurora', name: tr('aurora'), hint: tr('shimmering-bands-like-northern-lights') },
+  { id: 'grid', name: tr('grid'), hint: tr('thin-grid-and-glow-from') },
+  { id: 'gradient', name: tr('gradient'), hint: tr('calm-static-gradient') },
+  { id: 'solid', name: tr('solid'), hint: tr('no-effects') },
+  { id: 'image', name: tr('image-2'), hint: tr('your-own-image-with-blur') },
+  { id: 'system', name: 'Windows', hint: tr('desktop-shows-through-window-mica') },
 ];
 
 /** «Как в системе»: светлая или тёмная тема по настройке Windows/macOS */
-export const AUTO_THEME = { id: 'auto', name: tr('Как в системе'), light: 'light', dark: 'kraken' };
+export const AUTO_THEME = { id: 'auto', name: tr('system'), light: 'light', dark: 'kraken' };
 
 const systemPrefersLight = () => {
   try {

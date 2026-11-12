@@ -97,13 +97,13 @@ export default function DagView({ pipeline, selectedJob, onSelectJob, jobIssues 
   return (
     <div className="overflow-auto rounded-lg border border-gk-border bg-gk-fg/[0.015] p-3" data-testid="dag">
       <div className="mb-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px] text-gk-dim">
-        {tj('<0>Колонка — задания, которые могут идти одновременно</0>{1}{2}', [<span />, <span className="flex items-center gap-1">
+        {tj('column-is-jobs-that-can', [<span />, <span className="flex items-center gap-1">
           <svg width="22" height="6">
             <path d="M0 3H22" stroke="currentColor" strokeWidth="1.5" />
           </svg>
           needs
         </span>, <span className="flex items-center gap-1">
-          {tj('{0}ждёт предыдущий этап', [<svg width="22" height="6">
+          {tj('waits-for-previous-stage', [<svg width="22" height="6">
             <path d="M0 3H22" stroke="currentColor" strokeWidth="1.5" strokeDasharray="3 3" />
           </svg>])}</span>])}
       </div>

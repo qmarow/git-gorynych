@@ -171,7 +171,7 @@ impl RepoAction {
         let payload = if payload.is_null() { json!({}) } else { payload };
         serde_json::from_value(json!({ "name": name, "payload": payload })).map_err(|error| {
             if error.to_string().contains("unknown variant") {
-                return GorynychError::new(ErrorCode::BadArgs, t("Неизвестное действие: {0}", &[&name]));
+                return GorynychError::new(ErrorCode::BadArgs, t("unknown-action-2", &[&name]));
             }
             GorynychError::new(ErrorCode::BadArgs, error.to_string())
         })
@@ -410,7 +410,7 @@ impl RepoEngine {
     async fn undo(&self, cwd: &Path) -> Result<HistoryLabel> {
         let repo = repo_key(cwd);
         let Some(top) = self.store(move |db| db.top_undo(&repo)).await? else {
-            return Err(GorynychError::new(ErrorCode::HistoryEmpty, t("Нечего отменять", &[])));
+            return Err(GorynychError::new(ErrorCode::HistoryEmpty, t("nothing-to-undo", &[])));
         };
         state::require_no_operation(&current_state(cwd).await?, "undo")?;
         history::undo(&self.network, cwd, &Self::decode(&top)?, &top.blobs).await?;
@@ -422,7 +422,7 @@ impl RepoEngine {
     async fn redo(&self, cwd: &Path) -> Result<HistoryLabel> {
         let repo = repo_key(cwd);
         let Some(top) = self.store(move |db| db.top_redo(&repo)).await? else {
-            return Err(GorynychError::new(ErrorCode::HistoryEmpty, t("Нечего повторять", &[])));
+            return Err(GorynychError::new(ErrorCode::HistoryEmpty, t("nothing-to-redo", &[])));
         };
         state::require_no_operation(&current_state(cwd).await?, "redo")?;
         let mut entry = Self::decode(&top)?;
@@ -453,12 +453,12 @@ impl RepoEngine {
             match kind {
                 CheckoutKind::Smart => self.record(cwd, Entry::SmartCheckout { previous, to, created }, &label).await,
                 CheckoutKind::Move => {
-                    let label = t("Checkout {0} с переносом изменений", &[&result.to.label()]);
+                    let label = t("checkout-with-changes-moved", &[&result.to.label()]);
                     self.record(cwd, Entry::MoveCheckout { previous, to, created }, &label).await;
                 }
                 CheckoutKind::Discard => {
                     let backup = result.discarded.as_ref().map(|discarded| discarded.backup.clone());
-                    let label = t("Checkout {0} без изменений", &[&result.to.label()]);
+                    let label = t("checkout-discarding-changes", &[&result.to.label()]);
                     self.record(cwd, Entry::DiscardCheckout { previous, to, created, backup }, &label).await;
                 }
                 CheckoutKind::Plain => self.record(cwd, Entry::Checkout { previous, to, created }, &label).await,
@@ -512,7 +512,7 @@ impl RepoEngine {
             self.rebase.cleanup(cwd);
             let to = head_hash(cwd).await;
             if let Some(pending) = pending.filter(|pending| Some(&pending.from) != to.as_ref()) {
-                let label = t("{0} (с решением конфликтов)", &[&pending.label]);
+                let label = t("with-conflict-resolution", &[&pending.label]);
                 self.record(cwd, Entry::HeadMove { from: Some(pending.from), to }, &label).await;
             }
         }
@@ -547,7 +547,7 @@ impl RepoEngine {
             RepoAction::CreateBranch(request) => {
                 let result = ops::create_branch(cwd, &request).await?;
                 let entry = Entry::Branch { name: result.name.clone(), hash: result.hash.clone(), checked_out: result.checked_out, previous: result.previous.clone() };
-                let label = t("Создание ветки {0}", &[&result.name]);
+                let label = t("create-branch", &[&result.name]);
                 self.record(cwd, entry, &label).await;
                 Out::BranchCreated(result)
             }
@@ -568,7 +568,7 @@ impl RepoEngine {
             }
             RepoAction::StashDrop(request) => {
                 let result = ops::stash_drop_at(cwd, &request).await?;
-                let label = t("Удаление {0}", &[&result.id]);
+                let label = t("delete", &[&result.id]);
                 self.record(cwd, Entry::StashDrop { hash: result.hash.clone(), message: result.message.clone() }, &label).await;
                 Out::StashRef(result)
             }
@@ -579,7 +579,7 @@ impl RepoEngine {
             RepoAction::MarkResolved(request) => Out::Resolved(mark_resolved(cwd, &request).await?),
             RepoAction::RevertTo(request) => {
                 let result = ops::revert_to(cwd, &request).await?;
-                let label = t("Возврат к {0}", &[&short(&result.hash)]);
+                let label = t("return-to", &[&short(&result.hash)]);
                 self.record(cwd, Entry::HeadMove { from: Some(result.from.clone()), to: Some(result.to.clone()) }, &label).await;
                 Out::RevertedTo(result)
             }
@@ -592,32 +592,32 @@ impl RepoEngine {
             }
             RepoAction::CreateTag(request) => {
                 let result = ops::create_tag(cwd, &request).await?;
-                let label = t("Тег {0}", &[&result.name]);
+                let label = t("tag-3", &[&result.name]);
                 self.record(cwd, Entry::Tag { name: result.name.clone(), hash: result.hash.clone(), message: result.message.clone() }, &label).await;
                 Out::Tag(result)
             }
             RepoAction::DeleteTag(request) => {
                 let result = ops::delete_tag(cwd, &request).await?;
-                let label = t("Удаление тега {0}", &[&result.name]);
+                let label = t("delete-tag", &[&result.name]);
                 self.record(cwd, Entry::DeleteTag { name: result.name.clone(), hash: result.hash.clone(), message: result.message.clone() }, &label).await;
                 Out::Tag(result)
             }
             RepoAction::DeleteRemoteBranch(request) => {
                 let result = remote::delete_remote_branch(&self.network, cwd, &request).await?;
                 let entry = Entry::DeleteRemoteBranch { remote: result.remote.clone(), branch: result.branch.clone(), hash: result.hash.clone() };
-                let label = t("Удаление {0}/{1} с сервера", &[&result.remote, &result.branch]);
+                let label = t("delete-from-server", &[&result.remote, &result.branch]);
                 self.record(cwd, entry, &label).await;
                 Out::RemoteBranchDeleted(result)
             }
             RepoAction::RenameBranch(request) => {
                 let result = ops::rename_branch(cwd, &request).await?;
-                let label = t("Переименование {0} → {1}", &[&result.from, &result.to]);
+                let label = t("rename", &[&result.from, &result.to]);
                 self.record(cwd, Entry::RenameBranch { from: result.from.clone(), to: result.to.clone() }, &label).await;
                 Out::BranchRenamed(result)
             }
             RepoAction::DeleteBranch(request) => {
                 let result = ops::delete_branch(cwd, &request).await?;
-                let label = t("Удаление ветки {0}", &[&result.name]);
+                let label = t("delete-branch", &[&result.name]);
                 self.record(cwd, Entry::DeleteBranch { name: result.name.clone(), hash: result.hash.clone() }, &label).await;
                 Out::BranchDeleted(result)
             }
@@ -638,7 +638,7 @@ impl RepoEngine {
             }
             RepoAction::Merge(request) => Out::RefMoved(self.merge_action(cwd, &request).await?),
             RepoAction::Rebase(request) => {
-                let label = t("Rebase на {0}", &[&request.reference.as_deref().unwrap_or_default()]);
+                let label = t("rebase-onto", &[&request.reference.as_deref().unwrap_or_default()]);
                 let result = self.track(cwd, &label, ops::rebase_onto(cwd, &request)).await?;
                 self.record(cwd, Entry::HeadMove { from: result.from.clone(), to: result.to.clone() }, &label).await;
                 Out::RefMoved(result)
@@ -659,8 +659,8 @@ impl RepoEngine {
                 let result = restore_file(cwd, &request).await?;
                 let undoable = result.snapshot.is_some();
                 if let Some(snapshot) = result.snapshot {
-                    let what = if request.side.as_deref() == Some("before") { t("до", &[]) } else { t("из", &[]) };
-                    let label = t("Файл {0} → версия {1} {2}", &[&result.path, &what, &short(or_undefined(request.hash.as_deref()))]);
+                    let what = if request.side.as_deref() == Some("before") { t("before", &[]) } else { t("from", &[]) };
+                    let label = t("file-version", &[&result.path, &what, &short(or_undefined(request.hash.as_deref()))]);
                     let (entry, blobs) = Entry::from_snapshots(vec![snapshot]);
                     self.record_with_blobs(cwd, &entry, &label, blobs).await;
                 } else {
@@ -671,8 +671,8 @@ impl RepoEngine {
             RepoAction::RestoreFromStash(request) => {
                 let result = restore_from_stash(cwd, &request).await?;
                 if !result.snapshots.is_empty() {
-                    let unit = if result.changed == 1 { t("файл", &[]) } else { t("файлов", &[]) };
-                    let label = t("Из {0}: {1} {2}", &[&request.id.as_deref().unwrap_or("stash"), &result.changed, &unit]);
+                    let unit = if result.changed == 1 { t("file", &[]) } else { t("files", &[]) };
+                    let label = t("from-2", &[&request.id.as_deref().unwrap_or("stash"), &result.changed, &unit]);
                     let (entry, blobs) = Entry::from_snapshots(result.snapshots);
                     self.record_with_blobs(cwd, &entry, &label, blobs).await;
                 }
@@ -681,14 +681,14 @@ impl RepoEngine {
             RepoAction::ApplyHunks(request) => {
                 let result = apply_hunks(cwd, &request).await?;
                 let kind = match result.op.as_str() {
-                    "revert" => Some(t("Откат фрагмента коммита", &[])),
-                    "discard" => Some(t("Удаление правок", &[])),
-                    "apply" => Some(t("Фрагмент из stash", &[])),
+                    "revert" => Some(t("revert-part-of-commit", &[])),
+                    "discard" => Some(t("discard-changes", &[])),
+                    "apply" => Some(t("hunk-from-stash", &[])),
                     _ => None,
                 };
                 let undoable = result.snapshot.is_some();
                 if let Some(snapshot) = result.snapshot {
-                    let label = t("{0} в {1}", &[&kind.unwrap_or_else(|| "undefined".to_owned()), &result.path]);
+                    let label = t("into", &[&kind.unwrap_or_else(|| "undefined".to_owned()), &result.path]);
                     let (entry, blobs) = Entry::from_snapshots(vec![snapshot]);
                     self.record_with_blobs(cwd, &entry, &label, blobs).await;
                 } else if kind.is_some() {
@@ -707,7 +707,7 @@ impl RepoEngine {
             RepoAction::UpdateBranch(request) => {
                 let result = remote::update_branch(&self.network, cwd, &request).await?;
                 if Some(&result.from) != result.to.as_ref() {
-                    let label = t("Обновление {0}", &[&result.branch]);
+                    let label = t("update", &[&result.branch]);
                     self.record(cwd, Entry::BranchMove { branch: result.branch.clone(), from: result.from.clone(), to: result.to.clone() }, &label).await;
                 }
                 Out::BranchUpdated(result)

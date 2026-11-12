@@ -70,19 +70,19 @@ impl Entry {
 }
 
 fn stale(what: &str) -> GorynychError {
-    GorynychError::new(ErrorCode::HistoryStale, t("Нельзя отменить: {0} изменилось после операции", &[&what])).with_hint(t("Репозиторий изменился вне приложения или другой операцией.", &[]))
+    GorynychError::new(ErrorCode::HistoryStale, t("cant-undo-has-changed-since", &[&what])).with_hint(t("repository-was-changed-outside-app", &[]))
 }
 
 fn stale_branch(name: &str) -> GorynychError {
-    stale(&t("ветка {0}", &[&name]))
+    stale(&t("branch-2", &[&name]))
 }
 
 fn stale_stashes() -> GorynychError {
-    stale(&t("список сташей", &[]))
+    stale(&t("stash-list", &[]))
 }
 
 fn no_way_back() -> GorynychError {
-    GorynychError::new(ErrorCode::HistoryStale, t("Нельзя вернуться: до переключения был detached HEAD", &[]))
+    GorynychError::new(ErrorCode::HistoryStale, t("cant-go-back-it-was", &[]))
 }
 
 fn expand(snapshots: &[SnapshotRef], blobs: &[Vec<u8>]) -> Vec<Snapshot> {
@@ -147,10 +147,10 @@ pub(crate) async fn undo(network: &Network, cwd: &Path, entry: &Entry, blobs: &[
         Entry::Commit { hash, parent } => {
             require_head_at(cwd, Some(hash)).await?;
             let Some(parent) = parent else {
-                return Err(GorynychError::new(ErrorCode::HistoryRoot, t("Первый коммит репозитория отменить нельзя", &[])));
+                return Err(GorynychError::new(ErrorCode::HistoryRoot, t("repositorys-first-commit-cant-be", &[])));
             };
             if !trimmed(cwd, &["branch", "-r", "--contains", hash]).await?.is_empty() {
-                return Err(GorynychError::new(ErrorCode::HistoryPushed, t("Коммит уже отправлен на remote — отмена переписала бы общую историю", &[])).with_hint(t("Используйте revert (будет добавлен позже).", &[])));
+                return Err(GorynychError::new(ErrorCode::HistoryPushed, t("commit-has-already-been-pushed", &[])).with_hint(t("use-revert-coming-later", &[])));
             }
             git(cwd, &["reset", "--soft", parent]).await?; // изменения остаются застейдженными
         }
@@ -169,7 +169,7 @@ pub(crate) async fn undo(network: &Network, cwd: &Path, entry: &Entry, blobs: &[
         }
         Entry::DiscardCheckout { previous, created, backup, .. } => {
             if !read_status(cwd, false).await?.is_empty() {
-                return Err(GorynychError::new(ErrorCode::HistoryStale, t("В рабочей папке уже есть изменения", &[])).with_hint(t("Закоммитьте или спрячьте их, затем повторите Undo.", &[])));
+                return Err(GorynychError::new(ErrorCode::HistoryStale, t("there-are-already-changes-in", &[])).with_hint(t("commit-or-stash-them-then", &[])));
             }
             switch_to(cwd, previous).await?;
             delete_created(cwd, created.as_ref()).await?;
@@ -198,7 +198,7 @@ pub(crate) async fn undo(network: &Network, cwd: &Path, entry: &Entry, blobs: &[
         }
         Entry::Tag { name, hash, .. } => {
             if commit_of(cwd, &format!("refs/tags/{name}")).await.as_ref() != Some(hash) {
-                return Err(stale(&t("тег {0}", &[name])));
+                return Err(stale(&t("tag-2", &[name])));
             }
             git(cwd, &["tag", "-d", name]).await?;
         }
@@ -220,10 +220,10 @@ pub(crate) async fn undo(network: &Network, cwd: &Path, entry: &Entry, blobs: &[
         }
         Entry::DeleteRemoteBranch { remote, branch, hash } => {
             if hash.is_empty() {
-                return Err(GorynychError::new(ErrorCode::HistoryStale, t("Не известно, на каком коммите была ветка", &[])));
+                return Err(GorynychError::new(ErrorCode::HistoryStale, t("unknown-which-commit-branch-was", &[])));
             }
             if !succeeds(cwd, &["cat-file", "-e", &format!("{hash}^{{commit}}")]).await {
-                return Err(GorynychError::new(ErrorCode::HistoryStale, t("Коммита ветки нет локально — вернуть на сервер нельзя", &[])).with_hint(t("Сделайте fetch у коллеги или восстановите ветку на сервере.", &[])));
+                return Err(GorynychError::new(ErrorCode::HistoryStale, t("branch-commit-isnt-available-locally", &[])).with_hint(t("fetch-on-teammates-machine-or", &[])));
             }
             republish_branch(network, cwd, remote, branch, hash).await?;
         }

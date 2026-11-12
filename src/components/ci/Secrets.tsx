@@ -48,11 +48,11 @@ export default function Secrets({ repoPath, opts, caps, providerLabel, notify }:
   const remove = async (s: Secret) => {
     const res = await api.cicd.deleteSecret(repoPath, s, opts);
     if (!res.ok) notify?.({ type: 'error', title: res.error.message, hint: res.error.hint });
-    else notify?.({ type: 'success', title: s.secret ? t('Секрет {0} удалён', s.key) : t('Переменная {0} удалена', s.key) });
+    else notify?.({ type: 'success', title: s.secret ? t('secret-deleted', s.key) : t('variable-deleted', s.key) });
     load();
   };
 
-  if (state.loading) return <Loading text={t('Загружаем секреты и переменные…')} />;
+  if (state.loading) return <Loading text={t('loading-secrets-and-variables')} />;
   if (state.error) return <ErrorNote error={state.error} />;
   const list = state.data!.secrets;
   const secrets = list.filter((s) => s.secret);
@@ -62,12 +62,12 @@ export default function Secrets({ repoPath, opts, caps, providerLabel, notify }:
     <div className="min-h-0 flex-1 overflow-y-auto p-4" data-testid="secrets">
       <div className="mb-3 flex items-start gap-3">
         <p className="flex-1 text-[12px] leading-relaxed text-gk-dim">
-          {tj('Секреты и переменные репозитория в {0}. Значения секретов сервер не показывает — их можно только заменить. Переменные видны всем, у кого есть доступ к репозиторию.', [providerLabel])}</p>
+          {tj('repository-secrets-and-variables-in', [providerLabel])}</p>
         <ActionButton icon={Plus} tone="green" onClick={() => setForm({ original: null, secret: true })} data-testid="secret-add">
-          {t('Добавить')}</ActionButton>
+          {t('add-2')}</ActionButton>
       </div>
-      <Group title={t('Секреты')} icon={Lock} items={secrets} empty={t('Секретов нет')} onEdit={(s) => setForm({ original: s, secret: true })} onDelete={remove} />
-      <Group title={t('Переменные')} icon={Variable} items={variables} empty={t('Переменных нет')} onEdit={(s) => setForm({ original: s, secret: false })} onDelete={remove} />
+      <Group title={t('secrets-2')} icon={Lock} items={secrets} empty={t('no-secrets')} onEdit={(s) => setForm({ original: s, secret: true })} onDelete={remove} />
+      <Group title={t('variables')} icon={Variable} items={variables} empty={t('no-variables')} onEdit={(s) => setForm({ original: s, secret: false })} onDelete={remove} />
       {form && (
         <SecretForm
           initial={form}
@@ -76,7 +76,7 @@ export default function Secrets({ repoPath, opts, caps, providerLabel, notify }:
           opts={opts}
           onClose={() => setForm(null)}
           onSaved={(key, secret) => {
-            notify?.({ type: 'success', title: secret ? t('Секрет {0} сохранён', key) : t('Переменная {0} сохранена', key) });
+            notify?.({ type: 'success', title: secret ? t('secret-saved', key) : t('variable-saved', key) });
             setForm(null);
             load();
           }}
@@ -102,10 +102,10 @@ function Group({ title, icon: Icon, items, empty, onEdit, onDelete }: { title: R
               <span className="font-mono text-[12.5px] text-gk-text">{s.key}</span>
               <span className="min-w-0 flex-1 truncate font-mono text-[12px] text-gk-dim">{s.secret ? '••••••••' : s.value}</span>
               {s.updatedAt && <span className="shrink-0 text-[11px] text-gk-dim">{relativeTime(s.updatedAt)}</span>}
-              <button onClick={() => onEdit(s)} className="rounded p-1 text-gk-dim opacity-0 hover:bg-gk-hover hover:text-gk-text group-hover:opacity-100" aria-label={t('Изменить')} data-testid="secret-edit">
+              <button onClick={() => onEdit(s)} className="rounded p-1 text-gk-dim opacity-0 hover:bg-gk-hover hover:text-gk-text group-hover:opacity-100" aria-label={t('edit-2')} data-testid="secret-edit">
                 <Pencil size={12} />
               </button>
-              <ConfirmAction icon={Trash2} label="" confirmLabel={t('Удалить?')} onConfirm={() => onDelete(s)} testid="secret-delete" />
+              <ConfirmAction icon={Trash2} label="" confirmLabel={t('delete-3')} onConfirm={() => onDelete(s)} testid="secret-delete" />
             </div>
           ))}
         </div>
@@ -134,21 +134,21 @@ function SecretForm({ initial, repoPath, opts, onClose, onSaved }: { initial: Fo
 
   return (
     <Modal
-      title={o ? t('Изменить {0}', o.key) : t('Новый секрет или переменная')}
+      title={o ? t('edit-3', o.key) : t('new-secret-or-variable')}
       icon={secret ? KeyRound : Variable}
       onClose={onClose}
       width={500}
       footer={
         <>
-          <Button onClick={onClose}>{t('Отмена')}</Button>
+          <Button onClick={onClose}>{t('cancel')}</Button>
           <Button variant="primary" disabled={!valid || busy} onClick={save} data-testid="secret-save">
-            {tj('{0} Сохранить', [busy ? <Loader2 size={13} className="animate-spin" /> : <Save size={13} />])}</Button>
+            {tj('save-2', [busy ? <Loader2 size={13} className="animate-spin" /> : <Save size={13} />])}</Button>
         </>
       }
     >
       <div className="space-y-3" data-testid="secret-form">
         <label className="block">
-          {tj('<0>Имя</0>{1}', [<span className="mb-1 block text-[12px] text-gk-muted" />, <input
+          {tj('name-3', [<span className="mb-1 block text-[12px] text-gk-muted" />, <input
             autoFocus
             value={key}
             onChange={(e) => setKey(e.target.value.replace(/[^A-Za-z0-9_]/g, '').toUpperCase())}
@@ -158,7 +158,7 @@ function SecretForm({ initial, repoPath, opts, onClose, onSaved }: { initial: Fo
           />])}
         </label>
         <label className="block">
-          <span className="mb-1 block text-[12px] text-gk-muted">{o?.secret ? t('Новое значение (старое сервер не показывает)') : t('Значение')}</span>
+          <span className="mb-1 block text-[12px] text-gk-muted">{o?.secret ? t('new-value-server-doesnt-show') : t('value-2')}</span>
           <textarea
             value={value}
             onChange={(e) => setValue(e.target.value)}
@@ -167,7 +167,7 @@ function SecretForm({ initial, repoPath, opts, onClose, onSaved }: { initial: Fo
             className="w-full resize-y rounded-md bg-gk-bg px-2 py-1.5 font-mono text-[12.5px] outline-none ring-1 ring-gk-border focus:ring-gk-blue"
           />
         </label>
-        <Toggle checked={secret} onChange={setSecret} label={t('Секрет (значение скрыто)')} hint={t('Секрет шифруется и не показывается в логах. Переменная видна в настройках и логах.')} testid="secret-kind" />
+        <Toggle checked={secret} onChange={setSecret} label={t('secret-value-hidden')} hint={t('secret-is-encrypted-and-not')} testid="secret-kind" />
         <ErrorBox error={error} />
       </div>
     </Modal>

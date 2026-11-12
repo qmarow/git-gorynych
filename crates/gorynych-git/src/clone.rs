@@ -73,20 +73,20 @@ pub async fn probe_clone(network: &Network, url: Option<&str>) -> Result<ClonePr
 
 fn check_target(parent: Option<&str>, name: &str) -> Result<(PathBuf, bool)> {
     let Some(parent) = filled(parent) else {
-        return Err(GorynychError::new(ErrorCode::BadArgs, t("Выберите папку для клонирования", &[])));
+        return Err(GorynychError::new(ErrorCode::BadArgs, t("choose-folder-to-clone-into", &[])));
     };
     if js::trim(name).is_empty() || FOLDER_BAD.is_match(name) {
-        return Err(GorynychError::new(ErrorCode::BadArgs, t("Недопустимое имя папки", &[])));
+        return Err(GorynychError::new(ErrorCode::BadArgs, t("invalid-folder-name", &[])));
     }
     if !std::fs::metadata(parent).is_ok_and(|meta| meta.is_dir()) {
-        return Err(GorynychError::new(ErrorCode::NotFoundPath, t("Папка не найдена: {0}", &[&parent])));
+        return Err(GorynychError::new(ErrorCode::NotFoundPath, t("folder-not-found", &[&parent])));
     }
     let target = Path::new(parent).join(js::trim(name));
     match std::fs::metadata(&target) {
         Ok(meta) => {
             let empty = meta.is_dir() && std::fs::read_dir(&target).map_err(fs_error)?.next().is_none();
             if !empty {
-                return Err(GorynychError::new(ErrorCode::TargetExists, t("Папка «{0}» уже существует и не пуста", &[&name])).with_hint(t("Выберите другое имя или другую папку.", &[])));
+                return Err(GorynychError::new(ErrorCode::TargetExists, t("folder-already-exists-and-isnt", &[&name])).with_hint(t("choose-different-name-or-different", &[])));
             }
             Ok((target, false))
         }
@@ -110,15 +110,15 @@ pub struct CloneProgress {
 fn parse_progress(line: &str) -> Option<CloneProgress> {
     let lower = line.to_ascii_lowercase();
     let (phase, from, to) = if lower.contains("counting objects") {
-        (t("Подсчёт объектов", &[]), 0.0, 5.0)
+        (t("counting-objects", &[]), 0.0, 5.0)
     } else if lower.contains("compressing objects") {
-        (t("Сжатие на сервере", &[]), 5.0, 10.0)
+        (t("compressing-on-server", &[]), 5.0, 10.0)
     } else if lower.contains("receiving objects") {
-        (t("Загрузка", &[]), 10.0, 80.0)
+        (t("downloading", &[]), 10.0, 80.0)
     } else if lower.contains("resolving deltas") {
-        (t("Обработка", &[]), 80.0, 92.0)
+        (t("processing", &[]), 80.0, 92.0)
     } else if lower.contains("updating files") || lower.contains("checking out files") {
-        (t("Распаковка файлов", &[]), 92.0, 100.0)
+        (t("unpacking-files", &[]), 92.0, 100.0)
     } else {
         return None;
     };
@@ -254,14 +254,14 @@ pub async fn clone_repository(network: &Network, request: &CloneRequest, on_prog
 
     if job.cancelled.load(std::sync::atomic::Ordering::SeqCst) {
         cleanup(&target, created);
-        return Err(GorynychError::new(ErrorCode::Cancelled, t("Клонирование отменено", &[])));
+        return Err(GorynychError::new(ErrorCode::Cancelled, t("cloning-canceled", &[])));
     }
     if !status.success() {
         cleanup(&target, created);
         let text = String::from_utf8_lossy(&log);
         return Err(with_host_hint(from_process_error(ProcessFailure::Exited { message: &text }, "", &text, i18n::language()), &url));
     }
-    on_progress(CloneProgress { phase: t("Готово", &[]), percent: 100, phase_percent: 100, speed: None, size: None });
+    on_progress(CloneProgress { phase: t("done", &[]), percent: 100, phase_percent: 100, speed: None, size: None });
     let name = target.file_name().map_or_else(String::new, |name| name.to_string_lossy().into_owned());
     Ok(Cloned { path: target.display().to_string(), name })
 }

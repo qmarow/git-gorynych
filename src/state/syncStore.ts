@@ -204,7 +204,7 @@ export function createSyncStore(getApi: () => SyncApi | undefined, repo: SyncRep
           // Без всплывающих ошибок: увеличиваем паузу 15 → 30 → 60 с → 5 мин до первого успеха
           failures += 1;
           const ms = delay(data.retryAfter);
-          setSyncStatus({ error: data.error?.message ?? tr('Нет связи с сервером'), code: data.error?.code ?? null, failures, retryAt: Date.now() + ms, focused: focused() });
+          setSyncStatus({ error: data.error?.message ?? tr('no-connection-to-server'), code: data.error?.code ?? null, failures, retryAt: Date.now() + ms, focused: focused() });
           return schedule(ms);
         }
         failures = 0;

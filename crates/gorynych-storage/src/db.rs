@@ -115,7 +115,7 @@ const MIGRATIONS: &[&str] = &[r#"
 
 /// Ошибка хранилища для UI.
 pub(crate) fn storage_error(error: impl Display) -> GorynychError {
-    GorynychError::new(ErrorCode::NoStorage, t("Хранилище настроек недоступно", &[])).with_details(error.to_string())
+    GorynychError::new(ErrorCode::NoStorage, t("settings-storage-unavailable", &[])).with_details(error.to_string())
 }
 
 /// Ошибка сериализации значения перед записью в базу.

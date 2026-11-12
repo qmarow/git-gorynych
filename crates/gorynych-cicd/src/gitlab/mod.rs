@@ -115,7 +115,7 @@ impl GlCtx {
         if self.can_write() {
             return Ok(());
         }
-        Err(GorynychError::new(ErrorCode::Forbidden, t("Токен только для чтения", &[])).with_hint(t("Для изменений нужен токен со scope «api» — создайте новый и сохраните его в настройках", &[])))
+        Err(GorynychError::new(ErrorCode::Forbidden, t("read-only-token", &[])).with_hint(t("changes-require-token-with-api", &[])))
     }
 }
 
@@ -193,16 +193,16 @@ impl CicdService {
     /// Контекст по готовому выводу `git remote -v`.
     pub(crate) async fn gitlab_context_from(&self, preferred: Option<&str>, output: &str) -> Result<GlCtx> {
         let Some(remote) = self.gitlab_detect_from(preferred, output)? else {
-            return Err(GorynychError::new(ErrorCode::NoRemote, t("У репозитория нет remote", &[])));
+            return Err(GorynychError::new(ErrorCode::NoRemote, t("repository-has-no-remote", &[])));
         };
         if remote.kind != Some(CiProvider::Gitlab) {
-            return Err(GorynychError::new(ErrorCode::NotGitlab, t("Remote не похож на GitLab", &[])).with_hint(t("Если это свой сервер GitLab — сохраните для него токен в настройках", &[])));
+            return Err(GorynychError::new(ErrorCode::NotGitlab, t("remote-doesnt-look-like-gitlab", &[])).with_hint(t("if-its-your-own-gitlab", &[])));
         }
         let auth = self.gitlab_pick_verified(&remote).await;
         let Some(token) = auth.token else {
             let problem = login_problem(&auth.rejected, auth.other.as_ref());
-            let message = if problem.is_some() { t("Авторизация репозитория не подходит для пайплайнов", &[]) } else { t("Репозиторий не авторизован", &[]) };
-            let hint = problem.and_then(|problem| problem.reason).unwrap_or_else(|| t("Авторизуйте репозиторий — эта же авторизация работает и для пайплайнов", &[]));
+            let message = if problem.is_some() { t("repository-sign-in-doesnt-work", &[]) } else { t("repository-isnt-signed-in", &[]) };
+            let hint = problem.and_then(|problem| problem.reason).unwrap_or_else(|| t("sign-in-to-repository-same", &[]));
             return Err(GorynychError::new(ErrorCode::NoToken, message).with_hint(hint));
         };
 

@@ -17,10 +17,10 @@ export interface SyncMode {
 }
 
 export const SYNC_MODES: readonly SyncMode[] = [
-  { id: 'realtime', label: t('Реалтайм'), sec: 5, hint: t('каждые 5 секунд') },
-  { id: 'fast', label: t('Быстро'), sec: 15, hint: t('каждые 15 секунд') },
-  { id: 'standard', label: t('Стандартно'), sec: 30, hint: t('каждые 30 секунд') },
-  { id: 'rare', label: t('Редко'), sec: 300, hint: t('каждые 5 минут') },
+  { id: 'realtime', label: t('realtime'), sec: 5, hint: t('every-5-seconds') },
+  { id: 'fast', label: t('fast'), sec: 15, hint: t('every-15-seconds') },
+  { id: 'standard', label: t('standard-2'), sec: 30, hint: t('every-30-seconds') },
+  { id: 'rare', label: t('rare'), sec: 300, hint: t('every-5-minutes') },
 ];
 export const DEFAULT_SYNC_MODE: SyncModeId = 'realtime';
 export const BACKGROUND_SEC = 90; // окно не в фокусе или свёрнуто

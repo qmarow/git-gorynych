@@ -25,9 +25,9 @@ pub(super) const REPORTS: [&str; 20] = [
 
 pub(super) fn removed_report(name: &str) -> Option<String> {
     Some(match name {
-        "cobertura" => tr!("coverage_report: { coverage_format: cobertura, path: … } (cobertura удалён в GitLab 15.0)"),
-        "performance" => tr!("browser_performance (performance удалён в GitLab 15.0)"),
-        "license_management" | "license_scanning" => tr!("cyclonedx / сканирование лицензий (удалено в GitLab 16.0)"),
+        "cobertura" => tr!("coverage-report-coverage-format"),
+        "performance" => tr!("browser-performance-performance-removed"),
+        "license_management" | "license_scanning" => tr!("cyclonedx-license-scanning-removed-in"),
         _ => return None,
     })
 }

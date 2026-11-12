@@ -53,136 +53,136 @@ export const STEP_TYPES: Record<StepTypeId, StepType> = {
   fetch: {
     group: 'sync',
     label: 'Fetch',
-    hint: tr('Узнать, что нового на сервере'),
+    hint: tr('find-out-whats-new-on'),
     fields: [],
-    describe: () => tr('Fetch — загрузить новое с сервера'),
+    describe: () => tr('fetch-download-new-data-from'),
   },
   pull: {
     group: 'sync',
     label: 'Pull',
-    hint: tr('Забрать изменения в текущую ветку'),
+    hint: tr('bring-changes-into-current-branch'),
     fields: [
       {
         key: 'mode',
-        label: tr('Режим'),
+        label: tr('mode'),
         type: 'select',
         def: 'merge',
         options: [
-          ['merge', tr('Fast-forward, если возможно')],
-          ['ff-only', tr('Только fast-forward')],
+          ['merge', tr('fast-forward-if-possible')],
+          ['ff-only', tr('fast-forward-only')],
           ['rebase', 'Rebase'],
         ],
       },
     ],
-    describe: (p) => `Pull${p.mode === 'rebase' ? ' (rebase)' : p.mode === 'ff-only' ? tr(' (только fast-forward)') : ''}`,
+    describe: (p) => `Pull${p.mode === 'rebase' ? ' (rebase)' : p.mode === 'ff-only' ? tr('fast-forward-only-2') : ''}`,
   },
   push: {
     group: 'sync',
     label: 'Push',
-    hint: tr('Отправить текущую ветку'),
-    fields: [{ key: 'force', label: tr('Force push (--force-with-lease) — нужен после rebase отправленной ветки'), type: 'bool', def: false }],
-    describe: (p) => (p.force ? tr('Force push текущей ветки') : tr('Push текущей ветки')),
+    hint: tr('push-current-branch'),
+    fields: [{ key: 'force', label: tr('force-push-force-with-lease'), type: 'bool', def: false }],
+    describe: (p) => (p.force ? tr('force-push-current-branch') : tr('push-current-branch-2')),
   },
   createBranch: {
     group: 'branch',
-    label: tr('Создать ветку'),
-    hint: tr('Новая ветка от любой ветки или коммита'),
+    label: tr('create-branch-4'),
+    hint: tr('new-branch-from-any-branch'),
     fields: [
-      { key: 'name', label: tr('Имя ветки'), type: 'text', def: tr('feature/{input:Название задачи|slug}'), placeholder: tr('feature/{input:Название|slug}') },
-      { key: 'from', label: tr('От чего'), type: 'branch', def: '{default}', placeholder: '{default}, origin/main, {branch}…' },
-      { key: 'checkout', label: tr('Сразу переключиться на неё'), type: 'bool', def: true },
+      { key: 'name', label: tr('branch-name'), type: 'text', def: tr('feature-input-task-name-slug'), placeholder: tr('feature-input-name-slug') },
+      { key: 'from', label: tr('from-7'), type: 'branch', def: '{default}', placeholder: '{default}, origin/main, {branch}…' },
+      { key: 'checkout', label: tr('switch-to-it-right-away'), type: 'bool', def: true },
     ],
-    describe: (p) => tr('Создать ветку «{0}» от {1}{2}', p.name || '?', p.from || 'HEAD', p.checkout ? tr(' и переключиться') : ''),
+    describe: (p) => tr('create-branch-from', p.name || '?', p.from || 'HEAD', p.checkout ? tr('and-switch') : ''),
   },
   checkout: {
     group: 'branch',
-    label: tr('Переключить ветку'),
-    hint: tr('Checkout (учитывает «умное переключение»)'),
-    fields: [{ key: 'branch', label: tr('Ветка'), type: 'branch', def: '{default}' }],
-    describe: (p) => tr('Переключиться на {0}', p.branch || '?'),
+    label: tr('switch-branch-2'),
+    hint: tr('checkout-respects-smart-switching'),
+    fields: [{ key: 'branch', label: tr('branch'), type: 'branch', def: '{default}' }],
+    describe: (p) => tr('switch-to', p.branch || '?'),
   },
   rebase: {
     group: 'branch',
     label: 'Rebase',
-    hint: tr('Перенести текущую ветку поверх другой'),
-    fields: [{ key: 'onto', label: tr('На что'), type: 'branch', def: '{default}' }],
-    describe: (p) => tr('Rebase текущей ветки на {0}', p.onto || '?'),
+    hint: tr('move-current-branch-on-top'),
+    fields: [{ key: 'onto', label: tr('onto-2'), type: 'branch', def: '{default}' }],
+    describe: (p) => tr('rebase-current-branch-onto', p.onto || '?'),
   },
   merge: {
     group: 'branch',
     label: 'Merge',
-    hint: tr('Слить ветку в текущую'),
-    fields: [{ key: 'ref', label: tr('Какую ветку слить'), type: 'branch', def: '{default}' }],
-    describe: (p) => tr('Слить {0} в текущую ветку', p.ref || '?'),
+    hint: tr('merge-branch-into-current-one'),
+    fields: [{ key: 'ref', label: tr('which-branch-to-merge'), type: 'branch', def: '{default}' }],
+    describe: (p) => tr('merge-into-current-branch', p.ref || '?'),
   },
   deleteBranch: {
     group: 'branch',
-    label: tr('Удалить ветку'),
-    hint: tr('Локальная ветка (Undo вернёт)'),
+    label: tr('delete-branch-4'),
+    hint: tr('local-branch-undo-brings-it'),
     fields: [
-      { key: 'name', label: tr('Ветка'), type: 'branch', def: '{start}' },
-      { key: 'force', label: tr('Даже если не слита'), type: 'bool', def: false },
+      { key: 'name', label: tr('branch'), type: 'branch', def: '{start}' },
+      { key: 'force', label: tr('even-if-not-merged'), type: 'bool', def: false },
     ],
-    describe: (p) => tr('Удалить ветку {0}{1}', p.name || '?', p.force ? tr(' (принудительно)') : ''),
+    describe: (p) => tr('delete-branch-5', p.name || '?', p.force ? tr('forced') : ''),
   },
   stash: {
     group: 'changes',
     label: 'Stash',
-    hint: tr('Спрятать незакоммиченные изменения'),
-    fields: [{ key: 'message', label: tr('Подпись (необязательно)'), type: 'text', def: '', optional: true }],
-    describe: (p) => tr('Спрятать изменения{0}', p.message ? ` «${p.message}»` : ''),
+    hint: tr('stash-uncommitted-changes'),
+    fields: [{ key: 'message', label: tr('label-optional'), type: 'text', def: '', optional: true }],
+    describe: (p) => tr('stash-changes-3', p.message ? ` «${p.message}»` : ''),
   },
   stashPop: {
     group: 'changes',
     label: 'Pop',
-    hint: tr('Вернуть последний stash'),
+    hint: tr('pop-last-stash-2'),
     fields: [],
-    describe: () => tr('Вернуть последний stash'),
+    describe: () => tr('pop-last-stash-2'),
   },
   commit: {
     group: 'changes',
-    label: tr('Коммит'),
-    hint: tr('С проверкой Pre-commit Guard'),
+    label: tr('commit-4'),
+    hint: tr('with-pre-commit-guard-check'),
     fields: [
-      { key: 'message', label: tr('Сообщение'), type: 'text', def: tr('{input:Сообщение коммита}') },
-      { key: 'stageAll', label: tr('Сначала добавить все изменения (Stage all)'), type: 'bool', def: true },
+      { key: 'message', label: tr('message'), type: 'text', def: tr('input-commit-message') },
+      { key: 'stageAll', label: tr('stage-all-changes-first-stage'), type: 'bool', def: true },
     ],
-    describe: (p) => tr('Коммит «{0}»{1}', p.message || '?', p.stageAll ? tr(' всех изменений') : ''),
+    describe: (p) => tr('commit-7', p.message || '?', p.stageAll ? tr('of-all-changes') : ''),
   },
   mergeRequest: {
     group: 'server',
     label: 'Merge request / PR',
-    hint: tr('GitLab — через API, GitHub — откроется страница PR'),
+    hint: tr('gitlab-via-api-github-pr'),
     fields: [
-      { key: 'target', label: tr('В какую ветку'), type: 'branch', def: '{default}' },
-      { key: 'title', label: tr('Заголовок'), type: 'text', def: '{branch}', optional: true },
-      { key: 'draft', label: tr('Черновик (Draft)'), type: 'bool', def: false },
-      { key: 'open', label: tr('Открыть в браузере'), type: 'bool', def: true },
+      { key: 'target', label: tr('into-which-branch'), type: 'branch', def: '{default}' },
+      { key: 'title', label: tr('title'), type: 'text', def: '{branch}', optional: true },
+      { key: 'draft', label: tr('draft'), type: 'bool', def: false },
+      { key: 'open', label: tr('open-in-browser'), type: 'bool', def: true },
     ],
-    describe: (p) => tr('{0} из текущей ветки в {1}', p.draft ? tr('Черновик MR') : 'Merge request', p.target || '?'),
+    describe: (p) => tr('from-current-branch-into', p.draft ? tr('draft-mr') : 'Merge request', p.target || '?'),
   },
   confirm: {
     group: 'other',
-    label: tr('Спросить'),
-    hint: tr('Пауза: продолжить или остановиться'),
-    fields: [{ key: 'text', label: tr('Вопрос'), type: 'text', def: tr('Продолжить?') }],
-    describe: (p) => tr('Спросить: «{0}»', p.text || tr('Продолжить?')),
+    label: tr('ask'),
+    hint: tr('pause-continue-or-stop'),
+    fields: [{ key: 'text', label: tr('question'), type: 'text', def: tr('continue') }],
+    describe: (p) => tr('ask-2', p.text || tr('continue')),
   },
   git: {
     group: 'other',
-    label: tr('Своя git-команда'),
-    hint: tr('Любая команда git (без shell)'),
-    fields: [{ key: 'command', label: tr('Команда'), type: 'text', def: 'git status', placeholder: 'git tag v{date}' }],
+    label: tr('custom-git-command'),
+    hint: tr('any-git-command-no-shell'),
+    fields: [{ key: 'command', label: tr('command'), type: 'text', def: 'git status', placeholder: 'git tag v{date}' }],
     describe: (p) => (p.command as string) || 'git …',
   },
 };
 
 export const STEP_GROUPS: readonly (readonly [StepGroupId, string])[] = [
-  ['branch', tr('Ветки')],
-  ['sync', tr('Сервер')],
-  ['changes', tr('Изменения')],
+  ['branch', tr('branches-2')],
+  ['sync', tr('server-4')],
+  ['changes', tr('changes-2')],
   ['server', 'Merge request'],
-  ['other', tr('Другое')],
+  ['other', tr('other-2')],
 ];
 
 /** Неизвестный тип — исключение, как в 1.x: вызывают только с типами из STEP_TYPES. */
@@ -217,40 +217,40 @@ export interface ActionTemplate {
 export const TEMPLATES: readonly ActionTemplate[] = [
   {
     id: 'feature-mr',
-    title: tr('Новая задача → MR'),
-    description: tr('Ветка от основной, rebase на свежую основу, push и merge request'),
+    title: tr('new-task-mr'),
+    description: tr('branch-from-main-rebase-onto'),
     make: () =>
-      tpl(tr('Новая задача'), 'Rocket', [
+      tpl(tr('new-task'), 'Rocket', [
         ['fetch'],
-        ['createBranch', { name: tr('feature/{input:Название задачи|slug}'), from: '{default}', checkout: true }],
+        ['createBranch', { name: tr('feature-input-task-name-slug'), from: '{default}', checkout: true }],
         ['rebase', { onto: 'origin/{default}' }],
         ['push'],
-        ['mergeRequest', { target: '{default}', title: tr('{input:Название задачи}'), draft: true }],
+        ['mergeRequest', { target: '{default}', title: tr('input-task-name'), draft: true }],
       ]),
   },
   {
     id: 'update-branch',
-    title: tr('Обновить ветку из основной'),
-    description: tr('Fetch, rebase на origin/основную и force push'),
-    make: () => tpl(tr('Обновить из main'), 'RefreshCw', [['fetch'], ['rebase', { onto: 'origin/{default}' }], ['push', { force: true }]]),
+    title: tr('update-branch-from-main'),
+    description: tr('fetch-rebase-onto-origin-main'),
+    make: () => tpl(tr('update-from-main'), 'RefreshCw', [['fetch'], ['rebase', { onto: 'origin/{default}' }], ['push', { force: true }]]),
   },
   {
     id: 'finish',
-    title: tr('Закончить задачу'),
-    description: tr('Коммит всех изменений, push и merge request'),
+    title: tr('finish-task'),
+    description: tr('commit-all-changes-push-and'),
     make: () =>
-      tpl(tr('Отправить на ревью'), 'Send', [
-        ['commit', { message: tr('{input:Сообщение коммита}'), stageAll: true }],
+      tpl(tr('send-for-review'), 'Send', [
+        ['commit', { message: tr('input-commit-message'), stageAll: true }],
         ['push'],
         ['mergeRequest', { target: '{default}', title: '{branch}' }],
       ]),
   },
   {
     id: 'sync-main',
-    title: tr('Подтянуть основную ветку'),
-    description: tr('Переключиться на основную, pull и вернуться обратно'),
+    title: tr('pull-in-main-branch'),
+    description: tr('switch-to-main-pull-and'),
     make: () =>
-      tpl(tr('Обновить main'), 'Download', [
+      tpl(tr('update-main'), 'Download', [
         ['checkout', { branch: '{default}' }],
         ['pull', { mode: 'ff-only' }],
         ['checkout', { branch: '{start}' }],
@@ -258,11 +258,11 @@ export const TEMPLATES: readonly ActionTemplate[] = [
   },
   {
     id: 'cleanup',
-    title: tr('Ветка слита — убрать'),
-    description: tr('Переключиться на основную, pull и удалить ветку, с которой начали'),
+    title: tr('branch-merged-clean-up'),
+    description: tr('switch-to-main-pull-and-delete'),
     make: () =>
-      tpl(tr('Убрать слитую ветку'), 'Trash2', [
-        ['confirm', { text: tr('Удалить ветку {start} после обновления основной?') }],
+      tpl(tr('clean-up-merged-branch'), 'Trash2', [
+        ['confirm', { text: tr('delete-branch-start-after-updating') }],
         ['checkout', { branch: '{default}' }],
         ['pull', { mode: 'ff-only' }],
         ['deleteBranch', { name: '{start}', force: false }],
@@ -294,12 +294,12 @@ export function writeActions(list: readonly CustomAction[]): void {
 /* ---------------- Переменные ---------------- */
 
 export const VARIABLES: readonly (readonly [string, string])[] = [
-  ['{branch}', tr('текущая ветка в момент шага')],
-  ['{start}', tr('ветка, с которой запустили действие')],
-  ['{default}', tr('основная ветка (main / master)')],
-  ['{date}', tr('сегодняшняя дата, 2026-10-26')],
-  [tr('{input:Вопрос}'), tr('спросить при запуске')],
-  [tr('{input:Вопрос|slug}'), tr('спросить и сделать имя ветки: «Новая форма» → novaya-forma')],
+  ['{branch}', tr('current-branch-at-time-of')],
+  ['{start}', tr('branch-action-was-started-from')],
+  ['{default}', tr('main-branch-main-master')],
+  ['{date}', tr('todays-date-2026-10-26')],
+  [tr('input-question'), tr('ask-at-run-time')],
+  [tr('input-question-slug'), tr('ask-and-make-branch-name')],
 ];
 
 const INPUT_RE = /\{input:([^}|]+)(\|slug)?\}/g;
@@ -400,11 +400,11 @@ export function hotkeyProblem(combo: string | null | undefined, actions: readonl
   if (!combo) return null;
   const parts = combo.split('+');
   const key = parts.at(-1)!;
-  if (parts.length === 1 && !/^F\d+$/.test(key)) return tr('Нужен модификатор: Ctrl, Alt или Shift');
-  if (parts.length === 2 && parts[0] === 'Shift' && !/^F\d+$/.test(key)) return tr('Shift + буква мешает вводу текста — добавьте Ctrl или Alt');
-  if (RESERVED_HOTKEYS.has(combo)) return tr('Это сочетание уже занято программой');
+  if (parts.length === 1 && !/^F\d+$/.test(key)) return tr('modifier-is-needed-ctrl-alt');
+  if (parts.length === 2 && parts[0] === 'Shift' && !/^F\d+$/.test(key)) return tr('shift-letter-gets-in-way');
+  if (RESERVED_HOTKEYS.has(combo)) return tr('this-shortcut-is-already-taken');
   const other = actions.find((a) => a.id !== selfId && a.hotkey === combo);
-  if (other) return tr('Уже назначено действию «{0}»', other.name);
+  if (other) return tr('already-assigned-to-action', other.name);
   return null;
 }
 
@@ -425,14 +425,14 @@ export function defaultBranchOf(repo: BranchSource | null | undefined): string {
 
 export function validateAction(a: Pick<CustomAction, 'name' | 'steps'>): string[] {
   const problems: string[] = [];
-  if (!a.name?.trim()) problems.push(tr('Введите название'));
-  if (!a.steps.length) problems.push(tr('Добавьте хотя бы один шаг'));
+  if (!a.name?.trim()) problems.push(tr('enter-name-2'));
+  if (!a.steps.length) problems.push(tr('add-at-least-one-step'));
   a.steps.forEach((s, i) => {
     const t: StepType | undefined = STEP_TYPES[s.type as StepTypeId];
-    if (!t) problems.push(tr('Шаг {0}: неизвестный тип', i + 1));
+    if (!t) problems.push(tr('step-unknown-type', i + 1));
     for (const f of t?.fields ?? []) {
       if (f.type !== 'bool' && !f.optional && !String(s.params?.[f.key] ?? '').trim()) {
-        problems.push(tr('Шаг {0} «{1}»: заполните «{2}»', i + 1, t.label, f.label));
+        problems.push(tr('step-fill-in', i + 1, t.label, f.label));
       }
     }
   });

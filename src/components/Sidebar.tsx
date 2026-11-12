@@ -170,8 +170,8 @@ export default function Sidebar({
             value={filter}
             onChange={(e) => setFilter(e.target.value)}
             ref={filterRef}
-            placeholder={tr('Фильтр веток и тегов…')}
-            title={kb(tr('Фильтр веток и тегов (Ctrl+Alt+F)'))}
+            placeholder={tr('filter-branches-and-tags')}
+            title={kb(tr('filter-branches-and-tags-ctrl'))}
             onKeyDown={(e) => {
               if (e.key === 'Escape') {
                 setFilter('');
@@ -192,7 +192,7 @@ export default function Sidebar({
           <button
             type="button"
             onClick={folders.toggleGrouping}
-            title={folders.grouping ? tr('Ветки сгруппированы по папкам (feature/, bugfix/…) — показать списком') : tr('Сгруппировать ветки по папкам до «/»')}
+            title={folders.grouping ? tr('branches-are-grouped-into-folders') : tr('group-branches-into-folders-by')}
             className={`shrink-0 rounded p-0.5 transition-colors ${folders.grouping ? 'text-gk-blue hover:bg-gk-blue/15' : 'text-gk-dim hover:bg-gk-hover hover:text-gk-text'}`}
           >
             <FolderTree size={13} />
@@ -201,7 +201,7 @@ export default function Sidebar({
       </div>
 
       <div className="flex-1 overflow-y-auto py-1">
-        <Section title={tr('Локальные')} icon={Laptop} count={repo.localBranches.length}>
+        <Section title={tr('local-2')} icon={Laptop} count={repo.localBranches.length}>
           <BranchTree
             branches={repo.localBranches.filter((b) => match(b.name))}
             folderKey="local"
@@ -217,13 +217,13 @@ export default function Sidebar({
                 {...dropProps(branch)}
                 {...menuProps({ type: 'local', name: branch.name })}
                 dropTarget={dropName === branch.name}
-                title={tr('{0}\n{1}\nДвойной клик — checkout, правый клик — действия', branch.name, !branch.upstream
-                    ? tr('Только у вас — на сервер ещё не отправлена')
+                title={tr('double-click-checkout-right-click-2', branch.name, !branch.upstream
+                    ? tr('only-on-your-side-not')
                     : branch.gone
-                      ? tr('{0} удалена на сервере', branch.upstream)
+                      ? tr('was-deleted-on-server', branch.upstream)
                       : syncedLocal(branch)
-                        ? tr('Синхронизирована с {0}', branch.upstream)
-                        : tr('Следит за {0}{1}{2}', branch.upstream, branch.ahead ? tr(' · впереди на {0}', branch.ahead) : '', branch.behind ? tr(' · позади на {0}', branch.behind) : ''))}
+                        ? tr('in-sync-with', branch.upstream)
+                        : tr('tracks', branch.upstream, branch.ahead ? tr('ahead', branch.ahead) : '', branch.behind ? tr('behind', branch.behind) : ''))}
                 current={branch.name === repo.currentBranch}
                 selected={branch.hash === selectedHash}
                 onClick={() => onSelect(branch.hash)}
@@ -239,7 +239,7 @@ export default function Sidebar({
                 <span className="ml-auto flex items-center gap-1.5 text-[11px] text-gk-muted">
                   {waiting.has(branch.name) && (
                     <span
-                      data-tip={tr('Спрятанные правки ветки {0}{1}{2}\nВернутся сами, когда вы переключитесь на эту ветку (stash «{3}» с пометкой «авто»)', branch.name, waiting.get(branch.name)! > 1 ? ` (${waiting.get(branch.name)})` : '', waitingAt.get(branch.name) ? ` · ${relativeTime(waitingAt.get(branch.name)!)}` : '', branch.name)}
+                      data-tip={tr('stashed-edits-of-branch-theyll', branch.name, waiting.get(branch.name)! > 1 ? ` (${waiting.get(branch.name)})` : '', waitingAt.get(branch.name) ? ` · ${relativeTime(waitingAt.get(branch.name)!)}` : '', branch.name)}
                       data-testid="waiting-stash"
                       className="flex items-center text-gk-yellow/90"
                     >
@@ -251,10 +251,10 @@ export default function Sidebar({
               </Item>
             )}
           />
-          {repo.localBranches.length === 0 && <Empty>{tr('Нет коммитов')}</Empty>}
+          {repo.localBranches.length === 0 && <Empty>{tr('no-commits')}</Empty>}
         </Section>
 
-        <Section title={tr('На сервере')} icon={Cloud} count={remoteCount}>
+        <Section title={tr('on-server-3')} icon={Cloud} count={remoteCount}>
           {repo.remotes.map((remote) => (
             <RemoteGroup
               key={remote.name}
@@ -271,7 +271,7 @@ export default function Sidebar({
               onCheckout={onCheckout}
             />
           ))}
-          {repo.remotes.length === 0 && <Empty>{tr('Remote не настроен')}</Empty>}
+          {repo.remotes.length === 0 && <Empty>{tr('remote-isnt-configured')}</Empty>}
         </Section>
 
         <Section title="Stash" icon={Archive} count={repo.stashes.length}>
@@ -280,7 +280,7 @@ export default function Sidebar({
             return (
               <Item
                 key={stash.hash}
-                title={tr('{0}{1}\n{2} · {3}\n{4}Клик — посмотреть изменения, правый клик — действия', d.title, d.detail ? ` — ${d.detail}` : '', stash.id, stash.date ? fullDate(stash.date) : '', d.auto ? tr('Вернётся само, когда вы переключитесь на эту ветку\n') : '')}
+                title={tr('click-view-changes-right-click', d.title, d.detail ? ` — ${d.detail}` : '', stash.id, stash.date ? fullDate(stash.date) : '', d.auto ? tr('itll-come-back-by-itself') : '')}
                 selected={selectedHash === `stash:${stash.hash}`}
                 onClick={() => onSelect(`stash:${stash.hash}`)}
                 onContextMenu={(e) => {
@@ -292,23 +292,23 @@ export default function Sidebar({
                 <Archive size={13} className="shrink-0 text-gk-yellow/80" />
                 <span className="truncate" data-testid="stash-title">{d.title}</span>
                 {d.auto && (
-                  <span className="shrink-0 rounded bg-gk-yellow/10 px-1.5 text-[10px] text-gk-yellow">{tr('авто')}</span>
+                  <span className="shrink-0 rounded bg-gk-yellow/10 px-1.5 text-[10px] text-gk-yellow">{tr('auto')}</span>
                 )}
                 <span className="ml-auto shrink-0 pl-1 text-[10.5px] text-gk-dim">{shortAgo(stash.date)}</span>
               </Item>
             );
           })}
-          {repo.stashes.length === 0 && <Empty>{tr('Нет спрятанных изменений')}</Empty>}
+          {repo.stashes.length === 0 && <Empty>{tr('no-stashed-changes')}</Empty>}
         </Section>
 
-        <Section title={tr('Теги')} icon={Tag} count={repo.tags.length}>
+        <Section title={tr('tags-2')} icon={Tag} count={repo.tags.length}>
           {repo.tags.filter((t) => match(t.name)).map((tag) => (
-            <Item key={tag.name} title={tr('Тег {0}\n{1}', tag.name, tag.hash.slice(0, 10))} selected={tag.hash === selectedHash} onClick={() => onSelect(tag.hash)}>
+            <Item key={tag.name} title={tr('tag-5', tag.name, tag.hash.slice(0, 10))} selected={tag.hash === selectedHash} onClick={() => onSelect(tag.hash)}>
               <Tag size={13} className="shrink-0 text-gk-muted" />
               <span className="truncate">{tag.name}</span>
             </Item>
           ))}
-          {repo.tags.length === 0 && <Empty>{tr('Нет тегов')}</Empty>}
+          {repo.tags.length === 0 && <Empty>{tr('no-tags')}</Empty>}
         </Section>
 
         <Section title="CI/CD" icon={Workflow} count={ciCount + (forge ? 1 : 0)}>
@@ -316,7 +316,7 @@ export default function Sidebar({
             sys.files.map((file) => (
               <Item
                 key={file}
-                title={tr('{0}: {1}\nКлик — посмотреть настройки', sys.title, file)}
+                title={tr('click-view-settings', sys.title, file)}
                 selected={activeCiFile === file}
                 onClick={() => onOpenCi?.(file)}
               >
@@ -330,30 +330,30 @@ export default function Sidebar({
             <Item
               title={
                 !forge.provider
-                  ? tr('Сервис CI/CD не определён — укажите его и адрес API')
+                  ? tr('ci-cd-service-isnt-determined')
                   : !forge.token?.configured
-                    ? tr('Авторизуйте репозиторий — эта же авторизация откроет пайплайны')
+                    ? tr('sign-in-to-repository-same-sign-in')
                     : pipelinesError
                       ? pipelinesError.message
                       : branchPipeline
-                        ? tr('Последний пайплайн ветки {0}: #{1} — {2}', repo.currentBranch, branchPipeline.number ?? branchPipeline.id, statusInfo(branchPipeline.status).label)
-                        : tr('Пайплайны {0}', forge.label ?? '')
+                        ? tr('last-pipeline-of-branch', repo.currentBranch, branchPipeline.number ?? branchPipeline.id, statusInfo(branchPipeline.status).label)
+                        : tr('pipelines-2', forge.label ?? '')
               }
               selected={pipelinesActive}
               onClick={onOpenPipelines}
             >
-              {tj('{0}<1>Пайплайны</1><2>{3}</2>', [branchPipeline && !pipelinesError ? (
+              {tj('pipelines-3', [branchPipeline && !pipelinesError ? (
                 <StatusIcon status={branchPipeline.status} size={13} />
               ) : (
                 <span className="flex h-[13px] w-[13px] shrink-0 items-center justify-center">
                   <span className={`h-2 w-2 rounded-full ${pipelinesError ? 'bg-gk-red' : ''}`} style={pipelinesError ? undefined : { backgroundColor: PROVIDER_DOT[forge.provider!] ?? '#8b93a7' }} />
                 </span>
-              ), <span className="truncate" />, <span className={`ml-auto shrink-0 truncate text-[11px] ${forge.provider && forge.token?.configured ? 'text-gk-dim' : 'text-gk-blue'}`} />, !forge.provider ? tr('настроить') : !forge.token?.configured ? tr('авторизовать') : pipelinesError ? tr('ошибка') : PROVIDER_SHORT[forge.provider]])}
+              ), <span className="truncate" />, <span className={`ml-auto shrink-0 truncate text-[11px] ${forge.provider && forge.token?.configured ? 'text-gk-dim' : 'text-gk-blue'}`} />, !forge.provider ? tr('configure') : !forge.token?.configured ? tr('sign-in-2') : pipelinesError ? tr('error') : PROVIDER_SHORT[forge.provider]])}
             </Item>
           )}
           {ciCount === 0 && !forge && (
-            <div title={tr('Ищем .gitlab-ci.yml, .github/workflows, Jenkinsfile, bitbucket-pipelines.yml и другие')}>
-              <Empty>{tr('Не найдено')}</Empty>
+            <div title={tr('looking-for-gitlab-ci-yml')}>
+              <Empty>{tr('not-found-4')}</Empty>
             </div>
           )}
         </Section>
@@ -460,11 +460,11 @@ function RemoteGroup({ remote, match, dragProps, menuProps, trackedBy, onDeleteR
               depth={depth}
               {...dragProps({ kind: 'remote', name: branch.fullName, hash: branch.hash, label: branch.fullName })}
               {...menuProps({ type: 'remote', name: branch.fullName })}
-              title={tr('{0} — на сервере{1}\nДвойной клик — checkout, правый клик — действия', branch.fullName, trackedBy.get(branch.fullName)
+              title={tr('on-server-double-click-checkout', branch.fullName, trackedBy.get(branch.fullName)
                   ? trackedBy.get(branch.fullName)!.hash === branch.hash
-                    ? tr('\nЛокальная {0} на том же коммите', trackedBy.get(branch.fullName)!.name)
-                    : tr('\nЛокальная {0} отличается', trackedBy.get(branch.fullName)!.name)
-                  : tr('\nЛокальной копии нет'))}
+                    ? tr('local-is-on-same-commit', trackedBy.get(branch.fullName)!.name)
+                    : tr('local-differs', trackedBy.get(branch.fullName)!.name)
+                  : tr('no-local-copy'))}
               selected={branch.hash === selectedHash}
               onClick={() => onSelect(branch.hash)}
               onDoubleClick={() => onCheckout({ remoteBranch: { name: branch.name, fullName: branch.fullName } })}
@@ -473,7 +473,7 @@ function RemoteGroup({ remote, match, dragProps, menuProps, trackedBy, onDeleteR
               <span className="truncate">{label}</span>
               {onDeleteRemote && (
                 <button
-                  title={tr('Удалить {0} с сервера…', branch.fullName)}
+                  title={tr('delete-from-server-2', branch.fullName)}
                   onClick={(e) => {
                     e.stopPropagation();
                     onDeleteRemote(branch.fullName);
@@ -570,7 +570,7 @@ function BranchTree<B extends { name: string }>({ branches, folderKey, folders, 
               <ChevronRight size={13} className={`shrink-0 text-gk-muted transition-transform duration-200 ${open ? 'rotate-90' : ''}`} />
               {open ? <FolderOpen size={13} className="shrink-0 text-gk-yellow/80" /> : <Folder size={13} className="shrink-0 text-gk-yellow/80" />}
               <span className="truncate font-medium">{g.name}</span>
-              {hasCurrent && !open && <span title={tr('Здесь текущая ветка')} className="h-1.5 w-1.5 shrink-0 rounded-full bg-gk-green" />}
+              {hasCurrent && !open && <span title={tr('current-branch-is-here')} className="h-1.5 w-1.5 shrink-0 rounded-full bg-gk-green" />}
               <span className="ml-auto shrink-0 rounded bg-gk-fg/5 px-1.5 text-[10.5px] text-gk-dim">{g.items.length}</span>
             </Item>
             {open && g.items.map((x) => renderBranch(x.branch, x.label, depth + 1))}

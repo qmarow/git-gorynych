@@ -214,20 +214,20 @@ const SYSTEM_COLORS: Record<string, string> = {
 };
 
 const WHEN_LABELS: Record<string, string> = {
-  on_success: tr('если предыдущие этапы успешны'),
-  on_failure: tr('только если что-то упало'),
-  always: tr('всегда'),
-  manual: tr('вручную'),
-  delayed: tr('с задержкой'),
-  never: tr('не запускать'),
+  on_success: tr('if-previous-stages-succeed'),
+  on_failure: tr('only-if-something-failed-2'),
+  always: tr('always'),
+  manual: tr('manually'),
+  delayed: tr('delayed-2'),
+  never: tr('dont-run-2'),
 };
 
 const MODES: { id: string; label: string; icon: LucideIcon; remote?: boolean }[] = [
-  { id: 'scheme', label: tr('Схема'), icon: Workflow },
-  { id: 'check', label: tr('Проверка'), icon: ListChecks },
-  { id: 'file', label: tr('Файл'), icon: FileCode },
-  { id: 'history', label: tr('История'), icon: History },
-  { id: 'pipelines', label: tr('Пайплайны'), icon: Zap, remote: true },
+  { id: 'scheme', label: tr('diagram'), icon: Workflow },
+  { id: 'check', label: tr('check'), icon: ListChecks },
+  { id: 'file', label: tr('file-2'), icon: FileCode },
+  { id: 'history', label: tr('history'), icon: History },
+  { id: 'pipelines', label: tr('pipelines'), icon: Zap, remote: true },
 ];
 
 /**
@@ -424,12 +424,12 @@ export default function CiView({
         setSaving(false);
         if (res.error.code === 'CHANGED_ON_DISK') {
           setChoice({
-            title: tr('Файл изменился на диске'),
-            text: tr('{0} поменяли в другом редакторе, пока вы его правили здесь. Что сделать?', path),
+            title: tr('file-changed-on-disk'),
+            text: tr('was-changed-in-another-editor', path),
             choices: [
-              { label: tr('Отмена'), onClick: () => setChoice(null) },
+              { label: tr('cancel'), onClick: () => setChoice(null) },
               {
-                label: tr('Загрузить с диска (мои правки пропадут)'),
+                label: tr('load-from-disk-my-edits'),
                 danger: true,
                 onClick: () => {
                   setChoice(null);
@@ -438,7 +438,7 @@ export default function CiView({
                 },
               },
               {
-                label: tr('Сохранить поверх'),
+                label: tr('save-over-it'),
                 primary: true,
                 onClick: () => {
                   setChoice(null);
@@ -447,26 +447,26 @@ export default function CiView({
               },
             ],
           });
-        } else notify?.({ type: 'error', title: tr('Не удалось сохранить {0}', path), hint: res.error.message });
+        } else notify?.({ type: 'error', title: tr('couldnt-save', path), hint: res.error.message });
         return false;
       }
       dropDrafts([path]);
     }
     setSaving(false);
     setShowDiff(false);
-    notify?.({ type: 'success', title: tr('Сохранено'), hint: tr('Файл появится в изменениях — его можно закоммитить') });
+    notify?.({ type: 'success', title: tr('saved-2'), hint: tr('file-will-appear-in-changes') });
     setReloadKey((k) => k + 1);
     return true;
   };
 
   const discard = () =>
     setChoice({
-      title: tr('Отменить правки?'),
-      text: tr('Несохранённые изменения в {0} пропадут.', draftPaths.join(', ')),
+      title: tr('discard-edits-2'),
+      text: tr('unsaved-changes-in-will-be', draftPaths.join(', ')),
       choices: [
-        { label: tr('Нет'), onClick: () => setChoice(null) },
+        { label: tr('no-2'), onClick: () => setChoice(null) },
         {
-          label: tr('Отменить правки'),
+          label: tr('discard-edits-3'),
           danger: true,
           onClick: () => {
             setChoice(null);
@@ -482,12 +482,12 @@ export default function CiView({
       return;
     }
     setChoice({
-      title: tr('Есть несохранённые правки'),
-      text: tr('Изменения в {0} ещё не сохранены.', draftPaths.join(', ')),
+      title: tr('there-are-unsaved-edits'),
+      text: tr('changes-in-arent-saved-yet', draftPaths.join(', ')),
       choices: [
-        { label: tr('Отмена'), onClick: () => setChoice(null) },
+        { label: tr('cancel'), onClick: () => setChoice(null) },
         {
-          label: tr('Закрыть без сохранения'),
+          label: tr('close-without-saving'),
           danger: true,
           onClick: () => {
             setChoice(null);
@@ -495,7 +495,7 @@ export default function CiView({
           },
         },
         {
-          label: tr('Сохранить и закрыть'),
+          label: tr('save-and-close'),
           primary: true,
           onClick: async () => {
             setChoice(null);
@@ -529,7 +529,7 @@ export default function CiView({
     }
     setDraft(path, text);
     setEditBusy(false);
-    if (notes.length) notify?.({ type: 'info', title: tr('Заодно обновлено'), hint: notes.join('\n') });
+    if (notes.length) notify?.({ type: 'info', title: tr('also-updated'), hint: notes.join('\n') });
     return true;
   };
 
@@ -579,7 +579,7 @@ export default function CiView({
   const insertRunnerTags = (runner: Runner) => {
     const snippet = tagsSnippet(runner);
     navigator.clipboard?.writeText(snippet).catch(() => {});
-    if (insertText(snippet)) notify?.({ type: 'success', title: tr('Теги раннера вставлены в конфиг'), hint: snippet });
+    if (insertText(snippet)) notify?.({ type: 'success', title: tr('runner-tags-inserted-into-config'), hint: snippet });
   };
   const runLint = async () => {
     if (!current) return;
@@ -622,7 +622,7 @@ export default function CiView({
       notify?.({ type: 'error', title: res.error.message, hint: res.error.hint });
       return;
     }
-    notify?.({ type: 'success', title: tr('Создан {0}', res.data.path), hint: tr('Поправьте под свой проект и закоммитьте') });
+    notify?.({ type: 'success', title: tr('created-3', res.data.path), hint: tr('adjust-it-for-your-project') });
     setFile(res.data.path);
     setMode('file');
     setReloadKey((k) => k + 1);
@@ -637,10 +637,10 @@ export default function CiView({
         {current && <div className="shrink-0 text-[12px] text-gk-muted">{current.title}</div>}
         {currentDirty && !hasDrafts && (
           <span
-            title={tr('Файл изменён, но изменения ещё не закоммичены — показана версия с диска')}
+            title={tr('file-is-changed-but-not')}
             className="shrink-0 rounded-full bg-gk-yellow/15 px-2 py-0.5 text-[10px] font-medium text-gk-yellow"
           >
-            {tr('изменён локально')}</span>
+            {tr('changed-locally')}</span>
         )}
 
         <div className="flex-1" />
@@ -649,10 +649,10 @@ export default function CiView({
           <button
             onClick={runLint}
             disabled={lint?.loading}
-            title={tr('Проверить конфигурацию на сервере GitLab (CI Lint) — с учётом шаблонов и include')}
+            title={tr('check-configuration-on-gitlab-server')}
             className="flex shrink-0 items-center gap-1.5 rounded-md px-2 py-1 text-[12px] text-gk-muted transition-colors enabled:hover:bg-gk-hover enabled:hover:text-gk-text disabled:opacity-50"
           >
-            {tj('{0} Проверить в GitLab', [lint?.loading ? <Loader2 size={13} className="animate-spin" /> : <ShieldCheck size={13} />])}</button>
+            {tj('check-in-gitlab', [lint?.loading ? <Loader2 size={13} className="animate-spin" /> : <ShieldCheck size={13} />])}</button>
         )}
         <div className="flex shrink-0 overflow-hidden rounded-md ring-1 ring-gk-border">
           {MODES.filter((m) => !m.remote || hasRemote).map((m) => (
@@ -661,7 +661,7 @@ export default function CiView({
               onClick={() => setMode(m.id)}
               data-testid={`ci-mode-${m.id}`}
               disabled={!m.remote && !current && !state.loading}
-              title={!m.remote && !current && !state.loading ? tr('В репозитории нет файлов CI/CD') : undefined}
+              title={!m.remote && !current && !state.loading ? tr('repository-has-no-ci-cd') : undefined}
               className={`flex items-center gap-1.5 px-2.5 py-1 text-[12px] transition-colors disabled:opacity-35 ${
                 mode === m.id ? 'bg-gk-blue/20 text-gk-blue' : 'text-gk-muted enabled:hover:bg-gk-hover enabled:hover:text-gk-text'
               }`}
@@ -676,13 +676,13 @@ export default function CiView({
             </button>
           ))}
         </div>
-        <IconBtn title={tr('Открыть файл во внешнем редакторе')} disabled={!current || mode === 'pipelines'} onClick={() => api.repo.openPath(repoPath, fileTab ?? current!.file)}>
+        <IconBtn title={tr('open-file-in-external-editor')} disabled={!current || mode === 'pipelines'} onClick={() => api.repo.openPath(repoPath, fileTab ?? current!.file)}>
           <ExternalLink size={14} />
         </IconBtn>
-        <IconBtn title={tr('Перечитать с диска')} onClick={() => setReloadKey((k) => k + 1)}>
+        <IconBtn title={tr('reload-from-disk')} onClick={() => setReloadKey((k) => k + 1)}>
           <RefreshCw size={14} className={state.loading && state.data ? 'animate-spin' : ''} />
         </IconBtn>
-        <IconBtn title={tr('Закрыть (Esc)')} onClick={requestClose}>
+        <IconBtn title={tr('close-esc')} onClick={requestClose}>
           <X size={15} />
         </IconBtn>
       </div>
@@ -757,7 +757,7 @@ export default function CiView({
           />
         ) : state.loading && !state.data ? (
           <Center>
-            {tj('{0} Читаем настройки CI/CD…', [<Loader2 size={15} className="animate-spin" />])}</Center>
+            {tj('reading-ci-cd-settings', [<Loader2 size={15} className="animate-spin" />])}</Center>
         ) : state.error ? (
           <Center className="text-gk-red">{state.error.message}</Center>
         ) : !current ? (
@@ -802,9 +802,9 @@ export default function CiView({
               <aside className="flex w-[460px] shrink-0 animate-slide-in-right flex-col border-l border-gk-border bg-gk-panel/85 backdrop-blur-xl">
                 <div className="flex items-center gap-2 border-b border-gk-border px-4 py-3">
                   <div className="min-w-0 flex-1 truncate text-[14px] font-semibold text-gk-strong">
-                    {jobForm.mode === 'create' ? tr('Новое задание') : tr('Изменить «{0}»', job?.name ?? '')}
+                    {jobForm.mode === 'create' ? tr('new-job') : tr('edit-4', job?.name ?? '')}
                   </div>
-                  <IconBtn title={tr('Закрыть (Esc)')} onClick={() => setJobForm(null)}>
+                  <IconBtn title={tr('close-esc')} onClick={() => setJobForm(null)}>
                     <X size={14} />
                   </IconBtn>
                 </div>
@@ -927,14 +927,14 @@ function Scheme({ data, pipeline, onPipeline, selectedJob, onSelectJob, onShowLi
       <div className="space-y-3 p-4">
         {check && <CheckBanner check={check} onOpen={onOpenCheck} />}
         {!check && errors.length > 0 && (
-          <Notice tone="red" icon={CircleX} title={tr('Ошибки в файле — CI, скорее всего, не запустится')}>
+          <Notice tone="red" icon={CircleX} title={tr('errors-in-file-ci-most')}>
             {errors.map((e, i) => (
               <ProblemLine key={i} problem={e} onShowLine={onShowLine} />
             ))}
           </Notice>
         )}
         {!check && (data.warnings.length > 0 || yamlWarnings.length > 0) && (
-          <Notice tone="yellow" icon={AlertTriangle} title={tr('На что обратить внимание')}>
+          <Notice tone="yellow" icon={AlertTriangle} title={tr('things-to-note')}>
             {data.warnings.map((w, i) => (
               <div key={i}>{w}</div>
             ))}
@@ -947,7 +947,7 @@ function Scheme({ data, pipeline, onPipeline, selectedJob, onSelectJob, onShowLi
         {/* Сводка */}
         <div className="grid grid-cols-[repeat(auto-fit,minmax(260px,1fr))] gap-3">
           {data.triggers.length > 0 && (
-            <Card title={data.triggersTitle || tr('Когда запускается')} icon={Zap}>
+            <Card title={data.triggersTitle || tr('when-it-runs')} icon={Zap}>
               <ul className="space-y-1">
                 {data.triggers.map((t, i) => (
                   <li key={i} className="flex items-start gap-2">
@@ -971,7 +971,7 @@ function Scheme({ data, pipeline, onPipeline, selectedJob, onSelectJob, onShowLi
           )}
 
           {(data.info.length > 0 || data.variables.length > 0) && (
-            <Card title={tr('Параметры')} icon={Server}>
+            <Card title={tr('parameters-2')} icon={Server}>
               <dl className="space-y-1">
                 {data.info.map((row) => (
                   <div key={row.label} className="flex gap-2">
@@ -986,7 +986,7 @@ function Scheme({ data, pipeline, onPipeline, selectedJob, onSelectJob, onShowLi
                     onClick={() => setShowVars((v) => !v)}
                     className="flex items-center gap-1 text-[12px] text-gk-blue hover:underline"
                   >
-                    {tj('{0}Переменные: {1}', [showVars ? <ChevronDown size={12} /> : <ChevronRight size={12} />, data.variables.length])}
+                    {tj('variables-2', [showVars ? <ChevronDown size={12} /> : <ChevronRight size={12} />, data.variables.length])}
                   </button>
                   {showVars && <VariablesTable variables={data.variables} />}
                 </div>
@@ -995,7 +995,7 @@ function Scheme({ data, pipeline, onPipeline, selectedJob, onSelectJob, onShowLi
           )}
 
           {data.includes.length > 0 && (
-            <Card title={tr('Подключаемые файлы')} icon={Layers}>
+            <Card title={tr('included-files')} icon={Layers}>
               <ul className="space-y-1.5">
                 {data.includes.map((inc, i) => (
                   <li key={i}>
@@ -1007,7 +1007,7 @@ function Scheme({ data, pipeline, onPipeline, selectedJob, onSelectJob, onShowLi
                         className={`ml-auto shrink-0 text-[10px] ${inc.resolved ? 'text-gk-green' : inc.error ? 'text-gk-red' : 'text-gk-dim'}`}
                         title={inc.resolved ? inc.files?.join('\n') : undefined}
                       >
-                        {inc.resolved ? tr('прочитан{0}', inc.files?.length! > 1 ? ` (${inc.files!.length})` : '') : inc.error ?? tr('внешний — не загружается')}
+                        {inc.resolved ? tr('read', inc.files?.length! > 1 ? ` (${inc.files!.length})` : '') : inc.error ?? tr('external-not-loaded')}
                       </span>
                     </div>
                     <div className="mt-0.5 break-all font-mono text-[11.5px] text-gk-text/90">{inc.value}</div>
@@ -1021,7 +1021,7 @@ function Scheme({ data, pipeline, onPipeline, selectedJob, onSelectJob, onShowLi
         {/* Несколько пайплайнов (Bitbucket, CircleCI) */}
         {data.pipelines.length > 1 && (
           <div className="flex flex-wrap items-center gap-1.5">
-            {tj('<0>Пайплайн</0>{1}', [<span className="mr-1 text-[11px] uppercase tracking-wider text-gk-dim" />, data.pipelines.map((p) => (
+            {tj('pipeline-5', [<span className="mr-1 text-[11px] uppercase tracking-wider text-gk-dim" />, data.pipelines.map((p) => (
               <button
                 key={p.id}
                 onClick={() => onPipeline(p.id)}
@@ -1037,14 +1037,14 @@ function Scheme({ data, pipeline, onPipeline, selectedJob, onSelectJob, onShowLi
 
         {data.schemeUnsupported ? (
           <div className="rounded-lg border border-dashed border-gk-border p-6 text-center text-[13px] text-gk-muted">
-            {tj('Для {0} схема пока не строится — откройте вкладку «Файл».', [data.title])}</div>
+            {tj('diagram-isnt-built-for-yet', [data.title])}</div>
         ) : pipeline && pipeline.stages.length > 0 ? (
           <>
           <div className="flex items-center gap-2">
             <div className="flex overflow-hidden rounded-md ring-1 ring-gk-border" data-testid="scheme-view">
               {[
-                ['stages', tr('Этапы')],
-                ['dag', tr('Граф выполнения (DAG)')],
+                ['stages', tr('stages')],
+                ['dag', tr('execution-graph-dag')],
               ].map(([id, label]) => (
                 <button
                   key={id}
@@ -1056,7 +1056,7 @@ function Scheme({ data, pipeline, onPipeline, selectedJob, onSelectJob, onShowLi
                 </button>
               ))}
             </div>
-            {view === 'dag' && <span className="text-[11.5px] text-gk-dim">{tr('Наведите на задание — подсветится цепочка зависимостей')}</span>}
+            {view === 'dag' && <span className="text-[11.5px] text-gk-dim">{tr('hover-over-job-to-highlight')}</span>}
           </div>
           {view === 'dag' ? (
             <DagView pipeline={pipeline} selectedJob={selectedJob} onSelectJob={onSelectJob} jobIssues={jobIssues as unknown as ComponentProps<typeof DagView>['jobIssues']} />
@@ -1076,9 +1076,9 @@ function Scheme({ data, pipeline, onPipeline, selectedJob, onSelectJob, onShowLi
         ) : (
           errors.length === 0 && (
             <div className="rounded-lg border border-dashed border-gk-border p-6 text-center text-[13px] text-gk-muted">
-              {tj('В файле не найдено ни одного задания{0}', [editable && (
+              {tj('no-jobs-found-in-file', [editable && (
                 <button onClick={() => onAddJob('build')} className="ml-2 text-gk-blue hover:underline">
-                  {tr('Добавить задание')}</button>
+                  {tr('add-job')}</button>
               )])}
             </div>
           )
@@ -1090,7 +1090,7 @@ function Scheme({ data, pipeline, onPipeline, selectedJob, onSelectJob, onShowLi
               onClick={() => setShowTemplates((v) => !v)}
               className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wider text-gk-dim hover:text-gk-muted"
             >
-              {tj('{0}Шаблоны (скрытые задания) · {1}', [showTemplates ? <ChevronDown size={13} /> : <ChevronRight size={13} />, data.templates.length])}
+              {tj('templates-hidden-jobs', [showTemplates ? <ChevronDown size={13} /> : <ChevronRight size={13} />, data.templates.length])}
             </button>
             {showTemplates && (
               <div className="mt-2 grid animate-fade-in grid-cols-[repeat(auto-fill,minmax(220px,1fr))] gap-2">
@@ -1098,12 +1098,12 @@ function Scheme({ data, pipeline, onPipeline, selectedJob, onSelectJob, onShowLi
                   <button
                     key={t.id}
                     onClick={() => onShowLine(t.source, t.line)}
-                    title={tr('Показать в файле')}
+                    title={tr('show-in-file-2')}
                     className="rounded-md border border-gk-border bg-gk-fg/[0.02] px-3 py-2 text-left transition-colors hover:border-gk-fg/20"
                   >
                     <div className="truncate font-mono text-[12px] text-gk-text">{t.name}</div>
                     <div className="mt-0.5 truncate text-[11px] text-gk-dim">
-                      {t.usedBy.length ? tr('используют: {0}', t.usedBy.join(', ')) : tr('нигде не используется через extends')}
+                      {t.usedBy.length ? tr('used-by', t.usedBy.join(', ')) : tr('not-used-anywhere-via-extends')}
                     </div>
                     <div className="mt-0.5 truncate text-[10px] text-gk-dim">
                       {t.source}
@@ -1148,7 +1148,7 @@ function StagesBoard({ pipeline, jobIssues, selectedJob, onSelectJob, editable, 
                   onOp={onStageOp}
                 />
                 <div className="flex flex-1 flex-col gap-2 p-2">
-                  {stage.jobs.length === 0 && <div className="px-1 py-2 text-[11px] italic text-gk-dim">{tr('нет заданий')}</div>}
+                  {stage.jobs.length === 0 && <div className="px-1 py-2 text-[11px] italic text-gk-dim">{tr('no-jobs')}</div>}
                   {stage.jobs.map((job) => (
                     <JobCard key={job.id} job={job} issues={jobIssues?.(job) ?? []} selected={selectedJob === job.id} onClick={() => onSelectJob(job.id)} />
                   ))}
@@ -1158,7 +1158,7 @@ function StagesBoard({ pipeline, jobIssues, selectedJob, onSelectJob, editable, 
                       disabled={busy}
                       className="flex items-center justify-center gap-1 rounded-md border border-dashed border-gk-border py-1.5 text-[11.5px] text-gk-dim opacity-0 transition-opacity hover:border-gk-blue/50 hover:text-gk-blue focus:opacity-100 group-hover/stage:opacity-100"
                     >
-                      {tj('{0} задание', [<Plus size={12} />])}</button>
+                      {tj('job-5', [<Plus size={12} />])}</button>
                   )}
                 </div>
               </div>
@@ -1169,7 +1169,7 @@ function StagesBoard({ pipeline, jobIssues, selectedJob, onSelectJob, editable, 
           <div className="flex w-44 shrink-0 items-start pl-4 pt-1">
             {adding ? (
               <InlineInput
-                placeholder={tr('имя этапа')}
+                placeholder={tr('stage-name')}
                 onCancel={() => setAdding(false)}
                 onSubmit={(name) => {
                   setAdding(false);
@@ -1182,7 +1182,7 @@ function StagesBoard({ pipeline, jobIssues, selectedJob, onSelectJob, editable, 
                 disabled={busy}
                 className="flex items-center gap-1 rounded-md border border-dashed border-gk-border px-3 py-2 text-[12px] text-gk-dim transition-colors hover:border-gk-blue/50 hover:text-gk-blue"
               >
-                {tj('{0} Этап', [<Plus size={12} />])}</button>
+                {tj('stage-6', [<Plus size={12} />])}</button>
             )}
           </div>
         )}
@@ -1214,32 +1214,32 @@ function StageHeader({ stage, editable, busy, canLeft, canRight, onOp }: { stage
         {stage.name}
       </span>
       {stage.undeclared && (
-        <span title={tr('Этап не объявлен в stages')} className="text-gk-yellow">
+        <span title={tr('stage-isnt-declared-in-stages-2')} className="text-gk-yellow">
           <AlertTriangle size={12} />
         </span>
       )}
       {editable && stage.undeclared && (
         <button
-          title={tr('Добавить этап в stages')}
+          title={tr('add-stage-to-stages')}
           disabled={busy}
           onClick={() => onOp({ type: 'addStage', name: stage.name })}
           className="rounded px-1 text-[10px] text-gk-yellow hover:bg-gk-yellow/15"
         >
-          {tr('исправить')}</button>
+          {tr('fix')}</button>
       )}
       {editable && !stage.undeclared && (
         <span className="flex items-center opacity-0 transition-opacity group-hover/stage:opacity-100">
-          <MiniBtn title={tr('Переименовать этап')} onClick={() => setRenaming(true)} disabled={busy}>
+          <MiniBtn title={tr('rename-stage')} onClick={() => setRenaming(true)} disabled={busy}>
             <Pencil size={11} />
           </MiniBtn>
-          <MiniBtn title={tr('Сдвинуть раньше')} onClick={() => onOp({ type: 'moveStage', name: stage.name, dir: -1 })} disabled={busy || !canLeft}>
+          <MiniBtn title={tr('move-earlier')} onClick={() => onOp({ type: 'moveStage', name: stage.name, dir: -1 })} disabled={busy || !canLeft}>
             <ArrowLeft size={11} />
           </MiniBtn>
-          <MiniBtn title={tr('Сдвинуть позже')} onClick={() => onOp({ type: 'moveStage', name: stage.name, dir: 1 })} disabled={busy || !canRight}>
+          <MiniBtn title={tr('move-later')} onClick={() => onOp({ type: 'moveStage', name: stage.name, dir: 1 })} disabled={busy || !canRight}>
             <ArrowRight size={11} />
           </MiniBtn>
           <MiniBtn
-            title={stage.jobs.length ? tr('Сначала перенесите или удалите задания этапа') : armDelete ? tr('Нажмите ещё раз, чтобы удалить') : tr('Удалить этап')}
+            title={stage.jobs.length ? tr('move-or-delete-stages-jobs') : armDelete ? tr('click-again-to-delete') : tr('delete-stage')}
             disabled={busy || stage.jobs.length > 0}
             danger={armDelete}
             onClick={() => {
@@ -1307,11 +1307,11 @@ function JobCard({ job, issues = [], selected, onClick }: { job: ViewJob; issues
   const errCount = issues.filter((i) => i.severity === 'error').length;
   const warnCount = issues.filter((i) => i.severity === 'warning').length;
   const badges: { icon: LucideIcon | null; text: string; cls: string; title?: string }[] = [];
-  if (job.manual) badges.push({ icon: Hand, text: tr('вручную'), cls: 'text-gk-yellow' });
-  if (job.kind === 'trigger') badges.push({ icon: Zap, text: job.trigger ? tr('запускает другой пайплайн') : tr('внешнее'), cls: 'text-gk-purple' });
+  if (job.manual) badges.push({ icon: Hand, text: tr('manually'), cls: 'text-gk-yellow' });
+  if (job.kind === 'trigger') badges.push({ icon: Zap, text: job.trigger ? tr('starts-another-pipeline') : tr('external'), cls: 'text-gk-purple' });
   if (job.environment?.name) badges.push({ icon: Rocket, text: job.environment.name, cls: 'text-gk-green' });
-  if (job.allowFailure) badges.push({ icon: AlertTriangle, text: tr('может упасть'), cls: 'text-gk-muted' });
-  if (job.rules?.length) badges.push({ icon: null, text: tr('правил: {0}', job.rules.length), cls: 'text-gk-muted' });
+  if (job.allowFailure) badges.push({ icon: AlertTriangle, text: tr('may-fail'), cls: 'text-gk-muted' });
+  if (job.rules?.length) badges.push({ icon: null, text: tr('rules', job.rules.length), cls: 'text-gk-muted' });
   if (job.condition) badges.push({ icon: null, text: 'if', cls: 'text-gk-muted', title: job.condition });
   if (job.parallel) badges.push({ icon: null, text: job.parallel.startsWith('×') ? job.parallel : 'matrix', cls: 'text-gk-blue', title: job.parallel });
 
@@ -1352,7 +1352,7 @@ function JobCard({ job, issues = [], selected, onClick }: { job: ViewJob; issues
       )}
       {job.needs?.length! > 0 && (
         <div className="mt-1 truncate text-[11px] text-gk-dim" title={job.needs!.map((n) => n.job).join(', ')}>
-          {tj('после: {0}', [job.needs!.map((n) => n.job).join(', ')])}
+          {tj('after', [job.needs!.map((n) => n.job).join(', ')])}
         </div>
       )}
       {badges.length > 0 && (
@@ -1397,7 +1397,7 @@ function JobDetails({ job, allJobs, onSelectJob, onClose, onShowLine, issues = [
         <div className="min-w-0 flex-1">
           <div className="break-words text-[14px] font-semibold text-gk-strong">{job.name}</div>
           <div className="mt-0.5 flex flex-wrap items-center gap-x-2 text-[11px] text-gk-dim">
-            {job.stage && <span>{tj('этап {0}', [job.stage])}</span>}
+            {job.stage && <span>{tj('stage-7', [job.stage])}</span>}
             {job.source && (
               <button onClick={() => onShowLine(job.source, job.line)} className="font-mono text-gk-blue hover:underline">
                 {job.source}
@@ -1411,16 +1411,16 @@ function JobDetails({ job, allJobs, onSelectJob, onClose, onShowLine, issues = [
             onClick={onEdit}
             className="flex shrink-0 items-center gap-1 rounded-md bg-gk-blue/15 px-2 py-1 text-[12px] text-gk-blue transition-colors hover:bg-gk-blue/25"
           >
-            {tj('{0} Изменить', [<Pencil size={12} />])}</button>
+            {tj('edit-5', [<Pencil size={12} />])}</button>
         )}
-        <IconBtn title={tr('Закрыть (Esc)')} onClick={onClose}>
+        <IconBtn title={tr('close-esc')} onClick={onClose}>
           <X size={14} />
         </IconBtn>
       </div>
       {editState === 'include' && (
         <div className="border-b border-gk-border bg-gk-fg/[0.02] px-4 py-2 text-[11.5px] text-gk-muted">
-          {tj('Задание описано в подключаемом файле — {0}, чтобы его изменить.', [<button onClick={() => onShowLine(job.source, job.line)} className="font-mono text-gk-blue hover:underline">
-            {tj('откройте {0}', [job.source])}
+          {tj('job-is-defined-in-included', [<button onClick={() => onShowLine(job.source, job.line)} className="font-mono text-gk-blue hover:underline">
+            {tj('open-2', [job.source])}
           </button>])}</div>
       )}
 
@@ -1433,31 +1433,31 @@ function JobDetails({ job, allJobs, onSelectJob, onClose, onShowLine, issues = [
                 <button
                   key={issueKey(i)}
                   onClick={() => onOpenIssue?.(i)}
-                  title={tr('Открыть на вкладке «Проверка»: когда, как проявится, почему и как исправить')}
+                  title={tr('open-in-check-tab-when')}
                   className={`flex w-full items-start gap-2 rounded-md px-2 py-1.5 text-left transition-colors ${S.bg} hover:brightness-110`}
                 >
                   <S.icon size={13} className={`mt-0.5 shrink-0 ${S.text}`} />
                   <span className="min-w-0 flex-1 break-words text-gk-text/90">{i.title}</span>
-                  {i.line && <span className="shrink-0 font-mono text-[10.5px] text-gk-dim">{tj('стр. {0}', [i.line])}</span>}
+                  {i.line && <span className="shrink-0 font-mono text-[10.5px] text-gk-dim">{tj('line-2', [i.line])}</span>}
                 </button>
               );
             })}
           </div>
         )}
-        <Section title={tr('Когда запускается')}>
+        <Section title={tr('when-it-runs')}>
           <div className="flex flex-wrap items-center gap-1.5">
             {job.rules?.length! > 0 ? (
-              <span className="rounded bg-gk-fg/5 px-1.5 py-0.5 text-[11px] text-gk-muted">{tr('по правилам ниже')}</span>
+              <span className="rounded bg-gk-fg/5 px-1.5 py-0.5 text-[11px] text-gk-muted">{tr('per-rules-below')}</span>
             ) : job.when ? (
               <WhenChip when={job.when} big />
             ) : (
               <span className="rounded bg-gk-fg/5 px-1.5 py-0.5 text-[11px] text-gk-muted">
-                {job.needs?.length ? tr('после заданий из «Связи»') : tr('автоматически')}
-                {job.condition ? tr(', если выполнено условие') : ''}
+                {job.needs?.length ? tr('after-jobs-in-links') : tr('automatically')}
+                {job.condition ? tr('if-condition-is-met') : ''}
               </span>
             )}
-            {job.startIn && <span className="text-gk-muted">{tj('через {0}', [job.startIn])}</span>}
-            {job.allowFailure && <span className="text-gk-muted">{tr('· ошибка не остановит пайплайн')}</span>}
+            {job.startIn && <span className="text-gk-muted">{tj('in-3', [job.startIn])}</span>}
+            {job.allowFailure && <span className="text-gk-muted">{tr('error-wont-stop-pipeline')}</span>}
           </div>
           {job.condition && <Code className="mt-2">if: {job.condition}</Code>}
           {job.rules?.length! > 0 && (
@@ -1469,7 +1469,7 @@ function JobDetails({ job, allJobs, onSelectJob, onClose, onShowLine, issues = [
                   {r.when && <WhenChip when={r.when} />}
                 </li>
               ))}
-              <li className="px-2 text-[11px] text-gk-dim">{tr('Срабатывает первое подходящее правило; если ни одно не подошло — задание не запускается.')}</li>
+              <li className="px-2 text-[11px] text-gk-dim">{tr('first-matching-rule-fires-if')}</li>
             </ol>
           )}
           {job.only && <KV k="only" v={job.only} />}
@@ -1477,25 +1477,25 @@ function JobDetails({ job, allJobs, onSelectJob, onClose, onShowLine, issues = [
         </Section>
 
         {(job.image || job.runsOn || job.services?.length! > 0 || job.tags?.length! > 0) && (
-          <Section title={tr('Где выполняется')}>
+          <Section title={tr('where-it-runs')}>
             {job.image && (
               <KV
-                k={tr('образ')}
+                k={tr('image')}
                 v={job.image}
-                note={job.imageInherited ? tr('из {0}', job.imageInherited === 'default' ? 'default' : tr('глобальных настроек')) : null}
+                note={job.imageInherited ? tr('from-4', job.imageInherited === 'default' ? 'default' : tr('global-settings')) : null}
               />
             )}
             {job.runsOn && <KV k="runs-on" v={job.runsOn} />}
-            {job.services?.length! > 0 && <KV k={tr('сервисы')} v={job.services!.join(', ')} />}
-            {job.tags?.length! > 0 && <KV k={tr('теги раннера')} v={job.tags!.join(', ')} />}
+            {job.services?.length! > 0 && <KV k={tr('services-2')} v={job.services!.join(', ')} />}
+            {job.tags?.length! > 0 && <KV k={tr('runner-tags-2')} v={job.tags!.join(', ')} />}
           </Section>
         )}
 
         {(job.needs?.length! > 0 || job.dependencies || job.extends?.length! > 0 || job.trigger) && (
-          <Section title={tr('Связи')}>
+          <Section title={tr('links')}>
             {job.needs?.length! > 0 && (
               <div className="flex flex-wrap items-center gap-1.5">
-                {tj('<0>после</0>{1}', [<span className="w-24 shrink-0 text-gk-dim" />, job.needs!.map((n) => {
+                {tj('after-2', [<span className="w-24 shrink-0 text-gk-dim" />, job.needs!.map((n) => {
                   const target = allJobs.find((j) => j.name === n.job);
                   return (
                     <button
@@ -1503,29 +1503,29 @@ function JobDetails({ job, allJobs, onSelectJob, onClose, onShowLine, issues = [
                       disabled={!target}
                       onClick={() => target && onSelectJob(target.id)}
                       className="rounded bg-gk-fg/5 px-1.5 py-0.5 font-mono text-[11px] text-gk-text enabled:hover:bg-gk-blue/20 enabled:hover:text-gk-blue disabled:text-gk-red"
-                      title={target ? tr('Перейти к заданию') : tr('Такого задания нет')}
+                      title={target ? tr('go-to-job') : tr('no-such-job')}
                     >
                       {n.job}
-                      {n.optional ? tr(' (опц.)') : ''}
+                      {n.optional ? tr('opt') : ''}
                     </button>
                   );
                 })])}
               </div>
             )}
-            {job.needs && job.needs.length === 0 && <KV k="needs" v={tr('[] — стартует сразу, не дожидаясь этапов')} />}
-            {job.dependencies && <KV k={tr('артефакты из')} v={job.dependencies.join(', ') || tr('— (не скачивать)')} />}
-            {job.extends?.length! > 0 && <KV k={tr('наследует')} v={job.extends!.join(' → ')} />}
-            {job.trigger && <KV k={tr('запускает')} v={job.trigger} />}
+            {job.needs && job.needs.length === 0 && <KV k="needs" v={tr('starts-right-away-without-waiting')} />}
+            {job.dependencies && <KV k={tr('artifacts-from')} v={job.dependencies.join(', ') || tr('dont-download')} />}
+            {job.extends?.length! > 0 && <KV k={tr('inherits')} v={job.extends!.join(' → ')} />}
+            {job.trigger && <KV k={tr('starts')} v={job.trigger} />}
           </Section>
         )}
 
         {scripts.length > 0 && (
-          <Section title={tr('Команды')}>
+          <Section title={tr('commands')}>
             {scripts.map(([label, s]) => (
               <div key={label} className="mb-2">
                 <div className="mb-1 flex items-center gap-2 text-[11px] text-gk-dim">
                   <span className="font-mono">{label}</span>
-                  {s.inherited && <span className="rounded bg-gk-fg/5 px-1.5">{tj('из {0}', [s.inherited])}</span>}
+                  {s.inherited && <span className="rounded bg-gk-fg/5 px-1.5">{tj('from-4', [s.inherited])}</span>}
                 </div>
                 <Code>
                   {/* Команды не переносим — длинные строки прокручиваются по горизонтали */}
@@ -1544,7 +1544,7 @@ function JobDetails({ job, allJobs, onSelectJob, onClose, onShowLine, issues = [
         )}
 
         {job.steps?.length! > 0 && (
-          <Section title={tr('Шаги · {0}', job.steps!.length)}>
+          <Section title={tr('steps-2', job.steps!.length)}>
             <ol className="space-y-1.5">
               {job.steps!.map((st, i) => (
                 <li key={i} className="rounded border border-gk-border bg-gk-fg/[0.02] px-2.5 py-1.5">
@@ -1569,31 +1569,31 @@ function JobDetails({ job, allJobs, onSelectJob, onClose, onShowLine, issues = [
         )}
 
         {job.variables?.length! > 0 && (
-          <Section title={tr('Переменные')}>
+          <Section title={tr('variables')}>
             <VariablesTable variables={job.variables!} />
           </Section>
         )}
 
         {(job.environment || job.artifacts || job.cache) && (
-          <Section title={tr('Результат')}>
+          <Section title={tr('result')}>
             {job.environment && (
-              <KV k={tr('окружение')} v={`${job.environment.name ?? '?'}${job.environment.action ? ` (${job.environment.action})` : ''}`} note={job.environment.url} />
+              <KV k={tr('environment-2')} v={`${job.environment.name ?? '?'}${job.environment.action ? ` (${job.environment.action})` : ''}`} note={job.environment.url} />
             )}
             {job.artifacts && (
               <>
-                {job.artifacts.paths?.length! > 0 && <KV k={tr('артефакты')} v={job.artifacts.paths!.join(', ')} />}
-                {job.artifacts.expire && <KV k={tr('хранятся')} v={job.artifacts.expire} />}
-                {job.artifacts.reports?.length! > 0 && <KV k={tr('отчёты')} v={job.artifacts.reports!.join(', ')} />}
+                {job.artifacts.paths?.length! > 0 && <KV k={tr('artifacts-2')} v={job.artifacts.paths!.join(', ')} />}
+                {job.artifacts.expire && <KV k={tr('kept-for')} v={job.artifacts.expire} />}
+                {job.artifacts.reports?.length! > 0 && <KV k={tr('reports')} v={job.artifacts.reports!.join(', ')} />}
               </>
             )}
-            {job.cache && <KV k={tr('кэш')} v={job.cache} />}
+            {job.cache && <KV k={tr('cache')} v={job.cache} />}
           </Section>
         )}
 
         {(job.timeout || job.retry || job.resourceGroup || job.coverage || job.interruptible != null || job.permissions || job.outputs?.length! > 0) && (
-          <Section title={tr('Прочее')}>
-            {job.timeout && <KV k={tr('таймаут')} v={String(job.timeout)} />}
-            {job.retry && <KV k={tr('повторы')} v={job.retry} />}
+          <Section title={tr('other')}>
+            {job.timeout && <KV k={tr('timeout-2')} v={String(job.timeout)} />}
+            {job.retry && <KV k={tr('retries')} v={job.retry} />}
             {job.interruptible != null && <KV k="interruptible" v={String(job.interruptible)} />}
             {job.resourceGroup && <KV k="resource_group" v={job.resourceGroup} />}
             {job.coverage && <KV k="coverage" v={job.coverage} />}
@@ -1605,7 +1605,7 @@ function JobDetails({ job, allJobs, onSelectJob, onClose, onShowLine, issues = [
         {job.raw && (
           <div>
             <button onClick={() => setShowRaw((v) => !v)} className="flex items-center gap-1 text-[11px] text-gk-blue hover:underline">
-              {tj('{0}Итоговая конфигурация задания{1}', [showRaw ? <ChevronDown size={12} /> : <ChevronRight size={12} />, job.extends?.length ? tr(' (с учётом extends)') : ''])}
+              {tj('final-job-configuration', [showRaw ? <ChevronDown size={12} /> : <ChevronRight size={12} />, job.extends?.length ? tr('with-extends-applied') : ''])}
             </button>
             {showRaw && (
               <pre className="mt-2 max-h-80 animate-fade-in overflow-auto rounded-md bg-gk-sink/30 p-3 font-mono text-[11px] leading-[1.6]">
@@ -1669,7 +1669,7 @@ function FileEditor({ files, active, onActive, jump, errors, issues = [], gitDir
     return m;
   }, [problems, file]);
   const [localJump, setLocalJump] = useState<Jump | null>(null);
-  if (!file) return <Center>{tr('Нет файла')}</Center>;
+  if (!file) return <Center>{tr('no-file-2')}</Center>;
   const value = textOf(file.path);
   const fileErrors = problems.filter((e) => e.file === file.path || (!e.file && file === files[0]));
   const anyError = fileErrors.some((e) => e.severity === 'error');
@@ -1689,14 +1689,14 @@ function FileEditor({ files, active, onActive, jump, errors, issues = [], gitDir
             {i > 0 && <span className="mr-0.5 font-sans text-[10px] text-gk-dim">include</span>}
             {f.path}
             {drafts[f.path] !== undefined ? (
-              <span className="text-gk-yellow" title={tr('Есть несохранённые правки')}>●</span>
+              <span className="text-gk-yellow" title={tr('there-are-unsaved-edits')}>●</span>
             ) : (
-              gitDirty.has(f.path) && <span className="text-gk-muted" title={tr('Изменён, не закоммичен')}>◦</span>
+              gitDirty.has(f.path) && <span className="text-gk-muted" title={tr('changed-not-committed')}>◦</span>
             )}
           </button>
         ))}
         <div className="flex-1" />
-        <span className="shrink-0 font-sans text-[11px] text-gk-dim">{kb(tr('Tab — отступ · Ctrl+/ — комментарий · Ctrl+S — сохранить'))}</span>
+        <span className="shrink-0 font-sans text-[11px] text-gk-dim">{kb(tr('tab-indent-ctrl-comment-ctrl'))}</span>
         {snippets.length > 0 && (
           <div className="relative shrink-0">
             <button
@@ -1704,11 +1704,11 @@ function FileEditor({ files, active, onActive, jump, errors, issues = [], gitDir
               data-testid="snippets-open"
               className={`flex items-center gap-1 rounded px-2 py-0.5 font-sans text-[11.5px] transition-colors ${snipOpen ? 'bg-gk-blue/20 text-gk-blue' : 'text-gk-muted hover:bg-gk-hover hover:text-gk-text'}`}
             >
-              {tj('{0} Шаблон шага {1}', [<Plus size={12} />, <ChevronDown size={11} />])}
+              {tj('step-template', [<Plus size={12} />, <ChevronDown size={11} />])}
             </button>
             {snipOpen && (
               <div className="absolute right-0 top-full z-30 mt-1 w-72 overflow-hidden rounded-md border border-gk-fg/10 bg-[var(--gk-solid-2)] py-1 font-sans shadow-xl" data-testid="snippets">
-                <div className="px-3 pb-1 pt-0.5 text-[10.5px] uppercase tracking-wider text-gk-dim">{tr('Вставить в позицию курсора')}</div>
+                <div className="px-3 pb-1 pt-0.5 text-[10.5px] uppercase tracking-wider text-gk-dim">{tr('insert-at-cursor')}</div>
                 {snippets.map((sn) => (
                   <button
                     key={sn.id}
@@ -1753,7 +1753,7 @@ function FileEditor({ files, active, onActive, jump, errors, issues = [], gitDir
               className="flex w-full items-start gap-2 px-3 py-0.5 text-left hover:bg-gk-fg/5"
             >
               {e.severity === 'error' ? <CircleX size={13} className="mt-0.5 shrink-0 text-gk-red" /> : <AlertTriangle size={13} className="mt-0.5 shrink-0 text-gk-yellow" />}
-              {e.line && <span className={`shrink-0 font-mono ${e.severity === 'error' ? 'text-gk-red' : 'text-gk-yellow'}`}>{tj('стр. {0}', [e.line])}</span>}
+              {e.line && <span className={`shrink-0 font-mono ${e.severity === 'error' ? 'text-gk-red' : 'text-gk-yellow'}`}>{tj('line-2', [e.line])}</span>}
               <span className="min-w-0 text-gk-text">{e.message}</span>
             </button>
           ))}
@@ -1766,10 +1766,10 @@ function FileEditor({ files, active, onActive, jump, errors, issues = [], gitDir
 /* =================== История =================== */
 
 function HistoryView({ history, onLocate }: { history: CiCommit[]; onLocate: (sha: string) => void }) {
-  if (!history.length) return <Center>{tr('Файлы CI/CD ещё ни разу не коммитились')}</Center>;
+  if (!history.length) return <Center>{tr('ci-cd-files-have-never')}</Center>;
   return (
     <div className="min-w-0 flex-1 overflow-y-auto p-4">
-      <div className="mb-3 text-[12px] text-gk-dim">{tr('Коммиты, в которых менялись настройки CI/CD. Клик — показать коммит в графе.')}</div>
+      <div className="mb-3 text-[12px] text-gk-dim">{tr('commits-that-changed-ci-cd')}</div>
       <ol className="relative space-y-1 border-l border-gk-border pl-4">
         {history.map((c, i) => (
           <li key={c.hash} className="animate-slide-up" style={{ animationDelay: `${Math.min(i, 15) * 30}ms` }}>
@@ -1800,17 +1800,17 @@ function NoCi({ gitlab, providerLabel, onPipelines, onCreate }: { gitlab: boolea
     <Center>
       <div className="max-w-md text-center">
         <Workflow size={28} className="mx-auto mb-3 text-gk-dim" />
-        <div className="text-[14px] text-gk-text">{tr('В репозитории нет настроек CI/CD')}</div>
+        <div className="text-[14px] text-gk-text">{tr('repository-has-no-ci-cd-settings')}</div>
         <div className="mt-2 text-[12px] leading-relaxed text-gk-dim">
-          {tj('Ищем файлы: <0>.gitlab-ci.yml</0>, <1>.github/workflows/*.yml</1>, <2>Jenkinsfile</2>, <3>bitbucket-pipelines.yml</3>, <4>.circleci/config.yml</4>, <5>azure-pipelines.yml</5> и другие.', [<span className="font-mono" />, <span className="font-mono" />, <span className="font-mono" />, <span className="font-mono" />, <span className="font-mono" />, <span className="font-mono" />])}</div>
+          {tj('looking-for-files-gitlab-ci', [<span className="font-mono" />, <span className="font-mono" />, <span className="font-mono" />, <span className="font-mono" />, <span className="font-mono" />, <span className="font-mono" />])}</div>
         <div className="mt-4 flex flex-wrap justify-center gap-2">
           <button onClick={() => onCreate('gitlab')} className="flex items-center gap-1.5 rounded-md bg-gk-green/15 px-3 py-1.5 text-[12px] text-gk-green hover:bg-gk-green/25">
-            {tj('{0} Создать .gitlab-ci.yml', [<Plus size={12} />])}</button>
+            {tj('create-gitlab-ci-yml', [<Plus size={12} />])}</button>
           <button onClick={() => onCreate('github')} className="flex items-center gap-1.5 rounded-md bg-gk-fg/5 px-3 py-1.5 text-[12px] text-gk-text hover:bg-gk-fg/10">
-            {tj('{0} Создать GitHub Actions', [<Plus size={12} />])}</button>
+            {tj('create-github-actions', [<Plus size={12} />])}</button>
           {gitlab && (
             <button onClick={onPipelines} className="rounded-md bg-gk-blue/15 px-3 py-1.5 text-[12px] text-gk-blue hover:bg-gk-blue/25">
-              {tj('Посмотреть пайплайны{0}', [providerLabel ? ` ${providerLabel}` : ''])}
+              {tj('view-pipelines', [providerLabel ? ` ${providerLabel}` : ''])}
             </button>
           )}
         </div>
@@ -1908,7 +1908,7 @@ function VariablesTable({ variables }: { variables: ViewVariable[] }) {
           <Variable size={11} className="mt-0.5 shrink-0 text-gk-dim" />
           <span className="w-[38%] max-w-40 shrink-0 font-mono text-[11.5px] text-gk-blue [overflow-wrap:anywhere]">{softBreaks(v.name)}</span>
           <span className="min-w-0 flex-1 break-words font-mono text-[11.5px] text-gk-text/85 [overflow-wrap:anywhere]">
-            {v.value === '' ? <span className="italic text-gk-dim">{tr('пусто')}</span> : softBreaks(v.value)}
+            {v.value === '' ? <span className="italic text-gk-dim">{tr('empty-2')}</span> : softBreaks(v.value)}
             {v.description && <span className="ml-1.5 font-sans text-[11px] text-gk-dim">— {v.description}</span>}
           </span>
         </div>

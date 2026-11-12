@@ -34,11 +34,11 @@ interface TitleBarProps {
 
 // Подписи — по-русски, ключи — имена меню в App (appMenus)
 const MENU: [string, string][] = [
-  ['File', tr('Файл')],
-  ['Edit', tr('Правка')],
-  ['View', tr('Вид')],
-  ['Actions', tr('Действия')],
-  ['Help', tr('Справка')],
+  ['File', tr('file-2')],
+  ['Edit', tr('edit')],
+  ['View', tr('view')],
+  ['Actions', tr('actions')],
+  ['Help', tr('help')],
 ];
 
 /**
@@ -97,8 +97,8 @@ export default function TitleBar({ tabs, activePath, loadingPath, onSelectTab, o
           />
         ))}
         <button
-          title={kb(tr('Новая вкладка (Ctrl+T)'))}
-          aria-label={tr('Новая вкладка')}
+          title={kb(tr('new-tab-ctrl-t'))}
+          aria-label={tr('new-tab')}
           onClick={onNewTab ?? onOpenRepository}
           className="app-no-drag mb-1 ml-1 flex h-6 w-6 shrink-0 items-center justify-center rounded text-gk-muted transition-colors hover:bg-gk-hover hover:text-gk-text"
         >
@@ -112,17 +112,17 @@ export default function TitleBar({ tabs, activePath, loadingPath, onSelectTab, o
 
       {/* Кнопки управления окном (Windows/Linux; на macOS — нативные) */}
       {!IS_MAC && <div className="app-no-drag flex" onDoubleClick={(e) => e.stopPropagation()}>
-        <WindowButton title={tr('Свернуть')} onClick={() => win?.minimize()}>
+        <WindowButton title={tr('minimize')} onClick={() => win?.minimize()}>
           <Minus size={15} strokeWidth={1.5} />
         </WindowButton>
-        <WindowButton title={maximized ? tr('Восстановить') : tr('Развернуть')} onClick={() => win?.toggleMaximize()}>
+        <WindowButton title={maximized ? tr('restore') : tr('maximize')} onClick={() => win?.toggleMaximize()}>
           {maximized ? (
             <Copy size={12} strokeWidth={1.5} className="-scale-x-100" />
           ) : (
             <Square size={12} strokeWidth={1.5} />
           )}
         </WindowButton>
-        <WindowButton title={tr('Закрыть')} danger onClick={() => win?.close()}>
+        <WindowButton title={tr('close')} danger onClick={() => win?.close()}>
           <X size={16} strokeWidth={1.5} />
         </WindowButton>
       </div>}
@@ -135,7 +135,7 @@ function Tab({ tab, active, loading, onSelect, onClose }: { tab: TabInfo; active
     <div
       role="tab"
       aria-selected={active}
-      title={tab.isNew ? tr('Новая вкладка — открыть, клонировать или создать репозиторий') : tab.path}
+      title={tab.isNew ? tr('new-tab-open-clone-or') : tab.path}
       onMouseDown={(e) => e.button === 0 && onSelect()}
       onAuxClick={(e) => {
         if (e.button === 1) {
@@ -158,7 +158,7 @@ function Tab({ tab, active, loading, onSelect, onClose }: { tab: TabInfo; active
       )}
       <span className={`truncate ${active ? 'font-medium' : ''}`}>{tab.name}</span>
       <button
-        title={kb(tr('Закрыть вкладку (Ctrl+W)'))}
+        title={kb(tr('close-tab-ctrl-w'))}
         onMouseDown={(e) => e.stopPropagation()}
         onClick={(e) => {
           e.stopPropagation();

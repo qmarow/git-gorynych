@@ -140,28 +140,28 @@ impl Ops {
         let pairs = self.editor.root_pairs();
         match pairs.iter().position(|pair| self.editor.key_of(*pair) == name) {
             Some(at) if self.editor.is_map(pairs[at].value) => Ok((at, pairs[at])),
-            _ => Err(self.error(ErrorCode::NotFound, self.t("Задание «{0}» не найдено в этом файле", &[&name]))),
+            _ => Err(self.error(ErrorCode::NotFound, self.t("job-not-found-in-this", &[&name]))),
         }
     }
 
     fn validate_name(&self, name: &str, is_job: bool) -> Result<String> {
         let trimmed = js::trim(name).to_owned();
-        let kind = if is_job { self.t("задание", &[]) } else { self.t("этап", &[]) };
+        let kind = if is_job { self.t("job-3", &[]) } else { self.t("stage", &[]) };
         if trimmed.is_empty() {
-            return Err(self.error(ErrorCode::InvalidName, self.t("Введите имя ({0})", &[&kind])));
+            return Err(self.error(ErrorCode::InvalidName, self.t("enter-name", &[&kind])));
         }
         if js::utf16_len(&trimmed) > MAX_NAME {
-            return Err(self.error(ErrorCode::InvalidName, self.t("Слишком длинное имя", &[])));
+            return Err(self.error(ErrorCode::InvalidName, self.t("name-is-too-long", &[])));
         }
         if trimmed.contains(['\n', '\r']) {
-            return Err(self.error(ErrorCode::InvalidName, self.t("Имя не может содержать перевод строки", &[])));
+            return Err(self.error(ErrorCode::InvalidName, self.t("name-cant-contain-line-break", &[])));
         }
         if is_job {
             if GITLAB_GLOBAL.contains(&trimmed.as_str()) {
-                return Err(self.error(ErrorCode::InvalidName, self.t("«{0}» — зарезервированное слово GitLab CI", &[&trimmed])));
+                return Err(self.error(ErrorCode::InvalidName, self.t("is-reserved-word-in-gitlab", &[&trimmed])));
             }
             if self.editor.root_pairs().iter().any(|pair| self.editor.key_of(*pair) == trimmed) {
-                return Err(self.error(ErrorCode::JobExists, self.t("Задание «{0}» уже есть", &[&trimmed])));
+                return Err(self.error(ErrorCode::JobExists, self.t("job-already-exists", &[&trimmed])));
             }
         }
         Ok(trimmed)
@@ -200,7 +200,7 @@ impl Ops {
         }
         let Some(pair) = self.stages_pair() else { return Ok(None) };
         if !matches!(self.editor.doc.node(pair.value).kind, NodeKind::Seq(_)) {
-            return Err(self.error(ErrorCode::YamlError, self.t("stages должен быть списком", &[])));
+            return Err(self.error(ErrorCode::YamlError, self.t("stages-must-be-list", &[])));
         }
         Ok(Some(pair))
     }
@@ -314,12 +314,12 @@ impl Ops {
                 .map(string_value)
                 .collect();
             if key == "script" && cleaned.is_empty() {
-                return Err(self.error(ErrorCode::BadArgs, self.t("У задания должен быть хотя бы один шаг script", &[])));
+                return Err(self.error(ErrorCode::BadArgs, self.t("job-must-have-at-least", &[])));
             }
             value = Value::Seq(cleaned);
         }
         if key == "when" && value.truthy() && !value.as_str().is_some_and(|when| WHEN_VALUES.contains(&when)) {
-            return Err(self.error(ErrorCode::BadArgs, self.t("Недопустимое значение when: {0}", &[&value.js_string()])));
+            return Err(self.error(ErrorCode::BadArgs, self.t("invalid-when-value", &[&value.js_string()])));
         }
         if key == "allow_failure" && !value.is_null() {
             value = Value::Bool(value.truthy());
@@ -398,7 +398,7 @@ impl Ops {
                 continue;
             }
             self.remove_reference(&reference)?;
-            let note = self.t("«{0}»: убрано из {1}", &[&reference.job, &reference.key]);
+            let note = self.t("removed-from", &[&reference.job, &reference.key]);
             if !notes.contains(&note) {
                 notes.push(note);
             }
@@ -446,7 +446,7 @@ impl Ops {
                 continue;
             }
             self.rename_reference(&reference, &name)?;
-            let note = self.t("«{0}»: обновлена ссылка в {1}", &[&reference.job, &reference.key]);
+            let note = self.t("reference-updated-in", &[&reference.job, &reference.key]);
             if !notes.contains(&note) {
                 notes.push(note);
             }
@@ -490,7 +490,7 @@ impl Ops {
         let mut notes = Vec::new();
         for (key, raw) in fields.iter() {
             if !EDITABLE_FIELDS.contains(&key.as_str()) {
-                return Err(self.error(ErrorCode::BadArgs, self.t("Поле {0} нельзя менять здесь", &[key])));
+                return Err(self.error(ErrorCode::BadArgs, self.t("field-cant-be-changed-here", &[key])));
             }
             let value = self.normalize_field(key, raw)?;
             if key == "stage"
@@ -501,7 +501,7 @@ impl Ops {
                 let text = value.as_str();
                 if !text.is_some_and(|text| names.iter().any(|name| name == text)) && text != Some(".pre") && text != Some(".post") {
                     self.push_stage(pair, &value)?;
-                    notes.push(self.t("Этап «{0}» добавлен в stages", &[&value.js_string()]));
+                    notes.push(self.t("stage-added-to-stages", &[&value.js_string()]));
                 }
             }
             // Правка `stages` могла сдвинуть пары: индекс не меняется, пока не создаётся новая
@@ -521,7 +521,7 @@ impl Ops {
         let name = self.validate_name(name, false)?;
         let pair = self.require_stages()?;
         if self.stage_names(Some(pair.value)).contains(&name) {
-            return Err(self.error(ErrorCode::StageExists, self.t("Этап «{0}» уже есть", &[&name])));
+            return Err(self.error(ErrorCode::StageExists, self.t("stage-already-exists", &[&name])));
         }
         let length = self.editor.items_of(pair.value).len();
         let at = index.filter(|index| index.fract() == 0.0 && index.is_finite()).map_or(length, |index| index.clamp(0.0, length as f64) as usize);
@@ -540,10 +540,10 @@ impl Ops {
         let pair = self.require_stages()?;
         let names = self.stage_names(Some(pair.value));
         let Some(index) = names.iter().position(|stage| stage == from) else {
-            return Err(self.error(ErrorCode::NotFound, self.t("Этап «{0}» не найден в stages", &[&from])));
+            return Err(self.error(ErrorCode::NotFound, self.t("stage-not-found-in-stages", &[&from])));
         };
         if names.contains(&name) {
-            return Err(self.error(ErrorCode::StageExists, self.t("Этап «{0}» уже есть", &[&name])));
+            return Err(self.error(ErrorCode::StageExists, self.t("stage-already-exists", &[&name])));
         }
         let key = self.editor.key_of(pair);
         let item = self.editor.items_of(pair.value)[index];
@@ -563,20 +563,20 @@ impl Ops {
                 moved += 1;
             }
         }
-        Ok(if moved > 0 { vec![self.t("Перенесено заданий: {0}", &[&moved])] } else { Vec::new() })
+        Ok(if moved > 0 { vec![self.t("jobs-moved", &[&moved])] } else { Vec::new() })
     }
 
     fn delete_stage(&mut self, name: &str) -> Result<Vec<String>> {
         let pair = self.require_stages()?;
         let Some(index) = self.stage_names(Some(pair.value)).iter().position(|stage| stage == name) else {
-            return Err(self.error(ErrorCode::NotFound, self.t("Этап «{0}» не найден в stages", &[&name])));
+            return Err(self.error(ErrorCode::NotFound, self.t("stage-not-found-in-stages", &[&name])));
         };
         let users: Vec<String> =
             self.job_pairs().into_iter().filter(|job| self.editor.stage_of(job.value) == name).map(|job| self.editor.key_of(job)).collect();
         if !users.is_empty() {
             return Err(self
-                .error(ErrorCode::StageNotEmpty, self.t("В этапе «{0}» есть задания: {1}", &[&name, &users.join(", ")]))
-                .with_hint(self.t("Сначала перенесите или удалите эти задания", &[])));
+                .error(ErrorCode::StageNotEmpty, self.t("stage-has-jobs", &[&name, &users.join(", ")]))
+                .with_hint(self.t("move-or-delete-these-jobs", &[])));
         }
         let key = self.editor.key_of(pair);
         self.tree_stages(&key)?.remove(index);
@@ -611,7 +611,7 @@ impl Ops {
             CiEditOp::RenameStage { from, to } => self.rename_stage(from, to),
             CiEditOp::DeleteStage { name } => self.delete_stage(name),
             CiEditOp::MoveStage { name, dir } => self.move_stage(name, *dir),
-            CiEditOp::Unknown => Err(self.error(ErrorCode::BadArgs, self.t("Неизвестная правка", &[]))),
+            CiEditOp::Unknown => Err(self.error(ErrorCode::BadArgs, self.t("unknown-edit", &[]))),
         }
     }
 }
@@ -641,20 +641,20 @@ fn normalize_rule(rule: &Value) -> Value {
 /// `applyEdit`.
 pub fn apply_edit(content: &str, op: &CiEditOp, language: Language) -> Result<CiEditResult> {
     if *op == CiEditOp::Unknown {
-        return Err(GorynychError::new(ErrorCode::BadArgs, i18n::tr(language, "Неизвестная правка", &[])));
+        return Err(GorynychError::new(ErrorCode::BadArgs, i18n::tr(language, "unknown-edit", &[])));
     }
     let text = content.replace("\r\n", "\n");
     let doc = Document::parse(&text);
     if !doc.errors().is_empty() {
         let details: Vec<&str> = doc.errors().iter().map(|error| error.message.as_str()).collect();
-        return Err(GorynychError::new(ErrorCode::YamlError, i18n::tr(language, "В файле есть ошибки YAML — сначала исправьте их во вкладке «Файл»", &[]))
+        return Err(GorynychError::new(ErrorCode::YamlError, i18n::tr(language, "file-has-yaml-errors-fix", &[]))
             .with_details(details.join("\n")));
     }
     if let Some(root) = doc.root()
         && !matches!(doc.node(root).kind, NodeKind::Map(_))
         && !doc.is_empty_document(&text)
     {
-        return Err(GorynychError::new(ErrorCode::YamlError, i18n::tr(language, "Файл должен быть словарём (key: value) на верхнем уровне", &[])));
+        return Err(GorynychError::new(ErrorCode::YamlError, i18n::tr(language, "file-must-be-mapping-key", &[])));
     }
     let indent_seq = indent_seq_of(&text);
     let mut ops = Ops { editor: Editor::new(text, doc, indent_seq, language), language };

@@ -820,7 +820,7 @@ impl Credentials {
             return Ok(());
         }
         let Some(kind) = ServerKind::parse(kind) else {
-            return Err(bad_args("Неизвестный тип сервера"));
+            return Err(bad_args("unknown-server-type"));
         };
         self.db.with(|conn| {
             // Облако не запоминаем: github.com и так GitHub
@@ -966,14 +966,14 @@ impl Credentials {
         let _guard = self.lock();
         let target = parse_target(url);
         let Some(host) = target.host.as_deref() else {
-            return Err(bad_args("Для локального адреса учётные данные не нужны"));
+            return Err(bad_args("no-credentials-are-needed-for"));
         };
         let Some(method) = data.method.as_deref().and_then(AuthMethod::parse) else {
-            return Err(bad_args("Не выбран способ входа"));
+            return Err(bad_args("no-sign-in-method-selected"));
         };
         if method != AuthMethod::Ssh && target.protocol != RemoteProtocol::Https {
-            return Err(bad_args("Логин/пароль и токен работают только для адресов https://")
-                .with_hint(t("Адрес remote — SSH. Выберите вкладку «SSH-ключ» или смените адрес remote на https://.", &[])));
+            return Err(bad_args("username-password-and-token-work")
+                .with_hint(t("remote-address-is-ssh-choose", &[])));
         }
         // `http://` разбирается как HTTPS-адрес (1.x так же), но пароль по нему ушёл бы открытым текстом.
         // Отличие от 1.x: там такой вход сохранялся. Уже сохранённые входы продолжают работать.
@@ -982,12 +982,12 @@ impl Credentials {
             name == "localhost" || name.ends_with(".localhost") || name == "[::1]" || name.parse::<std::net::Ipv4Addr>().is_ok_and(|ip| ip.is_loopback())
         });
         if method != AuthMethod::Ssh && target.scheme.as_deref() == Some("http") && !loopback {
-            return Err(bad_args("По адресу http:// пароль и токен передаются открытым текстом")
-                .with_hint(t("Смените адрес remote на https:// или войдите SSH-ключом.", &[])));
+            return Err(bad_args("over-http-password-or-token")
+                .with_hint(t("change-remote-address-to-https", &[])));
         }
         if method == AuthMethod::Ssh && target.protocol != RemoteProtocol::Ssh {
-            return Err(bad_args("SSH-ключ работает только для адресов SSH (git@host:… или ssh://…)")
-                .with_hint(t("Адрес remote — https://. Войдите логином и паролем или токеном, либо смените адрес remote на SSH.", &[])));
+            return Err(bad_args("ssh-key-works-only-for")
+                .with_hint(t("remote-address-is-https-sign", &[])));
         }
         // Тип сервера, выбранный в окне входа, — до логина по умолчанию: он от типа зависит
         if let Some(kind) = data.kind.as_deref().filter(|kind| ServerKind::parse(kind).is_some()) {
@@ -995,7 +995,7 @@ impl Credentials {
             self.set_server_locked(target.hostname.as_deref().unwrap_or_default(), kind, base.as_deref())?;
         }
         let Some(key) = repo_key_of(url) else {
-            return Err(bad_args("Укажите адрес репозитория").with_hint(t("Например: https://gitlab.com/group/project.git", &[])));
+            return Err(bad_args("specify-repository-address").with_hint(t("for-example-https-gitlab-com", &[])));
         };
 
         let store = read_store(&self.db)?;
@@ -1020,16 +1020,16 @@ impl Credentials {
                     ""
                 };
                 if name.is_empty() {
-                    return Err(bad_args("Введите имя пользователя"));
+                    return Err(bad_args("enter-username"));
                 }
                 let secret = data.secret.as_deref().unwrap_or_default();
                 let prev_secret = prev.and_then(|entry| entry.secret.clone());
                 if secret.is_empty() && prev_secret.is_none() {
-                    let message = if method == AuthMethod::Token { "Введите токен" } else { "Введите пароль" };
+                    let message = if method == AuthMethod::Token { "enter-token" } else { "enter-password" };
                     return Err(bad_args(message));
                 }
                 if name.contains(['\r', '\n']) || secret.contains(['\r', '\n']) {
-                    return Err(bad_args("Перевод строки в логине или пароле недопустим"));
+                    return Err(bad_args("line-break-in-username-or"));
                 }
                 username = Some(name.to_owned());
                 if secret.is_empty() {
@@ -1041,13 +1041,13 @@ impl Credentials {
             AuthMethod::Ssh => {
                 let path = js::trim(data.key_path.as_deref().unwrap_or_default());
                 if path.is_empty() {
-                    return Err(bad_args("Выберите файл приватного ключа"));
+                    return Err(bad_args("choose-private-key-file"));
                 }
                 if !std::path::Path::new(path).exists() {
-                    return Err(bad_args("Файл ключа не найден").with_hint(path));
+                    return Err(bad_args("key-file-not-found").with_hint(path));
                 }
                 if path.ends_with(".pub") {
-                    return Err(bad_args("Это публичный ключ (.pub) — выберите приватный, без расширения"));
+                    return Err(bad_args("this-is-public-key-pub"));
                 }
                 key_path = Some(path.to_owned());
                 let passphrase = data.passphrase.as_deref().unwrap_or_default();
@@ -1064,7 +1064,7 @@ impl Credentials {
             let api_token = js::trim(data.api_token.as_deref().unwrap_or_default());
             if !api_token.is_empty() {
                 if api_token.contains(js::is_whitespace) {
-                    return Err(bad_args("В токене для пайплайнов не должно быть пробелов"));
+                    return Err(bad_args("pipeline-token-must-not-contain"));
                 }
                 new_api_token = Some(api_token);
             } else if !data.clear_api_token {

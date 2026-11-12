@@ -108,7 +108,7 @@ export default function CloneDialog({ onClose, onCloned, onAuth }: CloneDialogPr
   };
 
   const chooseParent = async () => {
-    const dir = await api!.repo.openDialog(t('Куда сохранить репозиторий'));
+    const dir = await api!.repo.openDialog(t('where-to-save-repository'));
     if (dir) setParent(dir);
   };
 
@@ -117,7 +117,7 @@ export default function CloneDialog({ onClose, onCloned, onAuth }: CloneDialogPr
     setError(null);
     const id = `clone-${Date.now()}`;
     jobId.current = id;
-    setJob({ id, phase: t('Подключение'), percent: 0 });
+    setJob({ id, phase: t('connection'), percent: 0 });
     try {
       localStorage.setItem('clone.parent', parent);
     } catch {
@@ -151,7 +151,7 @@ export default function CloneDialog({ onClose, onCloned, onAuth }: CloneDialogPr
 
   return (
     <Modal
-      title={t('Клонировать репозиторий')}
+      title={t('clone-repository-2')}
       icon={CloudDownload}
       iconClass="text-gk-blue"
       onClose={running ? () => {} : onClose}
@@ -159,16 +159,16 @@ export default function CloneDialog({ onClose, onCloned, onAuth }: CloneDialogPr
       footer={
         <div className="flex w-full items-center gap-3">
           <span className="min-w-0 flex-1 truncate text-[11px] text-gk-dim" title={targetPath}>
-            {running ? '' : !probeData ? t('Вставьте адрес и нажмите «Проверить»') : targetPath ? `→ ${targetPath}` : t('Выберите папку')}
+            {running ? '' : !probeData ? t('paste-address-and-click-check') : targetPath ? `→ ${targetPath}` : t('choose-folder')}
           </span>
           {running ? (
             <Button onClick={cancel}>
-              {tj('{0} Отменить', [<X size={13} />])}</Button>
+              {tj('cancel-2', [<X size={13} />])}</Button>
           ) : (
             <>
-              <Button onClick={onClose}>{t('Закрыть')}</Button>
+              <Button onClick={onClose}>{t('close')}</Button>
               <Button variant="primary" onClick={start} disabled={!canStart}>
-                {tj('{0} Клонировать', [<CloudDownload size={14} />])}</Button>
+                {tj('clone', [<CloudDownload size={14} />])}</Button>
             </>
           )}
         </div>
@@ -191,10 +191,10 @@ export default function CloneDialog({ onClose, onCloned, onAuth }: CloneDialogPr
           className="min-w-0 flex-1 rounded bg-gk-bg px-3 py-2 font-mono text-[12px] outline-none ring-1 ring-gk-border placeholder:text-gk-dim focus:ring-gk-blue"
         />
         <Button variant="blue" onClick={runProbe} disabled={!url.trim() || probe.status === 'loading' || running}>
-          {tj('{0}Проверить', [probe.status === 'loading' ? <Loader2 size={13} className="animate-spin" /> : <RefreshCw size={13} />])}</Button>
+          {tj('check-2', [probe.status === 'loading' ? <Loader2 size={13} className="animate-spin" /> : <RefreshCw size={13} />])}</Button>
       </div>
       <p className="ml-6 text-[11px] text-gk-dim">
-        {t('HTTPS или SSH-адрес из кнопки «Code» / «Clone» на странице проекта. Если репозиторий приватный, появится окно входа.')}</p>
+        {t('https-or-ssh-address-from')}</p>
 
       {probe.status === 'error' && probe.url === url.trim() && <ErrorBox error={probe.error} />}
       {onAuth && ((probe.status === 'error' && probe.url === url.trim() && probe.error.code === 'AUTH') || error?.code === 'AUTH') && (
@@ -202,13 +202,13 @@ export default function CloneDialog({ onClose, onCloned, onAuth }: CloneDialogPr
           onClick={() => (error?.code === 'AUTH' ? onAuth!(url.trim(), error, start) : onAuth!(url.trim(), (probe as { error?: ApiError }).error, retryProbe(url.trim())))}
           data-testid="clone-auth"
         >
-          {tj('{0} Ввести учётные данные', [<KeyRound size={13} />])}</Button>
+          {tj('enter-credentials', [<KeyRound size={13} />])}</Button>
       )}
 
       {probeData && (
         <div className="ml-6 flex flex-wrap items-center gap-x-4 gap-y-2 rounded-lg bg-gk-fg/[0.04] p-3 text-xs ring-1 ring-gk-border">
-          {tj('<0>{1} Доступ есть{2}</0>{3}', [<span className="flex items-center gap-1.5 text-gk-green" />, <Check size={14} />, probeData.host ? ` · ${probeData.host}` : '', probeData.empty ? (
-            <span className="text-gk-muted">{t('Репозиторий пустой — склонируется без файлов')}</span>
+          {tj('access-granted', [<span className="flex items-center gap-1.5 text-gk-green" />, <Check size={14} />, probeData.host ? ` · ${probeData.host}` : '', probeData.empty ? (
+            <span className="text-gk-muted">{t('repository-is-empty-it-will')}</span>
           ) : (
             <span className="flex items-center gap-2 text-gk-text">
               <GitBranch size={13} className="text-gk-muted" />
@@ -221,12 +221,12 @@ export default function CloneDialog({ onClose, onCloned, onAuth }: CloneDialogPr
                 {probeData.branches.map((b) => (
                   <option key={b.name} value={b.name}>
                     {b.name}
-                    {b.name === probeData.defaultBranch ? t(' (по умолчанию)') : ''}
+                    {b.name === probeData.defaultBranch ? t('default-2') : ''}
                   </option>
                 ))}
               </select>
               <span className="text-gk-dim">
-                {probeData.branches.length} {probeData.branches.length === 1 ? t('ветка') : t('веток')}
+                {probeData.branches.length} {probeData.branches.length === 1 ? t('branch-5') : t('branches')}
               </span>
             </span>
           )])}
@@ -235,7 +235,7 @@ export default function CloneDialog({ onClose, onCloned, onAuth }: CloneDialogPr
 
       {/* Куда */}
       <div className="space-y-2 pt-1">
-        <div className="text-[11px] font-semibold uppercase tracking-wider text-gk-dim">{t('Куда')}</div>
+        <div className="text-[11px] font-semibold uppercase tracking-wider text-gk-dim">{t('where')}</div>
         <div className="flex items-center gap-2">
           <FolderOpen size={16} className="shrink-0 text-gk-muted" />
           <button
@@ -244,7 +244,7 @@ export default function CloneDialog({ onClose, onCloned, onAuth }: CloneDialogPr
             className="min-w-0 flex-1 truncate rounded bg-gk-bg px-3 py-2 text-left font-mono text-[12px] ring-1 ring-gk-border hover:ring-gk-blue disabled:opacity-60"
             title={parent}
           >
-            {parent || <span className="text-gk-dim">{t('Выберите папку…')}</span>}
+            {parent || <span className="text-gk-dim">{t('choose-folder-2')}</span>}
           </button>
           <span className="text-gk-dim">{sep}</span>
           <input
@@ -254,12 +254,12 @@ export default function CloneDialog({ onClose, onCloned, onAuth }: CloneDialogPr
               setNameTouched(true);
               setName(e.target.value);
             }}
-            placeholder={t('имя-папки')}
+            placeholder={t('folder-name')}
             className="w-44 rounded bg-gk-bg px-3 py-2 font-mono text-[12px] outline-none ring-1 ring-gk-border focus:ring-gk-blue"
           />
         </div>
         <label className="ml-6 flex cursor-pointer items-center gap-2 text-xs text-gk-muted">
-          {tj('{0}Только последние 50 коммитов — быстрее для больших репозиториев', [<input type="checkbox" checked={shallow} disabled={running} onChange={(e) => setShallow(e.target.checked)} className="accent-gk-green" />])}</label>
+          {tj('only-last-50-commits-faster', [<input type="checkbox" checked={shallow} disabled={running} onChange={(e) => setShallow(e.target.checked)} className="accent-gk-green" />])}</label>
       </div>
 
       {/* Прогресс */}
@@ -269,7 +269,7 @@ export default function CloneDialog({ onClose, onCloned, onAuth }: CloneDialogPr
             <span className="flex items-center gap-2 text-gk-text">
               <Loader2 size={13} className="animate-spin text-gk-blue" />
               {job.phase}
-              {job.phasePercent != null && job.phase !== t('Подключение') && <span className="text-gk-dim">{job.phasePercent}%</span>}
+              {job.phasePercent != null && job.phase !== t('connection') && <span className="text-gk-dim">{job.phasePercent}%</span>}
             </span>
             <span className="font-mono text-[11px] text-gk-muted">
               {[job.size, job.speed].filter(Boolean).join(' · ')}

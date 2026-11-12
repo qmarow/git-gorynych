@@ -42,9 +42,9 @@ fn same_component(a: &Component<'_>, b: &Component<'_>) -> bool {
 pub fn safe_relative(root: &Path, rel: &str, language: Language) -> Result<PathBuf> {
     let relative = Path::new(rel);
     if rel.is_empty() || relative.is_absolute() || relative.has_root() {
-        return Err(GorynychError::new(ErrorCode::BadArgs, i18n::tr(language, "Некорректный путь", &[])));
+        return Err(GorynychError::new(ErrorCode::BadArgs, i18n::tr(language, "invalid-path", &[])));
     }
-    let outside = || GorynychError::new(ErrorCode::BadArgs, i18n::tr(language, "Путь вне репозитория", &[]));
+    let outside = || GorynychError::new(ErrorCode::BadArgs, i18n::tr(language, "path-is-outside-repository", &[]));
     if matches!(relative.components().next(), Some(Component::Prefix(_))) {
         return Err(outside());
     }

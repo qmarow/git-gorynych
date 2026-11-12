@@ -1,7 +1,8 @@
-//! Локализация. Перенос `electron/i18n.cjs`.
+//! Локализация. Перенос `electron/i18n.cjs`; сообщения — Fluent, `i18n/{ru,en}/main.ftl` (интерфейс — `ui.ftl` там же).
 //!
 //! # Конспект исходника
-//! - Языки только `ru`/`en`, по умолчанию `ru`. Ключ — русский текст; `en.json` — плоский словарь.
+//! - Языки только `ru`/`en`, по умолчанию `ru`. Ключ — русский текст; `en.json` — плоский словарь
+//!   (в 2.0 — семантический ключ Fluent, см. ниже).
 //! - `t(msg, ...args)`: для `ru` — сам ключ, для `en` — `dict[msg] ?? msg`. Без аргументов подстановки нет.
 //!   С аргументами `/\{(\d+)\}/g`: индекс вне диапазона оставляет `{N}` как есть, `null`/`undefined` → ''
 //!   (здесь вызывающий передаёт `""`). Подстановка однопроходная: `{1}` внутри аргумента не раскрывается.
@@ -15,7 +16,11 @@
 //! - Функции с явным языком ([`translate`], [`tr`], [`fluent_message`]) не зависят от глобального состояния.
 //!   Глобальные [`t`] и [`language`] работают поверх экземпляра [`I18n`].
 //!
-//! Fluent (`i18n/{ru,en}/main.ftl`) — цель постепенного перехода на семантические ключи.
+//! - Ключ — семантический идентификатор Fluent (`t("branch-already-exists", &[&name])`), а не русский текст.
+//!   Аргументы по порядку — переменные `{ $a0 }`, `{ $a1 }`… Подстановка прежняя: каждое сообщение один раз
+//!   раскрывается Fluent с аргументами «{0}», «{1}»… (шаблон кэшируется), дальше [`format_message`] заменяет их
+//!   значениями. Поэтому поведение 1.x (однопроходная подстановка, «{N}» без аргумента остаётся) сохранено.
+//! - Нет английского сообщения — русское; нет ключа ни в одном языке — сам ключ (как `dict[msg] ?? msg` в 1.x).
 
 use std::borrow::Cow;
 use std::collections::HashMap;
@@ -63,20 +68,16 @@ impl Language {
     }
 }
 
-static EN_DICT: LazyLock<HashMap<String, String>> = LazyLock::new(|| {
-    serde_json::from_str(include_str!("../../../electron/i18n/en.json"))
-        .expect("electron/i18n/en.json — плоский словарь строк")
-});
-
 static PLACEHOLDER: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"\{([0-9]+)\}").expect("корректное регулярное выражение"));
 
-/// Перевод по русскому ключу, без подстановки аргументов.
+/// Шаблон сообщения по ключу (аргументы — «{0}», «{1}»…), без подстановки значений.
 pub fn translate(language: Language, msg: &str) -> &str {
-    match language {
-        Language::Ru => msg,
-        Language::En => EN_DICT.get(msg).map_or(msg, String::as_str),
-    }
+    let found = match language {
+        Language::Ru => None,
+        Language::En => TEMPLATES_EN.get(msg),
+    };
+    found.or_else(|| TEMPLATES_RU.get(msg)).map_or(msg, String::as_str)
 }
 
 /// Подставляет аргументы в `{N}`. Без аргументов шаблон возвращается как есть.
@@ -217,6 +218,49 @@ static FLUENT_RU: LazyLock<Bundle> =
     LazyLock::new(|| bundle("ru", include_str!("../i18n/ru/main.ftl")));
 static FLUENT_EN: LazyLock<Bundle> =
     LazyLock::new(|| bundle("en", include_str!("../i18n/en/main.ftl")));
+
+/// Наибольший номер аргумента в сообщениях (`$a0`…). Сообщение с большим номером не пройдёт тест каталога.
+const MAX_ARGS: usize = 30;
+
+/// Все сообщения языка, раскрытые с аргументами «{0}», «{1}»…: ключ → шаблон для [`format_message`].
+fn templates(bundle: &Bundle, source: &'static str) -> HashMap<String, String> {
+    let names: Vec<String> = (0..MAX_ARGS).map(|i| format!("a{i}")).collect();
+    let values: Vec<String> = (0..MAX_ARGS).map(|i| format!("{{{i}}}")).collect();
+    let mut args = FluentArgs::new();
+    for (name, value) in names.iter().zip(&values) {
+        args.set(name.as_str(), value.as_str());
+    }
+    let resource = FluentResource::try_new(source.to_owned()).unwrap_or_else(|(_, errors)| panic!("ошибка в main.ftl: {errors:?}"));
+    let mut out = HashMap::new();
+    for entry in resource.entries() {
+        let fluent_syntax::ast::Entry::Message(message) = entry else { continue };
+        let id = message.id.name;
+        let Some(pattern) = bundle.get_message(id).and_then(|m| m.value()) else { continue };
+        let mut errors = Vec::new();
+        let text = bundle.format_pattern(pattern, Some(&args), &mut errors);
+        out.insert(id.to_owned(), text.into_owned());
+    }
+    out
+}
+
+static TEMPLATES_RU: LazyLock<HashMap<String, String>> =
+    LazyLock::new(|| templates(&FLUENT_RU, include_str!("../i18n/ru/main.ftl")));
+static TEMPLATES_EN: LazyLock<HashMap<String, String>> =
+    LazyLock::new(|| templates(&FLUENT_EN, include_str!("../i18n/en/main.ftl")));
+
+/// Ключи сообщений языка (для проверок каталога).
+pub fn message_ids(language: Language) -> impl Iterator<Item = &'static str> {
+    let map: &'static HashMap<String, String> = match language {
+        Language::Ru => &TEMPLATES_RU,
+        Language::En => &TEMPLATES_EN,
+    };
+    map.keys().map(String::as_str)
+}
+
+/// Есть ли сообщение с таким ключом (на русском — значит, вообще).
+pub fn has_message(id: &str) -> bool {
+    TEMPLATES_RU.contains_key(id)
+}
 
 /// Сообщение Fluent по семантическому ключу; `None`, если ключа нет или он без значения.
 pub fn fluent_message(language: Language, id: &str, args: &[(&str, &str)]) -> Option<String> {

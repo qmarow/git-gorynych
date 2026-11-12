@@ -122,12 +122,12 @@ export default function FileView({ repoPath, view, hidden, onChange, onClose, on
         </div>
         <div className="flex shrink-0 overflow-hidden rounded-md ring-1 ring-gk-border">
           <ModeTab active={mode === 'history'} onClick={() => onChange({ mode: 'history' })} icon={History} testid="fv-tab-history">
-            {tr('История файла')}</ModeTab>
+            {tr('file-history')}</ModeTab>
           <ModeTab active={mode === 'blame'} onClick={() => onChange({ mode: 'blame' })} icon={FileUser} testid="fv-tab-blame">
             Blame
           </ModeTab>
         </div>
-        <button onClick={onClose} title={tr('Закрыть (Esc)')} aria-label={tr('Закрыть')} className="rounded p-1 text-gk-muted hover:bg-gk-hover hover:text-gk-text">
+        <button onClick={onClose} title={tr('close-esc')} aria-label={tr('close')} className="rounded p-1 text-gk-muted hover:bg-gk-hover hover:text-gk-text">
           <X size={15} />
         </button>
       </div>
@@ -281,12 +281,12 @@ function HistoryMode({ repoPath, view, onChange, onClose, onLocate, onRestore, h
   if (state.loading) {
     return (
       <Center>
-        {tj('{0} Читаем историю файла…', [<Loader2 size={15} className="animate-spin" />])}</Center>
+        {tj('reading-file-history', [<Loader2 size={15} className="animate-spin" />])}</Center>
     );
   }
   if (state.error) return <Center className="text-gk-red">{state.error.message}</Center>;
   if (!commits.length) {
-    return <Center>{tj('У файла ещё нет истории: он не закоммичен{0}.', [view.rev ? tr(' в этой версии') : ''])}</Center>;
+    return <Center>{tj('file-has-no-history-yet', [view.rev ? tr('in-this-version') : ''])}</Center>;
   }
 
   const restoreTarget = (newer ?? cur)!;
@@ -298,12 +298,12 @@ function HistoryMode({ repoPath, view, onChange, onClose, onLocate, onRestore, h
           <div className="flex items-center gap-1.5">
             <span data-testid="fh-count">
               {commits.length}
-              {state.data!.truncated ? '+' : ''} {plural(commits.length, tr('коммит'), tr('коммита'), tr('коммитов'))}
+              {state.data!.truncated ? '+' : ''} {plural(commits.length, tr('commit'), tr('commits'), tr('commits-2'))}
             </span>
-            {state.data!.renamed && <span className="rounded bg-gk-purple/15 px-1.5 text-[10.5px] text-gk-purple">{tr('с переименованиями')}</span>}
-            {view.rev && <span className="truncate text-gk-dim">{tj('до {0}', [short(view.rev)])}</span>}
+            {state.data!.renamed && <span className="rounded bg-gk-purple/15 px-1.5 text-[10.5px] text-gk-purple">{tr('with-renames')}</span>}
+            {view.rev && <span className="truncate text-gk-dim">{tj('up-to', [short(view.rev)])}</span>}
           </div>
-          <div className="mt-0.5 text-[11px] text-gk-dim">{kb(tr('Ctrl+клик — вторая версия для сравнения'))}</div>
+          <div className="mt-0.5 text-[11px] text-gk-dim">{kb(tr('ctrl-click-second-version-to'))}</div>
         </div>
         <div ref={listRef} className="min-h-0 flex-1 overflow-y-auto py-1" data-testid="fh-list">
           {commits.map((c, i) => {
@@ -351,7 +351,7 @@ function HistoryMode({ repoPath, view, onChange, onClose, onLocate, onRestore, h
                       e.stopPropagation();
                       onLocate(c.hash);
                     }}
-                    title={tr('Показать коммит в графе')}
+                    title={tr('show-commit-in-graph')}
                     className="ml-auto shrink-0 font-mono text-gk-blue/80 hover:text-gk-blue hover:underline"
                   >
                     {short(c.hash)}
@@ -359,7 +359,7 @@ function HistoryMode({ repoPath, view, onChange, onClose, onLocate, onRestore, h
                 </div>
                 {c.status !== 'M' && (
                   <div className="mt-0.5 truncate text-[10.5px]" style={{ color: readable(st.color) }} title={c.oldPath ? `${c.oldPath} → ${c.path}` : c.path}>
-                    {c.status === 'A' ? tr('файл создан') : c.status === 'D' ? tr('файл удалён') : c.status === 'R' ? tr('переименован из {0}', c.oldPath) : tr('скопирован из {0}', c.oldPath)}
+                    {c.status === 'A' ? tr('file-created') : c.status === 'D' ? tr('file-deleted') : c.status === 'R' ? tr('renamed-from', c.oldPath) : tr('copied-from', c.oldPath)}
                   </div>
                 )}
                 {i !== sel && (
@@ -369,7 +369,7 @@ function HistoryMode({ repoPath, view, onChange, onClose, onLocate, onRestore, h
                       setCmp(i === cmp ? null : i);
                     }}
                     data-testid="fh-compare"
-                    title={i === cmp ? tr('Убрать из сравнения') : tr('Сравнить эту версию с выбранной')}
+                    title={i === cmp ? tr('remove-from-comparison') : tr('compare-this-version-with-selected')}
                     className={`absolute right-1.5 top-1.5 hidden rounded bg-gk-panel p-0.5 ring-1 ring-gk-border group-hover:block ${i === cmp ? 'text-gk-purple' : 'text-gk-muted hover:text-gk-text'}`}
                   >
                     <GitCompareArrows size={12} />
@@ -378,7 +378,7 @@ function HistoryMode({ repoPath, view, onChange, onClose, onLocate, onRestore, h
               </div>
             );
           })}
-          {state.data!.truncated && <div className="px-3 py-2 text-[11px] text-gk-dim">{tj('Показаны последние {0} коммитов', [commits.length])}</div>}
+          {state.data!.truncated && <div className="px-3 py-2 text-[11px] text-gk-dim">{tj('showing-last-commits', [commits.length])}</div>}
         </div>
       </aside>
 
@@ -386,8 +386,8 @@ function HistoryMode({ repoPath, view, onChange, onClose, onLocate, onRestore, h
       <div className="flex min-w-0 flex-1 flex-col">
         {older && (
           <div data-testid="fh-compare-bar" className="flex shrink-0 items-center gap-2 border-b border-gk-border bg-gk-purple/[0.07] px-3 py-1.5 text-[12px] text-gk-muted">
-            {tj('{0}Сравнение версий: <1>A {2}</1> → <3>B {4}</3><5>({6} → {7})</5>{8}', [<GitCompareArrows size={13} className="text-gk-purple" />, <span className="font-mono text-gk-text" />, short(older.hash), <span className="font-mono text-gk-text" />, short(newer!.hash), <span className="truncate text-gk-dim" />, relativeTime(older.date), relativeTime(newer!.date), <button onClick={() => setCmp(null)} className="ml-auto text-gk-blue hover:underline">
-              {tr('Обычный режим')}</button>])}
+            {tj('version-comparison-b', [<GitCompareArrows size={13} className="text-gk-purple" />, <span className="font-mono text-gk-text" />, short(older.hash), <span className="font-mono text-gk-text" />, short(newer!.hash), <span className="truncate text-gk-dim" />, relativeTime(older.date), relativeTime(newer!.date), <button onClick={() => setCmp(null)} className="ml-auto text-gk-blue hover:underline">
+              {tr('normal-mode')}</button>])}
           </div>
         )}
         {target && !hidden && (
@@ -407,15 +407,15 @@ function HistoryMode({ repoPath, view, onChange, onClose, onLocate, onRestore, h
             onClose={onClose}
             fileActions={[
               {
-                label: older ? tr('Восстановить версию B') : tr('Восстановить файл к этой версии'),
+                label: older ? tr('restore-version-b') : tr('restore-file-to-this-version'),
                 icon: RotateCcw,
-                title: tr('Файл {0} в рабочей папке станет таким, как в коммите {1}{2}. Коммит не создаётся, Undo вернёт.', view.path, short(restoreTarget.hash), restoreTarget.path !== view.path ? tr(' (тогда он назывался {0})', restoreTarget.path) : ''),
+                title: tr('file-in-working-folder-will-become-as', view.path, short(restoreTarget.hash), restoreTarget.path !== view.path ? tr('it-was-called-then', restoreTarget.path) : ''),
                 onClick: () => onRestore(restoreTarget),
               },
               {
-                label: tr('Blame этой версии'),
+                label: tr('blame-this-version'),
                 icon: FileUser,
-                title: tr('Кто и когда менял строки — в версии {0}', short(restoreTarget.hash)),
+                title: tr('who-changed-lines-and-when', short(restoreTarget.hash)),
                 onClick: () =>
                   onChange(
                     restoreTarget.status === 'D'
@@ -555,13 +555,13 @@ function BlameMode({ repoPath, view, onChange, onClose, onLocate, isLoaded, hidd
   const locate = (sha: string) => {
     if (/^0+$/.test(sha)) return;
     if (isLoaded && !isLoaded(sha)) {
-      notify?.({ type: 'info', title: tr('Коммита {0} нет в загруженной истории графа', short(sha)), hint: tr('Он старше загруженных коммитов или в другой ветке — сделайте Fetch или увеличьте историю') });
+      notify?.({ type: 'info', title: tr('commit-isnt-in-graphs-loaded', short(sha)), hint: tr('its-older-than-loaded-commits') });
       return;
     }
     onLocate(sha);
   };
 
-  const revLabel = rev == null ? tr('рабочая папка (с незакоммиченными строками)') : rev === 'HEAD' ? 'HEAD' : tr('версия {0}', short(rev));
+  const revLabel = rev == null ? tr('working-folder-with-uncommitted-lines') : rev === 'HEAD' ? 'HEAD' : tr('version-2', short(rev));
   const popCommit = pop ? data?.commits?.[pop.sha] : null;
   const popInfo = pop ? infos[pop.sha] : null;
 
@@ -569,16 +569,16 @@ function BlameMode({ repoPath, view, onChange, onClose, onLocate, isLoaded, hidd
     <div className="flex min-h-0 flex-1 flex-col">
       {/* Панель: версия, пробелы, назад */}
       <div className="flex shrink-0 items-center gap-2 border-b border-gk-border bg-gk-panel/60 px-3 py-1.5 text-[12px] text-gk-muted">
-        {tj('{0}<1>Blame: <2>{3}</2>{4}</1>{5}{6}{7}{8}<9>старые{10}свежие</9>{11}{12}', [stack.length > 0 && (
-          <button onClick={back} data-testid="blame-back" title={tr('Назад к предыдущему blame (Esc)')} className="flex items-center gap-1 rounded px-1.5 py-0.5 text-gk-blue hover:bg-gk-hover">
-            {tj('{0} Назад', [<ArrowLeft size={13} />])}</button>
-        ), <span data-testid="blame-rev" className="min-w-0 truncate" title={file !== view.path ? tr('{0} · тогда файл назывался {1}', revLabel, file) : revLabel} />, <span className="font-mono text-gk-text" />, revLabel, file !== view.path && <span className="text-gk-dim"> {tj(' · тогда файл назывался {0}', [file])}</span>, stack.length > 0 && <span className="shrink-0 text-gk-dim">{tj('· глубина {0}', [stack.length])}</span>, (rev !== 'HEAD' || stack.length > 0) && (
+        {tj('blame-old-recent', [stack.length > 0 && (
+          <button onClick={back} data-testid="blame-back" title={tr('back-to-previous-blame-esc')} className="flex items-center gap-1 rounded px-1.5 py-0.5 text-gk-blue hover:bg-gk-hover">
+            {tj('back', [<ArrowLeft size={13} />])}</button>
+        ), <span data-testid="blame-rev" className="min-w-0 truncate" title={file !== view.path ? tr('file-was-called-then', revLabel, file) : revLabel} />, <span className="font-mono text-gk-text" />, revLabel, file !== view.path && <span className="text-gk-dim"> {tj('file-was-called-then-2', [file])}</span>, stack.length > 0 && <span className="shrink-0 text-gk-dim">{tj('depth', [stack.length])}</span>, (rev !== 'HEAD' || stack.length > 0) && (
           <button onClick={() => onChange({ blameRev: 'HEAD', blamePath: null, blameStack: [] })} className="shrink-0 text-gk-blue hover:underline">
-            {tr('к HEAD')}</button>
+            {tr('to-head')}</button>
         ), rev === 'HEAD' && !stack.length && (
-          <button onClick={() => onChange({ blameRev: null, blamePath: null })} className="shrink-0 text-gk-blue hover:underline" title={tr('С незакоммиченными изменениями')}>
-            {tr('рабочая папка')}</button>
-        ), <div className="flex-1" />, <span className="hidden shrink-0 items-center gap-1 text-[11px] text-gk-dim md:flex" title={tr('Тепловая карта: чем свежее изменение, тем ярче полоса')} />, <span className="h-2 w-16 rounded-full" style={{ background: 'linear-gradient(90deg, color-mix(in srgb, var(--color-gk-yellow) 12%, transparent), var(--color-gk-yellow))' }} />, <button
+          <button onClick={() => onChange({ blameRev: null, blamePath: null })} className="shrink-0 text-gk-blue hover:underline" title={tr('with-uncommitted-changes')}>
+            {tr('working-folder')}</button>
+        ), <div className="flex-1" />, <span className="hidden shrink-0 items-center gap-1 text-[11px] text-gk-dim md:flex" title={tr('heat-map-more-recent-change')} />, <span className="h-2 w-16 rounded-full" style={{ background: 'linear-gradient(90deg, color-mix(in srgb, var(--color-gk-yellow) 12%, transparent), var(--color-gk-yellow))' }} />, <button
           onClick={() =>
             setIgnoreWs((v) => {
               writePref('blameIgnoreWs', v ? '0' : '1');
@@ -587,15 +587,15 @@ function BlameMode({ repoPath, view, onChange, onClose, onLocate, isLoaded, hidd
           }
           data-testid="blame-ws"
           aria-pressed={ignoreWs}
-          title={tr('Игнорировать пробелы (git blame -w): правки только в отступах не считаются изменением строки')}
+          title={tr('ignore-whitespace-git-blame-w')}
           className={`flex shrink-0 items-center gap-1 rounded px-2 py-0.5 ring-1 transition-colors ${ignoreWs ? 'bg-gk-blue/15 text-gk-blue ring-gk-blue/40' : 'ring-gk-border hover:text-gk-text'}`}
         >
-          {tj('{0} Игнорировать пробелы', [<Space size={12} />])}</button>, state.loading && state.data && <Loader2 size={13} className="animate-spin" />])}
+          {tj('ignore-whitespace', [<Space size={12} />])}</button>, state.loading && state.data && <Loader2 size={13} className="animate-spin" />])}
       </div>
 
       {state.loading && !state.data ? (
         <Center>
-          {tj('{0} Считаем авторство строк…', [<Loader2 size={15} className="animate-spin" />])}</Center>
+          {tj('computing-line-authorship', [<Loader2 size={15} className="animate-spin" />])}</Center>
       ) : state.error ? (
         <Center className="text-gk-red">
           <span>
@@ -604,7 +604,7 @@ function BlameMode({ repoPath, view, onChange, onClose, onLocate, isLoaded, hidd
           </span>
         </Center>
       ) : !lines.length ? (
-        <Center>{tr('Файл пустой')}</Center>
+        <Center>{tr('file-is-empty')}</Center>
       ) : (
         <div
           ref={scrollRef}
@@ -640,12 +640,12 @@ function BlameMode({ repoPath, view, onChange, onClose, onLocate, isLoaded, hidd
                   >
                     <span
                       className="h-full w-[4px] shrink-0"
-                      title={uncommitted ? tr('Не закоммичено') : tr('Возраст: {0}', relativeTime(c.time!))}
+                      title={uncommitted ? tr('not-committed') : tr('age', relativeTime(c.time!))}
                       style={{ background: `color-mix(in srgb, var(${uncommitted ? '--color-gk-green' : '--color-gk-yellow'}) ${Math.round(12 + h * 88)}%, transparent)` }}
                     />
                     {start ? (
                       uncommitted ? (
-                        <span className="truncate italic text-gk-green">{tr('Не закоммичено')}</span>
+                        <span className="truncate italic text-gk-green">{tr('not-committed')}</span>
                       ) : (
                         <>
                           <Avatar name={c.author} size={15} />
@@ -656,7 +656,7 @@ function BlameMode({ repoPath, view, onChange, onClose, onLocate, isLoaded, hidd
                           <button
                             onClick={() => locate(l.sha)}
                             data-testid="blame-hash"
-                            title={tr('Показать коммит в графе')}
+                            title={tr('show-commit-in-graph')}
                             className="shrink-0 font-mono text-gk-blue/85 hover:text-gk-blue hover:underline"
                           >
                             {short(l.sha)}
@@ -665,7 +665,7 @@ function BlameMode({ repoPath, view, onChange, onClose, onLocate, isLoaded, hidd
                             onClick={() => blamePrior(l.sha)}
                             disabled={!c.previous}
                             data-testid="blame-prior"
-                            title={c.previous ? tr('Blame до этого коммита ({0})', short(c.previous.sha)) : tr('Строки появились вместе с файлом — раньше их не было')}
+                            title={c.previous ? tr('blame-before-this-commit', short(c.previous.sha)) : tr('lines-appeared-together-with-file')}
                             className="shrink-0 rounded p-0.5 text-gk-dim hover:bg-gk-hover hover:text-gk-text disabled:opacity-30"
                           >
                             <CornerLeftUp size={12} />
@@ -701,7 +701,7 @@ function BlameMode({ repoPath, view, onChange, onClose, onLocate, isLoaded, hidd
                     {popCommit.email} · {fullDateTime(popCommit.time!)}
                   </div>
                 </div>
-                <button onClick={() => locate(pop.sha)} className="font-mono text-[11px] text-gk-blue hover:underline" title={tr('Показать в графе')}>
+                <button onClick={() => locate(pop.sha)} className="font-mono text-[11px] text-gk-blue hover:underline" title={tr('show-in-graph')}>
                   {short(pop.sha)}
                 </button>
               </div>
@@ -712,14 +712,14 @@ function BlameMode({ repoPath, view, onChange, onClose, onLocate, isLoaded, hidd
               <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 border-t border-gk-border pt-2 text-[11px] text-gk-muted" data-testid="blame-popover-stats">
                 {popInfo?.loading ? (
                   <span className="flex items-center gap-1">
-                    {tj('{0} статистика…', [<Loader2 size={11} className="animate-spin" />])}</span>
+                    {tj('statistics', [<Loader2 size={11} className="animate-spin" />])}</span>
                 ) : popInfo?.error ? (
                   <span className="text-gk-red">{popInfo.error}</span>
                 ) : popInfo ? (
                   <>
-                    {tj('<0>файлов: <1>{2}</1></0><3><4>+{5}</4> <6>−{7}</6></3>{8}<9>строк в blame: {10}</9>', [<span />, <span className="text-gk-text" />, popInfo.files, <span />, <span className="text-gk-green" />, popInfo.additions, <span className="text-gk-red" />, popInfo.deletions, popInfo.fileStat && (
+                    {tj('files-lines-in-blame', [<span />, <span className="text-gk-text" />, popInfo.files, <span />, <span className="text-gk-green" />, popInfo.additions, <span className="text-gk-red" />, popInfo.deletions, popInfo.fileStat && (
                       <span>
-                        {tj('в этом файле: <0>+{1}</0> <2>−{3}</2>', [<span className="text-gk-green" />, popInfo.fileStat.additions, <span className="text-gk-red" />, popInfo.fileStat.deletions])}
+                        {tj('in-this-file', [<span className="text-gk-green" />, popInfo.fileStat.additions, <span className="text-gk-red" />, popInfo.fileStat.deletions])}
                       </span>
                     ), <span />, lines.filter((x) => x.sha === pop.sha).length])}
                   </>
@@ -727,9 +727,9 @@ function BlameMode({ repoPath, view, onChange, onClose, onLocate, isLoaded, hidd
               </div>
               <div className="mt-2 flex flex-wrap gap-1.5">
                 <PopBtn icon={LocateFixed} onClick={() => locate(pop.sha)}>
-                  {tr('Показать в графе')}</PopBtn>
+                  {tr('show-in-graph')}</PopBtn>
                 <PopBtn icon={CornerLeftUp} disabled={!popCommit.previous} onClick={() => blamePrior(pop.sha)} testid="blame-popover-prior">
-                  {tr('Blame до этого коммита')}</PopBtn>
+                  {tr('blame-before-this-commit-2')}</PopBtn>
                 <PopBtn
                   icon={History}
                   onClick={() => {
@@ -737,13 +737,13 @@ function BlameMode({ repoPath, view, onChange, onClose, onLocate, isLoaded, hidd
                     onChange({ mode: 'history', rev: pop.sha, focus: pop.sha, path: popCommit.filename ?? file });
                   }}
                 >
-                  {tr('Изменения в истории файла')}</PopBtn>
+                  {tr('changes-in-file-history')}</PopBtn>
               </div>
             </div>
           )}
         </div>
       )}
-      {data?.truncated && <div className="border-t border-gk-border px-3 py-1 text-[11px] text-gk-dim">{tj('Файл слишком большой — показаны первые {0} строк', [lines.length])}</div>}
+      {data?.truncated && <div className="border-t border-gk-border px-3 py-1 text-[11px] text-gk-dim">{tj('file-is-too-large-first', [lines.length])}</div>}
     </div>
   );
 }

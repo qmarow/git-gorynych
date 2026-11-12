@@ -52,7 +52,7 @@ export function GraphLoader({ size = 64 }: { size?: number }) {
   );
 }
 
-export function Splash({ title = t('git-Горыныч'), subtitle }: { title?: ReactNode; subtitle?: ReactNode }) {
+export function Splash({ title = t('git-gorynych'), subtitle }: { title?: ReactNode; subtitle?: ReactNode }) {
   return (
     <div className="fixed inset-0 z-[60] flex animate-fade-in items-center justify-center">
       <div className="app-backdrop" />
@@ -68,7 +68,7 @@ export function Splash({ title = t('git-Горыныч'), subtitle }: { title?: 
   );
 }
 
-export function LoadingOverlay({ label, title = t('Открываем репозиторий') }: { label?: ReactNode; title?: ReactNode }) {
+export function LoadingOverlay({ label, title = t('opening-repository') }: { label?: ReactNode; title?: ReactNode }) {
   return (
     <div className="absolute inset-0 z-20 flex animate-fade-in items-center justify-center bg-[color-mix(in_srgb,var(--gk-base)_40%,transparent)] backdrop-blur-sm">
       <div className="glass-strong flex animate-pop-in items-center gap-4 rounded-xl border border-gk-border bg-gk-panel-2 px-6 py-4">

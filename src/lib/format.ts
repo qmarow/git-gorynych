@@ -14,13 +14,13 @@ export function relativeTime(iso: string | number | Date): string {
   const date = new Date(iso);
   const diff = Math.max(0, Date.now() - date.getTime());
   const minutes = Math.round(diff / 60000);
-  if (minutes < 1) return t('только что');
-  if (minutes < 60) return t('{0} мин назад', minutes);
+  if (minutes < 1) return t('just-now');
+  if (minutes < 60) return t('min-ago', minutes);
   const hours = Math.round(minutes / 60);
-  if (hours < 24) return t('{0} ч назад', hours);
+  if (hours < 24) return t('h-ago', hours);
   const days = Math.round(hours / 24);
-  if (days === 1) return t('вчера');
-  if (days < 30) return t('{0} дн назад', days);
+  if (days === 1) return t('yesterday');
+  if (days < 30) return t('d-ago', days);
   return date.toLocaleDateString(locale());
 }
 

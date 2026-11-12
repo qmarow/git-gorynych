@@ -127,7 +127,7 @@ fn built<R: Runtime>(app: &AppHandle<R>, planned: &[Planned]) -> tauri::Result<I
 
 fn submenu<R: Runtime>(app: &AppHandle<R>, title: &str, mut items: Items<R>) -> tauri::Result<Submenu<R>> {
     if items.is_empty() {
-        items.push(Box::new(MenuItem::new(app, t("Нет действий", &[]), false, None::<&str>)?));
+        items.push(Box::new(MenuItem::new(app, t("no-actions", &[]), false, None::<&str>)?));
     }
     let refs: Vec<&dyn IsMenuItem<R>> = items.iter().map(|item| item.as_ref()).collect();
     Submenu::with_items(app, title, true, &refs)
@@ -141,30 +141,30 @@ fn build_menu<R: Runtime>(app: &AppHandle<R>, model: Option<&MenuModel>) -> taur
 
     let mut app_items: Items<R> = Vec::new();
     match model {
-        Some(_) => app_items.push(Box::new(app_item("about", t("О программе {0}", &[&APP_NAME]), true)?)),
+        Some(_) => app_items.push(Box::new(app_item("about", t("about", &[&APP_NAME]), true)?)),
         None => app_items.push(Box::new(PredefinedMenuItem::about(app, None, None)?)),
     }
     app_items.push(Box::new(PredefinedMenuItem::separator(app)?));
-    app_items.push(Box::new(app_item("settings", t("Настройки…", &[]), model.is_some())?));
+    app_items.push(Box::new(app_item("settings", t("settings", &[]), model.is_some())?));
     app_items.push(Box::new(PredefinedMenuItem::separator(app)?));
     app_items.push(Box::new(PredefinedMenuItem::services(app, None)?));
     app_items.push(Box::new(PredefinedMenuItem::separator(app)?));
-    app_items.push(Box::new(PredefinedMenuItem::hide(app, Some(&t("Скрыть {0}", &[&APP_NAME])))?));
-    app_items.push(Box::new(PredefinedMenuItem::hide_others(app, Some(&t("Скрыть остальные", &[])))?));
-    app_items.push(Box::new(PredefinedMenuItem::show_all(app, Some(&t("Показать все", &[])))?));
+    app_items.push(Box::new(PredefinedMenuItem::hide(app, Some(&t("hide", &[&APP_NAME])))?));
+    app_items.push(Box::new(PredefinedMenuItem::hide_others(app, Some(&t("hide-others", &[])))?));
+    app_items.push(Box::new(PredefinedMenuItem::show_all(app, Some(&t("show-all", &[])))?));
     app_items.push(Box::new(PredefinedMenuItem::separator(app)?));
-    app_items.push(Box::new(PredefinedMenuItem::quit(app, Some(&t("Завершить {0}", &[&APP_NAME])))?));
+    app_items.push(Box::new(PredefinedMenuItem::quit(app, Some(&t("quit", &[&APP_NAME])))?));
 
     let mut edit = built(app, &section("Edit"))?;
     edit.push(Box::new(PredefinedMenuItem::separator(app)?));
-    edit.push(Box::new(PredefinedMenuItem::cut(app, Some(&t("Вырезать", &[])))?));
-    edit.push(Box::new(PredefinedMenuItem::copy(app, Some(&t("Копировать", &[])))?));
-    edit.push(Box::new(PredefinedMenuItem::paste(app, Some(&t("Вставить", &[])))?));
-    edit.push(Box::new(PredefinedMenuItem::select_all(app, Some(&t("Выбрать всё", &[])))?));
+    edit.push(Box::new(PredefinedMenuItem::cut(app, Some(&t("cut", &[])))?));
+    edit.push(Box::new(PredefinedMenuItem::copy(app, Some(&t("copy", &[])))?));
+    edit.push(Box::new(PredefinedMenuItem::paste(app, Some(&t("paste", &[])))?));
+    edit.push(Box::new(PredefinedMenuItem::select_all(app, Some(&t("select-all", &[])))?));
 
     let mut view = built(app, &section("View"))?;
     view.push(Box::new(PredefinedMenuItem::separator(app)?));
-    view.push(Box::new(PredefinedMenuItem::fullscreen(app, Some(&t("Полноэкранный режим", &[])))?));
+    view.push(Box::new(PredefinedMenuItem::fullscreen(app, Some(&t("full-screen", &[])))?));
 
     let window_items: Items<R> = vec![
         Box::new(PredefinedMenuItem::minimize(app, None)?),
@@ -175,12 +175,12 @@ fn build_menu<R: Runtime>(app: &AppHandle<R>, model: Option<&MenuModel>) -> taur
 
     let submenus = [
         submenu(app, APP_NAME, app_items)?,
-        submenu(app, &t("Файл", &[]), built(app, &section("File"))?)?,
-        submenu(app, &t("Правка", &[]), edit)?,
-        submenu(app, &t("Вид", &[]), view)?,
-        submenu(app, &t("Действия", &[]), built(app, &section("Actions"))?)?,
-        submenu(app, &t("Окно", &[]), window_items)?,
-        submenu(app, &t("Справка", &[]), built(app, &section("Help"))?)?,
+        submenu(app, &t("file-2", &[]), built(app, &section("File"))?)?,
+        submenu(app, &t("edit", &[]), edit)?,
+        submenu(app, &t("view", &[]), view)?,
+        submenu(app, &t("actions", &[]), built(app, &section("Actions"))?)?,
+        submenu(app, &t("window", &[]), window_items)?,
+        submenu(app, &t("help", &[]), built(app, &section("Help"))?)?,
     ];
     #[cfg(target_os = "macos")]
     {

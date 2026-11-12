@@ -36,7 +36,7 @@ function Field({ input, value, onChange }: { input: FieldInput; value: Value; on
   const label = (
     <span className="mb-1 flex items-baseline gap-1.5">
       <span className="font-mono text-[12px] text-gk-text">{input.key}</span>
-      {input.required && <span className="text-[11px] text-gk-red">{tr('обязательно')}</span>}
+      {input.required && <span className="text-[11px] text-gk-red">{tr('required')}</span>}
       {input.description && <span className="truncate text-[11.5px] text-gk-dim">— {input.description}</span>}
     </span>
   );
@@ -139,28 +139,28 @@ export default function RunDialog({ repoPath, opts, caps, providerLabel, branche
 
   return (
     <Modal
-      title={tr('Запустить пайплайн · {0}', providerLabel)}
+      title={tr('run-pipeline', providerLabel)}
       icon={Zap}
       iconClass="text-gk-green"
       onClose={onClose}
       width={560}
       footer={
         <>
-          <Button onClick={onClose}>{tr('Отмена')}</Button>
+          <Button onClick={onClose}>{tr('cancel')}</Button>
           <Button variant="primary" disabled={!canSubmit} onClick={submit} data-testid="run-submit">
-            {tj('{0} Запустить', [busy ? <Loader2 size={13} className="animate-spin" /> : <Play size={13} />])}</Button>
+            {tj('run-2', [busy ? <Loader2 size={13} className="animate-spin" /> : <Play size={13} />])}</Button>
         </>
       }
     >
       {form.loading && (
         <div className="flex items-center gap-2 text-gk-muted">
-          {tj('{0} Читаем параметры запуска из конфига…', [<Loader2 size={13} className="animate-spin" />])}</div>
+          {tj('reading-run-parameters-from-config', [<Loader2 size={13} className="animate-spin" />])}</div>
       )}
       {form.error && <ErrorBox error={form.error} />}
       {d && (
         <div className="space-y-3" data-testid="run-dialog">
           <label className="block">
-            {tj('<0>{1} Ветка</0>{2}{3}', [<span className="mb-1 flex items-center gap-1 text-[12px] text-gk-muted" />, <GitBranch size={12} />, <input
+            {tj('branch-6', [<span className="mb-1 flex items-center gap-1 text-[12px] text-gk-muted" />, <GitBranch size={12} />, <input
               list="run-branches"
               value={ref}
               onChange={(e) => setRef(e.target.value)}
@@ -175,7 +175,7 @@ export default function RunDialog({ repoPath, opts, caps, providerLabel, branche
 
           {(needsWorkflow || d.kind === 'bitbucket') && (
             <label className="block">
-              <span className="mb-1 block text-[12px] text-gk-muted">{d.kind === 'bitbucket' ? tr('Пайплайн') : 'Workflow'}</span>
+              <span className="mb-1 block text-[12px] text-gk-muted">{d.kind === 'bitbucket' ? tr('pipeline') : 'Workflow'}</span>
               <select
                 data-testid="run-workflow"
                 value={workflow ? workflow.path ?? workflow.value ?? '' : ''}
@@ -190,20 +190,20 @@ export default function RunDialog({ repoPath, opts, caps, providerLabel, branche
                   <option key={w.path ?? w.value ?? 'default'} value={w.path ?? w.value ?? ''} disabled={!w.dispatchable}>
                     {w.name}
                     {w.path ? ` — ${w.path}` : ''}
-                    {!w.dispatchable ? tr(' (нет on: workflow_dispatch)') : ''}
+                    {!w.dispatchable ? tr('no-on-workflow-dispatch') : ''}
                   </option>
                 ))}
               </select>
               {needsWorkflow && !d.workflows.some((w) => w.dispatchable) && (
                 <p className="mt-1 text-[11.5px] text-gk-yellow" data-testid="run-no-dispatch">
-                  {tr('Ни в одном workflow нет «on: workflow_dispatch» — вручную их не запустить. Добавьте этот триггер в файл и отправьте его на сервер.')}</p>
+                  {tr('no-workflow-has-on-workflow')}</p>
               )}
             </label>
           )}
 
           {inputs.length > 0 && (
             <div className="space-y-2.5 rounded-lg border border-gk-border p-3" data-testid="run-inputs">
-              <div className="text-[11px] font-semibold uppercase tracking-wider text-gk-dim">{d.kind === 'bitbucket' ? tr('Переменные пайплайна') : tr('Входные параметры (inputs)')}</div>
+              <div className="text-[11px] font-semibold uppercase tracking-wider text-gk-dim">{d.kind === 'bitbucket' ? tr('pipeline-variables') : tr('inputs')}</div>
               {inputs.map((i) => (
                 <Field key={i.key} input={i} value={values[i.key]} onChange={(v) => setValues((s) => ({ ...s, [i.key]: v }))} />
               ))}
@@ -212,7 +212,7 @@ export default function RunDialog({ repoPath, opts, caps, providerLabel, branche
 
           {d.kind === 'gitlab' && d.variables?.length! > 0 && (
             <div className="space-y-2.5 rounded-lg border border-gk-border p-3" data-testid="run-prefilled">
-              <div className="text-[11px] font-semibold uppercase tracking-wider text-gk-dim">{tr('Переменные из .gitlab-ci.yml')}</div>
+              <div className="text-[11px] font-semibold uppercase tracking-wider text-gk-dim">{tr('variables-from-gitlab-ci-yml-2')}</div>
               {d.variables.map((v) => (
                 <Field key={v.key} input={{ ...v, type: 'string' }} value={vars[v.key]} onChange={(x) => setVars((s) => ({ ...s, [v.key]: x }))} />
               ))}
@@ -222,8 +222,8 @@ export default function RunDialog({ repoPath, opts, caps, providerLabel, branche
           {d.allowCustomVariables && caps?.canRunWithVariables && (
             <div className="space-y-1.5" data-testid="run-custom">
               <div className="flex items-center">
-                {tj('<0>Свои переменные окружения (KEY=VALUE)</0>{1}', [<span className="flex-1 text-[12px] text-gk-muted" />, <button onClick={() => setCustom((c) => [...c, { key: '', value: '' }])} className="flex items-center gap-1 text-[12px] text-gk-blue hover:underline" data-testid="run-add-var">
-                  {tj('{0} Переменная', [<Plus size={12} />])}</button>])}
+                {tj('custom-environment-variables-key-value', [<span className="flex-1 text-[12px] text-gk-muted" />, <button onClick={() => setCustom((c) => [...c, { key: '', value: '' }])} className="flex items-center gap-1 text-[12px] text-gk-blue hover:underline" data-testid="run-add-var">
+                  {tj('variable', [<Plus size={12} />])}</button>])}
               </div>
               {custom.map((v, i) => (
                 <div key={i} className="flex items-center gap-1.5">
@@ -245,11 +245,11 @@ export default function RunDialog({ repoPath, opts, caps, providerLabel, branche
                   <span className="text-gk-dim">=</span>
                   <input
                     value={v.value}
-                    placeholder={tr('значение')}
+                    placeholder={tr('value')}
                     onChange={(e) => setCustom((c) => c.map((x, k) => (k === i ? { ...x, value: e.target.value } : x)))}
                     className="min-w-0 flex-1 rounded-md bg-gk-bg px-2 py-1 font-mono text-[12px] outline-none ring-1 ring-gk-border focus:ring-gk-blue"
                   />
-                  <button onClick={() => setCustom((c) => c.filter((_, k) => k !== i))} className="rounded p-1 text-gk-dim hover:bg-gk-hover hover:text-gk-red" aria-label={tr('Убрать')}>
+                  <button onClick={() => setCustom((c) => c.filter((_, k) => k !== i))} className="rounded p-1 text-gk-dim hover:bg-gk-hover hover:text-gk-red" aria-label={tr('remove-2')}>
                     <Trash2 size={12} />
                   </button>
                 </div>
@@ -257,7 +257,7 @@ export default function RunDialog({ repoPath, opts, caps, providerLabel, branche
             </div>
           )}
           {!caps?.canRunWithVariables && caps?.why?.canRunWithVariables && <p className="text-[11.5px] leading-snug text-gk-dim">{caps.why.canRunWithVariables}</p>}
-          {missing.length > 0 && <p className="text-[11.5px] text-gk-yellow">{tj('Заполните: {0}', [missing.join(', ')])}</p>}
+          {missing.length > 0 && <p className="text-[11.5px] text-gk-yellow">{tj('fill-in', [missing.join(', ')])}</p>}
           <ErrorBox error={error} />
         </div>
       )}

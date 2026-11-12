@@ -266,12 +266,12 @@ static SERVER_HOSTNAME: LazyLock<Regex> = LazyLock::new(|| regex(r"^[a-z0-9.-]+$
 
 /// Разбирает адрес сервера, как его ввёл пользователь.
 pub fn parse_server(input: &str) -> Result<ParsedServer> {
-    let not_server = |hint: &str| GorynychError::new(ErrorCode::BadArgs, t("Не похоже на адрес сервера", &[])).with_hint(t(hint, &[]));
+    let not_server = |hint: &str| GorynychError::new(ErrorCode::BadArgs, t("doesnt-look-like-server-address", &[])).with_hint(t(hint, &[]));
 
     let mut raw = js::trim(input).to_owned();
     if raw.is_empty() {
-        return Err(GorynychError::new(ErrorCode::BadArgs, t("Укажите адрес сервера", &[]))
-            .with_hint(t("Например: gitlab.company.ru", &[])));
+        return Err(GorynychError::new(ErrorCode::BadArgs, t("specify-server-address", &[]))
+            .with_hint(t("for-example-gitlab-company-com", &[])));
     }
     let accept = |rest: &str| not_double_slash(rest) && !SERVER_PORT_TAIL.is_match(rest);
     if let Some(parts) = scp_parts(&raw, &SERVER_SCP_WITH_USER, &SERVER_SCP_PLAIN, accept) {
@@ -283,10 +283,10 @@ pub fn parse_server(input: &str) -> Result<ParsedServer> {
     if !has_http_scheme(&raw) {
         raw = format!("https://{raw}");
     }
-    let url = Url::parse(&raw).map_err(|_| not_server("Например: gitlab.company.ru или https://git.company.ru:8443"))?;
+    let url = Url::parse(&raw).map_err(|_| not_server("for-example-gitlab-company-com-or"))?;
     let hostname = url.host_str().unwrap_or_default().to_lowercase();
     if !SERVER_HOSTNAME.is_match(&hostname) || hostname.starts_with(['.', '-']) || hostname.ends_with(['.', '-']) {
-        return Err(not_server("Например: gitlab.company.ru"));
+        return Err(not_server("for-example-gitlab-company-com"));
     }
     let scheme = url.scheme().to_lowercase();
     let host = url_host(&url).to_lowercase();

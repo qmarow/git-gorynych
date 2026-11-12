@@ -18,8 +18,8 @@ use crate::yaml_write::{self, ScalarStyle};
 
 /// Отказ: точечная правка невозможна или дала не тот результат.
 fn refusal(language: Language, details: &str) -> GorynychError {
-    GorynychError::new(ErrorCode::YamlError, i18n::tr(language, "Не удалось внести правку, не переписывая файл", &[]))
-        .with_hint(i18n::tr(language, "Внесите это изменение вручную во вкладке «Файл»", &[]))
+    GorynychError::new(ErrorCode::YamlError, i18n::tr(language, "couldnt-apply-edit-without-rewriting", &[]))
+        .with_hint(i18n::tr(language, "make-this-change-by-hand", &[]))
         .with_details(details)
 }
 

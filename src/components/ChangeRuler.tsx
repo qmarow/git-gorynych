@@ -111,7 +111,7 @@ export default function ChangeRuler({ scrollRef, deps, current, onJump }: Props)
       onClick={onRailClick}
       data-testid="change-ruler"
       className="relative w-3 shrink-0 cursor-pointer border-l border-gk-border bg-gk-fg/[0.02]"
-      aria-label={t('Карта изменений')}
+      aria-label={t('change-map')}
     >
       {scrollable && (
         <div
@@ -125,7 +125,7 @@ export default function ChangeRuler({ scrollRef, deps, current, onJump }: Props)
           type="button"
           data-testid="change-mark"
           data-kind={kindOf(b)}
-          data-tip={t('Изменение {0} из {1}: +{2} −{3}', i + 1, blocks.length, b.added, b.removed)}
+          data-tip={t('change-of', i + 1, blocks.length, b.added, b.removed)}
           onClick={(e) => {
             e.stopPropagation();
             onJump(i);

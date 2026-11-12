@@ -23,6 +23,7 @@ chrono = { version = "0.4", default-features = false, features = ["clock", "std"
 # Sealed box для секретов GitHub: совместим с libsodium.
 crypto_box = { version = "0.9", features = ["seal"] }
 fluent-bundle = "0.16"
+fluent-syntax = "0.12"
 futures-util = { version = "0.3", default-features = false, features = ["alloc"] }
 getrandom = "0.4"
 indexmap = { version = "2", features = ["serde"] }

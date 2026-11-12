@@ -7,12 +7,12 @@ export interface CronPreset {
 }
 
 export const CRON_PRESETS: readonly CronPreset[] = [
-  { cron: '0 3 * * *', label: t('Каждый день в 3:00') },
-  { cron: '0 9 * * 1-5', label: t('По будням в 9:00') },
-  { cron: '0 * * * *', label: t('Каждый час') },
-  { cron: '*/15 * * * *', label: t('Каждые 15 минут') },
-  { cron: '0 4 * * 1', label: t('По понедельникам в 4:00') },
-  { cron: '0 2 1 * *', label: t('1-го числа каждого месяца в 2:00') },
+  { cron: '0 3 * * *', label: t('every-day-at-3-00') },
+  { cron: '0 9 * * 1-5', label: t('weekdays-at-9-00') },
+  { cron: '0 * * * *', label: t('every-hour') },
+  { cron: '*/15 * * * *', label: t('every-15-minutes') },
+  { cron: '0 4 * * 1', label: t('mondays-at-4-00') },
+  { cron: '0 2 1 * *', label: t('n-1st-of-every-month') },
 ];
 
 // i18n-ignore-start — русская грамматика; для английского — describeCronEn ниже

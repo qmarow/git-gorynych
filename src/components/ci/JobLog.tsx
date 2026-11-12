@@ -168,7 +168,7 @@ export default function JobLog({ repoPath, opts, job: initialJob, pipelineId, ca
   return (
     <div className="absolute inset-0 z-10 flex animate-slide-in-right flex-col bg-[var(--gk-base)] shadow-[-12px_0_30px_-12px_rgba(0,0,0,0.6)]" data-testid="job-log">
       <div className="flex shrink-0 items-center gap-2 border-b border-gk-border bg-[var(--gk-solid-2)] px-3 py-2">
-        <IconBtn title={tr('Назад к пайплайну (Esc)')} onClick={onClose}>
+        <IconBtn title={tr('back-to-pipeline-esc')} onClick={onClose}>
           <ArrowLeft size={15} />
         </IconBtn>
         <StatusPill status={shownStatus} />
@@ -181,32 +181,32 @@ export default function JobLog({ repoPath, opts, job: initialJob, pipelineId, ca
           {job.runnerName && <span className="truncate"> · {job.runnerName}</span>}
         </span>
         {firstError && (
-          <ActionButton icon={TriangleAlert} tone="red" onClick={() => goTo(firstError)} data-testid="log-first-error" data-tip={tr('Прокрутить к первой строке с Error / FAIL / exit code')}>
-            {tr('К первой ошибке ↓')}</ActionButton>
+          <ActionButton icon={TriangleAlert} tone="red" onClick={() => goTo(firstError)} data-testid="log-first-error" data-tip={tr('scroll-to-first-line-with')}>
+            {tr('to-first-error')}</ActionButton>
         )}
         {job.status === 'manual' && caps?.canPlayManualJob && (
-          <ActionButton icon={Play} onClick={() => onAction('job.play', tr('Задание {0} запущено', job.name))}>
-            {tr('Запустить')}</ActionButton>
+          <ActionButton icon={Play} onClick={() => onAction('job.play', tr('job-started', job.name))}>
+            {tr('run-3')}</ActionButton>
         )}
         {['failed', 'canceled', 'success'].includes(job.status!) && (
-          <ActionButton icon={RotateCcw} why={caps?.canRerunSingleJob ? null : caps?.why?.canRerunSingleJob ?? tr('Недоступно')} onClick={() => onAction('job.retry', tr('Задание {0} перезапущено', job.name))} data-testid="log-retry">
-            {tr('Повторить')}</ActionButton>
+          <ActionButton icon={RotateCcw} why={caps?.canRerunSingleJob ? null : caps?.why?.canRerunSingleJob ?? tr('unavailable-2')} onClick={() => onAction('job.retry', tr('job-restarted', job.name))} data-testid="log-retry">
+            {tr('redo-2')}</ActionButton>
         )}
         {running && caps?.canCancelJob && (
-          <ActionButton icon={Square} onClick={() => onAction('job.cancel', tr('Задание {0} отменено', job.name))}>
-            {tr('Отменить')}</ActionButton>
+          <ActionButton icon={Square} onClick={() => onAction('job.cancel', tr('job-canceled', job.name))}>
+            {tr('undo-2')}</ActionButton>
         )}
-        <IconBtn title={tr('Поиск по логу ({0}F)', navigator.platform?.startsWith('Mac') ? '⌘' : 'Ctrl+')} active={search !== null} onClick={() => setSearch((s) => (s === null ? '' : null))}>
+        <IconBtn title={tr('search-log-f', navigator.platform?.startsWith('Mac') ? '⌘' : 'Ctrl+')} active={search !== null} onClick={() => setSearch((s) => (s === null ? '' : null))}>
           <Search size={14} />
         </IconBtn>
-        <IconBtn title={wrap ? tr('Не переносить строки') : tr('Переносить строки')} onClick={() => setWrap((v) => !v)} active={wrap}>
+        <IconBtn title={wrap ? tr('dont-wrap-lines') : tr('wrap-lines')} onClick={() => setWrap((v) => !v)} active={wrap}>
           <WrapText size={14} />
         </IconBtn>
-        <IconBtn title={tr('Скопировать лог')} onClick={copyLog}>
+        <IconBtn title={tr('copy-log')} onClick={copyLog}>
           <Copy size={14} />
         </IconBtn>
         <IconBtn
-          title={tr('В конец')}
+          title={tr('to-end')}
           onClick={() => {
             stickToBottom.current = true;
             scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'smooth' });
@@ -214,7 +214,7 @@ export default function JobLog({ repoPath, opts, job: initialJob, pipelineId, ca
         >
           <ArrowDownToLine size={14} />
         </IconBtn>
-        <IconBtn title={tr('Открыть в {0}', providerLabel ?? tr('браузере'))} onClick={() => (job.logsUrl || job.url) && api.openExternal((job.logsUrl || job.url)!)}>
+        <IconBtn title={tr('open-in', providerLabel ?? tr('browser'))} onClick={() => (job.logsUrl || job.url) && api.openExternal((job.logsUrl || job.url)!)}>
           <ExternalLink size={14} />
         </IconBtn>
       </div>
@@ -233,19 +233,19 @@ export default function JobLog({ repoPath, opts, job: initialJob, pipelineId, ca
                 if (hits.length) setHit((h) => (e.shiftKey ? (h - 1 + hits.length) % hits.length : (h + 1) % hits.length));
               }
             }}
-            placeholder={tr('Найти в логе…')}
+            placeholder={tr('find-in-log')}
             className="min-w-0 flex-1 bg-transparent text-[12.5px] outline-none placeholder:text-gk-dim"
           />
           <span className="shrink-0 text-[11px] text-gk-dim" data-testid="log-search-count">
-            {query ? (hits.length ? tr('{0} из {1}', Math.min(hit, hits.length - 1) + 1, hits.length) : tr('не найдено')) : ''}
+            {query ? (hits.length ? tr('of', Math.min(hit, hits.length - 1) + 1, hits.length) : tr('not-found-3')) : ''}
           </span>
-          <IconBtn title={tr('Предыдущее (Shift+Enter)')} disabled={!hits.length} onClick={() => setHit((h) => (h - 1 + hits.length) % hits.length)}>
+          <IconBtn title={tr('previous-shift-enter')} disabled={!hits.length} onClick={() => setHit((h) => (h - 1 + hits.length) % hits.length)}>
             <ChevronUp size={14} />
           </IconBtn>
-          <IconBtn title={tr('Следующее (Enter)')} disabled={!hits.length} onClick={() => setHit((h) => (h + 1) % hits.length)}>
+          <IconBtn title={tr('next-enter')} disabled={!hits.length} onClick={() => setHit((h) => (h + 1) % hits.length)}>
             <ChevronDown size={14} />
           </IconBtn>
-          <IconBtn title={tr('Закрыть поиск (Esc)')} onClick={() => setSearch(null)}>
+          <IconBtn title={tr('close-search-esc')} onClick={() => setSearch(null)}>
             <X size={14} />
           </IconBtn>
         </div>
@@ -253,7 +253,7 @@ export default function JobLog({ repoPath, opts, job: initialJob, pipelineId, ca
 
       {job.failureReason && job.status === 'failed' && (
         <div className="flex shrink-0 items-center gap-2 border-b border-gk-red/20 bg-gk-red/10 px-4 py-1.5 text-[12px] text-gk-red">
-          {tj('{0} Причина: {1}', [<AlertTriangle size={13} />, FAILURE_REASONS[job.failureReason] ?? job.failureReason])}
+          {tj('reason', [<AlertTriangle size={13} />, FAILURE_REASONS[job.failureReason] ?? job.failureReason])}
         </div>
       )}
 
@@ -263,7 +263,7 @@ export default function JobLog({ repoPath, opts, job: initialJob, pipelineId, ca
             <span key={s.number} className="flex items-center gap-1 rounded bg-gk-fg/[0.04] px-1.5 py-0.5 text-[11px] text-gk-muted">
               <span className={`h-1.5 w-1.5 rounded-full ${s.status === 'success' ? 'bg-gk-green' : s.status === 'failed' ? 'bg-gk-red' : s.status === 'running' ? 'animate-pulse bg-gk-blue' : 'bg-gk-dim'}`} />
               {s.name}
-              {s.duration != null && <span className="text-gk-dim">{tj('{0}с', [s.duration])}</span>}
+              {s.duration != null && <span className="text-gk-dim">{tj('s', [s.duration])}</span>}
             </span>
           ))}
         </div>
@@ -277,24 +277,24 @@ export default function JobLog({ repoPath, opts, job: initialJob, pipelineId, ca
       >
         {state.loading && !state.data && (
           <div className="flex items-center gap-2 px-4 py-6 font-sans text-[13px] text-gk-muted">
-            {tj('{0} Загружаем лог…', [<Loader2 size={14} className="animate-spin" />])}</div>
+            {tj('loading-log', [<Loader2 size={14} className="animate-spin" />])}</div>
         )}
         {state.error && !state.data && <ErrorNote error={state.error} />}
         {state.data?.truncated && (
-          <div className="px-4 pb-2 font-sans text-[11px] text-gk-dim">{tj('Лог большой ({0} КБ) — показан конец. Полностью — на сервере.', [Math.round(state.data.size! / 1024)])}</div>
+          <div className="px-4 pb-2 font-sans text-[11px] text-gk-dim">{tj('log-is-large-kb-end', [Math.round(state.data.size! / 1024)])}</div>
         )}
         {state.data?.unavailable && (
-          <div className="px-4 py-6 font-sans text-[13px] text-gk-dim">{tr('Этот сервер не отдаёт логи по API — откройте задание в браузере.')}</div>
+          <div className="px-4 py-6 font-sans text-[13px] text-gk-dim">{tr('this-server-doesnt-provide-logs')}</div>
         )}
         {tree && tree.children.length === 0 && !state.data?.unavailable && (
           <div className="px-4 py-6 font-sans text-[13px] text-gk-dim">
-            {job.status === 'manual' || job.status === 'created' || job.status === 'skipped' ? tr('Задание ещё не запускалось — лога нет') : running ? tr('Ждём вывод раннера…') : tr('Лог пуст')}
+            {job.status === 'manual' || job.status === 'created' || job.status === 'skipped' ? tr('job-hasnt-run-yet-theres') : running ? tr('waiting-for-runner-output') : tr('log-is-empty')}
           </div>
         )}
         {tree && <LogNodes nodes={tree.children} wrap={wrap} isCollapsed={isCollapsed} toggle={toggle} hitSet={hitSet} current={currentHit} flash={flash} query={query} />}
         {running && tree?.children.length! > 0 && (
           <div className="flex items-center gap-2 px-4 py-1 font-sans text-[11px] text-gk-blue">
-            {tj('{0} выполняется…', [<Loader2 size={11} className="animate-spin" />])}</div>
+            {tj('running', [<Loader2 size={11} className="animate-spin" />])}</div>
         )}
       </div>
     </div>
@@ -329,7 +329,7 @@ function LogNodes({ nodes, wrap, isCollapsed, toggle, hitSet, current, flash, qu
           <span className={`min-w-0 flex-1 pr-4 ${wrap ? 'whitespace-pre-wrap break-all' : 'whitespace-pre'}`}>
             <Segs segs={node.title} query={query} />
           </span>
-          {node.duration != null && <span className="shrink-0 pr-4 font-sans text-[10.5px] text-gk-dim">{tj('{0} с', [node.duration])}</span>}
+          {node.duration != null && <span className="shrink-0 pr-4 font-sans text-[10.5px] text-gk-dim">{tj('s-2', [node.duration])}</span>}
         </div>
         {!isCollapsed(node) && <LogNodes nodes={node.children} wrap={wrap} isCollapsed={isCollapsed} toggle={toggle} hitSet={hitSet} current={current} flash={flash} query={query} />}
       </div>

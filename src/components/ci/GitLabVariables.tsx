@@ -70,18 +70,18 @@ export default function GitLabVariables({ repoPath, opts, canWrite, notify }: Va
     setArmDelete(null);
     const res = await api.gitlab.deleteVariable(repoPath, { key: v.key, scope: v.scope }, opts);
     if (!res.ok) notify?.({ type: 'error', title: res.error.message, hint: res.error.hint });
-    else notify?.({ type: 'success', title: t('Переменная {0} удалена', v.key) });
+    else notify?.({ type: 'success', title: t('variable-deleted', v.key) });
     load();
   };
 
-  if (state.loading) return <Center>{tj('{0} Загружаем переменные…', [<Loader2 size={14} className="animate-spin" />])}</Center>;
+  if (state.loading) return <Center>{tj('loading-variables', [<Loader2 size={14} className="animate-spin" />])}</Center>;
   if (state.error) {
     const forbidden = state.error.code === 'FORBIDDEN';
     return (
       <div className="m-4 rounded-lg border border-gk-red/30 bg-gk-red/10 px-3 py-2.5 text-[12px]">
         <div className="flex items-center gap-1.5 font-medium text-gk-text">
           <AlertTriangle size={13} className="text-gk-red" />
-          {forbidden ? t('Переменные CI/CD видят только Maintainer и Owner проекта') : state.error.message}
+          {forbidden ? t('ci-cd-variables-are-visible') : state.error.message}
         </div>
         {state.error.hint && <div className="mt-1 pl-5 text-gk-muted">{state.error.hint}</div>}
       </div>
@@ -93,22 +93,22 @@ export default function GitLabVariables({ repoPath, opts, canWrite, notify }: Va
     <div className="min-h-0 flex-1 overflow-y-auto p-4">
       <div className="mb-3 flex items-start gap-3">
         <p className="flex-1 text-[12px] leading-relaxed text-gk-dim">
-          {t('Переменные из настроек проекта (Settings → CI/CD → Variables). Значение запрашивается у GitLab, только когда вы нажимаете на глаз, и нигде не сохраняется.')}</p>
+          {t('variables-from-project-settings-settings')}</p>
         <button
           disabled={!canWrite}
-          title={canWrite ? t('Добавить переменную') : t('Нужен токен со scope «api»')}
+          title={canWrite ? t('add-variable') : t('requires-token-with-api-scope')}
           onClick={() => setForm({ original: null, initial: null })}
           className="flex shrink-0 items-center gap-1.5 rounded-md bg-gk-green/15 px-2.5 py-1.5 text-[12px] font-medium text-gk-green transition-colors enabled:hover:bg-gk-green/25 disabled:opacity-35"
         >
-          {tj('{0} Переменная', [<Plus size={13} />])}</button>
+          {tj('variable', [<Plus size={13} />])}</button>
       </div>
 
       {vars.length === 0 ? (
-        <div className="rounded-lg border border-dashed border-gk-border p-6 text-center text-[13px] text-gk-dim">{t('В проекте нет переменных')}</div>
+        <div className="rounded-lg border border-dashed border-gk-border p-6 text-center text-[13px] text-gk-dim">{t('project-has-no-variables')}</div>
       ) : (
         <div className="overflow-hidden rounded-lg border border-gk-border">
           <div className={`${GRID} border-b border-gk-border bg-gk-fg/[0.03] px-3 py-1.5 text-[10.5px] font-semibold uppercase tracking-wider text-gk-dim`}>
-            {tj('<0>Имя</0><1>Значение</1><2>Окружение</2><3>Флаги</3>{4}', [<span />, <span />, <span />, <span />, <span />])}
+            {tj('name-value-environment-flags', [<span />, <span />, <span />, <span />, <span />])}
           </div>
           {vars.map((v, i) => {
             const id = `${v.key}|${v.scope}`;
@@ -126,14 +126,14 @@ export default function GitLabVariables({ repoPath, opts, canWrite, notify }: Va
                 </span>
                 <span className="flex min-w-0 items-center gap-1.5">
                   {v.hidden ? (
-                    <span className="italic text-gk-dim">{t('скрыто в GitLab — значение не выдаётся')}</span>
+                    <span className="italic text-gk-dim">{t('hidden-in-gitlab-value-isnt')}</span>
                   ) : r && r !== 'loading' ? (
                     r.error ? (
                       <span className="text-gk-red">{r.error}</span>
                     ) : r.hidden ? (
-                      <span className="italic text-gk-dim">{t('скрыто в GitLab')}</span>
+                      <span className="italic text-gk-dim">{t('hidden-in-gitlab')}</span>
                     ) : (
-                      <span className="min-w-0 flex-1 break-all font-mono text-gk-text">{r.value === '' ? <i className="text-gk-dim">{t('пусто')}</i> : r.value}</span>
+                      <span className="min-w-0 flex-1 break-all font-mono text-gk-text">{r.value === '' ? <i className="text-gk-dim">{t('empty-2')}</i> : r.value}</span>
                     )
                   ) : (
                     <span className="flex-1 font-mono tracking-widest text-gk-dim">{v.empty ? '—' : '••••••••'}</span>
@@ -141,38 +141,38 @@ export default function GitLabVariables({ repoPath, opts, canWrite, notify }: Va
                   {!v.hidden && !v.empty && (
                     <button
                       onClick={() => reveal(v)}
-                      title={r && r !== 'loading' ? t('Скрыть') : t('Показать значение')}
+                      title={r && r !== 'loading' ? t('hide-2') : t('show-value')}
                       className="shrink-0 rounded p-1 text-gk-dim hover:bg-gk-hover hover:text-gk-text"
                     >
                       {r === 'loading' ? <Loader2 size={12} className="animate-spin" /> : r ? <EyeOff size={12} /> : <Eye size={12} />}
                     </button>
                   )}
                   {r && r !== 'loading' && !r.error && !r.hidden && (
-                    <button onClick={() => navigator.clipboard?.writeText(r.value!)} title={t('Скопировать')} className="shrink-0 rounded p-1 text-gk-dim hover:bg-gk-hover hover:text-gk-text">
+                    <button onClick={() => navigator.clipboard?.writeText(r.value!)} title={t('copy-3')} className="shrink-0 rounded p-1 text-gk-dim hover:bg-gk-hover hover:text-gk-text">
                       <Copy size={12} />
                     </button>
                   )}
                 </span>
                 <span className="truncate font-mono text-[11px] text-gk-muted">{v.scope}</span>
                 <span className="flex flex-wrap gap-1">
-                  {v.protected && <Flag icon={Lock} title={t('Только для защищённых веток и тегов')}>protected</Flag>}
-                  {v.masked && <Flag title={t('Скрывается в логах заданий')}>masked</Flag>}
-                  {v.hidden && <Flag title={t('Значение нельзя посмотреть после сохранения')}>hidden</Flag>}
-                  {v.raw && <Flag title={t('Без подстановки $ПЕРЕМЕННЫХ')}>raw</Flag>}
-                  {v.type === 'file' && <Flag title={t('Передаётся в задание как путь к файлу')}>file</Flag>}
+                  {v.protected && <Flag icon={Lock} title={t('only-for-protected-branches-and')}>protected</Flag>}
+                  {v.masked && <Flag title={t('masked-in-job-logs')}>masked</Flag>}
+                  {v.hidden && <Flag title={t('value-cant-be-viewed-after')}>hidden</Flag>}
+                  {v.raw && <Flag title={t('no-variable-expansion')}>raw</Flag>}
+                  {v.type === 'file' && <Flag title={t('passed-to-job-as-file')}>file</Flag>}
                 </span>
                 <span className="flex justify-end gap-0.5 opacity-0 transition-opacity group-hover:opacity-100">
                   {canWrite && (
                     <>
                       <button
-                        title={t('Изменить')}
+                        title={t('edit-2')}
                         onClick={() => setForm({ original: { key: v.key, scope: v.scope }, initial: { ...v, value: r && r !== 'loading' && !r.error && !r.hidden ? r.value : undefined } })}
                         className="rounded p-1 text-gk-dim hover:bg-gk-hover hover:text-gk-text"
                       >
                         <Pencil size={12} />
                       </button>
                       <button
-                        title={armDelete === id ? t('Нажмите ещё раз, чтобы удалить') : t('Удалить')}
+                        title={armDelete === id ? t('click-again-to-delete') : t('delete-2')}
                         onClick={() => remove(v)}
                         className={`rounded p-1 ${armDelete === id ? 'bg-gk-red text-white opacity-100' : 'text-gk-dim hover:bg-gk-red/15 hover:text-gk-red'}`}
                       >
@@ -248,7 +248,7 @@ function VariableForm({ repoPath, opts, original, initial, onClose, onSaved }: P
       setError(res.error);
       return;
     }
-    onSaved(editing ? t('Переменная {0} сохранена', variable.key) : t('Переменная {0} добавлена', variable.key));
+    onSaved(editing ? t('variable-saved', variable.key) : t('variable-added', variable.key));
   };
 
   return (
@@ -256,14 +256,14 @@ function VariableForm({ repoPath, opts, original, initial, onClose, onSaved }: P
       <form onSubmit={submit} className="glass-strong w-[520px] max-w-[calc(100vw-2rem)] animate-pop-in rounded-xl border border-gk-border bg-gk-panel-2">
         <div className="flex items-center gap-2 border-b border-gk-border px-4 py-3">
           <Variable size={16} className="text-gk-blue" />
-          <h2 className="flex-1 text-[14px] font-semibold text-gk-strong">{editing ? t('Переменная {0}', original!.key) : t('Новая переменная')}</h2>
+          <h2 className="flex-1 text-[14px] font-semibold text-gk-strong">{editing ? t('variable-2', original!.key) : t('new-variable')}</h2>
           <button type="button" onClick={onClose} className="rounded p-1 text-gk-dim hover:bg-gk-hover hover:text-gk-text">
             <X size={16} />
           </button>
         </div>
         <div className="space-y-3 px-4 py-4 text-[12.5px]">
           <div className="grid grid-cols-[1fr_140px] gap-3">
-            <Field label={t('Имя')}>
+            <Field label={t('name')}>
               <input
                 autoFocus={!editing}
                 value={v.key}
@@ -272,14 +272,14 @@ function VariableForm({ repoPath, opts, original, initial, onClose, onSaved }: P
                 className={`${inputCls} font-mono`}
               />
             </Field>
-            <Field label={t('Тип')}>
+            <Field label={t('type')}>
               <select value={v.type} onChange={(e) => set({ type: e.target.value })} className={inputCls}>
-                <option value="env_var">{t('Переменная')}</option>
-                <option value="file">{t('Файл')}</option>
+                <option value="env_var">{t('variable-3')}</option>
+                <option value="file">{t('file-2')}</option>
               </select>
             </Field>
           </div>
-          <Field label={editing && !valueTouched ? t('Значение (не меняется, пока не начнёте вводить)') : t('Значение')}>
+          <Field label={editing && !valueTouched ? t('value-unchanged-until-you-start') : t('value-2')}>
             <div className="relative">
               <textarea
                 value={valueTouched ? v.value : ''}
@@ -288,14 +288,14 @@ function VariableForm({ repoPath, opts, original, initial, onClose, onSaved }: P
                   set({ value: e.target.value });
                 }}
                 rows={v.type === 'file' ? 5 : 2}
-                placeholder={editing && !valueTouched ? (initial?.hidden ? t('скрытое значение — введите новое') : t('•••••••• (прежнее значение)')) : ''}
+                placeholder={editing && !valueTouched ? (initial?.hidden ? t('hidden-value-enter-new-one') : t('previous-value')) : ''}
                 spellCheck={false}
                 className={`${inputCls} resize-y pr-8 font-mono text-[12px] ${showValue ? '' : '[-webkit-text-security:disc]'}`}
               />
               <button
                 type="button"
                 onClick={() => setShowValue((s) => !s)}
-                title={showValue ? t('Скрыть') : t('Показать')}
+                title={showValue ? t('hide-2') : t('show')}
                 className="absolute right-1.5 top-1.5 rounded p-1 text-gk-dim hover:text-gk-text"
               >
                 {showValue ? <EyeOff size={12} /> : <Eye size={12} />}
@@ -303,27 +303,27 @@ function VariableForm({ repoPath, opts, original, initial, onClose, onSaved }: P
             </div>
             {maskProblem && (
               <div className="mt-1 text-[11px] text-gk-yellow">
-                {t('Для masked: одна строка, не короче 8 символов, только буквы, цифры и @ : . ~ - _ + / =')}</div>
+                {t('for-masked-one-line-at')}</div>
             )}
           </Field>
           <div className="grid grid-cols-2 gap-3">
-            <Field label={t('Окружение')}>
-              <input value={v.scope} onChange={(e) => set({ scope: e.target.value })} placeholder={t('* (все)')} className={`${inputCls} font-mono`} />
+            <Field label={t('environment')}>
+              <input value={v.scope} onChange={(e) => set({ scope: e.target.value })} placeholder={t('all-3')} className={`${inputCls} font-mono`} />
             </Field>
-            <Field label={t('Описание')}>
+            <Field label={t('description')}>
               <input value={v.description} onChange={(e) => set({ description: e.target.value })} className={inputCls} />
             </Field>
           </div>
           <div className="grid grid-cols-2 gap-x-4 gap-y-2 pt-1">
-            <Check checked={v.protected} onChange={(x) => set({ protected: x })} label="Protected" hint={t('Только для защищённых веток и тегов')} />
-            <Check checked={v.masked} onChange={(x) => set({ masked: x, hidden: x ? v.hidden : false })} label="Masked" hint={t('Скрывать значение в логах')} />
-            <Check checked={v.raw} onChange={(x) => set({ raw: x })} label="Raw" hint={t('Не подставлять $ПЕРЕМЕННЫЕ внутри')} />
+            <Check checked={v.protected} onChange={(x) => set({ protected: x })} label="Protected" hint={t('only-for-protected-branches-and')} />
+            <Check checked={v.masked} onChange={(x) => set({ masked: x, hidden: x ? v.hidden : false })} label="Masked" hint={t('mask-value-in-logs')} />
+            <Check checked={v.raw} onChange={(x) => set({ raw: x })} label="Raw" hint={t('dont-expand-variables-inside')} />
             <Check
               checked={v.hidden}
               disabled={editing}
               onChange={(x) => set({ hidden: x, masked: x || v.masked })}
               label="Hidden"
-              hint={editing ? t('Задаётся только при создании') : t('Значение потом нельзя будет посмотреть')}
+              hint={editing ? t('set-only-on-creation') : t('value-cant-be-viewed-later')}
             />
           </div>
           {error && (
@@ -333,18 +333,18 @@ function VariableForm({ repoPath, opts, original, initial, onClose, onSaved }: P
             </div>
           )}
           {editing && (original!.key !== v.key || (original!.scope ?? '*') !== (v.scope.trim() || '*')) && (
-            <div className="text-[11px] text-gk-dim">{t('Имя или окружение изменились — GitLab создаст новую переменную и удалит старую.')}</div>
+            <div className="text-[11px] text-gk-dim">{t('name-or-environment-changed-gitlab')}</div>
           )}
         </div>
         <div className="flex justify-end gap-2 border-t border-gk-border px-4 py-2.5">
           <button type="button" onClick={onClose} className="rounded px-3 py-1.5 text-[12.5px] text-gk-muted hover:bg-gk-hover hover:text-gk-text">
-            {t('Отмена')}</button>
+            {t('cancel')}</button>
           <button
             type="submit"
             disabled={busy || !v.key.trim() || (!editing && !v.value)}
             className="flex items-center gap-1.5 rounded-md bg-gk-green px-3 py-1.5 text-[12.5px] font-semibold text-gk-ink hover:brightness-110 disabled:opacity-40"
           >
-            {busy ? <Loader2 size={13} className="animate-spin" /> : <Save size={13} />} {editing ? t('Сохранить') : t('Добавить')}
+            {busy ? <Loader2 size={13} className="animate-spin" /> : <Save size={13} />} {editing ? t('save') : t('add-2')}
           </button>
         </div>
       </form>

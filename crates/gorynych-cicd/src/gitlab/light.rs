@@ -52,7 +52,7 @@ impl CicdService {
             if let Some(etag) = cached.as_ref().and_then(|entry| entry.etag.as_deref()) {
                 headers.push(("If-None-Match", etag));
             }
-            let network = |details: String| GorynychError::new(ErrorCode::Network, t("Нет связи с {0}", &[&remote.host])).with_details(details);
+            let network = |details: String| GorynychError::new(ErrorCode::Network, t("no-connection-to", &[&remote.host])).with_details(details);
             let Ok(parsed) = url::Url::parse(&url) else {
                 return Err(network("Invalid URL".to_owned()));
             };
@@ -93,7 +93,7 @@ impl CicdService {
             } else if status == 429 {
                 let wait = header("retry-after").and_then(|value| value.parse::<f64>().ok()).filter(|value| *value != 0.0 && !value.is_nan());
                 let details = wait.map_or_else(String::new, |value| format!("retry-after: {}", js::number_to_string(value)));
-                return Err(GorynychError::new(ErrorCode::RateLimit, t("GitLab ограничил частоту запросов", &[])).with_details(details));
+                return Err(GorynychError::new(ErrorCode::RateLimit, t("gitlab-rate-limited-requests", &[])).with_details(details));
             } else {
                 // 401, 403, 404 и прочее: токен не подходит для этого проекта; вызывающий перейдёт на ls-remote
                 let code = match status {
@@ -101,7 +101,7 @@ impl CicdService {
                     403 => ErrorCode::Forbidden,
                     _ => ErrorCode::GitlabError,
                 };
-                return Err(GorynychError::new(code, t("GitLab вернул {0}", &[&status])));
+                return Err(GorynychError::new(code, t("gitlab-returned", &[&status])));
             };
             for (name, hash) in entry.list {
                 heads.insert(name, hash);

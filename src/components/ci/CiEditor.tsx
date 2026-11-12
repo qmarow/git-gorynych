@@ -305,7 +305,7 @@ export default function CiEditor({ value, onChange, lang, errors, jump, onSave, 
             style={{ top: suggest.top + 2, left: Math.max(4, suggest.left) }}
             className="absolute z-20 min-w-[180px] overflow-hidden rounded-md border border-gk-fg/10 bg-[var(--gk-solid-2)] py-1 font-sans shadow-xl"
           >
-            <div className="px-2.5 pb-1 text-[10.5px] uppercase tracking-wider text-gk-dim">{t('Метки живых раннеров')}</div>
+            <div className="px-2.5 pb-1 text-[10.5px] uppercase tracking-wider text-gk-dim">{t('live-runners-labels')}</div>
             {suggest.items.map((label, i) => (
               <button
                 key={label}

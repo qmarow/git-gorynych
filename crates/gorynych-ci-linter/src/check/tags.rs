@@ -97,10 +97,10 @@ fn is_live(runner: &RunnerInfo) -> bool {
 
 fn status_text(status: &str) -> String {
     match status {
-        "online" => tr!("в сети"),
-        "busy" => tr!("занят"),
-        "offline" => tr!("не в сети"),
-        "paused" => tr!("на паузе"),
+        "online" => tr!("online"),
+        "busy" => tr!("busy"),
+        "offline" => tr!("offline"),
+        "paused" => tr!("paused"),
         other => other.to_owned(),
     }
 }
@@ -124,7 +124,7 @@ pub fn check_runner_tags(current: &CiCurrent, runners: &[RunnerInfo], language: 
     let mut issues = Vec::new();
     for (group, jobs) in groups.values() {
         let shown: Vec<String> = jobs.iter().take(4).map(q).collect();
-        let jobs_text = format!("{}{}", shown.join(", "), if jobs.len() > 4 { tr!(" и ещё {0}", jobs.len() - 4) } else { String::new() });
+        let jobs_text = format!("{}{}", shown.join(", "), if jobs.len() > 4 { tr!("and-more", jobs.len() - 4) } else { String::new() });
         let line = group.key_path.as_ref().and_then(|path| pos.line(&group.file, path)).or_else(|| group.text.and_then(|text| pos.find(&group.file, text, 1))).or(group.line);
         if group.untagged {
             let any: Vec<&RunnerInfo> = runners.iter().filter(|runner| runner.run_untagged != Some(false)).collect();
@@ -135,11 +135,11 @@ pub fn check_runner_tags(current: &CiCurrent, runners: &[RunnerInfo], language: 
             issues.push(CiRunnerIssue {
                 id: "runner-untagged".to_owned(),
                 severity: CiSeverity::Warning,
-                title: if any.is_empty() { tr!("Нет раннера, который берёт задания без тегов") } else { tr!("Все раннеры для заданий без тегов не в сети или на паузе") },
-                when: tr!("При запуске {0}", jobs_text),
-                how: tr!("Задание повиснет в очереди (Pending): «This job is stuck because the project doesn’t have any runners online assigned to it»."),
-                why: if any.is_empty() { tr!("У всех раннеров проекта выключено «Run untagged jobs».") } else { tr!("Подходят: {0}", list.join(", ")) },
-                fix: tr!("Добавьте заданию tags: [<тег живого раннера>] или включите раннеру «Брать задания без тегов»."),
+                title: if any.is_empty() { tr!("no-runner-picks-up-untagged") } else { tr!("all-runners-for-untagged-jobs") },
+                when: tr!("on-run", jobs_text),
+                how: tr!("job-will-hang-in-queue"),
+                why: if any.is_empty() { tr!("all-project-runners-have-run") } else { tr!("matching", list.join(", ")) },
+                fix: tr!("add-tags-live-runners-tag"),
                 file: group.file.clone(),
                 line,
                 job: jobs[0].clone(),
@@ -158,26 +158,26 @@ pub fn check_runner_tags(current: &CiCurrent, runners: &[RunnerInfo], language: 
         let missing: Vec<String> = group.tags.iter().filter(|tag| !live_labels.contains(&low(tag))).cloned().collect();
         let quoted = |list: &[String]| list.iter().map(|tag| format!("\"{tag}\"")).collect::<Vec<_>>().join(", ");
         let what = match missing.as_slice() {
-            [single] => tr!("тегом \"{0}\"", single),
-            [] => tr!("набором тегов {0}", quoted(&group.tags)),
-            several => tr!("тегами {0}", quoted(several)),
+            [single] => tr!("tag", single),
+            [] => tr!("tag-set", quoted(&group.tags)),
+            several => tr!("tags", quoted(several)),
         };
         let why = if !fit.is_empty() {
             let list: Vec<String> = fit.iter().map(|runner| format!("{} — {}", runner.name, status_text(&runner.status))).collect();
-            tr!("Раннеры с этими тегами есть, но {0}.", list.join(", "))
+            tr!("runners-with-these-tags-exist", list.join(", "))
         } else if missing.is_empty() {
-            tr!("Каждый тег есть у какого-то раннера в сети, но ни у одного — все сразу: задание берёт только раннер, у которого есть все перечисленные теги.")
+            tr!("each-tag-belongs-to-some")
         } else {
-            tr!("Ни у одного раннера в сети нет {0}.", if missing.len() == 1 { tr!("этого тега") } else { tr!("этих тегов") })
+            tr!("no-online-runner-has", if missing.len() == 1 { tr!("this-tag") } else { tr!("these-tags") })
         };
         issues.push(CiRunnerIssue {
             id: "runner-tags-missing".to_owned(),
             severity: CiSeverity::Warning,
-            title: tr!("Нет активных раннеров с {0} — пайплайн зависнет в очереди (Pending)!", what),
-            when: tr!("При запуске {0}", jobs_text),
-            how: if current.system == "gitlab" { "GitLab: «This job is stuck because you don’t have any active runners online … with any of these tags assigned to them».".to_owned() } else { tr!("Задание будет ждать в статусе Queued, пока не появится подходящий раннер (до 24 часов), затем отменится.") },
+            title: tr!("no-active-runners-with-pipeline", what),
+            when: tr!("on-run", jobs_text),
+            how: if current.system == "gitlab" { "GitLab: «This job is stuck because you don’t have any active runners online … with any of these tags assigned to them».".to_owned() } else { tr!("job-will-wait-in-queued") },
             why,
-            fix: if fit.is_empty() { tr!("Проверьте опечатки в тегах или подключите раннер с этими тегами (вкладка «Раннеры» → «Подключить раннер»).") } else { tr!("Запустите или снимите с паузы подходящий раннер (вкладка «Раннеры»).") },
+            fix: if fit.is_empty() { tr!("check-tags-for-typos-or") } else { tr!("start-or-unpause-matching-runner") },
             file: group.file.clone(),
             line,
             job: jobs[0].clone(),

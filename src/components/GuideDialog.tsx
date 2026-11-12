@@ -49,57 +49,57 @@ type WithChildren = { children?: ReactNode };
 /* ---------------- Горячие клавиши (используются и в разделе руководства) ---------------- */
 
 export const SHORTCUTS: ShortcutGroup[] = [
-  [t('Репозитории'), [
-    ['Ctrl+O', t('Открыть репозиторий')],
-    ['Ctrl+Shift+O', t('Клонировать')],
-    ['Ctrl+N', t('Создать репозиторий')],
-    ['Ctrl+Tab / Ctrl+Shift+Tab', t('Следующая / предыдущая вкладка')],
-    ['Ctrl+T', t('Новая вкладка: открыть, клонировать, создать, недавние')],
-    ['Ctrl+W', t('Закрыть вкладку')],
+  [t('repositories'), [
+    ['Ctrl+O', t('open-repository-3')],
+    ['Ctrl+Shift+O', t('clone-2')],
+    ['Ctrl+N', t('create-repository-2')],
+    ['Ctrl+Tab / Ctrl+Shift+Tab', t('next-previous-tab')],
+    ['Ctrl+T', t('new-tab-open-clone-create')],
+    ['Ctrl+W', t('close-tab')],
   ]],
-  [t('Работа'), [
-    ['Ctrl+Z / Ctrl+Y', t('Отменить / повторить действие')],
-    ['Ctrl+F', t('Поиск коммитов (в открытом diff — поиск в изменениях, в сравнении — по содержимому)')],
-    ['Ctrl+Alt+F', t('Фильтр веток и тегов слева')],
-    ['Ctrl+B', t('Переключить ветку')],
-    ['Ctrl+Enter', t('Сделать коммит (в поле сообщения)')],
-    [t('Клик по чипсу feat / fix / …'), t('Префикс Conventional Commits; повторный клик убирает')],
-    [t('Двойной клик по коммиту'), t('Переключиться на его ветку; без ветки — спросит')],
-    [t('Двойной клик по метке ветки'), t('Переключиться именно на эту ветку')],
-    [t('Правый клик по коммиту'), t('Меню действий')],
-    [t('Ctrl+клик по коммиту'), t('Сравнить с выбранным')],
-    [t('Перетащить коммит или ветку на ветку'), t('Merge, cherry-pick, fast-forward или rebase')],
-    [t('Наведение на «+N» у веток'), t('Все ветки и теги коммита')],
-    [t('Наведение на ↓ / ↑ у ветки слева'), t('Входящие / исходящие коммиты, обновить ветку')],
-    [t('Свои сочетания'), t('Запуск действий из конструктора (меню Actions)')],
-    [t('Правый клик по файлу'), t('Вернуть файл / отменить правки')],
+  [t('work'), [
+    ['Ctrl+Z / Ctrl+Y', t('undo-redo-action')],
+    ['Ctrl+F', t('commit-search-in-open-diff')],
+    ['Ctrl+Alt+F', t('filter-branches-and-tags-on')],
+    ['Ctrl+B', t('switch-branch-2')],
+    ['Ctrl+Enter', t('commit-in-message-field')],
+    [t('click-feat-fix-chip'), t('conventional-commits-prefix-second-click')],
+    [t('double-click-commit'), t('switch-to-its-branch-without')],
+    [t('double-click-branch-label'), t('switch-to-exactly-that-branch')],
+    [t('right-click-commit'), t('action-menu')],
+    [t('ctrl-click-commit'), t('compare-with-selected-one')],
+    [t('drag-commit-or-branch-onto'), t('merge-cherry-pick-fast-forward')],
+    [t('hover-over-n-next-to'), t('all-branches-and-tags-of')],
+    [t('hover-over-next-to-branch'), t('incoming-outgoing-commits-update-branch')],
+    [t('custom-shortcuts'), t('running-actions-from-builder-actions')],
+    [t('right-click-file'), t('restore-file-discard-edits')],
   ]],
-  [t('Просмотр изменений'), [
-    ['Ctrl+F', t('Поиск в изменениях файла')],
-    ['Enter / Shift+Enter, F3 / Shift+F3', t('Следующее / предыдущее совпадение')],
-    ['Alt+C / Alt+R', t('Поиск: учитывать регистр / регулярное выражение')],
-    ['F7 / Shift+F7', t('Следующее / предыдущее изменение')],
-    ['Alt+↑ / Alt+↓', t('Предыдущий / следующий файл')],
-    ['Esc', t('Закрыть')],
+  [t('viewing-changes'), [
+    ['Ctrl+F', t('search-in-files-changes')],
+    ['Enter / Shift+Enter, F3 / Shift+F3', t('next-previous-match')],
+    ['Alt+C / Alt+R', t('search-match-case-regular-expression')],
+    ['F7 / Shift+F7', t('next-previous-change')],
+    ['Alt+↑ / Alt+↓', t('previous-next-file')],
+    ['Esc', t('close')],
   ]],
-  [t('Интерактивный rebase'), [
-    ['↑ / ↓', t('Выбрать коммит')],
-    ['Alt+↑ / Alt+↓', t('Переместить коммит')],
-    ['P R S F D', t('Оставить / сообщение / squash / fixup / удалить')],
+  [t('interactive-rebase'), [
+    ['↑ / ↓', t('select-commit-2')],
+    ['Alt+↑ / Alt+↓', t('move-commit')],
+    ['P R S F D', t('pick-reword-squash-fixup-drop')],
   ]],
-  [t('Конфликты'), [
-    ['Ctrl+S', t('Сохранить решение и перейти дальше')],
-    ['Alt+↑ / Alt+↓', t('К предыдущему / следующему конфликту')],
+  [t('conflicts-3'), [
+    ['Ctrl+S', t('save-resolution-and-move-on')],
+    ['Alt+↑ / Alt+↓', t('to-previous-next-conflict')],
   ]],
   ['CI/CD', [
-    ['Ctrl+S', t('Сохранить файл CI')],
-    ['Ctrl+/', t('Закомментировать строку')],
-    ['Tab / Shift+Tab', t('Отступ')],
+    ['Ctrl+S', t('save-ci-file')],
+    ['Ctrl+/', t('comment-out-line')],
+    ['Tab / Shift+Tab', t('indent')],
   ]],
-  [t('Окно'), [
-    ['Ctrl+,', t('Настройки и оформление')],
-    ['F1', t('Руководство')],
-    ['F12', t('Инструменты разработчика')],
+  [t('window'), [
+    ['Ctrl+,', t('settings-and-appearance')],
+    ['F1', t('guide')],
+    ['F12', t('developer-tools')],
   ]],
 ];
 
@@ -149,330 +149,330 @@ const Tip = ({ children, tone = 'blue' }: WithChildren & { tone?: 'blue' | 'yell
 const SECTIONS: Section[] = [
   {
     id: 'start',
-    title: t('Начало работы'),
+    title: t('getting-started'),
     icon: Rocket,
-    keywords: t('открыть создать клонировать подключить вкладки репозиторий папка gitlab github'),
+    keywords: t('open-create-clone-connect-tabs'),
     body: () => (
       <>
         <P>
-          {tj('<0>git-Горыныч</0> — программа для работы с Git-репозиториями: история в виде графа, коммиты, ветки, синхронизация с сервером, безопасная отмена любых действий и работа с CI/CD GitLab.', [<B />])}</P>
-        <H>{t('Открыть проект')}</H>
+          {tj('git-gorynych-is-app-for', [<B />])}</P>
+        <H>{t('open-project')}</H>
         <List
           items={[
             <>
-              {tj('<0>Открыть репозиторий</0> <1>Ctrl+O</1> — выберите папку, где уже есть Git.', [<B />, <K />])}</>,
+              {tj('open-repository-ctrl-o-choose', [<B />, <K />])}</>,
             <>
-              {tj('<0>Клонировать</0> <1>Ctrl+Shift+O</1> — вставьте ссылку на репозиторий (GitLab, GitHub и т. п.). Программа сама проверит доступ, покажет ветки и предложит папку.', [<B />, <K />])}</>,
+              {tj('clone-ctrl-shift-o-paste', [<B />, <K />])}</>,
             <>
-              {tj('<0>Создать репозиторий</0> <1>Ctrl+N</1> — сделать Git-репозиторий из обычной папки, с первым коммитом и .gitignore.', [<B />, <K />])}</>,
+              {tj('create-repository-ctrl-n-make', [<B />, <K />])}</>,
             <>
-              {tj('<0>Подключить папку к GitLab / GitHub</0> — у вас есть файлы и пустой (или не пустой) репозиторий на сервере: программа свяжет их и отправит изменения.', [<B />])}</>,
+              {tj('connect-folder-to-gitlab-github-you', [<B />])}</>,
           ]}
         />
-        <P>{tj('Всё это есть на стартовом экране и в меню <0>File</0>.', [<B />])}</P>
-        <H>{t('Вкладки')}</H>
+        <P>{tj('all-of-this-is-on', [<B />])}</P>
+        <H>{t('tabs')}</H>
         <P>
-          {tj('Каждый репозиторий открывается в своей вкладке сверху. <0>Ctrl+Tab</0> — следующая вкладка, <1>Ctrl+W</1> — закрыть. Открытые вкладки запоминаются и восстанавливаются при следующем запуске.', [<K />, <K />])}</P>
+          {tj('each-repository-opens-in-its', [<K />, <K />])}</P>
         <Tip tone="green">
-          {tj('Почти любое действие можно отменить: <0>Ctrl+Z</0> или кнопка <1>Отменить</1> на панели сверху. Подробнее — в разделе «Отмена и безопасность».', [<K />, <B />])}</Tip>
+          {tj('almost-any-action-can-be', [<K />, <B />])}</Tip>
       </>
     ),
   },
   {
     id: 'ui',
-    title: t('Как устроено окно'),
+    title: t('how-window-is-laid-out'),
     icon: LayoutPanelLeft,
-    keywords: t('интерфейс панель граф слева справа тулбар статус ветки remote stash теги колонки шапка таблица плотность sha дата узлы точки аватары проводник finder терминал командная строка папка путь'),
+    keywords: t('interface-panel-graph-left-right'),
     body: () => (
       <>
-        <H>{t('Панель сверху')}</H>
+        <H>{t('top-toolbar')}</H>
         <List
           items={[
             <>
-              {tj('Слева — текущий <0>репозиторий</0> и <1>ветка</1> (клик по ветке — быстрое переключение, <2>Ctrl+B</2>).', [<B />, <B />, <K />])}</>,
+              {tj('on-left-current-repository-and', [<B />, <B />, <K />])}</>,
             <>
-              {tj('Кнопки <0>Отменить / Повторить</0>, <1>Pull</1> (стрелка рядом — выбор режима), <2>Push</2>, <3>Ветка</3> (новая ветка), <4>Stash / Pop</4>.', [<B />, <B />, <B />, <B />, <B />])}</>,
-            <>{t('Справа — состояние доступа к серверу, поиск коммитов, обновление и настройки.')}</>,
+              {tj('undo-redo-pull-arrow-next', [<B />, <B />, <B />, <B />, <B />])}</>,
+            <>{t('on-right-server-access-status')}</>,
           ]}
         />
-        <H>{t('Вкладки')}</H>
+        <H>{t('tabs')}</H>
         <P>
-          {tj('Каждый репозиторий — отдельная вкладка вверху. <0>«+»</0> (или <1>Ctrl+T</1>) открывает <2>Новую вкладку</2>: кнопки «Открыть», «Клонировать», «Создать» и список недавних репозиториев — клик откроет репозиторий прямо в этой вкладке, а если он уже открыт, программа переключится на него. Крестик у строки убирает её из списка (сам репозиторий не трогается).', [<B />, <K />, <B />])}</P>
-        <H>{t('Слева — ветки и всё остальное')}</H>
+          {tj('each-repository-is-separate-tab', [<B />, <K />, <B />])}</P>
+        <H>{t('on-left-branches-and-everything')}</H>
         <P>
-          {tj('Разделы <0>Локальные</0> (ваши ветки), <1>На сервере</1> (remote-ветки), <2>Stash</2>, <3>Теги</3> и <4>CI/CD</4>. Двойной клик по ветке — переключиться на неё; по remote-ветке — создать локальную копию и переключиться. Правый клик — все действия с веткой. Поле фильтра сверху (<5>Ctrl+Alt+F</5>) ищет по названиям.', [<B />, <B />, <B />, <B />, <B />, <K />])}</P>
-        <H>{t('В центре — граф коммитов')}</H>
+          {tj('local-your-branches-on-server', [<B />, <B />, <B />, <B />, <B />, <K />])}</P>
+        <H>{t('in-center-commit-graph')}</H>
         <P>
-          {tj('Каждая строка — коммит: ветки и теги слева, линии графа, сообщение, автор, дата. Самая верхняя строка <0>// WIP</0> — ваши незакоммиченные изменения. Клик — показать коммит справа, двойной клик — переключиться на его ветку, правый клик — меню действий. Строку коммита или метку ветки можно перетащить на другую ветку — см. раздел «Перетаскивание».', [<B />])}</P>
-        <H>{t('Настройка таблицы коммитов')}</H>
+          {tj('each-row-is-commit-branches', [<B />])}</P>
+        <H>{t('commit-table-settings')}</H>
         <List
           items={[
             <>
-              {tj('<0>Правый клик по шапке</0> таблицы или значок в её правом углу — меню вида: какие колонки показывать (в том числе <1>SHA</1> — короткий хэш, клик копирует полный), плотность строк (<2>компактная 26px</2>, <3>стандартная 34px</3>, <4>свободная 42px</4>), дата <5>абсолютная</5> или <6>относительная</6> («15 мин назад», точная — в подсказке), узлы графа — <7>аватары</7> или <8>точки</8>.', [<B />, <B />, <B />, <B />, <B />, <B />, <B />, <B />, <B />])}</>,
+              {tj('right-click-table-header-or', [<B />, <B />, <B />, <B />, <B />, <B />, <B />, <B />, <B />])}</>,
             <>
-              {tj('Колонки меняются местами <0>перетаскиванием заголовка</0>. «Сообщение коммита» видно всегда и забирает место скрытых колонок.', [<B />])}</>,
+              {tj('columns-are-reordered-by-dragging', [<B />])}</>,
             <>
-              {tj('Ширину колонки тянут за разделитель в шапке; <0>двойной клик по разделителю</0> подгоняет ширину под содержимое (у графа — авто). «Сбросить ширину и вид колонок» в том же меню возвращает всё как было.', [<B />])}</>,
+              {tj('columns-width-is-dragged-by', [<B />])}</>,
             <>
-              {tj('Префиксы Conventional Commits (<0>feat:</0>, <1>fix:</1>, <2>docs:</2>…) показываются цветным бейджем. Если сообщение не влезло — наведите курсор: всплывёт полный заголовок с описанием.', [<B />, <B />, <B />])}</>,
+              {tj('conventional-commits-prefixes-feat-fix', [<B />, <B />, <B />])}</>,
           ]}
         />
-        <H>{t('Справа — детали')}</H>
+        <H>{t('on-right-details')}</H>
         <P>
-          {t('Для коммита — сообщение, автор, родители и список изменённых файлов (клик по файлу открывает diff). Для строки WIP — списки «Неиндексированные файлы» / «Индексированные файлы» и форма коммита.')}</P>
-        <H>{t('Снизу — строка состояния')}</H>
+          {t('for-commit-message-author-parents')}</P>
+        <H>{t('at-bottom-status-bar')}</H>
         <P>
-          {tj('Текущая ветка и насколько она впереди/позади сервера, HEAD, переключатель <0>авто</0> (фоновая проверка сервера; правый клик — настройки) и кнопка fetch. Справа — путь к репозиторию: клик открывает папку в {1}, кнопки рядом — папку и терминал (командную строку) прямо в этой папке. То же — в меню «Файл» и по правому клику на названии репозитория.', [<B />, openFolderLabel().replace(/^(Открыть|Показать) в /, '')])}</P>
-        <Tip>{t('Границы панелей можно перетаскивать мышью; двойной клик по границе возвращает исходную ширину.')}</Tip>
+          {tj('current-branch-and-how-far', [<B />, openFolderLabel().replace(/^(Открыть|Показать) в /, '')])}</P>
+        <Tip>{t('panel-borders-can-be-dragged')}</Tip>
       </>
     ),
   },
   {
     id: 'commit',
-    title: t('Изменения и коммиты'),
+    title: t('changes-and-commits'),
     icon: GitCommitHorizontal,
-    keywords: t('stage unstage коммит commit wip фрагмент hunk сообщение статистика строки переименование перенос moved'),
+    keywords: t('stage-unstage-commit-wip-hunk'),
     body: () => (
       <>
         <Steps
           items={[
             <>
-              {tj('Выберите строку <0>// WIP</0> в графе — справа появятся изменённые файлы.', [<B />])}</>,
+              {tj('select-wip-row-in-graph', [<B />])}</>,
             <>
-              {tj('Нажмите на файл, чтобы посмотреть изменения. Добавьте нужное в коммит: кнопка <0>+</0> у файла, двойной клик по файлу или <1>Добавить все</1>.', [<B />, <B />])}</>,
+              {tj('click-file-to-see-changes', [<B />, <B />])}</>,
             <>
-              {tj('Можно добавить <0>только часть файла</0>: в diff у каждого фрагмента есть кнопка <1>В индекс</1>.', [<B />, <B />])}</>,
+              {tj('you-can-add-only-part', [<B />, <B />])}</>,
             <>
-              {tj('Напишите заголовок коммита (и при желании описание) и нажмите <0>Закоммитить</0> или <1>Ctrl+Enter</1>. Тип коммита, номер задачи и шаблоны описания — раздел «Сообщение коммита».', [<B />, <K />])}</>,
+              {tj('write-commit-title-and-description', [<B />, <K />])}</>,
           ]}
         />
         <P>
-          {tj('Справа у каждого файла — сколько строк добавлено и удалено (<0>+12</0> <1>-3</1>), у бинарных — <2>bin</2>. Перенесённый или переименованный файл помечен <3>R</3> и показан как «старый путь → новый»; если содержимое не менялось, рядом метка <4>moved</4>. Если убрать такой файл из индекса, уйдут оба пути сразу.', [<span className="font-mono text-gk-green" />, <span className="font-mono text-gk-red" />, <span className="text-gk-dim" />, <B />, <span className="rounded bg-gk-blue/10 px-1 text-[11px] text-gk-blue" />])}</P>
+          {tj('on-right-of-each-file', [<span className="font-mono text-gk-green" />, <span className="font-mono text-gk-red" />, <span className="text-gk-dim" />, <B />, <span className="rounded bg-gk-blue/10 px-1 text-[11px] text-gk-blue" />])}</P>
         <P>
-          {tj('Ошиблись — <0>Ctrl+Z</0> отменит коммит, изменения снова окажутся в индексированных файлах. Если коммит уже отправлен на сервер, Undo его не тронет (иначе переписалась бы общая история) — используйте <1>Обратить изменения коммита (Revert)</1> из меню коммита.', [<K />, <B />])}</P>
+          {tj('made-mistake-ctrl-z-undoes', [<K />, <B />])}</P>
       </>
     ),
   },
   {
     id: 'message',
-    title: t('Сообщение коммита'),
+    title: t('commit-message-2'),
     icon: MessageSquareText,
-    keywords: t('conventional commits feat fix refactor chore docs style test perf scope префикс тип номер задачи тикет jira issue ветка шаблон template commit.template gitmessage описание refs breaking'),
+    keywords: t('conventional-commits-feat-fix-refactor'),
     body: () => (
       <>
-        <H>{t('Тип коммита одним кликом')}</H>
+        <H>{t('commit-type-in-one-click')}</H>
         <P>
-          {tj('Над заголовком коммита — чипсы <0>feat</0>, <1>fix</1>, <2>refactor</2>, <3>chore</3>, <4>docs</4>, <5>style</5>, <6>test</6>, <7>perf</7> (формат Conventional Commits). Клик ставит префикс <8>feat: </8> в начало сообщения, клик по другому чипсу меняет тип, повторный клик убирает. Если ввести префикс руками, нужный чипс подсветится сам.', [<B />, <B />, <B />, <B />, <B />, <B />, <B />, <B />, <code className="font-mono text-gk-text" />])}</P>
+          {tj('above-commit-title-there-are', [<B />, <B />, <B />, <B />, <B />, <B />, <B />, <B />, <code className="font-mono text-gk-text" />])}</P>
         <List
           items={[
             <>
-              {tj('<0>(scope)</0> — область изменений: <1>feat(api): …</1>. Можно ввести свой или выбрать из подсказок — это папки, в которых лежат staged-файлы.', [<B />, <code className="font-mono text-gk-text" />])}</>,
+              {tj('scope-area-of-changes-feat-api', [<B />, <code className="font-mono text-gk-text" />])}</>,
             <>
-              {tj('<0>!</0> — несовместимое изменение: <1>feat!: …</1>.', [<B />, <code className="font-mono text-gk-text" />])}</>,
-            <>{t('Справа в поле — длина заголовка: жёлтая после 50 символов, красная после 72.')}</>,
+              {tj('breaking-change-feat', [<B />, <code className="font-mono text-gk-text" />])}</>,
+            <>{t('on-right-of-field-title')}</>,
           ]}
         />
-        <H>{t('Номер задачи из имени ветки')}</H>
+        <H>{t('issue-number-from-branch-name')}</H>
         <P>
-          {tj('Если ветка называется, например, <0>feature/PROJ-123-login</0>, <1>bugfix/1234-fix</1> или <2>issue-42</2>, рядом с чипсами появляется кнопка {3} <4>+ [PROJ-123]</4> (или <5>#1234</5>). Клик добавляет номер в сообщение, ещё клик — убирает. По умолчанию номер добавляется сам в каждое новое сообщение.', [<code className="font-mono text-gk-text" />, <code className="font-mono text-gk-text" />, <code className="font-mono text-gk-text" />, <Ticket size={12} className="inline align-[-2px]" />, <B />, <B />])}</P>
-        <P>{t('Стрелка рядом с кнопкой — куда ставить номер:')}</P>
+          {tj('if-branch-is-named-for', [<code className="font-mono text-gk-text" />, <code className="font-mono text-gk-text" />, <code className="font-mono text-gk-text" />, <Ticket size={12} className="inline align-[-2px]" />, <B />, <B />])}</P>
+        <P>{t('arrow-next-to-button-where')}</P>
         <List
           items={[
             <>
-              {tj('<0>[PROJ-123] feat: …</0> — в начало (по умолчанию);', [<code className="font-mono text-gk-text" />])}</>,
+              {tj('proj-123-feat-at-start', [<code className="font-mono text-gk-text" />])}</>,
             <>
-              {tj('<0>feat(PROJ-123): …</0> — вместо scope (пока тип не выбран — в скобках в начале);', [<code className="font-mono text-gk-text" />])}</>,
+              {tj('feat-proj-123-instead-of', [<code className="font-mono text-gk-text" />])}</>,
             <>
-              {tj('<0>feat: … (PROJ-123)</0> — в конец;', [<code className="font-mono text-gk-text" />])}</>,
+              {tj('feat-proj-123-at-end', [<code className="font-mono text-gk-text" />])}</>,
             <>
-              {tj('<0>Refs: PROJ-123</0> — отдельной строкой в конце описания.', [<code className="font-mono text-gk-text" />])}</>,
+              {tj('refs-proj-123-on-separate', [<code className="font-mono text-gk-text" />])}</>,
           ]}
         />
         <P>
-          {tj('Там же — переключатель <0>Автоматически добавлять номер задачи</0>. Если номера в ваших ветках устроены иначе, задайте своё правило (регулярное выражение) в <1>Настройки → Сообщение коммита</1> и проверьте его на имени ветки прямо там.', [<B />, <B />])}</P>
-        <H>{t('Шаблоны описания')}</H>
+          {tj('theres-also-add-issue-number', [<B />, <B />])}</P>
+        <H>{t('description-templates')}</H>
         <P>
-          {tj('Кнопка {0} <1>Шаблоны</1> над формой коммита — готовые заготовки для описания: «Что сделано / Как проверить», «Исправление ошибки», «Несовместимое изменение». Клик вставляет шаблон, курсор встаёт туда, где начинать писать; <2>{ticket}</2> и <3>{branch}</3> заменяются на номер задачи и имя ветки.', [<LayoutTemplate size={12} className="inline align-[-2px]" />, <B />, <code className="font-mono text-gk-text" />, <code className="font-mono text-gk-text" />])}</P>
+          {tj('templates-button-above-commit-form', [<LayoutTemplate size={12} className="inline align-[-2px]" />, <B />, <code className="font-mono text-gk-text" />, <code className="font-mono text-gk-text" />])}</P>
         <List
           items={[
             <>
-              {tj('<0>Сохранить текущее описание как шаблон</0> — превращает то, что вы написали, в шаблон (номер задачи сам станет <1>{ticket}</1>).', [<B />, <code className="font-mono text-gk-text" />])}</>,
-            <>{t('Изменить или удалить шаблон — кнопки при наведении. Полный список — в настройках.')}</>,
+              {tj('save-current-description-as-template-2', [<B />, <code className="font-mono text-gk-text" />])}</>,
+            <>{t('edit-or-delete-template-buttons')}</>,
             <>
-              {tj('Если в репозитории задан <0>git config commit.template</0>, его текст сам заполняет описание, а строки с <1>#</1> показываются подсказкой в пустом поле — как в обычном <2>git commit</2>.', [<code className="font-mono text-gk-text" />, <code className="font-mono text-gk-text" />, <code className="font-mono text-gk-text" />])}</>,
+              {tj('if-repository-has-git-config', [<code className="font-mono text-gk-text" />, <code className="font-mono text-gk-text" />, <code className="font-mono text-gk-text" />])}</>,
           ]}
         />
         <Tip tone="green">
-          {t('Набранное сообщение не теряется, если посмотреть другой коммит и вернуться к строке WIP. После коммита форма снова заполняется номером задачи и шаблоном.')}</Tip>
+          {t('typed-message-isnt-lost-if')}</Tip>
       </>
     ),
   },
   {
     id: 'branches',
-    title: t('Ветки'),
+    title: t('branches-2'),
     icon: GitBranch,
-    keywords: t('ветка branch git flow gitflow feature bugfix release hotfix support приписка префикс checkout merge слить удалить переключить создать detached тег tag сервер remote origin облако ноутбук +N удалить с сервера push --delete входящие исходящие ahead behind gone update обновить без переключения stash спрятать перенести выбросить изменения wip незакоммиченные'),
+    keywords: t('branch-git-flow-gitflow-feature'),
     body: () => (
       <>
-        <H>{t('Создать и переключить')}</H>
+        <H>{t('create-and-switch')}</H>
         <List
           items={[
             <>
-              {tj('<0>Ветка</0> на панели — новая ветка от текущего коммита (или от выбранного в графе).', [<B />])}</>,
+              {tj('branch-on-toolbar-new-branch', [<B />])}</>,
             <>
-              {tj('Правый клик по коммиту → <0>Создать ветку здесь…</0> — ветка от любого коммита.', [<B />])}</>,
+              {tj('right-click-commit-create-branch', [<B />])}</>,
             <>
-              {tj('В окне новой ветки выбирается <0>тип по git flow</0>: <1>feature/</1>, <2>bugfix/</2>, <3>release/</3>, <4>hotfix/</4>, <5>support/</5> или без приписки — приписка подставится сама, вводится только остальное имя. Программа подскажет, от какой ветки по git flow создаётся такой тип (feature — от develop, hotfix — от main), и предложит <6>Создать от develop</6>. Если в репозитории выполнен <7>git flow init</7>, приписки берутся из его настроек. Последний выбранный тип запоминается.', [<B />, <B />, <B />, <B />, <B />, <B />, <B />, <B />])}</>,
+              {tj('in-new-branch-window-you', [<B />, <B />, <B />, <B />, <B />, <B />, <B />, <B />])}</>,
             <>
-              {tj('Переключиться: двойной клик по ветке слева или по её метке в графе, клик по названию ветки вверху или <0>Ctrl+B</0>.', [<K />])}</>,
+              {tj('to-switch-double-click-branch', [<K />])}</>,
             <>
-              {tj('<0>Двойной клик по коммиту</0> работает как в GitKraken: на коммите одна ваша ветка — переключает на неё; только ветка сервера — создаёт локальную, которая за ней следит; веток несколько — спросит, на какую. Если веток нет, программа предложит <1>Создать ветку здесь</1> или осознанно перейти в <2>detached HEAD</2> — случайно туда больше не попасть.', [<B />, <B />, <B />])}</>,
+              {tj('double-clicking-commit-works-as', [<B />, <B />, <B />])}</>,
           ]}
         />
-        <H>{t('Слить и удалить')}</H>
+        <H>{t('merge-and-delete')}</H>
         <P>
-          {tj('<0>Правый клик по метке ветки</0> (в графе или в списке слева) — меню только этой ветки: переключиться, <1>Влить … в …</1>(Merge), <2>Перебазировать … на …</2> (Rebase, с предпросмотром), <3>Сбросить … к …</3> (Reset), <4>Переименовать…</4>,<5>Удалить ветку…</5> и <6>Удалить … с сервера…</6>. Ветка и её копия на сервере на одном коммите — одно меню, без дублей. Удалённую или переименованную ветку возвращает <7>Ctrl+Z</7>.', [<B />, <B />, <B />, <B />, <B />, <B />, <B />, <K />])}</P>
+          {tj('right-click-branch-label-in', [<B />, <B />, <B />, <B />, <B />, <B />, <B />, <K />])}</P>
         <P>
-          {tj('Правый клик по строке коммита — меню коммита; ветки на нём собраны в подменю <0>Ветка … ›</0>. Английский термин Git (Merge, Rebase, Cherry-pick…) стоит справа в строке меню. Клик по хэшу в шапке меню копирует его.', [<B />])}</P>
+          {tj('right-click-commit-row-commit', [<B />])}</P>
         <P>
-          {t('Быстрее — мышью: перетащите ветку или коммит на ветку, в которую нужно слить (раздел «Перетаскивание»). Переключаться заранее не нужно.')}</P>
-        <H>{t('Где ветка: у вас или на сервере')}</H>
+          {t('faster-with-mouse-drag-branch')}</P>
+        <H>{t('where-branch-is-on-your')}</H>
         <List
           items={[
             <>
-              {tj('{0} — ветка только у вас (на сервер не отправлена).', [<Laptop size={12} className="inline align-[-1px]" />])}</>,
+              {tj('branch-is-only-on-your', [<Laptop size={12} className="inline align-[-1px]" />])}</>,
             <>
-              {tj('{0} — ветка на сервере (origin/…); в графе такие метки нарисованы пунктирной рамкой.', [<Cloud size={12} className="inline align-[-1px]" />])}</>,
+              {tj('branch-on-server-origin-in', [<Cloud size={12} className="inline align-[-1px]" />])}</>,
             <>
-              {tj('<0>{1}{2}</0> — локальная и серверная ветки на одном коммите, то есть синхронизированы.', [<span className="relative inline-block h-3 w-[18px] align-[-1px]" />, <Laptop size={12} className="absolute left-0 top-0" />, <Cloud size={9} strokeWidth={2.6} className="absolute -top-[3px] right-0" />])}</>,
+              {tj('local-and-server-branches-are', [<span className="relative inline-block h-3 w-[18px] align-[-1px]" />, <Laptop size={12} className="absolute left-0 top-0" />, <Cloud size={9} strokeWidth={2.6} className="absolute -top-[3px] right-0" />])}</>,
           ]}
         />
         <P>
-          {tj('Если на коммите несколько веток и тегов, в графе видна первая и бейдж <0>+N</0>. Наведите на него — откроется список всех веток и тегов этого коммита с пометками «у вас / на сервере». В списке: двойной клик — checkout, правый клик — меню ветки, кнопки при наведении — checkout и удаление с сервера.', [<B />])}</P>
-        <H>{t('Входящие и исходящие коммиты')}</H>
+          {tj('if-commit-has-several-branches', [<B />])}</P>
+        <H>{t('incoming-and-outgoing-commits')}</H>
         <P>
-          {t('У каждой локальной ветки в разделе Local видно, чем она отличается от своей ветки на сервере:')}</P>
+          {t('each-local-branch-in-local')}</P>
         <List
           items={[
             <>
-              {tj('<0>↓3</0> — на сервере 3 новых коммита, они придут при Pull;', [<span className="rounded bg-gk-blue/15 px-1 font-mono text-[11px] font-semibold text-gk-blue" />])}</>,
+              {tj('n-3-server-has-3', [<span className="rounded bg-gk-blue/15 px-1 font-mono text-[11px] font-semibold text-gk-blue" />])}</>,
             <>
-              {tj('<0>↑2</0> — 2 ваших коммита ещё не отправлены (уйдут при Push);', [<span className="rounded bg-gk-green/15 px-1 font-mono text-[11px] font-semibold text-gk-green" />])}</>,
+              {tj('n-2-2-of-your', [<span className="rounded bg-gk-green/15 px-1 font-mono text-[11px] font-semibold text-gk-green" />])}</>,
             <>
-              {tj('<0>gone</0> — ветку на сервере удалили.', [<span className="rounded bg-gk-red/10 px-1 text-[11px] text-gk-red" />])}</>,
+              {tj('gone-branch-on-server-was', [<span className="rounded bg-gk-red/10 px-1 text-[11px] text-gk-red" />])}</>,
           ]}
         />
         <P>
-          {tj('Наведите на ↓ или ↑ — откроется список этих коммитов (клик по коммиту показывает его в графе). Чтобы забрать новые коммиты, нажмите <0>Обновить (Pull)</0> в этом списке, кнопку со стрелкой при наведении на ветку или пункт в правом клике. Если ветка не текущая и своих коммитов в ней нет, она обновляется <1>без переключения</1> — рабочая папка не трогается. <2>Ctrl+Z</2> вернёт ветку туда, где она была.', [<B />, <B />, <K />])}</P>
-        <H>{t('Удалить ветку на сервере')}</H>
+          {tj('hover-over-or-list-of', [<B />, <B />, <K />])}</P>
+        <H>{t('delete-branch-on-server')}</H>
         <P>
-          {tj('Правый клик по remote-ветке (слева, в графе или в списке «+N») → <0>Удалить … с сервера…</0>, или кнопка с перечёркнутым облаком при наведении на ветку в разделе Remote. Программа спросит подтверждение: ветка пропадёт для всех, кто работает с репозиторием. Пока идёт запрос к серверу, на кнопке крутится индикатор. Локальная ветка остаётся, а <1>Ctrl+Z</1> опубликует удалённую ветку обратно на тот же коммит. Защищённую или основную ветку сервер не даст удалить — программа объяснит, что сделать.', [<B />, <K />])}</P>
-        <H>{t('Папки веток')}</H>
+          {tj('right-click-remote-branch-on', [<B />, <K />])}</P>
+        <H>{t('branch-folders')}</H>
         <P>
-          {tj('Ветки с «/» в имени собираются в папки: feature/create-task и feature/docker — в папке <0>feature</0>. Папки сворачиваются кликом, состояние запоминается. Кнопка справа в поле фильтра переключает вид «папками / списком».', [<B />])}</P>
-        <H>{t('Переключение с незакоммиченными изменениями')}</H>
+          {tj('branches-with-in-name-are', [<B />])}</P>
+        <H>{t('switching-with-uncommitted-changes')}</H>
         <P>
-          {t('Если в рабочей папке есть правки, при переключении ветки откроется окно с выбором. В нём видно, какие файлы изменены, и какие из них изменены и в целевой ветке (там возможен конфликт).')}</P>
+          {t('if-working-folder-has-edits')}</P>
         <List
           items={[
             <>
-              {tj('<0>Спрятать и переключиться</0> (Stash) — правки прячутся в stash с именем текущей ветки и сами возвращаются, когда вы переключитесь обратно, вместе со staged. Ветка, у которой ждут спрятанные правки, помечена значком коробки.', [<B />])}</>,
+              {tj('stash-and-switch-stash-edits', [<B />])}</>,
             <>
-              {tj('<0>Перенести изменения</0> (Move changes) — правки едут с вами в новую ветку. Если они пересекутся с правками ветки, будет конфликт, а копия останется в Stash.', [<B />])}</>,
+              {tj('move-changes-edits-go-with', [<B />])}</>,
             <>
-              {tj('<0>Выбросить изменения</0> (Discard) — папка станет как в коммите ветки; <1>Ctrl+Z</1> вернёт и ветку, и правки.', [<B />, <K />])}</>,
+              {tj('discard-changes-discard-folder-becomes', [<B />, <K />])}</>,
           ]}
         />
         <P>
-          {tj('Программа подсказывает, что лучше: перенести, если пересечений нет, или спрятать, если есть. «Больше не спрашивать» запоминает выбор; поменять — в <0>Настройки → Ветки</0>. Remote-ветка при переключении становится локальной веткой с тем же именем, которая следит за сервером. После переключения граф плавно прокручивается к новому HEAD. <1>Ctrl+Z</1> переключает обратно.', [<B />, <K />])}</P>
+          {tj('app-suggests-whats-better-move', [<B />, <K />])}</P>
         <H>Detached HEAD</H>
         <P>
-          {tj('Если переключиться на коммит, а не на ветку, программа предупредит в строке состояния: новые коммиты не попадут ни в одну ветку. Вернуться — <0>Ctrl+Z</0> или двойной клик по нужной ветке.', [<K />])}</P>
-        <H>{t('Теги')}</H>
+          {tj('if-you-switch-to-commit', [<K />])}</P>
+        <H>{t('tags-2')}</H>
         <P>
-          {tj('Правый клик по коммиту → <0>Создать тег здесь…</0>. Можно добавить описание — тогда будет аннотированный тег.', [<B />])}</P>
+          {tj('right-click-commit-create-tag', [<B />])}</P>
       </>
     ),
   },
   {
     id: 'dnd',
-    title: t('Перетаскивание'),
+    title: t('drag-and-drop'),
     icon: Move,
-    keywords: t('перетащить перетаскивание drag drop бросить мышью слить merge cherry-pick fast-forward перемотать rebase ветка коммит'),
+    keywords: t('drag-drop-mouse-merge-cherry'),
     body: () => (
       <>
-        <P>{t('Слить ветку или перенести коммит можно мышью — без переключения веток и меню.')}</P>
+        <P>{t('you-can-merge-branch-or')}</P>
         <Steps
           items={[
             <>
-              {tj('Возьмите <0>строку коммита</0> в графе, <1>метку ветки</1> в графе или <2>ветку в панели слева</2> (локальную или remote).', [<B />, <B />, <B />])}</>,
+              {tj('take-commit-row-in-graph', [<B />, <B />, <B />])}</>,
             <>
-              {tj('Перетащите на <0>ветку</0>, куда нужно влить изменения: на ветку слева или на строку графа, где стоит эта ветка. Цель подсвечивается зелёной рамкой.', [<B />])}</>,
-            <>{t('Отпустите — появится меню с подходящими вариантами.')}</>,
+              {tj('drag-it-onto-branch-you', [<B />])}</>,
+            <>{t('release-it-menu-with-suitable')}</>,
           ]}
         />
-        <H>{t('Что предлагается')}</H>
+        <H>{t('whats-offered')}</H>
         <List
           items={[
             <>
-              {tj('<0>Перемотать вперёд (Fast-forward)</0> — если в целевой ветке нет своих новых коммитов. Ветка просто передвигается, без merge-коммита и без переключения.', [<B />])}</>,
+              {tj('fast-forward-if-target-branch', [<B />])}</>,
             <>
-              {tj('<0>Влить в … (Merge)</0> — обычное слияние.', [<B />])}</>,
+              {tj('merge-into-merge-regular-merge', [<B />])}</>,
             <>
-              {tj('<0>Перенести коммит в … (Cherry-pick)</0> — только для коммита: перенести один этот коммит.', [<B />])}</>,
+              {tj('cherry-pick-commit-into-cherry', [<B />])}</>,
             <>
-              {tj('<0>Rebase … на …</0> — откроется интерактивный rebase с предпросмотром.', [<B />])}</>,
+              {tj('rebase-onto-opens-interactive-rebase', [<B />])}</>,
           ]}
         />
         <P>
-          {t('Если целевая ветка не текущая, программа сначала переключится на неё (с пометкой «с переключением»). При включённом умном переключении ваши незакоммиченные правки сами спрячутся и вернутся, когда вы придёте обратно. Если коммит уже есть в ветке, меню так и скажет: сливать нечего.')}</P>
+          {t('if-target-branch-isnt-current')}</P>
         <Tip tone="green">
-          {tj('Всё отменяется <0>Ctrl+Z</0>: сначала merge или cherry-pick, следующим нажатием — переключение ветки. При конфликте появится обычная жёлтая панель — раздел «Конфликты».', [<K />])}</Tip>
+          {tj('everything-is-undone-with-ctrl', [<K />])}</Tip>
       </>
     ),
   },
   {
     id: 'sync',
-    title: t('Синхронизация с сервером'),
+    title: t('syncing-with-server'),
     icon: RefreshCw,
-    keywords: t('авторизация репозитория self-managed свой сервер домен gitlab github enterprise gitea bitbucket тип сервера вход pull push fetch сервер remote force upstream автообновление доступ логин пароль авто проверка реалтайм интервал ls-remote etag нет связи авторизация вход токен ssh ключ passphrase credential'),
+    keywords: t('repository-sign-in-self-managed'),
     body: () => (
       <>
         <List
           items={[
             <>
-              {tj('<0>Fetch</0> — узнать, что нового на сервере, ничего не меняя у вас. При включённом <1>авто</1> программа делает это сама (см. ниже).', [<B />, <B />])}</>,
+              {tj('fetch-find-out-whats-new', [<B />, <B />])}</>,
             <>
-              {tj('<0>Pull</0> — забрать изменения в текущую ветку. Стрелка рядом выбирает режим: обычный (fast-forward, если возможно), только fast-forward или rebase.', [<B />])}</>,
+              {tj('pull-bring-changes-into-current', [<B />])}</>,
             <>
-              {tj('<0>Push</0> — отправить ваши коммиты. Для новой ветки upstream настроится автоматически.', [<B />])}</>,
+              {tj('push-send-your-commits-for', [<B />])}</>,
           ]}
         />
         <P>
-          {tj('Если сервер отклонил push, потому что там появились чужие коммиты, программа предложит сначала сделать Pull (rebase) и отправить снова. <0>Force Push</0> нужен только после переписывания истории (rebase уже отправленных коммитов) — он заменяет ветку на сервере.', [<B />])}</P>
+          {tj('if-server-rejected-push-because', [<B />])}</P>
         <Tip>
-          {t('Если нет доступа, программа объяснит причину (неверный логин, нет прав, неизвестный ключ SSH и т. п.) и что сделать.')}</Tip>
-        <H>{t('Авторизация репозитория')}</H>
+          {t('if-theres-no-access-app')}</Tip>
+        <H>{t('repository-sign-in-2')}</H>
         <P>
-          {tj('Если сервер не пустил при Fetch, Pull, Push или клонировании, сразу откроется окно <0>Авторизация репозитория</0>. Вход сохраняется <1>для этого репозитория</1>, а не для всего сервера: у разных репозиториев одного GitLab могут быть разные учётные записи. Способы входа: <2>логин и пароль</2>, <3>токен доступа</3> (glpat-… / ghp_…; логин можно не указывать) или <4>SSH-ключ</4> из ~/.ssh — с паролем ключа, если он есть.', [<B />, <B />, <B />, <B />, <B />])}</P>
+          {tj('if-server-refused-on-fetch', [<B />, <B />, <B />, <B />, <B />])}</P>
         <P>
-          {tj('Вверху окна — <0>где хранится репозиторий</0>: <1>GitHub</1>, <2>GitLab</2> или <3>Свой сервер</3> (Self-Managed — GitLab, GitHub Enterprise, Gitea/Forgejo или Bitbucket компании). Для своего сервера укажите домен (можно с портом), а тип программа спросит у сервера по API; если он не ответил (VPN, внутренняя сеть) — выберите тип вручную. Способы входа видны сразу, ещё до ввода домена. Выбор сервера меняет <4>адрес репозитория</4> (тот же путь проекта на другом сервере) — его можно поправить и целиком; при сохранении remote origin сменится, а у репозитория без remote — будет добавлен. При клонировании адрес задан в окне клонирования и здесь не меняется.', [<B />, <B />, <B />, <B />, <B />])}</P>
+          {tj('at-top-of-window-where', [<B />, <B />, <B />, <B />, <B />])}</P>
         <P>
-          {tj('Нет ключа — на вкладке «SSH-ключ» выберите <0>Создать новый ключ</0>: тип (Ed25519 или RSA 4096 для старых серверов), имя файла, комментарий (подставится ваш email из Git) и, по желанию, пароль ключа с повтором. Существующие ключи не перезаписываются. Публичная часть сразу копируется в буфер, кнопка <1>Открыть SSH Keys</1> ведёт на нужную страницу сервера — вставьте ключ туда. Если адрес начинается с https://, там же есть кнопка <2>Перевести адрес на SSH</2> (git@сервер:группа/проект.git) — ключ работает только с SSH-адресами.', [<B />, <B />, <B />])}</P>
+          {tj('no-key-on-ssh-key', [<B />, <B />, <B />])}</P>
         <P>
-          {tj('«Войти и повторить» сохраняет данные и сразу повторяет прерванную операцию. Данные шифруются средствами системы; Git получает их напрямую, без окон входа. Все сохранённые входы — <0>Настройки → Подключения</0>: серверы и привязанные к ним репозитории, у каждого — способ входа; там же изменить, забыть или авторизовать открытый репозиторий. Вход, сохранённый раньше на весь сервер, показан как <1>общий</1> и действует для репозиториев без своего. Если ничего не вводить, работает как раньше — через Git Credential Manager.', [<B />, <B />])}</P>
-        <H>{t('Фоновая проверка сервера')}</H>
+          {tj('sign-in-and-retry-saves', [<B />, <B />])}</P>
+        <H>{t('background-server-check')}</H>
         <P>
-          {tj('Пока включено <0>авто</0>, программа сама замечает новые коммиты и ветки на сервере — по умолчанию каждые 5 секунд. Сначала она спрашивает у сервера только хэши веток (для GitLab с сохранённым токеном — через API с ETag, иначе — <1>git ls-remote</1>), и только если что-то изменилось, делает настоящий <2>fetch --prune</2>. Поэтому частая проверка не нагружает сервер и не упирается в лимиты.', [<B />, <code className="font-mono text-gk-text" />, <code className="font-mono text-gk-text" />])}</P>
+          {tj('while-auto-is-on-app', [<B />, <code className="font-mono text-gk-text" />, <code className="font-mono text-gk-text" />])}</P>
         <List
           items={[
-            <>{t('Проверяется только открытая вкладка. Окно свёрнуто или в фоне — раз в 90 секунд; вернулись в окно — проверка сразу.')}</>,
-            <>{t('Пока вы делаете коммит, checkout, rebase и т. п. (или git работает в терминале), проверка пропускается — она никогда не мешает вашим командам.')}</>,
+            <>{t('only-open-tab-is-checked')}</>,
+            <>{t('while-you-commit-checkout-rebase')}</>,
             <>
-              {t('Нет связи — в строке состояния появляется «нет связи», без всплывающих окон; паузы между попытками растут: 15 с → 30 с → 1 мин → 5 мин.')}</>,
+              {t('no-connection-no-connection-appears')}</>,
             <>
-              {tj('Частота — <0>Настройки → Синхронизация</0> (или правый клик по «авто»): Реалтайм (5 с), Быстро (15 с), Стандартно (30 с), Редко (5 мин).', [<B />])}</>,
-            <>{t('Fetch или pull во внешнем терминале программа видит сразу — по изменениям в папке .git.')}</>,
+              {tj('frequency-settings-sync-or-right', [<B />])}</>,
+            <>{t('app-sees-fetch-or-pull')}</>,
           ]}
         />
       </>
@@ -480,106 +480,106 @@ const SECTIONS: Section[] = [
   },
   {
     id: 'guard',
-    title: t('Проверка перед коммитом'),
+    title: t('pre-commit-check'),
     icon: ShieldAlert,
-    keywords: t('guard pre-commit console.log debugger print todo секрет токен ключ пароль aws bearer правило уровень запрещать предупреждать исключения шаблоны gorynych-ignore репозиторий выключить webstorm vs code откат индекс staged синхронизация'),
+    keywords: t('guard-pre-commit-console-log'),
     body: () => (
       <>
         <P>
-          {tj('Перед каждым коммитом программа за доли секунды просматривает <0>добавленные строки</0> того, что войдёт в коммит, и предупреждает (или, если так настроено, не даёт закоммитить), если видит:', [<B />])}</P>
+          {tj('before-each-commit-app-scans', [<B />])}</P>
         <List
           items={[
-            <>{t('забытую отладку: console.log, debugger, print(), breakpoint(), var_dump, .only в тестах, «TODO: remove», маркеры конфликта;')}</>, // gorynych-ignore
-            <>{t('похожее на секреты: ключи sk-…, токены GitHub/GitLab/Slack, Bearer, AWS_…, JWT, приватные ключи, пароли в коде.')}</>,
+            <>{t('forgotten-debug-code-console-log')}</>, // gorynych-ignore
+            <>{t('things-that-look-like-secrets')}</>,
           ]}
         />
         <P>
-          {tj('Пока вы готовите коммит, над кнопкой <0>Закоммитить</0> видна плашка: «Проверено: ничего подозрительного» или что нашлось. У файлов — значок, в diff строка отмечена полосой слева. При нажатии <1>Закоммитить</1> откроется список находок: <2>Вернуться и исправить</2> или <3>Всё равно закоммитить</3>. Секреты в списке показываются замаскированными.', [<B />, <B />, <B />, <B />])}</P>
-        <H>{t('Всё настраивается')}</H>
+          {tj('while-you-prepare-commit-banner', [<B />, <B />, <B />, <B />])}</P>
+        <H>{t('everything-is-configurable')}</H>
         <P>
-          {tj('<0>Настройки → Проверка перед коммитом</0> (или кнопка-шестерёнка на плашке):', [<B />])}</P>
+          {tj('settings-pre-commit-check-or', [<B />])}</P>
         <List
           items={[
             <>
-              {tj('<0>Проверять перед коммитом</0> — главный выключатель. <1>Подсказывать, пока готовите коммит</1> — плашка, значки и отметки в diff до нажатия «Закоммитить»; если выключить, проверка сработает только при коммите.', [<B />, <B />])}</>,
+              {tj('check-before-committing-main-switch', [<B />, <B />])}</>,
             <>
-              {tj('<0>Для этого репозитория</0> — выключить проверку только здесь. То же делает кнопка со щитом на плашке; включить обратно — «включить» на плашке. Список таких репозиториев — внизу настроек.', [<B />])}</>,
+              {tj('for-this-repository-turn-off', [<B />])}</>,
             <>
-              {tj('У каждого правила три уровня: <0>Выкл</0>, <1>Предупреждать</1> (спросить, коммитить ли всё равно) и <2>Запрещать</2> — коммит не создаётся, пока строка не исправлена. Переключатель «все:» меняет уровень сразу у всей группы.', [<B />, <B />, <B />])}</>,
+              {tj('each-rule-has-three-levels', [<B />, <B />, <B />])}</>,
             <>
-              {tj('<0>Свои правила</0> — регулярное выражение, расширения файлов, тип. Правило можно сразу проверить на строке кода.', [<B />])}</>,
+              {tj('your-own-rules-regular-expression', [<B />])}</>,
             <>
-              {tj('<0>Не проверять файлы</0> — шаблоны путей: <1>*.md</1> — по имени в любой папке, <2>docs/**</2> — папка целиком, <3>**/*.test.*</3> — тесты где угодно. Частые варианты добавляются одним кликом.', [<B />, <code className="font-mono text-gk-text" />, <code className="font-mono text-gk-text" />, <code className="font-mono text-gk-text" />])}</>,
+              {tj('dont-check-files-path-patterns', [<B />, <code className="font-mono text-gk-text" />, <code className="font-mono text-gk-text" />, <code className="font-mono text-gk-text" />])}</>,
           ]}
         />
         <P>
-          {tj('Отдельную строку проверка пропустит, если в ней есть комментарий <0>gorynych-ignore</0> — так можно оставить нужный console.log или тестовый ключ, даже когда правило запрещает коммит. Кнопка «Вернуть всё по умолчанию» сбрасывает настройки.', [<code className="font-mono text-gk-text" />])}</P>
-        <H>{t('Если правите файлы в другой программе')}</H>
+          {tj('check-skips-single-line-if', [<code className="font-mono text-gk-text" />])}</P>
+        <H>{t('if-you-edit-files-in')}</H>
         <P>
-          {t('Застейдили файл, а потом откатили его в WebStorm или VS Code к последнему коммиту — программа заметит это и уберёт изменение целиком: без «призрака» в «Индексированных файлах» и без устаревшего предупреждения. Поправили снаружи файл, застейдженный целиком, — в индекс попадёт новая версия. Проверка перед коммитом перезапускается при каждом изменении файлов на диске. Частично застейдженные файлы не трогаются; выключить — Настройки → Синхронизация.')}</P>
-        <Tip tone="yellow">{t('Ключ, однажды попавший в историю Git, остаётся там навсегда — даже если потом удалить файл. Такой ключ нужно отозвать.')}</Tip>
+          {t('you-staged-file-and-then')}</P>
+        <Tip tone="yellow">{t('key-that-once-got-into')}</Tip>
       </>
     ),
   },
   {
     id: 'actions',
-    title: t('Конструктор действий'),
+    title: t('action-builder-3'),
     icon: WandSparkles,
-    keywords: t('действие action кнопка горячая клавиша цепочка шаблон merge request pr автоматизация'),
+    keywords: t('action-button-hotkey-shortcut-chain'),
     body: () => (
       <>
         <P>
-          {t('Собирает цепочку команд — например, «создать ветку от main, rebase, push, merge request» — и запускает её одной кнопкой на панели или сочетанием клавиш.')}</P>
+          {t('builds-chain-of-commands-for')}</P>
         <Steps
           items={[
             <>
-              {tj('Меню <0>Actions → Конструктор действий…</0>', [<B />])}
+              {tj('actions-action-builder-menu', [<B />])}
             </>,
             <>
-              {t('Возьмите готовый шаблон слева («Новая задача → MR», «Обновить ветку из основной», «Закончить задачу», «Подтянуть основную ветку») или создайте пустое действие.')}</>,
+              {t('take-ready-made-template-on')}</>,
             <>
-              {tj('Добавляйте шаги кнопкой <0>Добавить шаг</0>: ветки (создать, переключить, rebase, merge, удалить), сервер (fetch, pull, push), изменения (stash, pop, коммит), merge request, вопрос «продолжить?», своя git-команда. Порядок меняется перетаскиванием номера шага.', [<B />])}</>,
+              {tj('add-steps-with-add-step', [<B />])}</>,
             <>
-              {tj('Назначьте <0>горячую клавишу</0> (например <1>Ctrl+Alt+1</1>) и/или включите <2>кнопку на панели сверху</2>.', [<B />, <K />, <B />])}</>,
+              {tj('assign-keyboard-shortcut-for-example', [<B />, <K />, <B />])}</>,
           ]}
         />
-        <H>{t('Переменные в полях')}</H>
+        <H>{t('variables-in-fields')}</H>
         <List
           items={[
             <>
-              {tj('<0>{default}</0> — основная ветка (main / master), <1>{branch}</1> — текущая, <2>{start}</2> — с которой запустили, <3>{date}</3> — дата.', [<code className="font-mono text-gk-blue" />, <code className="font-mono text-gk-blue" />, <code className="font-mono text-gk-blue" />, <code className="font-mono text-gk-blue" />])}</>,
+              {tj('default-main-branch-main-master', [<code className="font-mono text-gk-blue" />, <code className="font-mono text-gk-blue" />, <code className="font-mono text-gk-blue" />, <code className="font-mono text-gk-blue" />])}</>,
             <>
-              {tj('<0>{input:Название задачи}</0> — спросить при запуске; <1>{input:Название задачи|slug}</1> — сразу сделать из ответа имя ветки: «Новая форма входа» → novaya-forma-vhoda.', [<code className="font-mono text-gk-blue" />, <code className="font-mono text-gk-blue" />])}</>,
+              {tj('input-task-name-ask-at', [<code className="font-mono text-gk-blue" />, <code className="font-mono text-gk-blue" />])}</>,
           ]}
         />
-        <H>{t('Запуск')}</H>
+        <H>{t('running-2')}</H>
         <P>
-          {tj('Справа внизу видно, какой шаг выполняется. Ошибка останавливает цепочку и объясняет причину — исправьте (например, решите конфликт) и нажмите <0>Повторить с шага N</0>. Каждый шаг можно отменить <1>Ctrl+Z</1>, как обычное действие.', [<B />, <K />])}</P>
+          {tj('bottom-right-shows-which-step', [<B />, <K />])}</P>
         <Tip>
-          {t('Merge request создаётся через API GitLab (нужен токен со scope api). Для GitHub откроется страница создания pull request.')}</Tip>
+          {t('merge-request-is-created-via')}</Tip>
       </>
     ),
   },
   {
     id: 'diff',
-    title: t('Просмотр изменений'),
+    title: t('viewing-changes'),
     icon: SquareSplitHorizontal,
-    keywords: t('diff split unified пробелы подсветка синтаксиса язык поиск найти ctrl+f регистр регулярное f3 f7 файл изменения'),
+    keywords: t('diff-split-unified-whitespace-syntax'),
     body: () => (
       <>
-        <P>{t('Клик по файлу в правой панели открывает его изменения в центре.')}</P>
+        <P>{t('clicking-file-in-right-panel')}</P>
         <List
           items={[
             <>
-              {tj('Переключатели сверху: <0>Unified</0> (одной колонкой) / <1>Split</1> (было | стало), игнорировать пробелы, подсветка того, что именно изменилось внутри строки.', [<B />, <B />])}</>,
+              {tj('toggles-at-top-unified-one', [<B />, <B />])}</>,
             <>
-              {tj('<0>F7</0> / <1>Shift+F7</1> — к следующему / предыдущему изменению, <2>Alt+↑</2> / <3>Alt+↓</3> — к соседнему файлу, <4>Esc</4> — закрыть.', [<K />, <K />, <K />, <K />, <K />])}</>,
+              {tj('f7-shift-f7-to-next', [<K />, <K />, <K />, <K />, <K />])}</>,
             <>
-              {tj('<0>Подсветка синтаксиса</0> — язык определяется по расширению или имени файла (JavaScript/TypeScript, Python, Java, C/C++, C#, Go, Rust, PHP, HTML/Vue, CSS, SQL, YAML, Dockerfile и ещё около 40). Работает и в диффах, и в редакторе конфликтов; выключается кнопкой <1></></1>. Очень большие диффы показываются без подсветки — чтобы не тормозить.', [<B />, <B />])}</>,
+              {tj('syntax-highlighting-language-is-detected', [<B />, <B />])}</>,
             <>
-              {tj('<0>Поиск в изменениях</0> — <1>Ctrl+F</1> или лупа: все совпадения подсвечиваются, текущее — оранжевым, справа «3 из 17». <2>Enter</2> / <3>Shift+Enter</3> (или <4>F3</4>) — к следующему / предыдущему. Рядом с полем — учитывать регистр (<5>Alt+C</5>), регулярное выражение (<6>Alt+R</6>) и «только в изменённых строках» (без контекста). Строка поиска остаётся при переходе к соседнему файлу; <7>Esc</7> сначала закрывает поиск, второй — diff.', [<B />, <K />, <K />, <K />, <K />, <K />, <K />, <K />])}</>,
+              {tj('search-in-changes-ctrl-f-or', [<B />, <K />, <K />, <K />, <K />, <K />, <K />, <K />])}</>,
             <>
-              {tj('У каждого фрагмента есть кнопки действий: для незакоммиченных — <0>В индекс</0> и <1>Отменить</1>, для индексированных — <2>Из индекса</2>, для коммита — <3>Отменить в рабочей папке</3>. Когда включено «игнорировать пробелы», кнопки скрываются: фрагменты считаются по точному тексту.', [<B />, <B />, <B />, <B />])}</>,
+              {tj('each-hunk-has-action-buttons', [<B />, <B />, <B />, <B />])}</>,
           ]}
         />
       </>
@@ -587,37 +587,37 @@ const SECTIONS: Section[] = [
   },
   {
     id: 'safety',
-    title: t('Отмена и безопасность'),
+    title: t('undo-and-safety'),
     icon: ShieldCheck,
-    keywords: t('undo redo отменить вернуть откат файл фрагмент reset revert вернуть проект к коммиту'),
+    keywords: t('undo-redo-revert-rollback-file'),
     body: () => (
       <>
         <H>Undo / Redo</H>
         <P>
-          {tj('<0>Ctrl+Z</0> / <1>Ctrl+Y</1> отменяют и повторяют: коммит, checkout, создание и удаление веток (в том числе на сервере) и тегов, merge, fast-forward, rebase, cherry-pick, revert, reset, stash, восстановление файлов из stash, откат файлов и фрагментов. Если после действия что-то поменялось снаружи, программа не будет ничего затирать, а объяснит, почему отменить нельзя.', [<K />, <K />])}</P>
-        <H>{t('Вернуть файл или его часть — без коммита')}</H>
-        <P>{t('Правый клик по файлу в списке файлов коммита:')}</P>
+          {tj('ctrl-z-ctrl-y-undo', [<K />, <K />])}</P>
+        <H>{t('restore-file-or-part-of')}</H>
+        <P>{t('right-click-file-in-commits')}</P>
         <List
           items={[
             <>
-              {tj('<0>Вернуть файл к версии из этого коммита</0> — файл в рабочей папке станет как в коммите.', [<B />])}</>,
+              {tj('restore-file-to-its-version-in', [<B />])}</>,
             <>
-              {tj('<0>Вернуть файл к версии до этого коммита</0> — как было до него (если файла тогда не было — он удалится).', [<B />])}</>,
+              {tj('restore-file-to-its-version-before-this', [<B />])}</>,
             <>
-              {tj('<0>Отменить изменения этого коммита в файле</0> — убрать только то, что сделал этот коммит; более поздние правки останутся.', [<B />])}</>,
+              {tj('revert-this-commits-changes-in-file', [<B />])}</>,
           ]}
         />
         <P>
-          {tj('То же для отдельного фрагмента — кнопка <0>Отменить в рабочей папке</0> в diff коммита. Меняется только рабочая папка: проверьте результат и закоммитьте, когда будете готовы. Для незакоммиченных правок: правый клик по файлу → <1>Отменить изменения в файле</1>.', [<B />, <B />])}</P>
-        <H>{t('Весь проект')}</H>
+          {tj('same-for-single-hunk-revert', [<B />, <B />])}</P>
+        <H>{t('whole-project')}</H>
         <List
           items={[
             <>
-              {tj('<0>Восстановить файлы из коммита…</0> (меню коммита или значок в шапке панели коммита справа) — новый коммит, в котором все файлы как в выбранном. История не переписывается, ветка не переключается — безопасно даже для отправленных веток.', [<B />])}</>,
+              {tj('restore-files-from-commit-commit', [<B />])}</>,
             <>
-              {tj('<0>Обратить изменения коммита</0> (Revert) — новый коммит, отменяющий один конкретный коммит.', [<B />])}</>,
+              {tj('revert-commit-changes-revert-new', [<B />])}</>,
             <>
-              {tj('<0>Сбросить … к этому коммиту</0> (Reset) — переносит ветку назад: мягко (Soft), смешанно (Mixed) или жёстко (Hard). Hard удаляет незакоммиченные правки — программа спросит подтверждение.', [<B />])}</>,
+              {tj('reset-to-this-commit-reset', [<B />])}</>,
           ]}
         />
       </>
@@ -625,87 +625,87 @@ const SECTIONS: Section[] = [
   },
   {
     id: 'rebase',
-    title: t('Интерактивный rebase'),
+    title: t('interactive-rebase'),
     icon: Layers,
-    keywords: t('rebase squash fixup reword drop порядок история сообщение объединить удалить коммит предпросмотр'),
+    keywords: t('rebase-squash-fixup-reword-drop'),
     body: () => (
       <>
-        <P>{t('Позволяет навести порядок в истории ветки: поменять порядок коммитов, исправить сообщения, объединить или удалить коммиты.')}</P>
+        <P>{t('lets-you-tidy-up-branchs')}</P>
         <Steps
           items={[
             <>
-              {tj('Правый клик по коммиту ветки → <0>Интерактивный rebase …</0> → «Коммиты после …» или «Начиная с … (включительно)». Чтобы перенести ветку на другую — правый клик по той ветке → <1>Rebase … onto …</1>.', [<B />, <B />])}</>,
+              {tj('right-click-branch-commit-interactive', [<B />, <B />])}</>,
             <>
-              {tj('Слева — план (новые коммиты сверху). Перетаскивайте коммиты мышью или <0>Alt+↑</0>/<1>Alt+↓</1>. Для каждого выберите действие: <2>P</2> оставить, <3>R</3> изменить сообщение, <4>S</4> объединить с коммитом ниже, <5>F</5> влить в коммит ниже без его сообщения, <6>D</6> удалить.', [<K />, <K />, <K />, <K />, <K />, <K />, <K />])}</>,
+              {tj('on-left-plan-new-commits', [<K />, <K />, <K />, <K />, <K />, <K />, <K />])}</>,
             <>
-              {tj('Справа сразу виден <0>предпросмотр</0>: граф «Сейчас → После», какие файлы ветки изменятся, будут ли конфликты, нужен ли будет Force Push.', [<B />])}</>,
+              {tj('on-right-you-see-preview', [<B />])}</>,
             <>
-              {tj('Нажмите <0>Применить rebase</0>. Ветка перейдёт ровно на то, что было в предпросмотре. <1>Ctrl+Z</1> вернёт всё как было.', [<B />, <K />])}</>,
+              {tj('click-apply-rebase-branch-will', [<B />, <K />])}</>,
           ]}
         />
-        <Tip tone="green">{t('Пока вы не нажали «Применить», ничего не меняется: ни ветка, ни файлы.')}</Tip>
+        <Tip tone="green">{t('until-you-click-apply-nothing')}</Tip>
         <P>
-          {tj('Если предпросмотр показывает конфликт — поменяйте план или нажмите <0>Начать и решить конфликты вручную</0>: rebase остановится на конфликте, вы решите его (раздел «Конфликты») и нажмёте <1>Продолжить</1> в жёлтой панели. <2>Прервать</2> вернёт всё как было.', [<B />, <B />, <B />])}</P>
-        <Tip tone="yellow">{t('Для предпросмотра нужен Git 2.40 или новее. Если Git старее, программа об этом скажет.')}</Tip>
+          {tj('if-preview-shows-conflict-change', [<B />, <B />, <B />])}</P>
+        <Tip tone="yellow">{t('preview-needs-git-2-40')}</Tip>
       </>
     ),
   },
   {
     id: 'compare',
-    title: t('Сравнение коммитов'),
+    title: t('comparing-commits'),
     icon: GitCompareArrows,
-    keywords: t('сравнить сравнение diff двух коммитов ветки разница поиск содержимое найти текст'),
+    keywords: t('compare-comparison-diff-two-commits'),
     body: () => (
       <>
-        <P>{t('Показывает, чем отличаются любые два коммита (или ветки — выберите коммиты, на которых они стоят).')}</P>
+        <P>{t('shows-how-any-two-commits')}</P>
         <List
           items={[
             <>
-              {tj('Выберите коммит и <0>{1}</0> по второму.', [<B />, kb(t('Ctrl+клик'))])}</>,
+              {tj('select-commit-and-second-one', [<B />, kb(t('ctrl-click'))])}</>,
             <>
-              {tj('Или правый клик → <0>Сравнить с HEAD</0>.', [<B />])}</>,
+              {tj('or-right-click-compare-with', [<B />])}</>,
             <>
-              {tj('Или правый клик → <0>Отметить для сравнения</0> (у коммита появится метка «A»), затем на другом коммите → <1>Сравнить с отмеченным</1>.', [<B />, <B />])}</>,
+              {tj('or-right-click-mark-for', [<B />, <B />])}</>,
           ]}
         />
         <P>
-          {tj('Вверху — сводка: сколько файлов и строк изменено и сколько коммитов между ними (клик — список коммитов). Ниже — где больше всего изменений по папкам (клик по папке фильтрует таблицу) и таблица файлов с полосками объёма. Клик по файлу — его diff, <0>Esc</0> — назад к сравнению. Кнопка ⇄ меняет «было» и «стало» местами.', [<K />])}</P>
+          {tj('at-top-summary-how-many', [<K />])}</P>
         <P>
-          {tj('<0>Поиск по содержимому</0> — переключатель <1>Путь / Содержимое</1> над таблицей или <2>Ctrl+F</2>: текст ищется в добавленных и удалённых строках всех файлов сравнения (с учётом регистра или без, можно регулярным выражением). Видно, в каких файлах и сколько совпадений, и сами строки. Клик по строке открывает diff файла сразу на этом совпадении, с той же строкой поиска; <3>Alt+↓</3> переходит к следующему файлу с совпадениями.', [<B />, <B />, <K />, <K />])}</P>
+          {tj('content-search-path-content-switch', [<B />, <B />, <K />, <K />])}</P>
       </>
     ),
   },
   {
     id: 'filehistory',
-    title: t('История файла и Blame'),
+    title: t('file-history-and-blame'),
     icon: FileClock,
-    keywords: t('история файла log blame авторство кто изменил строку автор переименование follow восстановить версию пробелы'),
+    keywords: t('file-history-log-blame-authorship'),
     body: () => (
       <>
         <P>
-          {tj('Для любого файла — в коммите, в stash, в незакоммиченных изменениях (WIP), в списке и в дереве файлов, в сравнении коммитов — правый клик → <0>История файла (Log)</0> или <1>Blame</1>. Те же кнопки есть в шапке открытого diff файла.', [<B />, <B />])}</P>
+          {tj('for-any-file-in-commit', [<B />, <B />])}</P>
         <P>
-          {tj('<0>История файла</0> — все коммиты, которые меняли файл, и под прежними именами тоже (git log --follow): хэш, автор, дата, сообщение и <1>+X −Y</1>. Клик по коммиту — справа diff файла в этом коммите, <2>Alt+↑</2>/<3>Alt+↓</3> — соседние коммиты.', [<B />, <B />, <K />, <K />])}</P>
+          {tj('file-history-all-commits-that', [<B />, <B />, <K />, <K />])}</P>
         <List
           items={[
             <>
-              {tj('<0>Сравнить две версии</0>: {1} по второму коммиту (или кнопка сравнения при наведении) — справа разница между ними, даже если файл тогда назывался иначе.', [<B />, kb(t('Ctrl+клик'))])}</>,
+              {tj('compare-two-versions-second-commit', [<B />, kb(t('ctrl-click'))])}</>,
             <>
-              {tj('<0>Восстановить файл к этой версии</0> — файл в рабочей папке станет таким, как в выбранном коммите. Коммит не создаётся, <1>Ctrl+Z</1> вернёт.', [<B />, <K />])}</>,
-            <>{t('Клик по хэшу — показать коммит в графе.')}</>,
+              {tj('restore-file-to-this-version-file', [<B />, <K />])}</>,
+            <>{t('click-hash-show-commit-in')}</>,
           ]}
         />
         <P>
-          {tj('<0>Blame</0> — слева от каждой строки: кто и когда последним её менял. Строки одного коммита собраны в блок: аватар, автор, сообщение, дата и короткий хэш. Полоса у края — «возраст»: чем свежее изменение, тем она ярче, старый код — приглушённее.', [<B />])}</P>
+          {tj('blame-to-left-of-each', [<B />])}</P>
         <List
           items={[
-            <>{t('Наведите на блок — полное сообщение коммита и статистика: сколько файлов и строк он изменил, в том числе в этом файле.')}</>,
-            <>{t('Клик по хэшу — граф переходит к этому коммиту.')}</>,
+            <>{t('hover-over-block-full-commit')}</>,
+            <>{t('click-hash-graph-goes-to')}</>,
             <>
-              {tj('<0>Blame до этого коммита</0> (стрелка ↰ у блока или кнопка в подсказке) — blame файла в версии до этого коммита: видно, кто писал строку раньше. Так можно копать историю строки вглубь, и через переименования. <1>Назад</1> или <2>Esc</2> — на шаг обратно.', [<B />, <B />, <K />])}</>,
+              {tj('blame-before-this-commit-arrow', [<B />, <B />, <K />])}</>,
             <>
-              {tj('<0>Игнорировать пробелы</0> (git blame -w) — правки только в отступах не считаются изменением строки.', [<B />])}</>,
-            <>{t('Для файла из WIP blame строится по рабочей папке: новые строки помечены «Не закоммичено».')}</>,
+              {tj('ignore-whitespace-git-blame-w-2', [<B />])}</>,
+            <>{t('for-wip-file-blame-is')}</>,
           ]}
         />
       </>
@@ -713,23 +713,23 @@ const SECTIONS: Section[] = [
   },
   {
     id: 'conflicts',
-    title: t('Конфликты'),
+    title: t('conflicts-3'),
     icon: GitMerge,
-    keywords: t('конфликт merge rebase pull моё их решить продолжить прервать'),
+    keywords: t('conflict-merge-rebase-pull-mine'),
     body: () => (
       <>
         <P>
-          {t('Если при merge, rebase, pull или cherry-pick изменения пересеклись, сверху появится жёлтая панель, а файлы с конфликтами — в отдельном списке справа.')}</P>
+          {t('if-changes-overlapped-during-merge')}</P>
         <Steps
           items={[
             <>
-              {tj('Нажмите <0>Решить конфликты</0> — откроется редактор: слева «Моё», справа «Их», внизу результат.', [<B />])}</>,
+              {tj('click-resolve-conflicts-editor-opens', [<B />])}</>,
             <>
-              {tj('Для каждого конфликтного блока выберите версию или <0>Оба</0>; результат можно поправить вручную. Для всего файла есть «Взять … везде».', [<B />])}</>,
+              {tj('for-each-conflict-block-choose', [<B />])}</>,
             <>
-              {tj('<0>Сохранить и дальше</0> (<1>Ctrl+S</1>) — к следующему файлу.', [<B />, <K />])}</>,
+              {tj('save-and-next-ctrl-s', [<B />, <K />])}</>,
             <>
-              {tj('Когда всё решено — <0>Продолжить</0> в жёлтой панели. Передумали — <1>Прервать</1>, всё вернётся как было.', [<B />, <B />])}</>,
+              {tj('when-everything-is-resolved-continue', [<B />, <B />])}</>,
           ]}
         />
       </>
@@ -739,178 +739,178 @@ const SECTIONS: Section[] = [
     id: 'stash',
     title: 'Stash',
     icon: Archive,
-    keywords: t('stash спрятать pop apply drop частично файл выбранные apply selected фрагмент восстановить'),
+    keywords: t('stash-hide-pop-apply-drop'),
     body: () => (
       <>
-        <P>{t('Stash временно прячет незакоммиченные изменения — например, чтобы переключиться на другую ветку.')}</P>
+        <P>{t('stash-temporarily-hides-uncommitted')}</P>
         <List
           items={[
             <>
-              {tj('<0>Stash</0> на панели — спрятать всё; <1>Pop</1> — вернуть последнее спрятанное.', [<B />, <B />])}</>,
+              {tj('stash-on-toolbar-stash-everything', [<B />, <B />])}</>,
             <>
-              {tj('Названия в списке единого вида: своё сообщение, «Правки в <ветка>» для Stash без сообщения или имя ветки с пометкой<0>авто</0>; справа — когда спрятано. Одинаковые правки дважды не хранятся: при повторном Stash старая копия убирается.', [<B />])}</>,
+              {tj('names-in-list-follow-one', [<B />])}</>,
             <>
-              {tj('Раздел <0>Stash</0> слева: клик — посмотреть содержимое; кнопки и правый клик — <1>Применить</1> (Apply, stash остаётся),<2>Забрать</2> (Pop — применить и удалить), <3>Удалить</3> (Drop; <4>Ctrl+Z</4> вернёт).', [<B />, <B />, <B />, <B />, <K />])}</>,
+              {tj('stash-section-on-left-click', [<B />, <B />, <B />, <B />, <K />])}</>,
           ]}
         />
-        <H>{t('Взять из stash только часть')}</H>
+        <H>{t('take-only-part-of-stash')}</H>
         <List
           items={[
             <>
-              {tj('<0>Отдельные файлы</0>: отметьте их галочками в списке stash — появится кнопка <1>Применить выбранные (N)</1>. Галочка в заголовке списка выбирает все файлы.', [<B />, <B />])}</>,
+              {tj('individual-files-check-them-in', [<B />, <B />])}</>,
             <>
-              {tj('<0>Один файл</0>: кнопка восстановления при наведении на строку файла или правый клик → <1>Восстановить файл из stash</1>.', [<B />, <B />])}</>,
+              {tj('one-file-restore-button-when', [<B />, <B />])}</>,
             <>
-              {tj('<0>Отдельные куски кода</0>: откройте файл из stash — у каждого фрагмента в diff есть кнопка <1>Применить</1>.', [<B />, <B />])}</>,
+              {tj('individual-pieces-of-code-open', [<B />, <B />])}</>,
           ]}
         />
         <P>
-          {tj('Файлы попадают в рабочую папку (в неиндексированные), stash остаётся в списке. Новые файлы из stash создаются, удалённые — удаляются. Если в файле есть ваши несохранённые правки, программа сначала спросит. Всё отменяется <0>Ctrl+Z</0>.', [<K />])}</P>
+          {tj('files-go-to-working-folder', [<K />])}</P>
       </>
     ),
   },
   {
     id: 'search',
-    title: t('Поиск'),
+    title: t('search'),
     icon: Search,
-    keywords: t('поиск найти коммит фильтр автор хэш файл строка изменения код текст'),
+    keywords: t('search-find-commit-filter-author'),
     body: () => (
       <>
         <P>
-          {tj('<0>Ctrl+F</0> — поиск по коммитам: сообщение, автор, хэш, ветка — и текст в изменениях файлов (кнопка <1>В файлах</1>, включена по умолчанию). Подходящие коммиты подсвечиваются, остальные приглушаются; <2>Enter</2> / <3>Shift+Enter</3> — к следующему и предыдущему. Фильтр веток и тегов слева — <4>Ctrl+Alt+F</4>.', [<K />, <B />, <K />, <K />, <K />])}</P>
+          {tj('ctrl-f-commit-search-message', [<K />, <B />, <K />, <K />, <K />])}</P>
         <P>
-          {t('Если текст найден в файлах, у коммита в графе появляется значок с числом файлов, а справа — блок «найдено»: файл и строка (номер, добавлена она или удалена) с подсвеченным совпадением. Такие файлы выделены и в списке файлов коммита. Клик по строке открывает изменения файла сразу на этом месте, с тем же поиском.')}</P>
+          {t('if-text-is-found-in')}</P>
       </>
     ),
   },
   {
     id: 'ci',
-    title: t('CI/CD: пайплайны и раннеры'),
+    title: t('ci-cd-pipelines-and-runners'),
     icon: Workflow,
-    keywords: t('ci cd gitlab pipeline пайплайн токен переменные расписание раннер runner lint yml github actions gitea forgejo jenkins bitbucket проверка ошибка конфиг сценарий merge request тег docker секреты артефакты cron dag skip ci уведомление'),
+    keywords: t('ci-cd-gitlab-pipeline-token'),
     body: () => (
       <>
-        <H>{t('Настройки CI/CD в репозитории')}</H>
+        <H>{t('ci-cd-settings-in-repository')}</H>
         <P>
-          {tj('Раздел <0>CI/CD</0> слева находит файлы GitLab CI, GitHub Actions, Jenkins, Bitbucket и других систем. Клик по файлу открывает:', [<B />])}</P>
+          {tj('ci-cd-section-on-left', [<B />])}</P>
         <List
           items={[
             <>
-              {tj('<0>Схема</0> — этапы и задания наглядно. Для GitLab их можно менять: <1>+ задание</1>, <2>+ Этап</2>, кнопка <3>Изменить</3> в деталях задания.', [<B />, <B />, <B />, <B />])}</>,
+              {tj('diagram-stages-and-jobs-at', [<B />, <B />, <B />, <B />])}</>,
             <>
-              {tj('<0>Проверка</0> — что в конфигурации сломается: для каждой проблемы написано, <1>когда</1> она проявится, <2>как</2> это будет выглядеть (какую ошибку покажет сервер или лог задания), <3>почему</3> и <4>как исправить</4>.', [<B />, <B />, <B />, <B />, <B />])}</>,
+              {tj('check-what-will-break-in', [<B />, <B />, <B />, <B />, <B />])}</>,
             <>
-              {tj('<0>Файл</0> — редактор с проверкой на лету: строки с ошибками отмечены красным, с предупреждениями — жёлтым, схема и проверка обновляются по мере ввода. <1>Ctrl+S</1> — сохранить.', [<B />, <K />])}</>,
+              {tj('file-editor-with-on-fly', [<B />, <K />])}</>,
             <>
-              {tj('<0>История</0> — коммиты, в которых менялись настройки CI.', [<B />])}</>,
+              {tj('history-commits-that-changed-ci', [<B />])}</>,
           ]}
         />
         <List
           items={[
             <>
-              {tj('<0>Граф выполнения (DAG)</0> — переключатель над схемой: задания колонками по зависимостям needs, линии показывают, кто кого ждёт; при наведении подсвечивается вся цепочка.', [<B />])}</>,
+              {tj('execution-graph-dag-switch-above', [<B />])}</>,
             <>
-              {tj('Рядом с <0>cron</0> в расписании — расшифровка по-русски: «каждый день в 03:00 UTC».', [<B />])}</>,
+              {tj('next-to-cron-in-schedule', [<B />])}</>,
             <>
-              {tj('В редакторе: <0>Шаблон шага</0> — вставить Checkout, кэширование зависимостей, сборку Docker-образа или деплой по SSH в место курсора; после <1>tags:</1> / <2>runs-on:</2> всплывают метки живых раннеров.', [<B />, <B />, <B />])}</>,
+              {tj('in-editor-step-template-insert', [<B />, <B />, <B />])}</>,
           ]}
         />
         <P>
-          {tj('Пока изменения не сохранены, сверху жёлтая полоса: «Изменения» (что поменяется в файле), «Отменить правки», «Сохранить». Кнопка <0>Проверить в GitLab</0> проверяет черновик на сервере и показывает, какие задания запустятся.', [<B />])}</P>
-        <H>{t('Проверка конфигурации')}</H>
+          {tj('while-changes-arent-saved-theres', [<B />])}</P>
+        <H>{t('configuration-check')}</H>
         <P>
-          {t('Проверка идёт сразу, на этом компьютере, без отправки файла на сервер, — и по сохранённому файлу, и по черновику. Красное — ошибка (пайплайн не создастся или задание упадёт наверняка), жёлтое — может сломаться, синее — совет. Значки с числом проблем видны на вкладке «Проверка» и на карточках заданий схемы; клик по проблеме в деталях задания открывает её разбор.')}</P>
+          {t('check-runs-right-away-on')}</P>
         <List
           items={[
             <>
-              {tj('<0>Синтаксис и ключи</0>: ошибки YAML, повторяющиеся ключи, опечатки в ключах (scirpt → script), неверные значения when, retry, parallel, timeout, expire_in, cache, environment, неизвестные события и права GitHub Actions.', [<B />])}</>,
+              {tj('syntax-and-keys-yaml-errors', [<B />])}</>,
             <>
-              {tj('<0>Связи</0>: needs и dependencies на несуществующие или более поздние задания, циклы, extends и !reference, этапы не из stages, on_stop без задания остановки, include файлов, которых нет.', [<B />])}</>,
+              {tj('links-needs-and-dependencies-on', [<B />])}</>,
             <>
-              {tj('<0>Скрипты против репозитория</0>: нет файла или права на запуск (Permission denied), нет package.json / lock-файла / npm-скрипта, нет Makefile или цели, cd в несуществующую папку, docker без демона, apt-get в Alpine, команды, которых нет в образе.', [<B />])}</>,
+              {tj('scripts-against-repository-missing-file', [<B />])}</>,
             <>
-              {tj('<0>Безопасность и устаревшее</0>: токены и пароли в открытом виде, отключённые версии действий GitHub и образы раннеров, подстановка заголовков PR прямо в команды.', [<B />])}</>,
+              {tj('security-and-deprecations-tokens-and', [<B />])}</>,
           ]}
         />
         <P>
-          {t('Для GitLab правила прогоняются для типичных событий — push в основную и в другую ветку, merge request, тег, расписание, ручной запуск. В таблице «Что запустится» видно, какие задания попадут в пайплайн и почему; отдельно находятся двойные пайплайны (ветка + MR), needs на задание, которого в этом пайплайне не будет, ручные задания, которые остановят пайплайн, релиз без тега.')}</P>
+          {t('for-gitlab-rules-are-evaluated')}</P>
         <Tip>
-          {t('Подключения из сети (include: remote / project / template) без сети не проверить — они отмечены советом. Полную проверку на сервере даёт кнопка «Проверить в GitLab».')}</Tip>
-        <H>{t('Пайплайны: GitLab, GitHub, Gitea/Forgejo, Bitbucket')}</H>
+          {t('network-includes-include-remote-project')}</Tip>
+        <H>{t('pipelines-gitlab-github-gitea-forgejo')}</H>
         <P>
-          {tj('Сервис определяется сам — по адресу remote и файлам CI (.gitlab-ci.yml, .github/workflows, .gitea/workflows, .forgejo/workflows, bitbucket-pipelines.yml). Для своего сервера (GitLab Self-Managed, GitHub Enterprise, свой Gitea) во вкладке <0>Пайплайны → Подключение</0> можно указать сервис и <1>Base API URL</1>.', [<B />, <B />])}</P>
+          {tj('service-is-detected-by-itself', [<B />, <B />])}</P>
         <P>
-          {tj('Авторизация у репозитория одна — для Pull, Push и пайплайнов. Авторизуйтесь один раз в окне <0>Авторизация репозитория</0>, и пайплайны откроются сами.', [<B />])}</P>
+          {tj('repository-has-one-sign-in', [<B />])}</P>
         <Steps
           items={[
             <>
-              {tj('Откройте <0>CI/CD → Пайплайны</0> и нажмите <1>Авторизовать репозиторий</1> (это то же окно, что появляется при Pull или Push).', [<B />, <B />])}</>,
+              {tj('open-ci-cd-pipelines-and', [<B />, <B />])}</>,
             <>
-              {tj('Для GitLab удобнее всего <0>токен доступа</0> с правом <1>api</1> — ссылка «Создать токен» откроет страницу GitLab с уже выбранными правами. Один токен работает и для git, и для пайплайнов.', [<B />, <B />])}</>,
+              {tj('for-gitlab-access-token-with', [<B />, <B />])}</>,
             <>
-              {tj('Если входите паролем или SSH-ключом — в том же окне заполните поле <0>Пайплайны CI/CD</0>: GitLab не принимает пароль и ключ для API, а токен сохранится вместе с этой авторизацией.', [<B />])}</>,
+              {tj('if-you-sign-in-with', [<B />])}</>,
           ]}
         />
         <P>
-          {tj('После этого статусы пайплайнов видны прямо в графе, а во вкладке «Пайплайны» можно смотреть этапы, логи заданий, перезапускать и отменять. Вкладки <0>Переменные</0> и <1>Расписания</1> позволяют добавлять, менять и удалять переменные CI/CD и расписания пайплайнов, <2>Раннеры</2> — смотреть, кто выполняет задания.', [<B />, <B />, <B />])}</P>
-        <Tip>{t('Токен только для чтения (read_api) позволяет смотреть; чтобы запускать и менять — нужен токен с правом api.')}</Tip>
+          {tj('after-that-pipeline-statuses-are', [<B />, <B />, <B />])}</P>
+        <Tip>{t('read-only-token-read-api-lets')}</Tip>
         <List
           items={[
             <>
-              {tj('<0>Запуск</0> — окно с веткой и параметрами: inputs из workflow_dispatch (выбор, флажок, строка), переменные GitLab с описанием, custom-пайплайны Bitbucket, свои переменные KEY=VALUE.', [<B />])}</>,
+              {tj('run-window-with-branch-and', [<B />])}</>,
             <>
-              {tj('<0>Отменить</0> идущий пайплайн, <1>Перезапустить упавшие</1> — только упавшие задания. У идущего задания тикает таймер.', [<B />, <B />])}</>,
+              {tj('cancel-running-pipeline-retry-failed', [<B />, <B />])}</>,
             <>
-              {tj('<0>Лог задания</0>: ANSI-цвета, сворачиваемые секции (::group:: и section GitLab), поиск <1>Ctrl+F</1> и кнопка <2>К первой ошибке ↓</2> — прокрутит к первой строке с Error / FAIL / exit code.', [<B />, <K />, <B />])}</>,
+              {tj('job-log-ansi-colors-collapsible', [<B />, <K />, <B />])}</>,
             <>
-              {tj('<0>Артефакты</0> законченного пайплайна — с размером, скачиваются в один клик.', [<B />])}</>,
+              {tj('artifacts-of-finished-pipeline-with', [<B />])}</>,
             <>
-              {tj('<0>Секреты и переменные</0> — список переменных репозитория и создание или замена секретов (значения секретов сервис не отдаёт).', [<B />])}</>,
+              {tj('secrets-and-variables-list-of', [<B />])}</>,
             <>
-              {t('Что недоступно у конкретного сервиса (например, пауза раннера в GitHub или раннеры в Bitbucket Cloud), выключено, и в подсказке написано почему.')}</>,
+              {t('whats-unavailable-for-particular-service')}</>,
           ]}
         />
-        <H>{t('Раннеры')}</H>
+        <H>{t('runners')}</H>
         <P>
-          {tj('Вкладка <0>Раннеры</0>: собственные (self-hosted, раннеры проекта) и облачные — со статусом Online, Busy (с ссылкой на задание), Offline и Paused, ОС, архитектурой, версией и метками. <1>Очистить неактивные</1> удаляет все собственные раннеры не в сети одним кликом.', [<B />, <B />])}</P>
+          {tj('runners-tab-self-hosted-project', [<B />, <B />])}</P>
         <List
           items={[
             <>
-              {tj('Клик по раннеру — редактор: метки чипсами, <0>Активен / На паузе</0> (раннер доделает текущие задания и не возьмёт новые), «Брать задания без тегов», «Только для этого проекта», описание, максимальный тайм-аут, удаление.', [<B />])}</>,
+              {tj('click-runner-editor-labels-as', [<B />])}</>,
             <>
-              {tj('<0>Подключить раннер</0> — получает токен регистрации и даёт готовую команду (Docker, Linux, macOS, Windows) с адресом, токеном и тегами. <1>Запустить локально</1> поднимает раннер в Docker на этом компьютере; остановить его можно там же.', [<B />, <B />])}</>,
+              {tj('connect-runner-gets-registration-token', [<B />, <B />])}</>,
             <>
-              {tj('<0>Вставить в конфиг</0> на карточке раннера — вставит tags / runs-on с его метками в файл CI.', [<B />])}</>,
+              {tj('insert-into-config-on-runner', [<B />])}</>,
           ]}
         />
         <P>
-          {t('Проверка конфигурации сверяет tags и runs-on с живыми раннерами: если ни у одного раннера в сети нет нужного тега (или подходящие не в сети или на паузе), будет предупреждение «пайплайн зависнет в очереди (Pending)».')}</P>
-        <H>{t('Статусы в графе и уведомления')}</H>
+          {t('configuration-check-matches-tags-and')}</P>
+        <H>{t('statuses-in-graph-and-notifications')}</H>
         <P>
-          {tj('У коммитов в графе — значок пайплайна (✓, ✕, ⟳, ⊘). Подсказка показывает сводку по заданиям, клик открывает пайплайн, а у красного — сразу лог упавшего задания. Статус пайплайна текущей ветки — в строке состояния внизу. Когда пайплайн, который шёл, заканчивается, приходит уведомление системы. В форме коммита кнопка <0>Пропустить CI</0> добавляет в сообщение [skip ci] — такой коммит не запустит пайплайн.', [<B />])}</P>
+          {tj('commits-in-graph-have-pipeline', [<B />])}</P>
         <P>
-          {tj('В <0>Настройки → Подключения</0> у каждого репозитория рядом с авторизацией написано, работают ли от неё пайплайны. Токены CI/CD, сохранённые в прежних версиях отдельно, переносятся в авторизацию репозитория автоматически.', [<B />])}</P>
+          {tj('in-settings-connections-each-repositorys', [<B />])}</P>
       </>
     ),
   },
   {
     id: 'look',
-    title: t('Оформление'),
+    title: t('appearance-2'),
     icon: Palette,
-    keywords: t('тема светлая тёмная белая как в системе фон прозрачность оформление настройки анимации'),
+    keywords: t('theme-light-dark-white-system'),
     body: () => (
       <>
         <P>
-          {tj('<0>Ctrl+,</0> или шестерёнка справа вверху → <1>Оформление</1>: тема, фон (градиенты, своя картинка или прозрачность Windows 11), прозрачность панелей, размытие, анимация фона. Изменения видны сразу и сохраняются.', [<K />, <B />])}</P>
+          {tj('ctrl-or-gear-at-top', [<K />, <B />])}</P>
         <P>
-          {tj('<0>Светлая</0> тема — белые панели и тёмный текст; цвета веток в графе, подсветка кода и диффы подобраны под светлый фон.<1> Как в системе</1> — светлая или тёмная по настройке Windows/macOS: тема переключится сама, когда система сменит режим.', [<B />, <B />])}</P>
-          <P>{tj('<0>Язык интерфейса</0> — Русский или English: Настройки → Оформление → Язык. Окно перерисуется сразу, меню, подсказки и сообщения об ошибках сменятся целиком; вкладки и настройки сохранятся.', [<B />])}</P>
+          {tj('light-theme-white-panels-and', [<B />, <B />])}</P>
+          <P>{tj('interface-language-russkiy-or-english', [<B />])}</P>
       </>
     ),
   },
   {
     id: 'keys',
-    title: t('Горячие клавиши'),
+    title: t('keyboard-shortcuts'),
     icon: Keyboard,
     keywords: SHORTCUTS.flatMap(([g, items]) => [g, ...items.flat()]).join(' '),
     body: () => (
@@ -933,31 +933,31 @@ const SECTIONS: Section[] = [
   },
   {
     id: 'faq',
-    title: t('Если что-то не так'),
+    title: t('if-somethings-wrong'),
     icon: LifeBuoy,
-    keywords: t('ошибка проблема git не найден доступ пароль ssh не работает частые вопросы'),
+    keywords: t('error-problem-git-not-found'),
     body: () => (
       <>
         <List
           items={[
             <>
-              {tj('<0>«Git не найден»</0> — {1} и полностью перезапустите программу (и терминал, из которого её запускали).', [<B />, installGitHint()])}</>,
+              {tj('git-not-found-and-fully', [<B />, installGitHint()])}</>,
             <>
-              {tj('<0>Нет доступа к серверу</0> — откроется окно «Авторизация репозитория»: выберите, где хранится репозиторий, и введите логин и пароль, токен или SSH-ключ. Если вход прошёл, а записать нельзя — проверьте права в проекте на сервере.', [<B />])}</>,
+              {tj('no-access-to-server-repository', [<B />])}</>,
             <>
-              {tj('<0>Действие недоступно (серое)</0> — наведите курсор, подсказка объяснит почему: например, не завершён merge или вы не на ветке.', [<B />])}</>,
+              {tj('action-is-unavailable-gray-hover', [<B />])}</>,
             <>
-              {tj('<0>Ветку не удалить с сервера</0> — она защищена или основная. Снимите защиту или смените ветку по умолчанию в настройках проекта на GitLab/GitHub.', [<B />])}</>,
+              {tj('branch-cant-be-deleted-from', [<B />])}</>,
             <>
-              {tj('<0>«нет связи» в строке состояния</0> — фоновая проверка не достучалась до сервера (интернет, VPN, сервер недоступен). Программа сама повторит попытку чуть позже; кнопка рядом делает fetch сразу и показывает подробную ошибку.', [<B />])}</>,
+              {tj('no-connection-in-status-bar', [<B />])}</>,
             <>
-              {tj('<0>Что-то сделали по ошибке</0> — <1>Ctrl+Z</1>. Название того, что будет отменено, видно в меню <2>Edit</2>.', [<B />, <K />, <B />])}</>,
+              {tj('did-something-by-mistake-ctrl', [<B />, <K />, <B />])}</>,
             <>
-              {tj('<0>После обновления программы не видно новых возможностей</0> — закройте программу полностью (все окна) и откройте снова: часть изменений подхватывается только при запуске.', [<B />])}</>,
+              {tj('new-features-arent-visible-after', [<B />])}</>,
             <>
-              {tj('<0>Проверка перед коммитом мешает</0> — плашка над кнопкой «Закоммитить»: кнопка со щитом выключает её для репозитория, шестерёнка открывает настройки правил.', [<B />])}</>,
+              {tj('pre-commit-check-gets-in', [<B />])}</>,
             <>
-              {tj('<0>Граф не обновился после работы в терминале</0> — кнопка обновления справа вверху. Обычно программа замечает изменения сама.', [<B />])}</>,
+              {tj('graph-didnt-update-after-working', [<B />])}</>,
           ]}
         />
       </>
@@ -1010,7 +1010,7 @@ export default function GuideDialog({ initialSection = 'start', onClose }: { ini
         {/* Разделы */}
         <nav className="flex w-60 shrink-0 flex-col border-r border-gk-border bg-gk-sink/10">
           <div className="flex items-center gap-2 px-4 pb-2 pt-4">
-            {tj('{0}<1>Руководство</1>', [<BookOpen size={16} className="text-gk-green" />, <span className="text-[14px] font-semibold text-gk-strong" />])}
+            {tj('guide-2', [<BookOpen size={16} className="text-gk-green" />, <span className="text-[14px] font-semibold text-gk-strong" />])}
           </div>
           <div className="px-3 pb-2">
             <div className="flex items-center gap-1.5 rounded-md bg-gk-bg px-2 ring-1 ring-gk-border focus-within:ring-gk-blue">
@@ -1019,13 +1019,13 @@ export default function GuideDialog({ initialSection = 'start', onClose }: { ini
                 autoFocus
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
-                placeholder={t('Поиск по руководству')}
+                placeholder={t('search-guide')}
                 className="min-w-0 flex-1 bg-transparent py-1.5 text-[12.5px] text-gk-text outline-none placeholder:text-gk-dim"
               />
             </div>
           </div>
           <div className="min-h-0 flex-1 overflow-y-auto px-2 pb-3">
-            {shown.length === 0 && <div className="px-2 py-3 text-[12px] text-gk-dim">{t('Ничего не найдено')}</div>}
+            {shown.length === 0 && <div className="px-2 py-3 text-[12px] text-gk-dim">{t('nothing-found')}</div>}
             {shown.map((s) => (
               <button
                 key={s.id}
@@ -1046,7 +1046,7 @@ export default function GuideDialog({ initialSection = 'start', onClose }: { ini
           <div className="flex h-12 shrink-0 items-center gap-2.5 border-b border-gk-border px-5">
             <section.icon size={17} className="text-gk-blue" />
             <h2 className="flex-1 text-[15px] font-semibold text-gk-strong">{section.title}</h2>
-            <button onClick={onClose} title={t('Закрыть (Esc)')} className="rounded p-1 text-gk-dim hover:bg-gk-hover hover:text-gk-text">
+            <button onClick={onClose} title={t('close-esc')} className="rounded p-1 text-gk-dim hover:bg-gk-hover hover:text-gk-text">
               <X size={16} />
             </button>
           </div>

@@ -239,10 +239,10 @@ fn login_problem_text(r: &ResolvedRemote, other: Option<&UnusableLogin>, bad: Op
     if let Some(bad) = bad {
         let reason = bad.reason.as_deref().unwrap_or("undefined");
         let hint = bad.hint.as_ref().map_or_else(String::new, |hint| format!(" — {hint}"));
-        return Some(t("Авторизация репозитория не подходит для {0}: {1}{2}", &[&label, &reason, &hint]));
+        return Some(t("repository-sign-in-doesnt-work-for", &[&label, &reason, &hint]));
     }
     if other.is_some_and(|other| other.method == AuthMethod::Ssh) {
-        return Some(t("Репозиторий авторизован SSH-ключом — его принимает git, но не API {0}. Добавьте в авторизацию репозитория токен для пайплайнов.", &[&label]));
+        return Some(t("repository-is-signed-in-with-ssh", &[&label]));
     }
     None
 }
@@ -251,7 +251,7 @@ fn require(caps: &Capabilities, enabled: bool, cap: &str, provider_label: &str, 
     if enabled {
         return Ok(());
     }
-    let message = caps.reason(cap).map_or_else(|| t("{0}: {1} недоступно", &[&provider_label, &what]), str::to_owned);
+    let message = caps.reason(cap).map_or_else(|| t("unavailable", &[&provider_label, &what]), str::to_owned);
     Err(GorynychError::new(ErrorCode::Unsupported, message))
 }
 
@@ -465,13 +465,13 @@ impl CicdService {
     fn http_ctx(&self, r: &ResolvedRemote, kind: CiProvider, login: &ApiLogin, root: &Path) -> Ctx {
         let headers = auth_headers(kind, &r.host, login);
         let (label, scope_hint) = match kind {
-            CiProvider::Github => ("GitHub", t("Токену нужны права repo и workflow (классический) или Actions, Administration и Secrets (fine-grained)", &[])),
-            CiProvider::Gitea => ("Gitea", t("Токену нужны права write:repository (и read:user)", &[])),
+            CiProvider::Github => ("GitHub", t("token-needs-repo-and-workflow", &[])),
+            CiProvider::Gitea => ("Gitea", t("token-needs-write-repository-and", &[])),
             _ if is_bitbucket_cloud(&r.host) => (
                 "Bitbucket",
-                t("API-токену Bitbucket нужны права read:repository:bitbucket и read:pipeline:bitbucket, для действий — write:pipeline:bitbucket", &[]),
+                t("bitbucket-api-token-needs-read", &[]),
             ),
-            _ => ("Bitbucket", t("Паролю приложения нужны права Pipelines: Read/Write и Repositories: Read", &[])),
+            _ => ("Bitbucket", t("app-password-needs-pipelines-read", &[])),
         };
         let conf_base = r.conf.as_ref().and_then(|conf| conf.api_base.as_deref());
         let (owner, repo) = r.path.split_once('/').map_or((r.path.as_str(), ""), |(owner, rest)| (owner, rest));
@@ -622,12 +622,12 @@ impl CicdService {
     async fn context(&self, root: &Path, preferred: Option<&str>) -> Result<(&'static dyn CiCdProvider, Ctx)> {
         let output = self.remote_verbose(root).await;
         let Some(r) = self.resolve_remote_from(root, preferred, &output) else {
-            return Err(GorynychError::new(ErrorCode::NoRemote, t("У репозитория нет remote", &[])));
+            return Err(GorynychError::new(ErrorCode::NoRemote, t("repository-has-no-remote", &[])));
         };
         let Some(kind) = r.kind.filter(|kind| *kind != CiProvider::Gitlab) else {
             let glc = self.gitlab_context_from(preferred, &output).await.map_err(|error| {
                 if error.code == ErrorCode::NotGitlab {
-                    GorynychError::new(ErrorCode::NoProvider, t("Не удалось определить сервис CI/CD", &[])).with_hint(t("Укажите провайдера (GitLab, GitHub, Gitea, Bitbucket) и адрес API в настройках CI/CD репозитория", &[]))
+                    GorynychError::new(ErrorCode::NoProvider, t("couldnt-determine-ci-cd-service", &[])).with_hint(t("set-provider-gitlab-github-gitea", &[]))
                 } else {
                     error
                 }
@@ -651,12 +651,12 @@ impl CicdService {
         };
         let logins = self.inner.creds.api_login_for(&r.host, &r.path, Some(server_kind_of(kind)))?;
         let Some(login) = logins.repo.or(logins.shared) else {
-            let hint = login_problem_text(&r, logins.other.as_ref(), None).unwrap_or_else(|| t("Авторизуйте репозиторий — эта же авторизация работает и для {0}", &[&label_of(kind)]));
-            return Err(GorynychError::new(ErrorCode::NoToken, t("Репозиторий не авторизован", &[])).with_hint(hint));
+            let hint = login_problem_text(&r, logins.other.as_ref(), None).unwrap_or_else(|| t("sign-in-to-repository-same-sign", &[&label_of(kind)]));
+            return Err(GorynychError::new(ErrorCode::NoToken, t("repository-isnt-signed-in", &[])).with_hint(hint));
         };
         let check = self.verify(&r, kind, &login, root).await;
         if check.state == "bad" {
-            let mut error = GorynychError::new(ErrorCode::NoToken, t("Авторизация репозитория не подходит для CI/CD", &[]));
+            let mut error = GorynychError::new(ErrorCode::NoToken, t("repository-sign-in-doesnt-work-for-ci", &[]));
             error.hint = login_problem_text(&r, None, Some(&check));
             return Err(error);
         }
@@ -718,11 +718,11 @@ impl CicdService {
             return data.jobs.iter().map(|job| PipelineStage { name: job.stage.clone().or_else(|| job.name.clone()), status: job.status.clone().unwrap_or_default(), jobs: vec![job.clone()] }).collect();
         }
         let workflow = data.pipeline.as_ref().and_then(|pipeline| pipeline.workflow.clone());
-        let default_name = || workflow.clone().unwrap_or_else(|| t("Задания", &[]));
+        let default_name = || workflow.clone().unwrap_or_else(|| t("jobs-2", &[]));
         if let Some(levels) = self.workflow_levels(root, data.pipeline.as_ref()).await {
             let job_levels: Vec<usize> = data.jobs.iter().map(|job| levels.level_of(job.name.as_deref().unwrap_or_default())).collect();
             let max = job_levels.iter().copied().max().unwrap_or(0);
-            let stage_name = |index: usize| if index == 0 { t("Старт", &[]) } else { t("После шага {0}", &[&index]) };
+            let stage_name = |index: usize| if index == 0 { t("start", &[]) } else { t("after-step", &[&index]) };
             return (0..=max)
                 .filter_map(|index| {
                     let jobs: Vec<PipelineJob> = data.jobs.iter().zip(&job_levels).filter(|(_, level)| **level == index).map(|(job, _)| PipelineJob { stage: Some(stage_name(index)), ..job.clone() }).collect();
@@ -767,11 +767,11 @@ impl CicdService {
             Some("job.retry") => (cap, cap_name) = (|c: &Capabilities| c.can_rerun_single_job, "canRerunSingleJob"),
             Some("job.cancel") => (cap, cap_name) = (|c: &Capabilities| c.can_cancel_job, "canCancelJob"),
             Some("job.play") => (cap, cap_name) = (|c: &Capabilities| c.can_play_manual_job, "canPlayManualJob"),
-            _ => return Err(GorynychError::new(ErrorCode::BadArgs, t("Неизвестное действие", &[]))),
+            _ => return Err(GorynychError::new(ErrorCode::BadArgs, t("unknown-action", &[]))),
         }
         let (provider, ctx) = self.context(root, preferred).await?;
         let caps = provider.capabilities(ctx.caps_input());
-        require(&caps, cap(&caps), cap_name, provider.label(), &t("действие", &[]))?;
+        require(&caps, cap(&caps), cap_name, provider.label(), &t("action", &[]))?;
         provider.action(&ctx, a).await
     }
 
@@ -779,11 +779,11 @@ impl CicdService {
     pub async fn run(&self, root: &Path, params: &RunParams, preferred: Option<&str>) -> Result<RunResult> {
         let reference = js::trim(params.reference.as_deref().unwrap_or_default()).to_owned();
         if reference.is_empty() {
-            return Err(GorynychError::new(ErrorCode::BadArgs, t("Не указана ветка", &[])));
+            return Err(GorynychError::new(ErrorCode::BadArgs, t("no-branch-specified", &[])));
         }
         let (provider, ctx) = self.context(root, preferred).await?;
         let caps = provider.capabilities(ctx.caps_input());
-        require(&caps, caps.can_run_pipeline, "canRunPipeline", provider.label(), &t("запуск", &[]))?;
+        require(&caps, caps.can_run_pipeline, "canRunPipeline", provider.label(), &t("run", &[]))?;
         let variables: Vec<RunVariable> = params
             .variables
             .iter()
@@ -794,7 +794,7 @@ impl CicdService {
             })
             .collect();
         if !variables.is_empty() && !caps.can_run_with_variables {
-            let message = caps.reason("canRunWithVariables").map_or_else(|| t("Переменные при запуске не поддерживаются", &[]), str::to_owned);
+            let message = caps.reason("canRunWithVariables").map_or_else(|| t("variables-at-run-time-arent", &[]), str::to_owned);
             return Err(GorynychError::new(ErrorCode::Unsupported, message));
         }
         provider.run_pipeline(&ctx, &RunInput { reference, workflow: params.workflow.clone(), inputs: params.inputs.clone().unwrap_or_default(), variables }).await
@@ -834,7 +834,7 @@ impl CicdService {
             CiProvider::Bitbucket => {
                 let data = systems.iter().find(|system| system.id == "bitbucket").and_then(|system| read_yaml(root, &system.files[0]));
                 let custom = map_of(data.as_ref().and_then(|data| data.get("pipelines")).and_then(|pipelines| pipelines.get("custom")));
-                let mut workflows = vec![RunWorkflow { path: None, name: t("По ветке (branches / default)", &[]), value: None, dispatchable: true, inputs: Vec::new() }];
+                let mut workflows = vec![RunWorkflow { path: None, name: t("by-branch-branches-default", &[]), value: None, dispatchable: true, inputs: Vec::new() }];
                 for (name, steps) in custom {
                     let list: Vec<Yaml> = match steps {
                         Yaml::Null => Vec::new(),
@@ -894,7 +894,7 @@ impl CicdService {
         let (provider, ctx) = self.context(root, preferred).await?;
         let caps = provider.capabilities(ctx.caps_input());
         if !caps.can_list_runners {
-            let message = caps.reason("canListRunners").map_or_else(|| t("Раннеры недоступны", &[]), str::to_owned);
+            let message = caps.reason("canListRunners").map_or_else(|| t("runners-unavailable", &[]), str::to_owned);
             return Err(GorynychError::new(ErrorCode::Unsupported, message));
         }
         let runners = provider.list_runners(&ctx).await?;
@@ -906,13 +906,13 @@ impl CicdService {
         let (provider, ctx) = self.context(root, preferred).await?;
         let caps = provider.capabilities(ctx.caps_input());
         if patch.labels.is_some() {
-            require(&caps, caps.can_edit_runner_labels, "canEditRunnerLabels", provider.label(), &t("изменение меток", &[]))?;
+            require(&caps, caps.can_edit_runner_labels, "canEditRunnerLabels", provider.label(), &t("changing-labels", &[]))?;
         }
         if patch.paused.is_some() {
-            require(&caps, caps.can_pause_runner, "canPauseRunner", provider.label(), &t("пауза", &[]))?;
+            require(&caps, caps.can_pause_runner, "canPauseRunner", provider.label(), &t("pause", &[]))?;
         }
         if patch.run_untagged.is_some() || patch.locked.is_some() || patch.description.is_some() || patch.maximum_timeout.is_some() {
-            require(&caps, caps.can_edit_runner_settings, "canEditRunnerSettings", provider.label(), &t("настройки раннера", &[]))?;
+            require(&caps, caps.can_edit_runner_settings, "canEditRunnerSettings", provider.label(), &t("runner-settings", &[]))?;
         }
         provider.update_runner(&ctx, id, patch).await
     }
@@ -921,7 +921,7 @@ impl CicdService {
     pub async fn runner_delete(&self, root: &Path, id: &CiId, preferred: Option<&str>) -> Result<RunnerResult> {
         let (provider, ctx) = self.context(root, preferred).await?;
         let caps = provider.capabilities(ctx.caps_input());
-        require(&caps, caps.can_delete_runner, "canDeleteRunner", provider.label(), &t("удаление раннера", &[]))?;
+        require(&caps, caps.can_delete_runner, "canDeleteRunner", provider.label(), &t("deleting-runner", &[]))?;
         provider.delete_runner(&ctx, id).await
     }
 
@@ -929,7 +929,7 @@ impl CicdService {
     pub async fn runners_prune(&self, root: &Path, ids: Option<&[CiId]>, preferred: Option<&str>) -> Result<PruneResult> {
         let (provider, ctx) = self.context(root, preferred).await?;
         let caps = provider.capabilities(ctx.caps_input());
-        require(&caps, caps.can_delete_runner, "canDeleteRunner", provider.label(), &t("удаление раннеров", &[]))?;
+        require(&caps, caps.can_delete_runner, "canDeleteRunner", provider.label(), &t("deleting-runners", &[]))?;
         let list = provider.list_runners(&ctx).await?;
         let (mut removed, mut failed) = (Vec::new(), Vec::new());
         for runner in list.iter().filter(|r| r.status == "offline" && !r.is_shared && !r.is_virtual && r.editable) {
@@ -948,7 +948,7 @@ impl CicdService {
     pub async fn runner_register(&self, root: &Path, options: &RunnerRegisterOptions, preferred: Option<&str>) -> Result<RunnerRegistration> {
         let (provider, ctx) = self.context(root, preferred).await?;
         let caps = provider.capabilities(ctx.caps_input());
-        require(&caps, caps.can_create_runner_token, "canCreateRunnerToken", provider.label(), &t("регистрация раннера", &[]))?;
+        require(&caps, caps.can_create_runner_token, "canCreateRunnerToken", provider.label(), &t("registering-runner", &[]))?;
         let labels = clean_labels(&options.labels);
         let request = RegistrationRequest { labels: labels.clone(), description: options.description.clone(), run_untagged: options.run_untagged.unwrap_or(false), locked: options.locked, paused: options.paused.unwrap_or(false) };
         let token = provider.registration_token(&ctx, &request).await?;
@@ -976,12 +976,12 @@ impl CicdService {
     pub async fn local_runner_start(&self, root: &Path, labels: &[Json], preferred: Option<&str>) -> Result<LocalRunnerStarted> {
         let (provider, ctx) = self.context(root, preferred).await?;
         let caps = provider.capabilities(ctx.caps_input());
-        require(&caps, caps.local_runner, "localRunner", provider.label(), &t("локальный раннер", &[]))?;
+        require(&caps, caps.local_runner, "localRunner", provider.label(), &t("local-runner", &[]))?;
         let Some(r) = self.resolve_remote(root, preferred).await else {
-            return Err(GorynychError::new(ErrorCode::NoRemote, t("У репозитория нет remote", &[])));
+            return Err(GorynychError::new(ErrorCode::NoRemote, t("repository-has-no-remote", &[])));
         };
         let clean = clean_labels(labels);
-        let request = RegistrationRequest { labels: clean.clone(), description: Some(t("git-Горыныч (локальный Docker)", &[])), run_untagged: clean.is_empty(), locked: None, paused: false };
+        let request = RegistrationRequest { labels: clean.clone(), description: Some(t("git-gorynych-local-docker", &[])), run_untagged: clean.is_empty(), locked: None, paused: false };
         let reg = provider.registration_token(&ctx, &request).await?;
         let id = provider.id().as_str();
         let repo_key = format!("{}/{}", r.host, r.path).to_lowercase();
@@ -1020,11 +1020,11 @@ impl CicdService {
     /// `artifactDownload`.
     pub async fn artifact_download(&self, root: &Path, artifact: Option<&ArtifactRef>, dest: Option<&Path>, preferred: Option<&str>) -> Result<Downloaded> {
         let (Some(artifact), Some(dest)) = (artifact, dest.filter(|dest| !dest.as_os_str().is_empty())) else {
-            return Err(GorynychError::new(ErrorCode::BadArgs, t("Не указан артефакт или файл", &[])));
+            return Err(GorynychError::new(ErrorCode::BadArgs, t("no-artifact-or-file-specified", &[])));
         };
         let (provider, ctx) = self.context(root, preferred).await?;
         let caps = provider.capabilities(ctx.caps_input());
-        require(&caps, caps.can_download_artifacts, "canDownloadArtifacts", provider.label(), &t("скачивание артефактов", &[]))?;
+        require(&caps, caps.can_download_artifacts, "canDownloadArtifacts", provider.label(), &t("downloading-artifacts", &[]))?;
         provider.download_artifact(&ctx, artifact, dest).await
     }
 
@@ -1034,7 +1034,7 @@ impl CicdService {
     pub async fn secrets(&self, root: &Path, preferred: Option<&str>) -> Result<WithCaps<SecretsData>> {
         let (provider, ctx) = self.context(root, preferred).await?;
         let caps = provider.capabilities(ctx.caps_input());
-        require(&caps, caps.can_manage_secrets, "canManageSecrets", provider.label(), &t("секреты", &[]))?;
+        require(&caps, caps.can_manage_secrets, "canManageSecrets", provider.label(), &t("secrets", &[]))?;
         let secrets = provider.list_secrets(&ctx).await?;
         Ok(with_caps(provider, &ctx, SecretsData { secrets }))
     }
@@ -1043,20 +1043,20 @@ impl CicdService {
     pub async fn secret_save(&self, root: &Path, data: &SecretSave, preferred: Option<&str>) -> Result<SecretResult> {
         let key = js::trim(data.key.as_deref().unwrap_or_default()).to_owned();
         if !SECRET_KEY.is_match(&key) {
-            return Err(GorynychError::new(ErrorCode::InvalidName, t("Имя: латинские буквы, цифры и _, не с цифры", &[])));
+            return Err(GorynychError::new(ErrorCode::InvalidName, t("name-latin-letters-digits-and", &[])));
         }
         if key.get(..7).is_some_and(|head| head.eq_ignore_ascii_case("GITHUB_")) {
-            return Err(GorynychError::new(ErrorCode::InvalidName, t("Имена с GITHUB_ зарезервированы", &[])));
+            return Err(GorynychError::new(ErrorCode::InvalidName, t("names-starting-with-github-are", &[])));
         }
         let Some(value) = data.value.as_ref().and_then(Json::as_str) else {
-            return Err(GorynychError::new(ErrorCode::BadArgs, t("Введите значение", &[])));
+            return Err(GorynychError::new(ErrorCode::BadArgs, t("enter-value", &[])));
         };
         if js::utf16_len(value) > 48 * 1024 {
-            return Err(GorynychError::new(ErrorCode::BadArgs, t("Значение больше 48 КБ", &[])));
+            return Err(GorynychError::new(ErrorCode::BadArgs, t("value-is-larger-than-48", &[])));
         }
         let (provider, ctx) = self.context(root, preferred).await?;
         let caps = provider.capabilities(ctx.caps_input());
-        require(&caps, caps.can_manage_secrets, "canManageSecrets", provider.label(), &t("секреты", &[]))?;
+        require(&caps, caps.can_manage_secrets, "canManageSecrets", provider.label(), &t("secrets", &[]))?;
         provider.save_secret(&ctx, &SecretInput { key, value: value.to_owned(), secret: data.secret, original: data.original.clone() }).await
     }
 
@@ -1064,7 +1064,7 @@ impl CicdService {
     pub async fn secret_delete(&self, root: &Path, data: &SecretRef, preferred: Option<&str>) -> Result<SecretResult> {
         let (provider, ctx) = self.context(root, preferred).await?;
         let caps = provider.capabilities(ctx.caps_input());
-        require(&caps, caps.can_manage_secrets, "canManageSecrets", provider.label(), &t("секреты", &[]))?;
+        require(&caps, caps.can_manage_secrets, "canManageSecrets", provider.label(), &t("secrets", &[]))?;
         provider.delete_secret(&ctx, data).await
     }
 
@@ -1089,7 +1089,7 @@ impl CicdService {
     /// `setSettings`.
     pub async fn set_settings(&self, root: &Path, data: &SettingsInput, preferred: Option<&str>) -> Result<Option<CicdSettingsView>> {
         let Some(r) = self.resolve_remote(root, preferred).await else {
-            return Err(GorynychError::new(ErrorCode::NoRemote, t("У репозитория нет remote", &[])));
+            return Err(GorynychError::new(ErrorCode::NoRemote, t("repository-has-no-remote", &[])));
         };
         self.inner.db.set_repo_provider(&r.host, &r.path, data.provider.as_deref(), data.api_base.as_deref())?;
         self.inner.checks.clear();

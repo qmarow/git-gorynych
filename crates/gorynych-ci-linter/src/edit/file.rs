@@ -25,7 +25,7 @@ const BOM: char = '\u{FEFF}';
 const GITLAB_TEMPLATE_PATH: &str = ".gitlab-ci.yml";
 const GITHUB_TEMPLATE_PATH: &str = ".github/workflows/ci.yml";
 /// Ключ перевода: текст шаблона на русском.
-const GITLAB_TEMPLATE: &str = "# Пайплайн GitLab CI: этапы выполняются по порядку, задания одного этапа — параллельно\nstages: [build, test, deploy]\n\ndefault:\n  image: node:20\n\nbuild:\n  stage: build\n  script:\n    - npm ci\n    - npm run build\n  artifacts:\n    paths: [dist/]\n\ntest:\n  stage: test\n  script:\n    - npm ci\n    - npm test\n\ndeploy:\n  stage: deploy\n  script:\n    - echo \"Деплой\"\n  rules:\n    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH\n      when: manual\n";
+const GITLAB_TEMPLATE: &str = "gitlab-ci-pipeline-stages-run";
 const GITHUB_TEMPLATE: &str = "name: CI\n\non:\n  push:\n    branches: [main]\n  pull_request:\n\njobs:\n  build:\n    runs-on: ubuntu-latest\n    steps:\n      - uses: actions/checkout@v4\n      - uses: actions/setup-node@v4\n        with:\n          node-version: 20\n      - run: npm ci\n      - run: npm run build\n\n  test:\n    needs: build\n    runs-on: ubuntu-latest\n    steps:\n      - uses: actions/checkout@v4\n      - run: npm ci\n      - run: npm test\n";
 
 /// `hash` из `ciEdit.cjs`.
@@ -82,13 +82,13 @@ fn check_writable_path(root: &Path, rel: &str, language: Language) -> Result<Pat
     let full = paths::safe_relative(root, rel, language)?;
     let relative = paths::relative_inside(root, &full);
     if relative.split('/').any(|part| part == ".git") {
-        return Err(GorynychError::new(ErrorCode::BadArgs, i18n::tr(language, "Сюда писать нельзя", &[])));
+        return Err(GorynychError::new(ErrorCode::BadArgs, i18n::tr(language, "writing-here-isnt-allowed", &[])));
     }
     let lower = relative.as_bytes();
     let ends_with = |suffix: &[u8]| lower.len() >= suffix.len() && lower[lower.len() - suffix.len()..].eq_ignore_ascii_case(suffix);
     let basename = relative.rsplit('/').next().unwrap_or_default();
     if !ends_with(b".yml") && !ends_with(b".yaml") && basename != "Jenkinsfile" {
-        return Err(GorynychError::new(ErrorCode::BadArgs, i18n::tr(language, "Сохранять можно только файлы CI/CD (.yml, .yaml, Jenkinsfile)", &[])));
+        return Err(GorynychError::new(ErrorCode::BadArgs, i18n::tr(language, "only-ci-cd-files-yml", &[])));
     }
     Ok(full)
 }
@@ -121,7 +121,7 @@ pub struct CiSaved {
 /// `saveFile`.
 pub fn save_file(root: &Path, request: &CiSaveRequest, language: Language) -> Result<CiSaved> {
     if request.content.len() > MAX_SIZE {
-        return Err(GorynychError::new(ErrorCode::TooLarge, i18n::tr(language, "Файл слишком большой", &[])));
+        return Err(GorynychError::new(ErrorCode::TooLarge, i18n::tr(language, "file-is-too-large", &[])));
     }
     let full = check_writable_path(root, &request.path, language)?;
     let current = read_raw(&full);
@@ -129,9 +129,9 @@ pub fn save_file(root: &Path, request: &CiSaveRequest, language: Language) -> Re
     if let Some(base_hash) = &request.base_hash
         && state.hash != *base_hash
     {
-        return Err(GorynychError::new(ErrorCode::ChangedOnDisk, i18n::tr(language, "Файл изменился на диске, пока вы его редактировали", &[])).with_hint(i18n::tr(
+        return Err(GorynychError::new(ErrorCode::ChangedOnDisk, i18n::tr(language, "file-changed-on-disk-while", &[])).with_hint(i18n::tr(
             language,
-            "Нажмите «Перечитать», чтобы загрузить свежую версию, или сохраните поверх (ваши правки заменят изменения на диске).",
+            "click-reload-to-load-fresh",
             &[],
         )));
     }
@@ -177,11 +177,11 @@ pub fn create_from_template(root: &Path, system: &str, language: Language) -> Re
     let (path, content) = match system {
         "gitlab" => (GITLAB_TEMPLATE_PATH, i18n::tr(language, GITLAB_TEMPLATE, &[])),
         "github" => (GITHUB_TEMPLATE_PATH, GITHUB_TEMPLATE.to_owned()),
-        _ => return Err(GorynychError::new(ErrorCode::BadArgs, i18n::tr(language, "Нет шаблона для этой системы", &[]))),
+        _ => return Err(GorynychError::new(ErrorCode::BadArgs, i18n::tr(language, "no-template-for-this-system", &[]))),
     };
     let full = check_writable_path(root, path, language)?;
     if read_raw(&full).is_some() {
-        return Err(GorynychError::new(ErrorCode::Exists, i18n::tr(language, "Файл {0} уже существует", &[&path])));
+        return Err(GorynychError::new(ErrorCode::Exists, i18n::tr(language, "file-already-exists", &[&path])));
     }
     save_file(root, &CiSaveRequest { path: path.to_owned(), content, base_hash: Some(None) }, language)
 }

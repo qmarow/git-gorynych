@@ -10,7 +10,7 @@ use gorynych_core::i18n::t;
 
 /// Шифрует значение открытым ключом репозитория (base64).
 pub fn seal(public_key: &str, plaintext: &str) -> Result<String> {
-    let bad_key = || GorynychError::unknown(t("Некорректный открытый ключ репозитория", &[]));
+    let bad_key = || GorynychError::unknown(t("invalid-repository-public-key", &[]));
     let bytes: [u8; 32] = STANDARD.decode(public_key).map_err(|_| bad_key())?.try_into().map_err(|_| bad_key())?;
     let sealed = crypto_box::PublicKey::from(bytes).seal(&mut OsRng, plaintext.as_bytes()).map_err(|_| bad_key())?;
     Ok(STANDARD.encode(sealed))

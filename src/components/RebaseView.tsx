@@ -55,11 +55,11 @@ interface RebaseActionDef {
 }
 
 export const REBASE_ACTIONS: RebaseActionDef[] = [
-  { id: 'pick', key: 'P', label: tr('Оставить'), hint: tr('Коммит остаётся как есть'), icon: Check, cls: 'text-gk-text', active: 'bg-gk-fg/15 text-gk-strong' },
-  { id: 'reword', key: 'R', label: tr('Изменить сообщение'), hint: tr('Коммит остаётся, меняется только текст'), icon: Pencil, cls: 'text-gk-yellow', active: 'bg-gk-yellow/20 text-gk-yellow' },
-  { id: 'squash', key: 'S', label: tr('Объединить с коммитом ниже'), hint: tr('Изменения и текст присоединяются к коммиту ниже'), icon: Combine, cls: 'text-gk-purple', active: 'bg-gk-purple/20 text-gk-purple' },
-  { id: 'fixup', key: 'F', label: tr('Влить в коммит ниже без текста'), hint: tr('Изменения присоединяются к коммиту ниже, его текст не меняется'), icon: ArrowDownToLine, cls: 'text-gk-purple', active: 'bg-gk-purple/20 text-gk-purple' },
-  { id: 'drop', key: 'D', label: tr('Удалить'), hint: tr('Коммит и его изменения пропадут из истории'), icon: Trash2, cls: 'text-gk-red', active: 'bg-gk-red/20 text-gk-red' },
+  { id: 'pick', key: 'P', label: tr('pick'), hint: tr('commit-stays-as-is'), icon: Check, cls: 'text-gk-text', active: 'bg-gk-fg/15 text-gk-strong' },
+  { id: 'reword', key: 'R', label: tr('reword'), hint: tr('commit-stays-only-text-changes'), icon: Pencil, cls: 'text-gk-yellow', active: 'bg-gk-yellow/20 text-gk-yellow' },
+  { id: 'squash', key: 'S', label: tr('squash-into-commit-below'), hint: tr('changes-and-text-are-joined'), icon: Combine, cls: 'text-gk-purple', active: 'bg-gk-purple/20 text-gk-purple' },
+  { id: 'fixup', key: 'F', label: tr('fixup-into-commit-below-without'), hint: tr('changes-are-joined-to-commit'), icon: ArrowDownToLine, cls: 'text-gk-purple', active: 'bg-gk-purple/20 text-gk-purple' },
+  { id: 'drop', key: 'D', label: tr('delete-2'), hint: tr('commit-and-its-changes-will'), icon: Trash2, cls: 'text-gk-red', active: 'bg-gk-red/20 text-gk-red' },
 ];
 
 type Preview = RebasePreview_Serialize;
@@ -272,15 +272,15 @@ export default function RebaseView({ repoPath, session, hidden, busy, onClose, o
       <div className="glass flex h-11 shrink-0 items-center gap-2.5 border-b border-gk-border bg-gk-panel px-3">
         <Layers size={16} className="shrink-0 text-gk-blue" />
         <div className="min-w-0 flex-1 truncate text-[13px]">
-          {tj('<0>Интерактивный rebase</0>{1}', [<span className="font-semibold text-gk-strong" />, d && (
+          {tj('interactive-rebase-2', [<span className="font-semibold text-gk-strong" />, d && (
             <span className="ml-2 text-gk-muted">
-              {tj('ветка <0>{1}</0>{2}', [<span className="font-medium text-gk-text" />, d.branch, ontoMode ? (
+              {tj('branch-10', [<span className="font-medium text-gk-text" />, d.branch, ontoMode ? (
                 <>
-                  {tj(' → на {0} <1>«{2}»</1>', [<button className="font-mono text-gk-blue hover:underline" onClick={() => onLocate(d.onto.hash)}>{d.onto.hash.slice(0, 7)}</button>, <span className="text-gk-dim" />, d.onto.subject])}
+                  {tj('onto', [<button className="font-mono text-gk-blue hover:underline" onClick={() => onLocate(d.onto.hash)}>{d.onto.hash.slice(0, 7)}</button>, <span className="text-gk-dim" />, d.onto.subject])}
                 </>
               ) : (
                 <>
-                  {tj(', коммиты после {0}', [<button className="font-mono text-gk-blue hover:underline" onClick={() => onLocate(d.upstream.hash)}>
+                  {tj('commits-after-2', [<button className="font-mono text-gk-blue hover:underline" onClick={() => onLocate(d.upstream.hash)}>
                     {d.upstream.hash.slice(0, 7)}
                   </button>])}
                 </>
@@ -288,8 +288,8 @@ export default function RebaseView({ repoPath, session, hidden, busy, onClose, o
             </span>
           )])}
         </div>
-        <span className="hidden shrink-0 text-[11px] text-gk-dim xl:inline">{kb(tr('↑↓ выбор · Alt+↑↓ двигать · P R S F D — действие'))}</span>
-        <button onClick={onClose} title={tr('Закрыть без изменений (Esc)')} className="rounded p-1.5 text-gk-muted hover:bg-gk-hover hover:text-gk-text">
+        <span className="hidden shrink-0 text-[11px] text-gk-dim xl:inline">{kb(tr('select-alt-move-p-r'))}</span>
+        <button onClick={onClose} title={tr('close-without-changes-esc')} className="rounded p-1.5 text-gk-muted hover:bg-gk-hover hover:text-gk-text">
           <X size={15} />
         </button>
       </div>
@@ -301,15 +301,15 @@ export default function RebaseView({ repoPath, session, hidden, busy, onClose, o
         </div>
       ) : !plan ? (
         <div className="flex flex-1 items-center justify-center gap-2 text-[13px] text-gk-muted">
-          {tj('{0} Собираем коммиты…', [<Loader2 size={15} className="animate-spin" />])}</div>
+          {tj('collecting-commits', [<Loader2 size={15} className="animate-spin" />])}</div>
       ) : (
         <div className="flex min-h-0 flex-1">
           {/* План */}
           <div className="flex min-w-0 flex-1 flex-col border-r border-gk-border">
             <div className="flex h-9 shrink-0 items-center gap-2 border-b border-gk-border px-3 text-[12px] text-gk-muted">
-              {tj('<0>{1} {2} · новые сверху</0>{3}{4}', [<span />, n, plural(n, tr('коммит'), tr('коммита'), tr('коммитов')), <div className="flex-1" />, changedCount > 0 && (
+              {tj('newest-on-top', [<span />, n, plural(n, tr('commit'), tr('commits'), tr('commits-2')), <div className="flex-1" />, changedCount > 0 && (
                 <button onClick={reset} className="rounded px-2 py-0.5 text-[11.5px] text-gk-muted hover:bg-gk-hover hover:text-gk-text">
-                  {tr('Сбросить план')}</button>
+                  {tr('reset-plan')}</button>
               )])}
             </div>
             <div className="min-h-0 flex-1 overflow-y-auto py-1" role="listbox">
@@ -345,7 +345,7 @@ export default function RebaseView({ repoPath, session, hidden, busy, onClose, o
               ))}
               <div className="mx-3 mt-1 flex items-center gap-2 rounded-md border border-dashed border-gk-border px-3 py-2 text-[12px] text-gk-dim">
                 <GitBranch size={13} />
-                {ontoMode ? tr('новая основа:') : tr('основа (не меняется):')}
+                {ontoMode ? tr('new-base') : tr('base-unchanged')}
                 <span className="font-mono text-gk-muted">{d?.onto.hash.slice(0, 7)}</span>
                 <span className="truncate">{d?.onto.subject}</span>
               </div>
@@ -371,18 +371,18 @@ export default function RebaseView({ repoPath, session, hidden, busy, onClose, o
         <div className="flex shrink-0 items-center gap-2 border-t border-gk-border bg-gk-panel/60 px-4 py-2.5">
           <div className="min-w-0 flex-1 text-[12px] text-gk-muted">
             {firstKeptIsSquash ? (
-              <span className="text-gk-yellow">{tr('Самый нижний коммит не с чем объединить — выберите для него другое действие')}</span>
+              <span className="text-gk-yellow">{tr('bottom-commit-has-nothing-to')}</span>
             ) : d?.unchanged ? (
-              tr('План ничего не меняет')
+              tr('plan-changes-nothing')
             ) : d?.ok ? (
               <>
-                {tj('Ветка <0>{1}</0> перейдёт на новую историю. Undo ({2}) вернёт как было.', [<b className="font-medium text-gk-text" />, d.branch, kb('Ctrl+Z')])}</>
+                {tj('branch-will-move-to-new', [<b className="font-medium text-gk-text" />, d.branch, kb('Ctrl+Z')])}</>
             ) : d?.conflict ? (
-              tr('Применить автоматически нельзя — будет конфликт')
+              tr('cant-apply-automatically-there-will')
             ) : null}
           </div>
           <button onClick={onClose} className="rounded px-3 py-1.5 text-[12.5px] text-gk-muted hover:bg-gk-hover hover:text-gk-text">
-            {tr('Отмена')}</button>
+            {tr('cancel')}</button>
           {d?.conflict && !preview.loading && !preview.error ? (
             confirmStart ? (
               <button
@@ -390,15 +390,15 @@ export default function RebaseView({ repoPath, session, hidden, busy, onClose, o
                 onClick={() => onStart(plan)}
                 className="flex items-center gap-1.5 rounded-md bg-gk-yellow px-3 py-1.5 text-[12.5px] font-semibold text-gk-ink hover:brightness-110 disabled:opacity-50"
               >
-                {tr('Точно начать — я решу конфликты')}</button>
+                {tr('start-anyway-ill-resolve-conflicts')}</button>
             ) : (
               <button
                 disabled={busy}
                 onClick={() => setConfirmStart(true)}
-                title={tr('Запустить настоящий git rebase: он остановится на конфликте, вы решите его и нажмёте «Продолжить». «Прервать» вернёт всё как было.')}
+                title={tr('run-real-git-rebase-it')}
                 className="flex items-center gap-1.5 rounded-md bg-gk-yellow/15 px-3 py-1.5 text-[12.5px] font-medium text-gk-yellow ring-1 ring-gk-yellow/40 hover:bg-gk-yellow/25 disabled:opacity-50"
               >
-                {tj('{0} Начать и решить конфликты вручную', [<AlertTriangle size={13} />])}</button>
+                {tj('start-and-resolve-conflicts-manually', [<AlertTriangle size={13} />])}</button>
             )
           ) : (
             <button
@@ -406,7 +406,7 @@ export default function RebaseView({ repoPath, session, hidden, busy, onClose, o
               onClick={() => onApply(d!)}
               className="flex items-center gap-1.5 rounded-md bg-gk-green px-3.5 py-1.5 text-[12.5px] font-semibold text-gk-ink shadow-lg shadow-gk-green/20 transition hover:brightness-110 disabled:opacity-40 disabled:shadow-none"
             >
-              {tj('{0} Применить rebase', [busy || (preview.loading && d) ? <Loader2 size={13} className="animate-spin" /> : <Check size={13} />])}</button>
+              {tj('apply-rebase', [busy || (preview.loading && d) ? <Loader2 size={13} className="animate-spin" /> : <Check size={13} />])}</button>
           )}
         </div>
       )}
@@ -508,35 +508,35 @@ function PlanRow({
             {joined && <ArrowDown size={12} className="shrink-0 text-gk-purple" />}
             <button
               onDoubleClick={onEdit}
-              title={tr('Двойной клик — изменить сообщение')}
+              title={tr('double-click-reword')}
               className={`min-w-0 truncate text-left text-[13px] ${dropped ? 'text-gk-dim line-through' : item.action === 'reword' && item.message !== meta?.message ? 'text-gk-yellow' : 'text-gk-text'}`}
             >
-              {subject || <i className="text-gk-dim">{tr('пустое сообщение')}</i>}
+              {subject || <i className="text-gk-dim">{tr('empty-message')}</i>}
             </button>
             {groupMembers.length > 0 && (
-              <span className="shrink-0 rounded bg-gk-purple/15 px-1.5 text-[10.5px] text-gk-purple" title={tr('Сколько коммитов будет объединено с этим')}>
+              <span className="shrink-0 rounded bg-gk-purple/15 px-1.5 text-[10.5px] text-gk-purple" title={tr('how-many-commits-will-be')}>
                 +{groupMembers.length}
               </span>
             )}
             {conflict && (
-              <span className="shrink-0 rounded bg-gk-red/20 px-1.5 text-[10.5px] text-gk-red">{tr('конфликт')}</span>
+              <span className="shrink-0 rounded bg-gk-red/20 px-1.5 text-[10.5px] text-gk-red">{tr('conflict-2')}</span>
             )}
           </div>
           <div className="truncate text-[11px] text-gk-dim">
             {meta?.author?.name} · {meta?.author?.date ? relativeTime(meta.author.date) : ''}
-            {joined && joinedInto && <span className="ml-1.5 text-gk-purple/80">{tj('→ в {0}', [joinedInto.slice(0, 7)])}</span>}
+            {joined && joinedInto && <span className="ml-1.5 text-gk-purple/80">{tj('into-2', [joinedInto.slice(0, 7)])}</span>}
           </div>
         </div>
         <div className="flex shrink-0 flex-col opacity-0 transition-opacity group-hover:opacity-100">
-          <button title={kb(tr('Выше (Alt+↑)'))} onClick={() => onMove(-1)} className="rounded text-gk-dim hover:text-gk-text">
+          <button title={kb(tr('up-alt'))} onClick={() => onMove(-1)} className="rounded text-gk-dim hover:text-gk-text">
             <ArrowUp size={12} />
           </button>
-          <button title={kb(tr('Ниже (Alt+↓)'))} onClick={() => onMove(1)} className="rounded text-gk-dim hover:text-gk-text">
+          <button title={kb(tr('down-alt'))} onClick={() => onMove(1)} className="rounded text-gk-dim hover:text-gk-text">
             <ArrowDown size={12} />
           </button>
         </div>
         {(item.action === 'reword' || groupMembers.length > 0) && !editing && (
-          <button title={tr('Изменить сообщение')} onClick={onEdit} className="shrink-0 rounded p-1 text-gk-dim hover:bg-gk-fg/10 hover:text-gk-text">
+          <button title={tr('reword')} onClick={onEdit} className="shrink-0 rounded p-1 text-gk-dim hover:bg-gk-fg/10 hover:text-gk-text">
             <Pencil size={12} />
           </button>
         )}
@@ -544,7 +544,7 @@ function PlanRow({
       {showMessageEditor && (
         <div className="px-3 pb-2.5 pl-[5.25rem]">
           <div className="mb-1 text-[11px] text-gk-muted">
-            {groupMembers.length > 0 ? tr('Сообщение объединённого коммита ({0} шт.)', groupMembers.length + 1) : tr('Новое сообщение коммита')}
+            {groupMembers.length > 0 ? tr('message-of-combined-commit-pcs', groupMembers.length + 1) : tr('new-commit-message')}
           </div>
           <textarea
             autoFocus
@@ -559,10 +559,10 @@ function PlanRow({
             className="w-full resize-y rounded-md bg-gk-bg px-2.5 py-1.5 font-mono text-[12px] leading-5 text-gk-text outline-none ring-1 ring-gk-border focus:ring-gk-blue"
           />
           <div className="mt-1 flex items-center gap-2 text-[11px] text-gk-dim">
-            {!(groupMessage ?? item.message ?? '').trim() && <span className="text-gk-red">{tr('Сообщение не может быть пустым')}</span>}
+            {!(groupMessage ?? item.message ?? '').trim() && <span className="text-gk-red">{tr('message-cant-be-empty')}</span>}
             <div className="flex-1" />
             <button onClick={onDoneEditing} className="rounded px-2 py-0.5 text-gk-muted hover:bg-gk-hover hover:text-gk-text">
-              {tj('Готово ({0})', [kb('Ctrl+Enter')])}</button>
+              {tj('done-3', [kb('Ctrl+Enter')])}</button>
           </div>
         </div>
       )}
@@ -587,7 +587,7 @@ function PreviewPanel({ data: d, error, loading, invalid, hoverAfter, onHoverAft
   return (
     <div className="relative flex w-[46%] min-w-[380px] max-w-[640px] shrink-0 flex-col bg-gk-panel/30">
       <div className="flex h-9 shrink-0 items-center gap-2 border-b border-gk-border px-3 text-[12px] font-medium text-gk-text">
-        {tj('Предпросмотр{0}<1>— посчитан заранее, рабочая папка не тронута</1>', [loading && <Loader2 size={12} className="animate-spin text-gk-muted" />, <span className="font-normal text-gk-dim" />])}
+        {tj('preview-computed-in-advance-working', [loading && <Loader2 size={12} className="animate-spin text-gk-muted" />, <span className="font-normal text-gk-dim" />])}
       </div>
       <div className={`min-h-0 flex-1 space-y-3 overflow-y-auto p-3 transition-opacity ${loading ? 'opacity-60' : ''}`}>
         {error && d && (
@@ -596,46 +596,46 @@ function PreviewPanel({ data: d, error, loading, invalid, hoverAfter, onHoverAft
           </Banner>
         )}
         {invalid ? (
-          <Banner tone="yellow" icon={AlertTriangle} title={tr('Нижний коммит нельзя объединить')}>
-            {tr('Squash и fixup присоединяют коммит к тому, что ниже. Для самого нижнего выберите «Оставить» или «Удалить».')}</Banner>
+          <Banner tone="yellow" icon={AlertTriangle} title={tr('bottom-commit-cant-be-combined')}>
+            {tr('squash-and-fixup-join-commit-to')}</Banner>
         ) : d && !error ? (
           <>
             {d.conflict ? (
-              <Banner tone="red" icon={CircleX} title={tr('Конфликт на коммите {0} «{1}»', d.conflict.hash.slice(0, 7), d.conflict.subject)}>
+              <Banner tone="red" icon={CircleX} title={tr('conflict-on-commit', d.conflict.hash.slice(0, 7), d.conflict.subject)}>
                 <div>
-                  {d.conflict.files.length === 1 ? tr('Файл') : tr('Файлы')}:{' '}
+                  {d.conflict.files.length === 1 ? tr('file-2') : tr('files-5')}:{' '}
                   <span className="font-mono text-gk-text">{d.conflict.files.join(', ')}</span>
                 </div>
                 <div className="mt-1">
-                  {tr('Его изменения не ложатся на коммиты ниже в новом порядке. Поменяйте план (например, верните порядок) или начните rebase и решите конфликт вручную.')}</div>
+                  {tr('its-changes-dont-apply-onto')}</div>
               </Banner>
             ) : d.unchanged ? (
-              <Banner tone="blue" icon={Info} title={tr('План ничего не меняет')}>
-                {tr('Выберите действия для коммитов слева: изменить порядок, сообщение, объединить или удалить.')}</Banner>
+              <Banner tone="blue" icon={Info} title={tr('plan-changes-nothing')}>
+                {tr('choose-actions-for-commits-on')}</Banner>
             ) : (
-              <Banner tone="green" icon={ShieldCheck} title={tr('Пройдёт без конфликтов')}>
-                {d.identicalFiles ? tr('Итоговые файлы не изменятся — меняется только история.') : tr('Итоговые файлы изменятся: {0} {1} (список ниже).', d.diff!.length, plural(d.diff!.length, tr('файл'), tr('файла'), tr('файлов')))}
+              <Banner tone="green" icon={ShieldCheck} title={tr('will-go-through-without-conflicts')}>
+                {d.identicalFiles ? tr('resulting-files-wont-change-only') : tr('resulting-files-will-change-list', d.diff!.length, plural(d.diff!.length, tr('file'), tr('files-2'), tr('files')))}
               </Banner>
             )}
 
             {d.pushed! > 0 && !d.unchanged && (
-              <Banner tone="yellow" icon={AlertTriangle} title={tr('{0} {1} уже на сервере', d.pushed, plural(d.pushed!, tr('коммит'), tr('коммита'), tr('коммитов')))}>
-                {tr('После rebase ветку придётся отправить через Force Push — это перепишет её и у коллег.')}</Banner>
+              <Banner tone="yellow" icon={AlertTriangle} title={tr('already-on-server', d.pushed, plural(d.pushed!, tr('commit'), tr('commits'), tr('commits-2')))}>
+                {tr('after-rebase-branch-will-have')}</Banner>
             )}
             {d.merges! > 0 && (
-              <Banner tone="blue" icon={Info} title={tr('Merge-коммиты ({0}) будут выпрямлены', d.merges)}>
-                {tr('Как и обычный git rebase, он переносит только обычные коммиты — история станет линейной.')}</Banner>
+              <Banner tone="blue" icon={Info} title={tr('merge-commits-will-be-flattened', d.merges)}>
+                {tr('like-regular-git-rebase-it')}</Banner>
             )}
             {d.dirty! > 0 && !d.unchanged && (
-              <Banner tone="blue" icon={Info} title={tr('Незакоммиченные изменения: {0}', d.dirty)}>
-                {tr('Они сохранятся. Если rebase меняет те же файлы, приложение попросит сначала сделать Commit или Stash.')}</Banner>
+              <Banner tone="blue" icon={Info} title={tr('uncommitted-changes', d.dirty)}>
+                {tr('theyll-be-kept-if-rebase')}</Banner>
             )}
 
             <MiniGraph data={d} hoverAfter={hoverAfter} onHoverAfter={onHoverAfter} onLocate={onLocate} />
 
             {d.ok && !d.unchanged && !d.identicalFiles && (
               <div>
-                <div className="mb-1.5 text-[11px] font-semibold uppercase tracking-wider text-gk-muted">{tr('Как изменятся файлы ветки')}</div>
+                <div className="mb-1.5 text-[11px] font-semibold uppercase tracking-wider text-gk-muted">{tr('how-branch-files-will-change')}</div>
                 <div className="overflow-hidden rounded-lg border border-gk-border">
                   {d.diff!.map((f) => (
                     <button
@@ -665,11 +665,11 @@ function PreviewPanel({ data: d, error, loading, invalid, hoverAfter, onHoverAft
 }
 
 const NODE: Record<string, { dot: string; ring: string; label: string }> = {
-  reused: { dot: 'bg-gk-dim', ring: 'ring-gk-dim/40', label: tr('без изменений') },
-  pick: { dot: 'bg-gk-blue', ring: 'ring-gk-blue/40', label: tr('перенесён') },
-  reword: { dot: 'bg-gk-yellow', ring: 'ring-gk-yellow/40', label: tr('новое сообщение') },
-  squash: { dot: 'bg-gk-purple', ring: 'ring-gk-purple/40', label: tr('объединён') },
-  fixup: { dot: 'bg-gk-purple', ring: 'ring-gk-purple/40', label: tr('объединён') },
+  reused: { dot: 'bg-gk-dim', ring: 'ring-gk-dim/40', label: tr('no-changes-2') },
+  pick: { dot: 'bg-gk-blue', ring: 'ring-gk-blue/40', label: tr('moved') },
+  reword: { dot: 'bg-gk-yellow', ring: 'ring-gk-yellow/40', label: tr('new-message') },
+  squash: { dot: 'bg-gk-purple', ring: 'ring-gk-purple/40', label: tr('combined') },
+  fixup: { dot: 'bg-gk-purple', ring: 'ring-gk-purple/40', label: tr('combined') },
 };
 
 // Граф «сейчас → после»: два столбика коммитов над общей основой
@@ -689,13 +689,13 @@ function MiniGraph({ data: d, hoverAfter, onHoverAfter, onLocate }: MiniGraphPro
   const fate = new Map<string, string>();
   for (const c of d.after) {
     c.origs.forEach((h, i) => {
-      if (i > 0) fate.set(h, tr('вливается в {0}', c.origs[0].slice(0, 7)));
-      else if (c.action === 'reword' || (c.origs.length > 1 && c.message !== d.before.find((b) => b.hash === h)?.message)) fate.set(h, tr('новое сообщение'));
+      if (i > 0) fate.set(h, tr('merges-into', c.origs[0].slice(0, 7)));
+      else if (c.action === 'reword' || (c.origs.length > 1 && c.message !== d.before.find((b) => b.hash === h)?.message)) fate.set(h, tr('new-message'));
     });
   }
   return (
     <div className="grid grid-cols-2 gap-3">
-      <Column title={tr('Сейчас')} branch={d.branch}>
+      <Column title={tr('now')} branch={d.branch}>
         {before.map((c) => (
           <Node
             key={c.hash}
@@ -703,15 +703,15 @@ function MiniGraph({ data: d, hoverAfter, onHoverAfter, onLocate }: MiniGraphPro
             subject={c.subject}
             dot={dropped.has(c.hash) || empty.has(c.hash) ? 'bg-gk-red/70' : 'bg-gk-muted'}
             strike={dropped.has(c.hash) || empty.has(c.hash)}
-            note={dropped.has(c.hash) ? tr('удаляется') : empty.has(c.hash) ? tr('станет пустым — пропустится') : fate.get(c.hash) ?? null}
+            note={dropped.has(c.hash) ? tr('dropped') : empty.has(c.hash) ? tr('will-become-empty-skipped') : fate.get(c.hash) ?? null}
             highlighted={hoverAfter?.includes(c.hash)}
             conflict={d.conflict?.hash === c.hash}
             onClick={() => onLocate(c.hash)}
           />
         ))}
-        {d.interactiveFromAncestor ? <Base hash={d.upstream.hash} subject={d.upstream.subject} /> : <Base subject={tr('прежняя основа ветки')} />}
+        {d.interactiveFromAncestor ? <Base hash={d.upstream.hash} subject={d.upstream.subject} /> : <Base subject={tr('branchs-old-base')} />}
       </Column>
-      <Column title={tr('После')} branch={d.branch} accent>
+      <Column title={tr('after-4')} branch={d.branch} accent>
         {after ? (
           after.length ? (
             after.map((c) => {
@@ -722,19 +722,19 @@ function MiniGraph({ data: d, hoverAfter, onHoverAfter, onLocate }: MiniGraphPro
                   hash={c.hash}
                   subject={c.subject}
                   dot={kind.dot}
-                  note={c.origs.length > 1 ? `${kind.label}: ${c.origs.length} ${plural(c.origs.length, tr('коммит'), tr('коммита'), tr('коммитов'))}` : kind.label}
-                  badge={!c.reused ? tr('новый') : null}
+                  note={c.origs.length > 1 ? `${kind.label}: ${c.origs.length} ${plural(c.origs.length, tr('commit'), tr('commits'), tr('commits-2'))}` : kind.label}
+                  badge={!c.reused ? tr('new') : null}
                   onEnter={() => onHoverAfter(c.origs)}
                   onLeave={() => onHoverAfter(null)}
                 />
               );
             })
           ) : (
-            <div className="py-3 text-center text-[11.5px] italic text-gk-dim">{tr('коммитов не останется')}</div>
+            <div className="py-3 text-center text-[11.5px] italic text-gk-dim">{tr('no-commits-will-remain')}</div>
           )
         ) : (
           <div className="flex items-center gap-1.5 py-3 text-[11.5px] text-gk-red">
-            {tj('{0} остановится на конфликте', [<CircleX size={12} />])}</div>
+            {tj('will-stop-at-conflict', [<CircleX size={12} />])}</div>
         )}
         <Base hash={d.onto.hash} subject={d.onto.subject} />
       </Column>

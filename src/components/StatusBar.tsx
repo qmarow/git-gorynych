@@ -49,30 +49,30 @@ export default function StatusBar({ repo, onJumpToHead, sync, onOpenFolder, onOp
     <footer className="glass flex h-7 shrink-0 animate-fade-in items-center gap-3 border-t border-gk-border bg-gk-titlebar px-3 text-[11px] text-gk-muted">
       {/* Ветка */}
       {repo.currentBranch ? (
-        <span className="flex shrink-0 items-center gap-1.5 text-gk-text" title={branch?.upstream ? `upstream: ${branch.upstream}` : tr('Нет upstream')}>
+        <span className="flex shrink-0 items-center gap-1.5 text-gk-text" title={branch?.upstream ? `upstream: ${branch.upstream}` : tr('no-upstream')}>
           <GitBranch size={12} className="text-gk-green" />
           <span className="font-medium">{repo.currentBranch}</span>
           {branch?.upstream && <span className="text-gk-dim">→ {branch.upstream}</span>}
         </span>
       ) : repo.headHash ? (
-        <span className="flex shrink-0 items-center gap-1.5 text-gk-yellow" title={tr('HEAD не на ветке: новые коммиты не попадут ни в одну ветку')}>
+        <span className="flex shrink-0 items-center gap-1.5 text-gk-yellow" title={tr('head-isnt-on-branch-new')}>
           <AlertTriangle size={12} />
           detached HEAD
         </span>
       ) : (
-        <span className="shrink-0">{tr('Нет коммитов')}</span>
+        <span className="shrink-0">{tr('no-commits')}</span>
       )}
 
       {branch && (branch.ahead! > 0 || branch.behind! > 0) && (
-        <span className="flex shrink-0 items-center gap-2" title={tr('Относительно upstream')}>
+        <span className="flex shrink-0 items-center gap-2" title={tr('relative-to-upstream')}>
           {branch.ahead! > 0 && (
-            <span className="flex items-center text-gk-green" title={tr('Неотправленных коммитов: {0}', branch.ahead)}>
+            <span className="flex items-center text-gk-green" title={tr('unpushed-commits', branch.ahead)}>
               <ArrowUp size={11} />
               {branch.ahead}
             </span>
           )}
           {branch.behind! > 0 && (
-            <span className="flex items-center text-gk-blue" title={tr('Придут при Pull: {0}', branch.behind)}>
+            <span className="flex items-center text-gk-blue" title={tr('will-arrive-on-pull-2', branch.behind)}>
               <ArrowDown size={11} />
               {branch.behind}
             </span>
@@ -86,8 +86,8 @@ export default function StatusBar({ repo, onJumpToHead, sync, onOpenFolder, onOp
           onClick={onJumpToHead}
           title={
             head
-              ? tr('Перейти к HEAD\n{0}\n{1}\n{2} · {3}', head.hash, head.message, head.author.name, fullDate(head.date))
-              : tr('Перейти к HEAD\n{0}', repo.headHash)
+              ? tr('go-to-head', head.hash, head.message, head.author.name, fullDate(head.date))
+              : tr('go-to-head-2', repo.headHash)
           }
           className="group flex min-w-0 items-center gap-2 rounded px-2 py-0.5 transition-colors hover:bg-gk-hover hover:text-gk-text"
         >
@@ -117,7 +117,7 @@ export default function StatusBar({ repo, onJumpToHead, sync, onOpenFolder, onOp
           onClick={() => onOpenPipeline?.(pipeline)}
           data-testid="status-pipeline"
           data-status={pipeline.status}
-          data-tip={tr('{0}: последний пайплайн ветки {1} — #{2}, {3}{4}\nКлик — {5}', pipelineLabel ?? 'CI/CD', repo.currentBranch, pipeline.number ?? pipeline.id, statusInfo(pipeline.status).label, pipeline.name ? `\n${pipeline.name}` : '', pipeline.status === 'failed' ? tr('лог упавшего задания') : tr('подробности'))}
+          data-tip={tr('last-pipeline-of-branch-click', pipelineLabel ?? 'CI/CD', repo.currentBranch, pipeline.number ?? pipeline.id, statusInfo(pipeline.status).label, pipeline.name ? `\n${pipeline.name}` : '', pipeline.status === 'failed' ? tr('log-of-failed-job') : tr('details'))}
           className="flex shrink-0 items-center gap-1 rounded px-1.5 py-0.5 hover:bg-gk-hover hover:text-gk-text"
         >
           <StatusIcon status={pipeline.status} size={12} title="" />
@@ -127,10 +127,10 @@ export default function StatusBar({ repo, onJumpToHead, sync, onOpenFolder, onOp
       )}
 
       {repo.operation && (
-        <span className="shrink-0 rounded bg-gk-yellow/15 px-1.5 text-gk-yellow">{tj('{0} в процессе', [repo.operation])}</span>
+        <span className="shrink-0 rounded bg-gk-yellow/15 px-1.5 text-gk-yellow">{tj('in-progress-2', [repo.operation])}</span>
       )}
       {repo.wipFiles.length > 0 && (
-        <span className="flex shrink-0 items-center gap-1" title={tr('Незакоммиченные изменения')}>
+        <span className="flex shrink-0 items-center gap-1" title={tr('uncommitted-changes-2')}>
           <Pencil size={11} />
           {repo.wipFiles.length}
         </span>
@@ -145,7 +145,7 @@ export default function StatusBar({ repo, onJumpToHead, sync, onOpenFolder, onOp
             onPathMenu(e.clientX, e.clientY);
           }}
           disabled={!onOpenFolder}
-          data-tip={tr('{0}\nКлик — {1}, правый клик — ещё действия', repo.path, openFolderLabel().toLowerCase())}
+          data-tip={tr('click-right-click-more-actions', repo.path, openFolderLabel().toLowerCase())}
           data-testid="status-path"
           className="flex min-w-0 items-center gap-1.5 rounded px-1.5 py-0.5 enabled:hover:bg-gk-hover enabled:hover:text-gk-text"
         >
@@ -168,7 +168,7 @@ export default function StatusBar({ repo, onJumpToHead, sync, onOpenFolder, onOp
 }
 
 const clock = (t: number) => new Date(t).toLocaleTimeString(locale(), { hour: '2-digit', minute: '2-digit', second: '2-digit' });
-const VIA: Record<string, string> = { api: 'GitLab API (ETag)', 'ls-remote': 'git ls-remote', 'api+ls-remote': tr('GitLab API и git ls-remote') };
+const VIA: Record<string, string> = { api: 'GitLab API (ETag)', 'ls-remote': 'git ls-remote', 'api+ls-remote': tr('gitlab-api-and-git-ls') };
 
 function SyncControls({ sync, hasRemotes }: { sync: SyncState; hasRemotes: boolean }) {
   const st = useSyncStatus();
@@ -176,14 +176,14 @@ function SyncControls({ sync, hasRemotes }: { sync: SyncState; hasRemotes: boole
   const retryIn = st.retryAt ? Math.max(1, Math.round((st.retryAt - Date.now()) / 1000)) : null;
   const autoTitle = sync.enabled
     ? [
-        tr('Автообновление включено: граф обновляется при любых изменениях в папке.'),
-        hasRemotes ? tr('Сервер проверяется {0} (окно не в фокусе — раз в {1} с); fetch — только если там что-то изменилось.', mode.hint, BACKGROUND_SEC) : null,
-        st.at ? tr('Последняя проверка: {0}{1}{2}.', clock(st.at), st.via ? tr(' через {0}', VIA[st.via] ?? st.via) : '', st.ms != null ? tr(', {0} мс', st.ms) : '') : null,
-        tr('Клик — выключить, правый клик — настройки.'),
+        tr('auto-update-is-on-graph'),
+        hasRemotes ? tr('server-is-checked-window-not', mode.hint, BACKGROUND_SEC) : null,
+        st.at ? tr('last-check', clock(st.at), st.via ? tr('in-6', VIA[st.via] ?? st.via) : '', st.ms != null ? tr('ms-2', st.ms) : '') : null,
+        tr('click-turn-off-right-click'),
       ]
         .filter(Boolean)
         .join('\n')
-    : tr('Автообновление выключено. Клик — включить, правый клик — настройки.');
+    : tr('auto-update-is-off-click');
   return (
     <span className="flex shrink-0 items-center gap-1">
       <button
@@ -200,7 +200,7 @@ function SyncControls({ sync, hasRemotes }: { sync: SyncState; hasRemotes: boole
             sync.enabled && hasRemotes && !st.error && mode.sec <= 15 && st.focused ? 'animate-pulse' : ''
           }`}
         />
-        {sync.enabled ? (hasRemotes ? tr('авто · {0}', mode.sec < 60 ? tr('{0} с', mode.sec) : tr('{0} мин', mode.sec / 60)) : tr('авто')) : tr('авто выкл')}
+        {sync.enabled ? (hasRemotes ? tr('auto-2', mode.sec < 60 ? tr('s-2', mode.sec) : tr('min', mode.sec / 60)) : tr('auto')) : tr('auto-off')}
       </button>
       {hasRemotes && (
         <button
@@ -208,17 +208,17 @@ function SyncControls({ sync, hasRemotes }: { sync: SyncState; hasRemotes: boole
           disabled={sync.fetching}
           title={
             sync.enabled && st.error
-              ? tr('Сервер недоступен: {0}{1}\nНажмите, чтобы сделать fetch сейчас.', st.error, retryIn ? tr('\nСледующая попытка через {0} с', retryIn) : '')
+              ? tr('server-is-unavailable-click-to', st.error, retryIn ? tr('next-attempt-in-s', retryIn) : '')
               : sync.error
-                ? tr('Последний fetch не удался: {0}', sync.error)
+                ? tr('last-fetch-failed', sync.error)
                 : sync.lastFetch
-                  ? tr('Новые данные с сервера получены в {0}. Нажмите, чтобы сделать fetch сейчас.', sync.lastFetch)
-                  : tr('Получить изменения с сервера (fetch)')
+                  ? tr('new-data-from-server-received', sync.lastFetch)
+                  : tr('get-changes-from-server-fetch')
           }
           className={`flex items-center gap-1 rounded px-1.5 py-0.5 hover:bg-gk-hover hover:text-gk-text ${sync.error || (sync.enabled && st.error) ? 'text-gk-yellow' : ''}`}
         >
           {sync.fetching ? <Loader2 size={11} className="animate-spin" /> : sync.enabled && st.error ? <WifiOff size={11} /> : <RefreshCw size={11} />}
-          {sync.fetching ? 'fetch…' : sync.enabled && st.error ? tr('нет связи') : (sync.lastFetch ?? 'fetch')}
+          {sync.fetching ? 'fetch…' : sync.enabled && st.error ? tr('no-connection') : (sync.lastFetch ?? 'fetch')}
         </button>
       )}
     </span>

@@ -33,7 +33,7 @@ const BB_SIZES: [&str; 6] = ["1x", "2x", "4x", "8x", "16x", "32x"];
 const BB_GROUPS: [&str; 5] = ["branches", "tags", "bookmarks", "pull-requests", "custom"];
 
 fn bb_rejected(message: impl std::fmt::Display) -> String {
-    tr!("Bitbucket не запустит пайплайн: «Configuration error: {0}».", message)
+    tr!("bitbucket-wont-run-pipeline", message)
 }
 
 struct Bitbucket<'a, 'b, 'c> {
@@ -80,7 +80,7 @@ impl Bitbucket<'_, '_, '_> {
         if let Some(Value::Seq(list)) = item.get("parallel") {
             if list.len() < 2 {
                 let title = group.title.clone();
-                self.issue(path, draft!("bb-parallel-one", Warning, title = tr!("{0}: parallel с одним шагом", title), how = tr!("Ошибки не будет, но параллельности тоже."), why = tr!("В parallel нужно минимум два шага."), fix = tr!("Уберите parallel или добавьте шаги.")));
+                self.issue(path, draft!("bb-parallel-one", Warning, title = tr!("parallel-with-one-step", title), how = tr!("there-will-be-no-error-but-no"), why = tr!("parallel-needs-at-least-two"), fix = tr!("remove-parallel-or-add-steps")));
             }
             for (index, step) in list.iter().enumerate() {
                 self.visit(step, &extend(path, kp!["parallel", index]), group);
@@ -95,60 +95,60 @@ impl Bitbucket<'_, '_, '_> {
         }
         let g = group.title.clone();
         let Some(step @ Value::Map(step_map)) = item.get("step") else {
-            self.issue(path, draft!("bb-not-step", Error, title = tr!("{0}: элемент без step", g), how = bb_rejected("Each item in the pipeline must be a step, parallel or stage"), why = tr!("Элемент пайплайна — step, parallel или stage."), fix = "- step:\n    script:\n      - echo ok"));
+            self.issue(path, draft!("bb-not-step", Error, title = tr!("item-without-step", g), how = bb_rejected("Each item in the pipeline must be a step, parallel or stage"), why = tr!("pipeline-item-is-step-parallel"), fix = "- step:\n    script:\n      - echo ok"));
             return;
         };
         let step_path = extend(path, kp!["step"]);
         let label = match step.get("name").filter(|value| value.truthy()) {
             Some(name) => q(name.js_string()),
-            None => tr!("шаг {0}", group.steps.len() + 1),
+            None => tr!("step", group.steps.len() + 1),
         };
         group.steps.push(StepRef { step: step.clone(), path: step_path.clone() });
         for key in step_map.keys() {
             if !BB_STEP.contains(&key.as_str()) {
-                self.issue(&extend(&step_path, kp![key]), draft!("bb-step-key", Error, title = tr!("{0}: {1} — неизвестный ключ {2}", g, label, q(key)), how = bb_rejected(format!("Unexpected property \"{key}\"")), why = tr!("Допустимы: {0}.{1}", BB_STEP.join(", "), did_you_mean(key, BB_STEP)), fix = tr!("Исправьте ключ.")));
+                self.issue(&extend(&step_path, kp![key]), draft!("bb-step-key", Error, title = tr!("unknown-key-2", g, label, q(key)), how = bb_rejected(format!("Unexpected property \"{key}\"")), why = tr!("allowed", BB_STEP.join(", "), did_you_mean(key, BB_STEP)), fix = tr!("fix-key")));
             }
         }
         match step.get("script") {
-            None => self.issue(&step_path, draft!("bb-no-script", Error, title = tr!("{0}: {1} — нет script", g, label), how = bb_rejected("Missing required property \"script\""), why = tr!("Шагу нечего выполнять."), fix = "script:\n  - echo ok")),
-            script if arr(script).is_empty() => self.issue(&extend(&step_path, kp!["script"]), draft!("bb-script-empty", Error, title = tr!("{0}: {1} — пустой script", g, label), how = bb_rejected("\"script\" must not be empty"), why = tr!("Нужна хотя бы одна команда."), fix = tr!("Добавьте команду."))),
+            None => self.issue(&step_path, draft!("bb-no-script", Error, title = tr!("no-script-2", g, label), how = bb_rejected("Missing required property \"script\""), why = tr!("step-has-nothing-to-run"), fix = "script:\n  - echo ok")),
+            script if arr(script).is_empty() => self.issue(&extend(&step_path, kp!["script"]), draft!("bb-script-empty", Error, title = tr!("empty-script-2", g, label), how = bb_rejected("\"script\" must not be empty"), why = tr!("at-least-one-command-is"), fix = tr!("add-command"))),
             _ => {}
         }
         if let Some(limit) = step.get("max-time") {
             let number = js_number(Some(limit));
             if number > 120.0 || number < 1.0 {
-                self.issue(&extend(&step_path, kp!["max-time"]), draft!("bb-max-time", Error, title = format!("{g}: {label} — max-time {}", limit.js_string()), how = bb_rejected("max-time must be between 1 and 120"), why = tr!("Допустимо от 1 до 120 минут."), fix = "max-time: 60"));
+                self.issue(&extend(&step_path, kp!["max-time"]), draft!("bb-max-time", Error, title = format!("{g}: {label} — max-time {}", limit.js_string()), how = bb_rejected("max-time must be between 1 and 120"), why = tr!("from-1-to-120-minutes"), fix = "max-time: 60"));
             }
         }
         if let Some(size) = step.get("size")
             && !BB_SIZES.contains(&size.js_string().as_str())
         {
             let text = size.js_string();
-            self.issue(&extend(&step_path, kp!["size"]), draft!("bb-size", Error, title = format!("{g}: {label} — size {text}"), how = bb_rejected(format!("\"{text}\" is not a valid size")), why = tr!("Допустимы: {0}.", BB_SIZES.join(", ")), fix = "size: 2x"));
+            self.issue(&extend(&step_path, kp!["size"]), draft!("bb-size", Error, title = format!("{g}: {label} — size {text}"), how = bb_rejected(format!("\"{text}\" is not a valid size")), why = tr!("allowed-4", BB_SIZES.join(", ")), fix = "size: 2x"));
         }
         if let Some(trigger) = step.get("trigger")
             && !matches!(trigger.as_str(), Some("manual" | "automatic"))
         {
-            self.issue(&extend(&step_path, kp!["trigger"]), draft!("bb-trigger", Error, title = format!("{g}: {label} — trigger {}", trigger.js_string()), how = bb_rejected("trigger must be \"manual\" or \"automatic\""), why = tr!("Допустимы manual и automatic."), fix = "trigger: manual"));
+            self.issue(&extend(&step_path, kp!["trigger"]), draft!("bb-trigger", Error, title = format!("{g}: {label} — trigger {}", trigger.js_string()), how = bb_rejected("trigger must be \"manual\" or \"automatic\""), why = tr!("allowed-manual-and-automatic"), fix = "trigger: manual"));
         }
         for cache in arr(step.get("caches")) {
             let text = cache.js_string();
             if !BB_CACHES.contains(&text.as_str()) && !self.defined_caches.contains(&text) {
                 let known = BB_CACHES.iter().copied().chain(self.defined_caches.iter().map(String::as_str));
-                let why = tr!("Встроенные кэши: {0}; свои нужно описать в definitions.caches.{1}", BB_CACHES.join(", "), did_you_mean(&text, known));
-                self.issue(&extend(&step_path, kp!["caches"]), draft!("bb-cache-undefined", Error, title = tr!("{0}: {1} — неизвестный кэш {2}", g, label, q(&text)), how = bb_rejected(format!("Cache \"{text}\" is not defined")), why = why, fix = tr!("definitions:\n  caches:\n    {0}: путь/к/папке", arg(cache))));
+                let why = tr!("built-in-caches-custom-ones", BB_CACHES.join(", "), did_you_mean(&text, known));
+                self.issue(&extend(&step_path, kp!["caches"]), draft!("bb-cache-undefined", Error, title = tr!("unknown-cache", g, label, q(&text)), how = bb_rejected(format!("Cache \"{text}\" is not defined")), why = why, fix = tr!("definitions-caches-path-to-folder", arg(cache))));
             }
         }
         for service in arr(step.get("services")) {
             let text = service.js_string();
             if text != "docker" && !self.defined_services.contains(&text) {
-                self.issue(&extend(&step_path, kp!["services"]), draft!("bb-service-undefined", Error, title = tr!("{0}: {1} — сервис {2} не описан", g, label, q(&text)), how = bb_rejected(format!("Service \"{text}\" is not defined")), why = tr!("Сервисы (кроме docker) описываются в definitions.services."), fix = format!("definitions:\n  services:\n    {text}:\n      image: {text}")));
+                self.issue(&extend(&step_path, kp!["services"]), draft!("bb-service-undefined", Error, title = tr!("service-isnt-defined", g, label, q(&text)), how = bb_rejected(format!("Service \"{text}\" is not defined")), why = tr!("services-except-docker-are-defined"), fix = format!("definitions:\n  services:\n    {text}:\n      image: {text}")));
             }
         }
         if let Some(deployment) = step.get("deployment") {
             let env = deployment.js_string();
             if group.deployments.contains(&env) {
-                self.issue(&extend(&step_path, kp!["deployment"]), draft!("bb-deployment-twice", Error, title = tr!("{0}: окружение {1} используется дважды", g, q(&env)), how = bb_rejected(format!("The deployment environment \"{env}\" in your bitbucket-pipelines.yml file occurs multiple times in the pipeline")), why = tr!("В одном пайплайне каждое окружение развёртывается одним шагом."), fix = tr!("Используйте разные окружения или объедините шаги.")));
+                self.issue(&extend(&step_path, kp!["deployment"]), draft!("bb-deployment-twice", Error, title = tr!("environment-is-used-twice", g, q(&env)), how = bb_rejected(format!("The deployment environment \"{env}\" in your bitbucket-pipelines.yml file occurs multiple times in the pipeline")), why = tr!("in-one-pipeline-each-environment"), fix = tr!("use-different-environments-or-merge")));
             }
             group.deployments.insert(env);
         }
@@ -163,7 +163,7 @@ impl Bitbucket<'_, '_, '_> {
         });
         let has_docker = arr(step.get("services")).iter().any(|service| service.as_str() == Some("docker"));
         if uses_docker && !has_docker && !self.global_docker {
-            self.issue(&extend(&step_path, kp!["script"]), draft!("bb-docker-service", Error, title = tr!("{0}: {1} — docker без services: [docker]", g, label), when = tr!("При выполнении шага {0}", label), how = tr!("Шаг упадёт: «Cannot connect to the Docker daemon at unix:///var/run/docker.sock» (или «docker: command not found»)."), why = tr!("Docker в Bitbucket Pipelines доступен только как сервис."), fix = "services:\n  - docker"));
+            self.issue(&extend(&step_path, kp!["script"]), draft!("bb-docker-service", Error, title = tr!("docker-without-services-docker", g, label), when = tr!("when-step-runs", label), how = tr!("step-will-fail-cannot-connect"), why = tr!("docker-in-bitbucket-pipelines-is"), fix = "services:\n  - docker"));
         }
         self.counter += 1;
         let image_source = non_null(step.get("image")).or_else(|| self.data.get("image"));
@@ -191,7 +191,7 @@ impl Bitbucket<'_, '_, '_> {
             })
             .collect();
         self.script_jobs.push(ScriptJob {
-            name: step.get("name").filter(|value| value.truthy()).map_or_else(|| tr!("шаг {0}", self.counter), Value::js_string),
+            name: step.get("name").filter(|value| value.truthy()).map_or_else(|| tr!("step", self.counter), Value::js_string),
             file: Some(self.file.to_owned()),
             line: self.cx.pos.line(self.file, &step_path),
             lines,
@@ -199,7 +199,7 @@ impl Bitbucket<'_, '_, '_> {
             services: arr(step.get("services")).into_iter().map(Value::js_string).collect(),
             artifacts_from,
             system: "bitbucket",
-            kind: Some(tr!("шага")),
+            kind: Some(tr!("step-3")),
             ..ScriptJob::default()
         });
     }
@@ -212,9 +212,9 @@ pub(crate) fn check_bitbucket(files: &[CiFile], cx: &mut CheckContext<'_>) -> Re
     let Ok(data) = document.to_value(Schema::Plain, text) else { return Ok(()) };
     let empty = Value::Map(JsMap::new());
     let data = if data.is_null() { empty.clone() } else { data };
-    let when = tr!("Сразу при push — Bitbucket проверяет bitbucket-pipelines.yml до запуска");
+    let when = tr!("right-on-push-bitbucket-checks");
     let Some(pipelines @ Value::Map(pipeline_map)) = data.get("pipelines") else {
-        cx.add(draft!("bb-no-pipelines", Error, title = tr!("Нет раздела pipelines"), when = when, how = bb_rejected("There is an error in your bitbucket-pipelines.yml: missing section \"pipelines\""), why = tr!("Без pipelines Bitbucket не знает, что запускать."), fix = "pipelines:\n  default:\n    - step:\n        script:\n          - echo ok", file = file.to_owned(), line = None::<u32>));
+        cx.add(draft!("bb-no-pipelines", Error, title = tr!("no-pipelines-section"), when = when, how = bb_rejected("There is an error in your bitbucket-pipelines.yml: missing section \"pipelines\""), why = tr!("without-pipelines-bitbucket-doesnt-know"), fix = "pipelines:\n  default:\n    - step:\n        script:\n          - echo ok", file = file.to_owned(), line = None::<u32>));
         return Ok(());
     };
     let definitions = data.get("definitions").filter(|value| is_obj(Some(value))).unwrap_or(&empty);
@@ -234,11 +234,11 @@ pub(crate) fn check_bitbucket(files: &[CiFile], cx: &mut CheckContext<'_>) -> Re
     if let Some(limit) = global_max
         && js_number(Some(limit)) > 120.0
     {
-        bb.issue(&kp!["options", "max-time"], draft!("bb-max-time", Error, title = tr!("options: max-time {0} — больше 120 минут", arg(limit)), how = bb_rejected("max-time must be between 1 and 120"), why = tr!("Шаг в Bitbucket Cloud ограничен 120 минутами."), fix = "max-time: 120"));
+        bb.issue(&kp!["options", "max-time"], draft!("bb-max-time", Error, title = tr!("options-max-time-more-than", arg(limit)), how = bb_rejected("max-time must be between 1 and 120"), why = tr!("step-in-bitbucket-cloud-is"), fix = "max-time: 120"));
     }
     for key in pipeline_map.keys() {
         if !matches!(key.as_str(), "default" | "branches" | "tags" | "bookmarks" | "pull-requests" | "custom") {
-            bb.issue(&kp!["pipelines", key], draft!("bb-pipelines-key", Error, title = tr!("pipelines: неизвестный раздел {0}", q(key)), how = bb_rejected(format!("Unexpected property \"{key}\"")), why = tr!("Допустимы default, branches, tags, bookmarks, pull-requests, custom.{0}", did_you_mean(key, ["default", "branches", "tags", "pull-requests", "custom"])), fix = tr!("Исправьте имя раздела.")));
+            bb.issue(&kp!["pipelines", key], draft!("bb-pipelines-key", Error, title = tr!("pipelines-unknown-section", q(key)), how = bb_rejected(format!("Unexpected property \"{key}\"")), why = tr!("allowed-default-branches-tags-bookmarks", did_you_mean(key, ["default", "branches", "tags", "pull-requests", "custom"])), fix = tr!("fix-section-name")));
         }
     }
     let mut groups: Vec<(String, &Value, Vec<PathItem>)> = Vec::new();
@@ -254,7 +254,7 @@ pub(crate) fn check_bitbucket(files: &[CiFile], cx: &mut CheckContext<'_>) -> Re
     }
     for (title, list, path) in groups {
         let Value::Seq(items) = list else {
-            bb.issue(&path, draft!("bb-pipeline-not-list", Error, title = tr!("{0}: должен быть список шагов", title), how = bb_rejected("A list of steps was expected"), why = tr!("Пайплайн — список «- step: …»."), fix = "- step:\n    script:\n      - echo ok"));
+            bb.issue(&path, draft!("bb-pipeline-not-list", Error, title = tr!("must-be-list-of-steps", title), how = bb_rejected("A list of steps was expected"), why = tr!("pipeline-is-list-of-step"), fix = "- step:\n    script:\n      - echo ok"));
             continue;
         };
         let mut group = Group { title: title.clone(), deployments: HashSet::new(), steps: Vec::new() };
@@ -266,7 +266,7 @@ pub(crate) fn check_bitbucket(files: &[CiFile], cx: &mut CheckContext<'_>) -> Re
             && !title.starts_with("custom")
         {
             let at = extend(&first.path, kp!["trigger"]);
-            bb.issue(&at, draft!("bb-first-manual", Error, title = tr!("{0}: первый шаг не может быть ручным", title), how = bb_rejected("The first step of a pipeline can't be manual"), why = tr!("Пайплайн стартует автоматически, первый шаг тоже."), fix = tr!("Уберите trigger: manual у первого шага (или сделайте пайплайн custom).")));
+            bb.issue(&at, draft!("bb-first-manual", Error, title = tr!("first-step-cant-be-manual", title), how = bb_rejected("The first step of a pipeline can't be manual"), why = tr!("pipeline-starts-automatically-and-so"), fix = tr!("remove-trigger-manual-from-first")));
         }
     }
     let script_jobs = std::mem::take(&mut bb.script_jobs);
@@ -278,7 +278,7 @@ pub(crate) fn check_bitbucket(files: &[CiFile], cx: &mut CheckContext<'_>) -> Re
 const JENKINS_POST: [&str; 10] = ["always", "changed", "fixed", "regression", "aborted", "failure", "success", "unstable", "unsuccessful", "cleanup"];
 
 fn j_rejected(message: impl std::fmt::Display) -> String {
-    tr!("Сборка сразу упадёт с ошибкой разбора: «org.codehaus.groovy.control.MultipleCompilationErrorsException: startup failed: WorkflowScript: {0}».", message)
+    tr!("build-will-fail-right-away", message)
 }
 
 /// `blockAt`: без учёта строк, как в 1.x.
@@ -322,7 +322,7 @@ pub(crate) fn check_jenkins(files: &[CiFile], cx: &mut CheckContext<'_>) -> Resu
     let source = files.first().map_or("", |file| file.text.as_str());
     let text = units(source);
     let line_at = |index: usize| text[..index.min(text.len())].iter().filter(|unit| **unit == u16::from(b'\n')).count() as u32 + 1;
-    let when = tr!("При запуске сборки — Jenkins сначала разбирает Jenkinsfile");
+    let when = tr!("when-build-starts-jenkins-parses");
     macro_rules! issue {
         ($index:expr, $id:expr, $severity:ident $(, $field:ident = $value:expr)* $(,)?) => {{
             let index: Option<usize> = $index;
@@ -395,10 +395,10 @@ pub(crate) fn check_jenkins(files: &[CiFile], cx: &mut CheckContext<'_>) -> Resu
                 let shown = text_of(&[c]);
                 let line = line_at(index);
                 let why = match open {
-                    Some((other, at)) => tr!("Ожидалась закрывающая для «{0}» из строки {1}.", text_of(&[other]), line_at(at)),
-                    None => tr!("Для неё нет открывающей скобки."),
+                    Some((other, at)) => tr!("expected-closing-one-for-from", text_of(&[other]), line_at(at)),
+                    None => tr!("it-has-no-opening-bracket"),
                 };
-                issue!(Some(index), "jenkins-brace", Error, title = tr!("Лишняя «{0}» в строке {1}", shown, line), how = j_rejected(format!("{line}: unexpected token: {shown}")), why = why, fix = tr!("Проверьте парность скобок."));
+                issue!(Some(index), "jenkins-brace", Error, title = tr!("extra-on-line", shown, line), how = j_rejected(format!("{line}: unexpected token: {shown}")), why = why, fix = tr!("check-that-brackets-are-paired"));
                 stack.clear();
                 break;
             }
@@ -406,10 +406,10 @@ pub(crate) fn check_jenkins(files: &[CiFile], cx: &mut CheckContext<'_>) -> Resu
         index += 1;
     }
     if let Some(open) = quote {
-        issue!(None, "jenkins-quote", Error, title = tr!("Не закрыта строка {0}", text_of(open)), how = j_rejected("unexpected end of file, expecting quote"), why = tr!("Где-то открыта кавычка без пары."), fix = tr!("Проверьте кавычки."));
+        issue!(None, "jenkins-quote", Error, title = tr!("unclosed-string", text_of(open)), how = j_rejected("unexpected end of file, expecting quote"), why = tr!("quote-somewhere-has-no-pair"), fix = tr!("check-quotes"));
     } else if let Some((open, at)) = stack.last().copied() {
         let end = line_at(text.len());
-        issue!(Some(at), "jenkins-unclosed", Error, title = tr!("Не закрыта «{0}» из строки {1}", text_of(&[open]), line_at(at)), how = j_rejected(format!("{end}: expecting '}}', found '' @ line {end}")), why = tr!("Файл кончился раньше, чем закрылись все блоки."), fix = tr!("Добавьте недостающую скобку."));
+        issue!(Some(at), "jenkins-unclosed", Error, title = tr!("unclosed-from-line", text_of(&[open]), line_at(at)), how = j_rejected(format!("{end}: expecting '}}', found '' @ line {end}")), why = tr!("file-ended-before-all-blocks"), fix = tr!("add-missing-bracket"));
     }
 
     let pipeline_at = re!(r"^\s*pipeline\s*\{", "m").find(&text).map(|range| range.start);
@@ -417,10 +417,10 @@ pub(crate) fn check_jenkins(files: &[CiFile], cx: &mut CheckContext<'_>) -> Resu
         let brace = index_of(&text, &[u16::from(b'{')], start).unwrap_or(start);
         let top = strip_nested(block_at(&text, brace));
         if !re!(r"(^|\n)\s*agent\b").test(&top) {
-            issue!(Some(start), "jenkins-no-agent", Error, title = tr!("В pipeline нет agent"), how = j_rejected("Missing required section \"agent\""), why = tr!("Декларативный pipeline должен указать, где выполняться."), fix = "pipeline {\n  agent any\n  …");
+            issue!(Some(start), "jenkins-no-agent", Error, title = tr!("pipeline-has-no-agent"), how = j_rejected("Missing required section \"agent\""), why = tr!("declarative-pipeline-must-say-where"), fix = "pipeline {\n  agent any\n  …");
         }
         if !re!(r"(^|\n)\s*stages\s*\{").test(&top) {
-            issue!(Some(start), "jenkins-no-stages", Error, title = tr!("В pipeline нет stages"), how = j_rejected("Missing required section \"stages\""), why = tr!("Этапы обязательны."), fix = "stages {\n  stage('Build') {\n    steps { sh 'make' }\n  }\n}");
+            issue!(Some(start), "jenkins-no-stages", Error, title = tr!("pipeline-has-no-stages"), how = j_rejected("Missing required section \"stages\""), why = tr!("stages-are-required"), fix = "stages {\n  stage('Build') {\n    steps { sh 'make' }\n  }\n}");
         }
         let mut names: HashMap<String, u32> = HashMap::new();
         for groups in re!(r#"\bstage\s*\(\s*(['"])(.+?)\1\s*\)\s*\{"#).captures_all(&text) {
@@ -428,7 +428,7 @@ pub(crate) fn check_jenkins(files: &[CiFile], cx: &mut CheckContext<'_>) -> Resu
             let name = groups[2].clone().map_or_else(String::new, |range| text_of(&text[range]));
             let inner = strip_nested(block_at(&text, whole.end - 1));
             if let Some(first) = names.get(&name).copied() {
-                issue!(Some(whole.start), "jenkins-stage-dup", Error, title = tr!("Этап {0} объявлен дважды", q(&name)), how = j_rejected(format!("Duplicate stage name: \"{name}\"")), why = tr!("Первый раз — в строке {0}.", first), fix = tr!("Переименуйте один из этапов."));
+                issue!(Some(whole.start), "jenkins-stage-dup", Error, title = tr!("stage-declared-twice-2", q(&name)), how = j_rejected(format!("Duplicate stage name: \"{name}\"")), why = tr!("first-time-on-line", first), fix = tr!("rename-one-of-stages"));
             }
             names.insert(name.clone(), line_at(whole.start));
             let kinds: Vec<&str> = [
@@ -443,9 +443,9 @@ pub(crate) fn check_jenkins(files: &[CiFile], cx: &mut CheckContext<'_>) -> Resu
             .collect();
             let rejected = format!("Stage \"{name}\" must have one and only one of \"steps\", \"stages\", \"parallel\", or \"matrix\"");
             if kinds.is_empty() {
-                issue!(Some(whole.start), "jenkins-stage-empty", Error, title = tr!("Этап {0} без steps", q(&name)), how = j_rejected(&rejected), why = tr!("Этапу нечего выполнять."), fix = "steps {\n  sh 'echo ok'\n}");
+                issue!(Some(whole.start), "jenkins-stage-empty", Error, title = tr!("stage-without-steps", q(&name)), how = j_rejected(&rejected), why = tr!("stage-has-nothing-to-run"), fix = "steps {\n  sh 'echo ok'\n}");
             } else if kinds.len() > 1 {
-                issue!(Some(whole.start), "jenkins-stage-multi", Error, title = tr!("Этап {0}: одновременно {1}", q(&name), kinds.join(&tr!(" и "))), how = j_rejected(&rejected), why = tr!("Можно что-то одно."), fix = tr!("Разнесите на вложенные этапы."));
+                issue!(Some(whole.start), "jenkins-stage-multi", Error, title = tr!("stage-at-once", q(&name), kinds.join(&tr!("and"))), how = j_rejected(&rejected), why = tr!("only-one-is-allowed"), fix = tr!("split-them-into-nested-stages"));
             }
         }
         for range in re!(r"\bpost\s*\{").find_all(&text) {
@@ -453,16 +453,16 @@ pub(crate) fn check_jenkins(files: &[CiFile], cx: &mut CheckContext<'_>) -> Resu
             for groups in re!(r"(?:^|\n)\s*([A-Za-z_]+)\s*\{").captures_all(inner) {
                 let condition = groups[1].clone().map_or_else(String::new, |group| text_of(&inner[group]));
                 if !JENKINS_POST.contains(&condition.as_str()) {
-                    issue!(Some(range.start), "jenkins-post", Error, title = tr!("post: неизвестное условие {0}", q(&condition)), how = j_rejected(format!("Invalid condition \"{condition}\" - valid conditions are [{}]", JENKINS_POST.join(", "))), why = tr!("Неизвестное условие.{0}", did_you_mean(&condition, JENKINS_POST)), fix = tr!("Исправьте условие."));
+                    issue!(Some(range.start), "jenkins-post", Error, title = tr!("post-unknown-condition", q(&condition)), how = j_rejected(format!("Invalid condition \"{condition}\" - valid conditions are [{}]", JENKINS_POST.join(", "))), why = tr!("unknown-condition", did_you_mean(&condition, JENKINS_POST)), fix = tr!("fix-condition"));
                 }
             }
         }
     } else if re!(r"\bnode\s*[({]").find(&text).is_none() && !gorynych_core::js::trim(source).is_empty() {
-        issue!(Some(1), "jenkins-no-pipeline", Warning, title = tr!("Не найдено ни pipeline { }, ни node { }"), how = tr!("Jenkins выполнит файл как Groovy-скрипт — скорее всего, ничего не соберётся."), why = tr!("Jenkinsfile начинается с pipeline { … } (декларативный) или node { … } (скриптовый)."), fix = "pipeline {\n  agent any\n  stages { … }\n}");
+        issue!(Some(1), "jenkins-no-pipeline", Warning, title = tr!("neither-pipeline-nor-node-found"), how = tr!("jenkins-will-run-file-as"), why = tr!("jenkinsfile-starts-with-pipeline"), fix = "pipeline {\n  agent any\n  stages { … }\n}");
     }
     for (regex, what) in SECRET_VALUE.iter() {
         if let Some(found) = regex.find(&text) {
-            issue!(Some(found.start), "secret-in-script", Error, title = tr!("В Jenkinsfile открытым текстом {0}", tr!(what)), when = tr!("Уже сейчас — файл в истории Git"), how = tr!("Ключ увидят все, у кого есть доступ к репозиторию."), why = tr!("Секреты нужно хранить в Jenkins Credentials."), fix = tr!("Отзовите ключ; используйте withCredentials([string(credentialsId: '…', variable: 'TOKEN')]) { … }"));
+            issue!(Some(found.start), "secret-in-script", Error, title = tr!("in-plain-text-in-jenkinsfile", tr!(what)), when = tr!("right-now-file-is-in"), how = tr!("everyone-with-access-to-repository"), why = tr!("secrets-must-be-stored-in-jenkins"), fix = tr!("revoke-key-use-withcredentials-string"));
         }
     }
     let mut lines = Vec::new();
@@ -479,7 +479,7 @@ pub(crate) fn check_jenkins(files: &[CiFile], cx: &mut CheckContext<'_>) -> Resu
         }
     }
     if !lines.is_empty() {
-        let job = ScriptJob { name: "Jenkinsfile".to_owned(), file: file.clone(), line: Some(1), lines, system: "jenkins", where_text: Some("Jenkinsfile".to_owned()), kind: Some(tr!("сборки")), ..ScriptJob::default() };
+        let job = ScriptJob { name: "Jenkinsfile".to_owned(), file: file.clone(), line: Some(1), lines, system: "jenkins", where_text: Some("Jenkinsfile".to_owned()), kind: Some(tr!("build")), ..ScriptJob::default() };
         check_scripts(std::slice::from_ref(&job), cx, "jenkins")?;
     }
     Ok(())
@@ -498,9 +498,9 @@ pub(crate) fn check_circle(files: &[CiFile], cx: &mut CheckContext<'_>) -> Resul
     let data = document.to_value(Schema::Plain, text)?;
     let empty = Value::Map(JsMap::new());
     let data = if data.is_null() { empty.clone() } else { data };
-    let when = tr!("Сразу при push — CircleCI проверяет config.yml до запуска");
+    let when = tr!("right-on-push-circleci-checks");
     if data.get("version").is_none() {
-        cx.add(draft!("circle-no-version", Error, title = tr!("Не указан version"), when = when.clone(), how = tr!("CircleCI не запустит сборку: «Config does not conform to schema: missing required property version»."), why = tr!("Первая строка конфигурации — версия."), fix = "version: 2.1", file = file.to_owned(), line = Some(1u32)));
+        cx.add(draft!("circle-no-version", Error, title = tr!("version-isnt-specified"), when = when.clone(), how = tr!("circleci-wont-run-build-config"), why = tr!("first-line-of-configuration-is"), fix = "version: 2.1", file = file.to_owned(), line = Some(1u32)));
     }
     let jobs = data.get("jobs").filter(|value| is_obj(Some(value))).unwrap_or(&empty);
     let job_names: Vec<&str> = jobs.as_map().map_or_else(Vec::new, |map| map.keys().map(String::as_str).collect());
@@ -531,12 +531,12 @@ pub(crate) fn check_circle(files: &[CiFile], cx: &mut CheckContext<'_>) -> Resul
                 let line = cx.pos.line(file, &kp!["workflows", workflow, "jobs", index]);
                 if let Some(reference) = reference.as_deref().filter(|item| !item.is_empty()) {
                     if !jobs.get(reference).is_some_and(Value::truthy) && !reference.contains('/') && opts.get("type").and_then(Value::as_str) != Some("approval") {
-                        cx.add(draft!("circle-job-unknown", Error, title = tr!("{0}: задание {1} не описано", workflow, q(reference)), when = when.clone(), how = tr!("CircleCI не запустит workflow: «Job '{0}' not found».", reference), why = tr!("В jobs нет {0}.{1}", q(reference), did_you_mean(reference, job_names.iter().copied())), fix = tr!("Исправьте имя или опишите задание."), file = file.to_owned(), line = line));
+                        cx.add(draft!("circle-job-unknown", Error, title = tr!("job-isnt-defined", workflow, q(reference)), when = when.clone(), how = tr!("circleci-wont-run-workflow-job", reference), why = tr!("jobs-has-no", q(reference), did_you_mean(reference, job_names.iter().copied())), fix = tr!("fix-name-or-define-job"), file = file.to_owned(), line = line));
                     }
                     if reference.contains('/') {
                         let orb = reference.split('/').next().unwrap_or_default();
                         if !orbs.contains(&orb) {
-                            cx.add(draft!("circle-orb-unknown", Error, title = tr!("{0}: orb {1} не подключён", workflow, q(orb)), when = when.clone(), how = tr!("CircleCI не запустит workflow: «Cannot find a definition for job named {0}».", reference), why = tr!("Орб нужно объявить в разделе orbs."), fix = format!("orbs:\n  {orb}: circleci/{orb}@x.y"), file = file.to_owned(), line = line));
+                            cx.add(draft!("circle-orb-unknown", Error, title = tr!("orb-isnt-included", workflow, q(orb)), when = when.clone(), how = tr!("circleci-wont-run-workflow-cannot", reference), why = tr!("orb-must-be-declared-in"), fix = format!("orbs:\n  {orb}: circleci/{orb}@x.y"), file = file.to_owned(), line = line));
                         }
                     }
                 }
@@ -544,7 +544,7 @@ pub(crate) fn check_circle(files: &[CiFile], cx: &mut CheckContext<'_>) -> Resul
                     if !names.iter().any(|name| name.as_ref() == Some(required)) {
                         let text = required.js_string();
                         let shown_ref = reference.clone().unwrap_or_else(|| "undefined".to_owned());
-                        cx.add(draft!("circle-requires-unknown", Error, title = tr!("{0}: {1} ждёт {2}, которого нет в workflow", workflow, q(&shown_ref), q(&text)), when = when.clone(), how = tr!("CircleCI не запустит workflow: «Job '{0}' requires '{1}', which is the name of 0 other jobs in workflow '{2}'».", reference.clone().unwrap_or_default(), arg(required), workflow), why = tr!("В workflow {0} нет задания {1}.{2}", q(workflow), q(&text), did_you_mean(&text, name_texts.iter().map(String::as_str))), fix = tr!("Исправьте имя."), file = file.to_owned(), line = line));
+                        cx.add(draft!("circle-requires-unknown", Error, title = tr!("waits-for-which-isnt-in", workflow, q(&shown_ref), q(&text)), when = when.clone(), how = tr!("circleci-wont-run-workflow-job-requires", reference.clone().unwrap_or_default(), arg(required), workflow), why = tr!("workflow-has-no-job", q(workflow), q(&text), did_you_mean(&text, name_texts.iter().map(String::as_str))), fix = tr!("fix-name-2"), file = file.to_owned(), line = line));
                     }
                 }
             }
@@ -557,11 +557,11 @@ pub(crate) fn check_circle(files: &[CiFile], cx: &mut CheckContext<'_>) -> Resul
             }
             let line = cx.pos.line(file, &kp!["jobs", name]);
             if !["docker", "machine", "macos", "executor", "resource_class"].iter().any(|key| job.get(key).is_some_and(Value::truthy)) {
-                cx.add(draft!("circle-no-executor", Error, title = tr!("{0}: не указан исполнитель", q(name)), when = when.clone(), how = tr!("CircleCI не запустит задание: «Job '{0}' has no executor (docker, machine, macos or executor)».", name), why = tr!("Заданию нужна среда выполнения."), fix = "docker:\n  - image: cimg/base:stable", file = file.to_owned(), line = line));
+                cx.add(draft!("circle-no-executor", Error, title = tr!("no-executor-specified", q(name)), when = when.clone(), how = tr!("circleci-wont-run-job-job", name), why = tr!("job-needs-execution-environment"), fix = "docker:\n  - image: cimg/base:stable", file = file.to_owned(), line = line));
             }
             let steps = arr(job.get("steps"));
             if steps.is_empty() {
-                cx.add(draft!("circle-no-steps", Error, title = tr!("{0}: нет steps", q(name)), when = when.clone(), how = tr!("CircleCI не запустит задание: «steps is required»."), why = tr!("Заданию нечего выполнять."), fix = "steps:\n  - checkout\n  - run: echo ok", file = file.to_owned(), line = line));
+                cx.add(draft!("circle-no-steps", Error, title = tr!("no-steps", q(name)), when = when.clone(), how = tr!("circleci-wont-run-job-steps"), why = tr!("job-has-nothing-to-run"), fix = "steps:\n  - checkout\n  - run: echo ok", file = file.to_owned(), line = line));
             }
             let checkout = steps.iter().any(|step| step.as_str() == Some("checkout"));
             let mut lines = Vec::new();
@@ -585,7 +585,7 @@ pub(crate) fn check_circle(files: &[CiFile], cx: &mut CheckContext<'_>) -> Resul
                 let script_job = ScriptJob { name: name.clone(), file: Some(file.to_owned()), line, lines, image, system: "circleci", ..ScriptJob::default() };
                 check_scripts(std::slice::from_ref(&script_job), cx, "circleci")?;
             } else if lines.iter().any(|item: &ScriptLine| re!(r"(^|\s)(\.\/|npm (ci|install)|make\b|mvn|gradle)").test(&item.text)) {
-                cx.add(draft!("circle-no-checkout", Warning, title = tr!("{0}: нет шага checkout", q(name)), when = tr!("При выполнении задания {0}", q(name)), how = tr!("Команды упадут: файлов репозитория в контейнере нет."), why = tr!("Код появляется только после шага checkout."), fix = "steps:\n  - checkout", file = file.to_owned(), line = cx.pos.line(file, &kp!["jobs", name, "steps"])));
+                cx.add(draft!("circle-no-checkout", Warning, title = tr!("no-checkout-step", q(name)), when = tr!("when-job-runs-2", q(name)), how = tr!("commands-will-fail-there-are"), why = tr!("code-appears-only-after-checkout"), fix = "steps:\n  - checkout", file = file.to_owned(), line = cx.pos.line(file, &kp!["jobs", name, "steps"])));
             }
         }
     }
@@ -600,7 +600,7 @@ pub(crate) fn check_azure(files: &[CiFile], cx: &mut CheckContext<'_>) -> Result
     let Some((document, text)) = cx.pos.doc(file) else { return Ok(()) };
     let data = document.to_value(Schema::Plain, text)?;
     let data = if data.is_null() { Value::Map(JsMap::new()) } else { data };
-    let when = tr!("Сразу при push — Azure DevOps проверяет файл до запуска");
+    let when = tr!("right-on-push-azure-devops");
     let is_jobs_list = matches!(data.get("jobs"), Some(Value::Seq(_)));
     let stages = data.get("stages").and_then(Value::as_seq);
     let jobs: Vec<&Value> = match (data.get("jobs"), stages) {
@@ -617,7 +617,7 @@ pub(crate) fn check_azure(files: &[CiFile], cx: &mut CheckContext<'_>) -> Result
                 let own = job_id(job);
                 let text = dep.js_string();
                 let path = if is_jobs_list { kp!["jobs", index] } else { Vec::new() };
-                cx.add(draft!("azure-depends-unknown", Error, title = tr!("{0}: dependsOn на неизвестное {1}", q_opt(own.as_ref()), q(&text)), when = when.clone(), how = tr!("Azure не запустит пайплайн: «Job {0} depends on unknown job {1}».", arg_opt(own.as_ref()), arg(dep)), why = tr!("Задания {0} нет.{1}", q(&text), did_you_mean(&text, id_texts.iter().map(String::as_str))), fix = tr!("Исправьте имя."), file = file.to_owned(), line = cx.pos.line(file, &path)));
+                cx.add(draft!("azure-depends-unknown", Error, title = tr!("dependson-on-unknown", q_opt(own.as_ref()), q(&text)), when = when.clone(), how = tr!("azure-wont-run-pipeline-job", arg_opt(own.as_ref()), arg(dep)), why = tr!("theres-no-job", q(&text), did_you_mean(&text, id_texts.iter().map(String::as_str))), fix = tr!("fix-name-2"), file = file.to_owned(), line = cx.pos.line(file, &path)));
             }
         }
     }
@@ -628,13 +628,13 @@ pub(crate) fn check_azure(files: &[CiFile], cx: &mut CheckContext<'_>) -> Result
             for dep in arr(stage.get("dependsOn")) {
                 if !stage_ids.contains(&dep) {
                     let text = dep.js_string();
-                    cx.add(draft!("azure-stage-depends-unknown", Error, title = tr!("Этап {0}: dependsOn на неизвестный {1}", q_opt(stage.get("stage")), q(&text)), when = when.clone(), how = tr!("Azure не запустит пайплайн: «Stage {0} depends on unknown stage {1}».", arg_opt(stage.get("stage")), arg(dep)), why = tr!("Этапа {0} нет.{1}", q(&text), did_you_mean(&text, stage_texts.iter().map(String::as_str))), fix = tr!("Исправьте имя."), file = file.to_owned(), line = cx.pos.line(file, &kp!["stages", index])));
+                    cx.add(draft!("azure-stage-depends-unknown", Error, title = tr!("stage-dependson-on-unknown", q_opt(stage.get("stage")), q(&text)), when = when.clone(), how = tr!("azure-wont-run-pipeline-stage", arg_opt(stage.get("stage")), arg(dep)), why = tr!("theres-no-stage", q(&text), did_you_mean(&text, stage_texts.iter().map(String::as_str))), fix = tr!("fix-name-2"), file = file.to_owned(), line = cx.pos.line(file, &kp!["stages", index])));
                 }
             }
         }
     }
     if !data.get("pool").is_some_and(Value::truthy) && !jobs.iter().any(|job| job.get("pool").is_some_and(Value::truthy)) && stages.is_none() {
-        cx.add(draft!("azure-no-pool", Info, title = tr!("Не указан pool"), when = when, how = tr!("Будет использован пул по умолчанию проекта — если в нём нет агентов, задание будет ждать бесконечно."), why = tr!("pool не задан ни в файле, ни в заданиях."), fix = "pool:\n  vmImage: ubuntu-latest", file = file.to_owned(), line = Some(1u32)));
+        cx.add(draft!("azure-no-pool", Info, title = tr!("pool-isnt-specified"), when = when, how = tr!("projects-default-pool-will-be"), why = tr!("pool-isnt-set-in-file"), fix = "pool:\n  vmImage: ubuntu-latest", file = file.to_owned(), line = Some(1u32)));
     }
     Ok(())
 }

@@ -83,7 +83,6 @@ fn rust_files(dir: &Path, out: &mut Vec<PathBuf>) {
 #[test]
 fn every_translation_key_exists() {
     let manifest = Path::new(env!("CARGO_MANIFEST_DIR"));
-    let dictionary: serde_json::Map<String, serde_json::Value> = serde_json::from_str(&std::fs::read_to_string(manifest.join("../../electron/i18n/en.json")).unwrap()).unwrap();
     let call = regex::Regex::new(r#"\bt\(\s*"((?:[^"\\]|\\.)*)""#).unwrap();
     let mut files = Vec::new();
     rust_files(&manifest.join("src"), &mut files);
@@ -93,7 +92,7 @@ fn every_translation_key_exists() {
         for caps in call.captures_iter(&text) {
             let key = caps[1].replace("\\\"", "\"").replace("\\n", "\n").replace("\\\\", "\\");
             checked += 1;
-            if !dictionary.contains_key(&key) {
+            if !gorynych_core::i18n::has_message(&key) {
                 missing.push(format!("{}: {key}", file.display()));
             }
         }

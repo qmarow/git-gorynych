@@ -106,10 +106,10 @@ pub struct CompareRequest {
 pub async fn compare_commits(cwd: &Path, a: Option<&str>, b: Option<&str>) -> Result<Comparison> {
     let (a, b) = (a.unwrap_or_default(), b.unwrap_or_default());
     if !is_hash(a) || !is_hash(b) {
-        return Err(bad_args(t("Некорректный коммит", &[])));
+        return Err(bad_args(t("invalid-commit", &[])));
     }
     if a == b {
-        return Err(bad_args(t("Выбран один и тот же коммит", &[])));
+        return Err(bad_args(t("same-commit-is-selected", &[])));
     }
     let symmetric = format!("{a}...{b}");
     let count_args = ["rev-list", "--left-right", "--count", &symmetric];
@@ -184,9 +184,9 @@ fn case_free_ere(text: &str) -> String {
 
 fn compile(query: &str, regex: bool, case_sensitive: bool) -> Result<JsRegex> {
     let pattern = if regex { query.to_owned() } else { escape_with(query, ".*+?^${}()|[]\\") };
-    let compiled = JsRegex::new(&pattern, if case_sensitive { "" } else { "i" }).map_err(|error| bad_args(t("Неверное регулярное выражение", &[])).with_hint(error))?;
+    let compiled = JsRegex::new(&pattern, if case_sensitive { "" } else { "i" }).map_err(|error| bad_args(t("invalid-regular-expression", &[])).with_hint(error))?;
     if compiled.is_match("") {
-        return Err(bad_args(t("Выражение совпадает с пустой строкой", &[])));
+        return Err(bad_args(t("expression-matches-empty-string", &[])));
     }
     Ok(compiled)
 }
@@ -279,14 +279,14 @@ fn renamed_from(old: Option<&String>, new: Option<&String>) -> Option<String> {
 pub async fn search_changes(cwd: &Path, request: &SearchChanges) -> Result<ChangeSearch> {
     let (a, b) = (request.a.as_deref().unwrap_or_default(), request.b.as_deref().unwrap_or_default());
     if !is_hash(a) || !is_hash(b) {
-        return Err(bad_args(t("Некорректный коммит", &[])));
+        return Err(bad_args(t("invalid-commit", &[])));
     }
     let query = request.query.as_deref().unwrap_or_default();
     if js::trim(query).is_empty() {
         return Ok(ChangeSearch::default());
     }
     if js::utf16_len(query) > 500 {
-        return Err(bad_args(t("Слишком длинный запрос", &[])));
+        return Err(bad_args(t("query-is-too-long", &[])));
     }
     let regex = compile(query, request.regex, request.case_sensitive)?;
 
@@ -433,7 +433,7 @@ pub async fn search_history(cwd: &Path, request: &SearchHistory) -> Result<Histo
         return Ok(HistorySearch::default());
     }
     if js::utf16_len(query) > 500 {
-        return Err(bad_args(t("Слишком длинный запрос", &[])));
+        return Err(bad_args(t("query-is-too-long", &[])));
     }
     let list: Vec<&str> = request.hashes.iter().flatten().map(String::as_str).filter(|hash| is_hash(hash)).take(HIST_MAX_HASHES).collect();
     if list.is_empty() {

@@ -299,7 +299,7 @@ fn generate_with(options: &GenerateKeyOptions, dir: &Path, candidates: &[PathBuf
     let type_args: &[&str] = match kind {
         "ed25519" => &["-t", "ed25519"],
         "rsa" => &["-t", "rsa", "-b", "4096"],
-        _ => return Err(GorynychError::new(ErrorCode::BadArgs, t("Неизвестный тип ключа", &[]))),
+        _ => return Err(GorynychError::new(ErrorCode::BadArgs, t("unknown-key-type", &[]))),
     };
     create_private_dir(dir).map_err(|error| keygen_error(false, &error.to_string()))?;
 
@@ -307,7 +307,7 @@ fn generate_with(options: &GenerateKeyOptions, dir: &Path, candidates: &[PathBuf
     if !wanted.is_empty() && (wanted.contains(['\\', '/']) || wanted.starts_with('.') || wanted.ends_with(".pub")) {
         return Err(GorynychError::new(
             ErrorCode::BadArgs,
-            t("Имя файла ключа — без папок, точки в начале и .pub на конце", &[]),
+            t("key-file-name-no-folders", &[]),
         ));
     }
     let sanitized = sanitize_key_name(wanted);
@@ -362,11 +362,11 @@ fn generate_with(options: &GenerateKeyOptions, dir: &Path, candidates: &[PathBuf
 fn keygen_error(not_found: bool, details: &str) -> GorynychError {
     let error = GorynychError::new(
         if not_found { ErrorCode::NoSshKeygen } else { ErrorCode::KeygenFailed },
-        t("Не удалось создать SSH-ключ", &[]),
+        t("couldnt-create-ssh-key", &[]),
     )
     .with_details(details);
     if not_found {
-        error.with_hint(t("Не найдена программа ssh-keygen. Установите OpenSSH или Git for Windows.", &[]))
+        error.with_hint(t("ssh-keygen-program-wasnt-found", &[]))
     } else {
         error
     }

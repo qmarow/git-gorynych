@@ -43,24 +43,24 @@ fn regex(pattern: &str) -> Regex {
 
 static PHRASES: LazyLock<Vec<(Regex, &'static str)>> = LazyLock::new(|| {
     vec![
-        (regex("(?i)has already been taken"), "уже существует"),
-        (regex("(?i)can't be blank|is missing"), "не может быть пустым"),
-        (regex("(?i)is invalid"), "недопустимое значение"),
-        (regex("(?i)is too long"), "слишком длинное"),
-        (regex("(?i)is too short"), "слишком короткое"),
-        (regex("(?i)cannot be masked|must be masked|unable to be masked"), "нельзя замаскировать"),
+        (regex("(?i)has already been taken"), "already-exists"),
+        (regex("(?i)can't be blank|is missing"), "cant-be-empty"),
+        (regex("(?i)is invalid"), "invalid-value"),
+        (regex("(?i)is too long"), "too-long"),
+        (regex("(?i)is too short"), "too-short"),
+        (regex("(?i)cannot be masked|must be masked|unable to be masked"), "cant-be-masked"),
     ]
 });
 
 fn field_name(key: &str) -> String {
     let ru = match key {
-        "key" => "Имя",
-        "value" => "Значение",
-        "cron" => "Расписание (cron)",
-        "cron_timezone" => "Часовой пояс",
-        "ref" => "Ветка",
-        "description" => "Описание",
-        "environment_scope" => "Окружение",
+        "key" => "name",
+        "value" => "value-2",
+        "cron" => "schedule-cron",
+        "cron_timezone" => "time-zone",
+        "ref" => "branch",
+        "description" => "description",
+        "environment_scope" => "environment",
         other => return other.to_owned(),
     };
     t(ru, &[])
@@ -87,7 +87,7 @@ fn validation_message(fields: Option<&Value>, message: &str) -> String {
     if !parts.is_empty() {
         return parts.join("; ");
     }
-    if message.is_empty() { t("GitLab отклонил запрос", &[]) } else { translate(message) }
+    if message.is_empty() { t("gitlab-rejected-request", &[]) } else { translate(message) }
 }
 
 fn validation_hint(fields: Option<&Value>, message: &str) -> Option<String> {
@@ -96,17 +96,17 @@ fn validation_hint(fields: Option<&Value>, message: &str) -> Option<String> {
         return Some(masked_hint());
     }
     if all.contains("cron") {
-        return Some(t("Формат cron: «минуты часы день месяц день_недели», например «0 3 * * *» — каждый день в 3:00", &[]));
+        return Some(t("cron-format-minute-hour-day", &[]));
     }
     if all.contains("key") {
-        return Some(t("Имя переменной: латинские буквы, цифры и _", &[]));
+        return Some(t("variable-name-latin-letters-digits", &[]));
     }
     None
 }
 
 /// Подсказка про маскированное значение.
 pub(crate) fn masked_hint() -> String {
-    t("Маскированное значение: одна строка, не короче 8 символов, только буквы, цифры и символы @ : . ~ - _ + / =", &[])
+    t("masked-value-one-line-at", &[])
 }
 
 async fn send(client: &reqwest::Client, base: &str, token: &GlToken, method: reqwest::Method, api_path: &str, opts: &Opts, text: bool) -> Result<reqwest::Response> {
@@ -115,13 +115,13 @@ async fn send(client: &reqwest::Client, base: &str, token: &GlToken, method: req
     let headers = [("Accept", if text { "text/plain" } else { "application/json" })];
     let body = opts.body.as_ref().map(Value::to_string);
     let network = |message: String, details: String| {
-        GorynychError::new(ErrorCode::Network, message).with_hint(t("Проверьте интернет, VPN и адрес сервера GitLab", &[])).with_details(details)
+        GorynychError::new(ErrorCode::Network, message).with_hint(t("check-internet-vpn-and-gitlab", &[])).with_details(details)
     };
     let response = match tokio::time::timeout(REQUEST_TIMEOUT, send_following(client, method, url, &auth, &headers, body)).await {
-        Err(_) => return Err(network(t("GitLab не ответил за {0} с", &[&REQUEST_TIMEOUT.as_secs()]), "This operation was aborted".to_owned())),
+        Err(_) => return Err(network(t("gitlab-didnt-respond-within-s", &[&REQUEST_TIMEOUT.as_secs()]), "This operation was aborted".to_owned())),
         Ok(Err(error)) => {
             let host = Url::parse(base).map(|url| host_of(&url)).unwrap_or_default();
-            return Err(network(t("Нет связи с {0}", &[&host]), error.to_string()));
+            return Err(network(t("no-connection-to", &[&host]), error.to_string()));
         }
         Ok(Ok(response)) => response,
     };
@@ -139,19 +139,19 @@ async fn send(client: &reqwest::Client, base: &str, token: &GlToken, method: req
         None => data.as_ref().and_then(|data| data.get("error")).filter(|value| !value.is_null()).map(js_string).unwrap_or_default(),
     };
     Err(match status {
-        401 => GorynychError::new(ErrorCode::Auth, t("GitLab отклонил токен", &[]))
-            .with_hint(t("Токен неверный, отозван или истёк — создайте новый и сохраните его заново", &[]))
+        401 => GorynychError::new(ErrorCode::Auth, t("gitlab-rejected-token", &[]))
+            .with_hint(t("token-is-wrong-revoked-or", &[]))
             .with_details(message),
-        403 => GorynychError::new(ErrorCode::Forbidden, t("Недостаточно прав", &[]))
+        403 => GorynychError::new(ErrorCode::Forbidden, t("insufficient-permissions", &[]))
             .with_hint(if message.to_lowercase().contains("scope") {
-                t("У токена нет нужного права (scope). Для действий нужен scope «api», для просмотра — «read_api»", &[])
+                t("token-lacks-required-scope-actions", &[])
             } else {
-                t("Ваша роль в проекте не позволяет это действие", &[])
+                t("your-role-in-project-doesnt", &[])
             })
             .with_details(message),
         404 => match &opts.not_found {
             Some(text) => GorynychError::new(ErrorCode::NotFound, text.clone()).with_details(message),
-            None => GorynychError::new(ErrorCode::NotFound, t("Не найдено в GitLab", &[])).with_hint(t("Проект не существует или у токена нет к нему доступа", &[])).with_details(message),
+            None => GorynychError::new(ErrorCode::NotFound, t("not-found-in-gitlab", &[])).with_hint(t("project-doesnt-exist-or-token", &[])).with_details(message),
         },
         400 | 409 | 422 => {
             let mut error = GorynychError::new(ErrorCode::Validation, validation_message(fields, &message)).with_details(message.clone());
@@ -160,8 +160,8 @@ async fn send(client: &reqwest::Client, base: &str, token: &GlToken, method: req
             }
             error
         }
-        429 => GorynychError::new(ErrorCode::RateLimit, t("GitLab ограничил частоту запросов — попробуйте через минуту", &[])),
-        _ => GorynychError::new(ErrorCode::GitlabError, t("GitLab вернул ошибку {0}", &[&status])).with_details(message),
+        429 => GorynychError::new(ErrorCode::RateLimit, t("gitlab-rate-limited-requests-try", &[])),
+        _ => GorynychError::new(ErrorCode::GitlabError, t("gitlab-returned-error", &[&status])).with_details(message),
     })
 }
 

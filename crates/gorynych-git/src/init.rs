@@ -53,8 +53,8 @@ fn template(label: &str, lines: &[&str]) -> GitignoreTemplate {
 /// `TEMPLATES`. Подписи и комментарии первого шаблона зависят от языка.
 pub fn templates() -> IndexMap<&'static str, GitignoreTemplate> {
     let common = GitignoreTemplate {
-        label: t("Общий (ОС и редакторы)", &[]),
-        lines: [t("# ОС", &[]).as_str(), ".DS_Store", "Thumbs.db", "desktop.ini", "", t("# Редакторы", &[]).as_str(), ".idea/", ".vscode/*", "!.vscode/extensions.json", "*.swp", "", t("# Логи и секреты", &[]).as_str(), "*.log", ".env", ".env.*", "!.env.example"]
+        label: t("general-os-and-editors", &[]),
+        lines: [t("os", &[]).as_str(), ".DS_Store", "Thumbs.db", "desktop.ini", "", t("editors", &[]).as_str(), ".idea/", ".vscode/*", "!.vscode/extensions.json", "*.swp", "", t("logs-and-secrets", &[]).as_str(), "*.log", ".env", ".env.*", "!.env.example"]
             .iter()
             .map(|line| (*line).to_owned())
             .collect(),
@@ -188,13 +188,13 @@ fn same_path(a: &Path, b: &Path) -> bool {
 
 /// `inspectFolder`.
 pub async fn inspect_folder(dir: Option<&str>) -> Result<FolderInfo> {
-    let dir = dir.filter(|dir| !dir.is_empty()).ok_or_else(|| GorynychError::new(ErrorCode::BadArgs, t("Не указана папка", &[])))?;
+    let dir = dir.filter(|dir| !dir.is_empty()).ok_or_else(|| GorynychError::new(ErrorCode::BadArgs, t("no-folder-specified", &[])))?;
     let full = std::path::absolute(dir).map_err(fs_error)?;
     let Ok(meta) = std::fs::metadata(&full) else {
-        return Err(GorynychError::new(ErrorCode::NotFoundPath, t("Папка не найдена: {0}", &[&full.display()])));
+        return Err(GorynychError::new(ErrorCode::NotFoundPath, t("folder-not-found", &[&full.display()])));
     };
     if !meta.is_dir() {
-        return Err(GorynychError::new(ErrorCode::NotADir, t("Это не папка", &[])));
+        return Err(GorynychError::new(ErrorCode::NotADir, t("this-isnt-folder", &[])));
     }
 
     let repo_root = git(&full, &["rev-parse", "--show-toplevel"]).await.ok().map(|out| normalize_root(js::trim(&out)));
@@ -321,7 +321,7 @@ fn trimmed_option(value: Option<&String>) -> &str {
 
 fn check_email(email: &str) -> Result<()> {
     if !email.is_empty() && !EMAIL.is_match(email) {
-        return Err(GorynychError::new(ErrorCode::BadEmail, t("Некорректный email: «{0}»", &[&email])));
+        return Err(GorynychError::new(ErrorCode::BadEmail, t("invalid-email", &[&email])));
     }
     Ok(())
 }
@@ -330,7 +330,7 @@ async fn check_branch(cwd: &Path, branch: &str) -> Result<()> {
     if succeeds(cwd, &["check-ref-format", "--branch", branch]).await {
         return Ok(());
     }
-    Err(GorynychError::new(ErrorCode::InvalidName, t("Недопустимое имя ветки: «{0}»", &[&branch])))
+    Err(GorynychError::new(ErrorCode::InvalidName, t("invalid-branch-name", &[&branch])))
 }
 
 async fn git_init(cwd: &Path, branch: &str) -> Result<()> {
@@ -374,7 +374,7 @@ fn commit_message<'a>(commit: &'a CommitOption, fallback: &'a str) -> &'a str {
 pub async fn init_repository(dir: Option<&str>, options: &InitOptions) -> Result<InitResult> {
     let info = inspect_folder(dir).await?;
     if info.is_repo_root {
-        return Err(GorynychError::new(ErrorCode::AlreadyRepo, t("Эта папка уже является Git-репозиторием", &[])));
+        return Err(GorynychError::new(ErrorCode::AlreadyRepo, t("this-folder-is-already-git", &[])));
     }
     let cwd = PathBuf::from(&info.path);
     let mut steps = Vec::new();
@@ -388,20 +388,20 @@ pub async fn init_repository(dir: Option<&str>, options: &InitOptions) -> Result
     let email = trimmed_option(identity.and_then(|item| item.email.as_ref()));
     let global = identity.and_then(|item| item.global) == Some(true);
     if options.commit.is_some() && name.is_empty() && info.identity.name.is_empty() {
-        return Err(GorynychError::new(ErrorCode::NoIdentity, t("Укажите имя автора для первого коммита", &[])));
+        return Err(GorynychError::new(ErrorCode::NoIdentity, t("enter-author-name-for-first", &[])));
     }
     if options.commit.is_some() && email.is_empty() && info.identity.email.is_empty() {
-        return Err(GorynychError::new(ErrorCode::NoIdentity, t("Укажите email автора для первого коммита", &[])));
+        return Err(GorynychError::new(ErrorCode::NoIdentity, t("enter-author-email-for-first", &[])));
     }
     check_email(email)?;
     let remote = trimmed_option(options.remote.as_ref());
     if remote.chars().any(js::is_whitespace) {
-        return Err(GorynychError::new(ErrorCode::BadRemote, t("Адрес remote не должен содержать пробелов", &[])));
+        return Err(GorynychError::new(ErrorCode::BadRemote, t("remote-address-must-not-contain", &[])));
     }
 
     step(&mut steps, "git init", git_init(&cwd, &branch)).await?;
     if !name.is_empty() || !email.is_empty() {
-        let label = if global { t("Имя и email (для всех репозиториев)", &[]) } else { t("Имя и email (для этого репозитория)", &[]) };
+        let label = if global { t("name-and-email-for-all", &[]) } else { t("name-and-email-for-this", &[]) };
         step(&mut steps, &label, set_identity(&cwd, global, name, email)).await?;
     }
     if let Some(text) = options.gitignore.as_deref().filter(|text| !text.is_empty() && !info.has_gitignore) {
@@ -412,7 +412,7 @@ pub async fn init_repository(dir: Option<&str>, options: &InitOptions) -> Result
     }
     let mut commit = None;
     if let Some(option) = &options.commit {
-        let label = t("Первый коммит", &[]);
+        let label = t("first-commit", &[]);
         commit = Some(step(&mut steps, &label, commit_everything(&cwd, commit_message(option, "Initial commit"))).await?);
     }
     if !remote.is_empty() {
@@ -426,13 +426,13 @@ pub async fn init_repository(dir: Option<&str>, options: &InitOptions) -> Result
 pub fn validate_url(url: Option<&str>) -> Result<String> {
     let url = js::trim(url.unwrap_or_default());
     if url.is_empty() {
-        return Err(GorynychError::new(ErrorCode::BadRemote, t("Укажите адрес репозитория", &[])));
+        return Err(GorynychError::new(ErrorCode::BadRemote, t("specify-repository-address", &[])));
     }
     if url.chars().any(js::is_whitespace) {
-        return Err(GorynychError::new(ErrorCode::BadRemote, t("Адрес не должен содержать пробелов", &[])));
+        return Err(GorynychError::new(ErrorCode::BadRemote, t("address-must-not-contain-spaces", &[])));
     }
     if !URL_FORM.is_match(url) {
-        return Err(GorynychError::new(ErrorCode::BadRemote, t("Не похоже на адрес Git-репозитория", &[])).with_hint(t("Пример: https://gitlab.com/user/project.git или git@gitlab.com:user/project.git", &[])));
+        return Err(GorynychError::new(ErrorCode::BadRemote, t("doesnt-look-like-git-repository", &[])).with_hint(t("example-https-gitlab-com-user", &[])));
     }
     Ok(url.to_owned())
 }
@@ -444,10 +444,10 @@ fn mentions(url: &str, name: &str) -> bool {
 /// `hostHint`.
 pub fn host_hint(url: &str) -> Option<String> {
     if mentions(url, "gitlab") {
-        return Some(t("GitLab по HTTPS: войдите через окно Git Credential Manager или используйте Personal Access Token (scope: read_repository и write_repository) вместо пароля. По SSH: добавьте публичный ключ в GitLab → Preferences → SSH Keys.", &[]));
+        return Some(t("gitlab-over-https-sign-in", &[]));
     }
     if mentions(url, "github") {
-        return Some(t("GitHub по HTTPS: войдите через окно Git Credential Manager или используйте Personal Access Token. По SSH: добавьте ключ в Settings → SSH and GPG keys.", &[]));
+        return Some(t("github-over-https-sign-in", &[]));
     }
     None
 }
@@ -697,7 +697,7 @@ async fn overlay_server_history(cwd: &Path, branch: &str) -> Result<usize> {
 pub async fn connect_repository(network: &Network, dir: Option<&str>, options: &ConnectOptions) -> Result<ConnectResult> {
     let info = inspect_folder(dir).await?;
     if info.is_repo_root {
-        return Err(GorynychError::new(ErrorCode::AlreadyRepo, t("В этой папке уже есть Git-репозиторий", &[])));
+        return Err(GorynychError::new(ErrorCode::AlreadyRepo, t("this-folder-already-has-git", &[])));
     }
     let url = validate_url(options.url.as_deref())?;
     let cwd = PathBuf::from(&info.path);
@@ -706,10 +706,10 @@ pub async fn connect_repository(network: &Network, dir: Option<&str>, options: &
     let name = trimmed_option(identity.and_then(|item| item.name.as_ref()));
     let email = trimmed_option(identity.and_then(|item| item.email.as_ref()));
     if options.commit.is_some() && name.is_empty() && info.identity.name.is_empty() {
-        return Err(GorynychError::new(ErrorCode::NoIdentity, t("Укажите имя автора для коммита", &[])));
+        return Err(GorynychError::new(ErrorCode::NoIdentity, t("enter-author-name-for-commit", &[])));
     }
     if options.commit.is_some() && email.is_empty() && info.identity.email.is_empty() {
-        return Err(GorynychError::new(ErrorCode::NoIdentity, t("Укажите email автора для коммита", &[])));
+        return Err(GorynychError::new(ErrorCode::NoIdentity, t("enter-author-email-for-commit", &[])));
     }
     check_email(email)?;
 
@@ -722,7 +722,7 @@ pub async fn connect_repository(network: &Network, dir: Option<&str>, options: &
     };
     let branch = js::trim(branch).to_owned();
     if !heads.empty && !heads.branches.iter().any(|item| item.name == branch) {
-        return Err(GorynychError::new(ErrorCode::NotFoundRef, t("На сервере нет ветки «{0}»", &[&branch])));
+        return Err(GorynychError::new(ErrorCode::NotFoundRef, t("server-has-no-branch", &[&branch])));
     }
     check_branch(&cwd, &branch).await?;
 
@@ -731,7 +731,7 @@ pub async fn connect_repository(network: &Network, dir: Option<&str>, options: &
 
     step(&mut steps, "git init", git_init(&cwd, &branch)).await?;
     if !name.is_empty() || !email.is_empty() {
-        let label = t("Имя и email автора", &[]);
+        let label = t("author-name-and-email", &[]);
         step(&mut steps, &label, set_identity(&cwd, identity.and_then(|item| item.global) == Some(true), name, email)).await?;
     }
     step(&mut steps, "remote origin", async { git(&cwd, &["remote", "add", "origin", &url]).await.map(|_| ()) }).await?;
@@ -739,9 +739,9 @@ pub async fn connect_repository(network: &Network, dir: Option<&str>, options: &
     let mut restored = 0;
     let mut remote_has_gitignore = false;
     if !heads.empty {
-        let label = t("Загрузка {0} с сервера", &[&branch]);
+        let label = t("downloading-from-server", &[&branch]);
         step(&mut steps, &label, async { git_with(&cwd, &["fetch", "origin", &branch], net.options.clone()).await.map(|_| ()) }).await?;
-        let label = t("Наложение истории сервера", &[]);
+        let label = t("applying-server-history", &[]);
         restored = step(&mut steps, &label, overlay_server_history(&cwd, &branch)).await?;
         remote_has_gitignore = cwd.join(".gitignore").exists() && !info.has_gitignore;
     }
@@ -750,7 +750,7 @@ pub async fn connect_repository(network: &Network, dir: Option<&str>, options: &
     }
     let mut commit = None;
     if let Some(option) = &options.commit {
-        let label = t("Коммит файлов проекта", &[]);
+        let label = t("commit-project-files", &[]);
         commit = Some(step(&mut steps, &label, commit_everything(&cwd, commit_message(option, "Add project files"))).await?);
     }
 
@@ -775,7 +775,7 @@ pub async fn connect_repository(network: &Network, dir: Option<&str>, options: &
                 }
                 Err(mut error) => {
                     if error.code == ErrorCode::Protected && mentions(&url, "gitlab") {
-                        error.hint = Some(t("В GitLab основная ветка защищена: пушить в неё могут только Maintainer. Попросите роль Maintainer, снимите защиту (Settings → Repository → Protected branches) или отправьте изменения в отдельную ветку.", &[]));
+                        error.hint = Some(t("in-gitlab-main-branch-is", &[]));
                     }
                     push_error = Some(error);
                     steps.push(InitStep { label, ok: false });

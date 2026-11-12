@@ -121,10 +121,10 @@ const readPref = (key: string, def: boolean) => {
 };
 
 const MODE_LABELS: Record<string, (t: DiffTarget) => string> = {
-  commit: (t) => (t.kind === 'compare' ? `${t.parent!.slice(0, 7)} → ${t.hash!.slice(0, 7)}` : t.kind === 'stash' ? (t.stashId ?? 'stash') : tr('коммит {0}', t.hash!.slice(0, 7))),
+  commit: (t) => (t.kind === 'compare' ? `${t.parent!.slice(0, 7)} → ${t.hash!.slice(0, 7)}` : t.kind === 'stash' ? (t.stashId ?? 'stash') : tr('commit-6', t.hash!.slice(0, 7))),
   staged: () => 'staged',
   unstaged: () => 'unstaged',
-  untracked: () => tr('новый файл'),
+  untracked: () => tr('new-file'),
 };
 
 export default function DiffView({
@@ -504,7 +504,7 @@ export default function DiffView({
         <ToggleButton
           active={ignoreWhitespace}
           onClick={onToggleWhitespace}
-          title={tr('Игнорировать изменения пробелов')}
+          title={tr('ignore-whitespace-changes')}
           className="rounded ring-1 ring-gk-border"
         >
           <Space size={13} />
@@ -513,7 +513,7 @@ export default function DiffView({
           <ToggleButton
             active={fullFile}
             onClick={onToggleFullFile}
-            title={fullFile ? tr('Показан весь файл. Нажмите, чтобы оставить только места изменений') : tr('Показать весь файл, а не только места изменений')}
+            title={fullFile ? tr('showing-whole-file-click-to') : tr('show-whole-file-not-only')}
             data-testid="diff-full-file"
             className="rounded ring-1 ring-gk-border"
           >
@@ -523,7 +523,7 @@ export default function DiffView({
         <ToggleButton
           active={inline}
           onClick={toggleInline}
-          title={tr('Подсвечивать, что именно изменилось внутри строки')}
+          title={tr('highlight-what-exactly-changed-within')}
           className="rounded ring-1 ring-gk-border"
         >
           <Highlighter size={13} />
@@ -532,7 +532,7 @@ export default function DiffView({
           active={syntaxOn && Boolean(lang)}
           onClick={toggleSyntax}
           disabled={!lang}
-          title={lang ? tr('Подсветка синтаксиса: {0}', languageName(lang)) : tr('Подсветка синтаксиса — тип файла не распознан')}
+          title={lang ? tr('syntax-highlighting', languageName(lang)) : tr('syntax-highlighting-file-type-not')}
           data-testid="diff-syntax"
           className="rounded ring-1 ring-gk-border disabled:opacity-40"
         >
@@ -541,7 +541,7 @@ export default function DiffView({
         <ToggleButton
           active={search.open}
           onClick={() => (search.open ? closeSearch() : openSearch())}
-          title={kb(tr('Поиск в изменениях (Ctrl+F)'))}
+          title={kb(tr('search-in-changes-ctrl-f'))}
           data-testid="diff-search-toggle"
           className="rounded ring-1 ring-gk-border"
         >
@@ -553,23 +553,23 @@ export default function DiffView({
             disabled={(!data || Boolean(data.error) || data.binary || data.tooLarge) as boolean}
             data-testid="diff-edit"
             data-draft={editDrafts.has(editor!.key) ? '1' : undefined}
-            title={kb(editDrafts.has(editor!.key) ? tr('В редакторе остались несохранённые правки этого файла — открыть их') : tr('Редактировать файл в рабочей папке (Ctrl+S — сохранить)'))}
+            title={kb(editDrafts.has(editor!.key) ? tr('editor-has-unsaved-edits-of') : tr('edit-file-in-working-folder'))}
             className={`ml-1 flex h-6 shrink-0 items-center gap-1 rounded px-2 text-[11.5px] ring-1 transition-colors disabled:opacity-40 ${
               editDrafts.has(editor!.key) ? 'text-gk-yellow ring-gk-yellow/50 enabled:hover:bg-gk-yellow/10' : 'text-gk-muted ring-gk-border enabled:hover:bg-gk-fg/10 enabled:hover:text-gk-text'
             }`}
           >
-            <Pencil size={12} /> {editDrafts.has(editor!.key) ? tr('Продолжить правку') : tr('Редактировать')}
+            <Pencil size={12} /> {editDrafts.has(editor!.key) ? tr('keep-editing') : tr('edit-6')}
           </button>
         )}
         {changeCount > 0 && (
           <div className="ml-1 flex items-center rounded ring-1 ring-gk-border">
-            <ToggleButton onClick={() => goChange(-1)} title={tr('Предыдущее изменение (Shift+F7)')}>
+            <ToggleButton onClick={() => goChange(-1)} title={tr('previous-change-shift-f7')}>
               <ArrowUpToLine size={13} />
             </ToggleButton>
-            <span className="min-w-[44px] select-none text-center text-[11px] text-gk-muted" title={tr('Блоков изменений в файле')}>
-              {current >= 0 ? `${current + 1} / ${changeCount}` : tr('{0} изм.', changeCount)}
+            <span className="min-w-[44px] select-none text-center text-[11px] text-gk-muted" title={tr('change-blocks-in-file')}>
+              {current >= 0 ? `${current + 1} / ${changeCount}` : tr('chg', changeCount)}
             </span>
-            <ToggleButton onClick={() => goChange(1)} title={tr('Следующее изменение (F7)')}>
+            <ToggleButton onClick={() => goChange(1)} title={tr('next-change-f7')}>
               <ArrowDownToLine size={13} />
             </ToggleButton>
           </div>
@@ -579,38 +579,38 @@ export default function DiffView({
 
         {editing && (
           <div className="ml-2 flex shrink-0 items-center gap-2 text-[11px]">
-            {caret && <span className="text-gk-dim">{tr('Стр {0}, кол {1}', caret.line, caret.column)}</span>}
+            {caret && <span className="text-gk-dim">{tr('ln-col', caret.line, caret.column)}</span>}
             {edit!.mixedEol && (
-              <span className="text-gk-yellow" title={tr('В файле есть и CRLF, и LF: при сохранении все строки получат {0}', edit!.eol === '\r\n' ? 'CRLF' : 'LF')}>
-                {tr('Смешанные окончания строк')}
+              <span className="text-gk-yellow" title={tr('file-has-both-crlf-and', edit!.eol === '\r\n' ? 'CRLF' : 'LF')}>
+                {tr('mixed-line-endings')}
               </span>
             )}
             {edit!.restored && (
-              <span className="text-gk-blue" title={tr('Окно изменений закрылось, пока правки не были сохранены: они возвращены. «Закрыть редактор» без сохранения их отбросит.')}>
-                {tr('Правки восстановлены')}
+              <span className="text-gk-blue" title={tr('changes-view-closed-before-edits')}>
+                {tr('edits-restored')}
               </span>
             )}
             {dirty ? (
-              <span className="text-gk-yellow" data-testid="file-editor-dirty">{tr('Не сохранено')}</span>
+              <span className="text-gk-yellow" data-testid="file-editor-dirty">{tr('not-saved')}</span>
             ) : edit!.savedAt ? (
-              <span className="text-gk-green" data-testid="file-editor-saved">{tr('Сохранено')}</span>
+              <span className="text-gk-green" data-testid="file-editor-saved">{tr('saved-2')}</span>
             ) : null}
             <button
               onClick={() => saveEditor()}
               disabled={!dirty || edit!.saving}
               data-testid="file-editor-save"
-              title={kb(tr('Сохранить (Ctrl+S)'))}
+              title={kb(tr('save-ctrl-s'))}
               className="flex h-6 items-center gap-1 rounded bg-gk-blue/20 px-2 text-[11.5px] text-gk-blue ring-1 ring-gk-blue/40 transition-colors enabled:hover:bg-gk-blue/30 disabled:opacity-40"
             >
-              {edit!.saving ? <Loader2 size={12} className="animate-spin" /> : <Save size={12} />} {tr('Сохранить')}
+              {edit!.saving ? <Loader2 size={12} className="animate-spin" /> : <Save size={12} />} {tr('save')}
             </button>
             <button
               onClick={closeEditor}
               data-testid="file-editor-close"
-              title={tr('Вернуться к просмотру изменений (Esc)')}
+              title={tr('back-to-changes-view-esc')}
               className="flex h-6 items-center rounded px-2 text-[11.5px] text-gk-muted ring-1 ring-gk-border transition-colors hover:bg-gk-fg/10 hover:text-gk-text"
             >
-              {tr('Закрыть редактор')}
+              {tr('close-editor')}
             </button>
           </div>
         )}
@@ -619,13 +619,13 @@ export default function DiffView({
           <span className="mr-1 text-[11px] text-gk-dim">
             {target.index + 1} / {target.list.length}
           </span>
-          <IconBtn title={kb(tr('Предыдущий файл (Alt+↑)'))} disabled={!onPrev} onClick={prev!}>
+          <IconBtn title={kb(tr('previous-file-alt'))} disabled={!onPrev} onClick={prev!}>
             <ChevronUp size={15} />
           </IconBtn>
-          <IconBtn title={kb(tr('Следующий файл (Alt+↓)'))} disabled={!onNext} onClick={next!}>
+          <IconBtn title={kb(tr('next-file-alt'))} disabled={!onNext} onClick={next!}>
             <ChevronDown size={15} />
           </IconBtn>
-          <IconBtn title={tr('Закрыть (Esc)')} onClick={close}>
+          <IconBtn title={tr('close-esc')} onClick={close}>
             <X size={15} />
           </IconBtn>
         </div>
@@ -656,17 +656,17 @@ export default function DiffView({
               {edit!.error.code === 'CHANGED_ON_DISK' && (
                 <>
                   <button onClick={reloadEditor} className="rounded px-2 py-0.5 ring-1 ring-gk-red/40 hover:bg-gk-red/15">
-                    {tr('Перечитать')}
+                    {tr('reload-2')}
                   </button>
                   <button onClick={() => saveEditor(true)} data-testid="file-editor-overwrite" className="rounded px-2 py-0.5 ring-1 ring-gk-red/40 hover:bg-gk-red/15">
-                    {tr('Сохранить поверх')}
+                    {tr('save-over-it')}
                   </button>
                 </>
               )}
             </div>
           )}
           {edit!.loading ? (
-            <Placeholder>{tj('{0} Открываю файл…', [<Loader2 size={15} className="animate-spin" />])}</Placeholder>
+            <Placeholder>{tj('opening-file', [<Loader2 size={15} className="animate-spin" />])}</Placeholder>
           ) : edit!.loadError ? (
             <Placeholder className="text-gk-red">{edit!.loadError.message}</Placeholder>
           ) : (
@@ -678,23 +678,23 @@ export default function DiffView({
       <div ref={scrollRef} className="min-h-0 min-w-0 flex-1 overflow-auto font-mono text-[12px] leading-5 [tab-size:4]">
         {!data ? (
           <Placeholder>
-            {tj('{0} Загрузка diff…', [<Loader2 size={15} className="animate-spin" />])}</Placeholder>
+            {tj('loading-diff', [<Loader2 size={15} className="animate-spin" />])}</Placeholder>
         ) : data.error ? (
           <Placeholder className="text-gk-red">{data.error}</Placeholder>
         ) : data.binary ? (
           <Placeholder>
-            {tj('{0} Бинарный файл — построчный diff недоступен', [<FileText size={15} />])}</Placeholder>
+            {tj('binary-file-line-diff-unavailable', [<FileText size={15} />])}</Placeholder>
         ) : data.tooLarge ? (
-          <Placeholder>{tj('Файл слишком большой ({0} КБ) для просмотра', [Math.round(data.size! / 1024)])}</Placeholder>
+          <Placeholder>{tj('file-is-too-large-kb-to', [Math.round(data.size! / 1024)])}</Placeholder>
         ) : data.hunks.length === 0 ? (
           <Placeholder>
             {data.eolOnly
-              ? tr('Изменились только окончания строк (CRLF ↔ LF) — текст файла тот же')
+              ? tr('only-line-endings-changed-crlf')
               : file.oldPath && file.oldPath !== file.path
-              ? tr('Файл переименован без изменения содержимого')
+              ? tr('file-was-renamed-without-content')
               : ignoreWhitespace
-                ? tr('Изменения только в пробелах')
-                : tr('Нет изменений в содержимом')}
+                ? tr('whitespace-only-changes')
+                : tr('no-content-changes')}
           </Placeholder>
         ) : view === 'split' ? (
           <SplitDiff hunks={data.hunks} highlights={highlights} hunkProps={hunkProps} markers={guardMarkers} {...lineView} />
@@ -703,15 +703,15 @@ export default function DiffView({
         )}
         {data?.truncated && (
           <div className="border-t border-gk-border px-4 py-2 font-sans text-xs text-gk-dim">
-            {tr('Diff слишком большой — показана только часть строк')}</div>
+            {tr('diff-is-too-large-only')}</div>
         )}
       </div>
       {data?.hunks?.length! > 0 && <ChangeRuler scrollRef={scrollRef} deps={[data, view, highlights]} current={current} onJump={goToChange} />}
       </div>
       )}
       {leaveGuard && (
-        <ConfirmDialog title={tr('Правки не сохранены')} confirmLabel={tr('Закрыть без сохранения')} danger onConfirm={leaveGuard} onClose={() => setLeaveGuard(null)}>
-          {tr('В редакторе есть несохранённые правки. Если закрыть, они пропадут.')}
+        <ConfirmDialog title={tr('unsaved-edits')} confirmLabel={tr('close-without-saving')} danger onConfirm={leaveGuard} onClose={() => setLeaveGuard(null)}>
+          {tr('editor-has-unsaved-edits-they')}
         </ConfirmDialog>
       )}
     </div>
@@ -950,7 +950,7 @@ function LineText({ line, segs, tokens, hits, current }: RowText & { line: DiffL
         className={cls}
         data-hit={p.hit ? p.hit.idx : undefined}
         data-hit-current={p.hit?.current ? '' : undefined}
-        title={p.ws ? tr('Изменились пробелы') : undefined}
+        title={p.ws ? tr('whitespace-changed') : undefined}
       >
         {text}
       </Tag>
@@ -1014,26 +1014,26 @@ function SearchBar({ inputRef, search, onChange, error, count, capped, index, on
               onChange({ regex: !search.regex });
             }
           }}
-          placeholder={tr('Найти в изменениях')}
-          aria-label={tr('Найти в изменениях')}
+          placeholder={tr('find-in-changes')}
+          aria-label={tr('find-in-changes')}
           spellCheck={false}
           className="min-w-0 flex-1 bg-transparent py-1 font-mono text-[12px] text-gk-text outline-none placeholder:font-sans placeholder:text-gk-dim"
         />
-        {opt('caseSensitive', CaseSensitive, tr('Учитывать регистр (Alt+C)'), 'search-case')}
-        {opt('regex', Regex, tr('Регулярное выражение (Alt+R)'), 'search-regex')}
-        {opt('changedOnly', Diff, tr('Только в изменённых строках (+ и −)'), 'search-changed')}
+        {opt('caseSensitive', CaseSensitive, tr('match-case-alt-c'), 'search-case')}
+        {opt('regex', Regex, tr('regular-expression-alt-r'), 'search-regex')}
+        {opt('changedOnly', Diff, tr('only-in-changed-lines-and'), 'search-changed')}
       </div>
       <span className={`min-w-[88px] text-[11.5px] ${error || (search.query && !count) ? 'text-gk-red' : 'text-gk-muted'}`} data-testid="search-count">
-        {error ? error : !search.query ? '' : count ? tr('{0} из {1}{2}', index + 1, count, capped ? '+' : '') : tr('Нет совпадений')}
+        {error ? error : !search.query ? '' : count ? tr('of-2', index + 1, count, capped ? '+' : '') : tr('no-matches')}
       </span>
       <div className="flex items-center">
-        <IconBtn title={tr('Предыдущее (Shift+Enter, Shift+F3)')} disabled={!count} onClick={() => onStep(-1)}>
+        <IconBtn title={tr('previous-shift-enter-shift-f3')} disabled={!count} onClick={() => onStep(-1)}>
           <ChevronUp size={15} />
         </IconBtn>
-        <IconBtn title={tr('Следующее (Enter, F3)')} disabled={!count} onClick={() => onStep(1)}>
+        <IconBtn title={tr('next-enter-f3')} disabled={!count} onClick={() => onStep(1)}>
           <ChevronDown size={15} />
         </IconBtn>
-        <IconBtn title={tr('Закрыть поиск (Esc)')} onClick={onClose}>
+        <IconBtn title={tr('close-search-esc')} onClick={onClose}>
           <X size={15} />
         </IconBtn>
       </div>

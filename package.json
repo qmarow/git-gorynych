@@ -12,13 +12,15 @@
     "electron:dev": "concurrently -k -n VITE,ELECTRON -c cyan,green \"vite\" \"wait-on tcp:127.0.0.1:5173 && cross-env VITE_DEV_SERVER_URL=http://127.0.0.1:5173 electron .\"",
     "build": "vite build",
     "ui:watch": "vite build --watch",
-    "typecheck": "tsc -p tsconfig.json",
+    "typecheck": "node scripts/i18n-types.mjs --check && tsc -p tsconfig.json",
+    "i18n:types": "node scripts/i18n-types.mjs",
     "app:build": "vite build && cargo build --release -p gorynych-tauri --features custom-protocol",
     "electron:preview": "vite build && electron .",
     "electron:build": "vite build && electron-builder --win --x64",
     "electron:build:portable": "vite build && electron-builder --win portable --x64"
   },
   "devDependencies": {
+    "@fluent/bundle": "^0.19.1",
     "@tailwindcss/vite": "^4.1.11",
     "@tauri-apps/api": "^2.12.4",
     "@types/react": "^19.3.0",

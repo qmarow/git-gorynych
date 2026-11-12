@@ -45,14 +45,14 @@ impl Bitbucket<'_, '_> {
         let lines_of = |key: &str| truthy(s.get(key)).map(|value| CiScript { lines: script_lines(Some(value)), inherited: None });
         CiJob {
             id: format!("s{}", self.counter),
-            name: truthy(s.get("name")).map_or_else(|| ctx.t("Шаг {0}", &[&(index + 1)]), Value::js_string),
+            name: truthy(s.get("name")).map_or_else(|| ctx.t("step-4", &[&(index + 1)]), Value::js_string),
             source: self.file.to_owned(),
             kind: CiJobKind::Job,
             image: image_name(s.get("image")).or_else(|| self.default_image.clone()),
             image_inherited: if truthy(s.get("image")).is_some() {
                 None
             } else if self.default_image.as_ref().is_some_and(Value::truthy) {
-                Some(ctx.t("глобально", &[]))
+                Some(ctx.t("global", &[]))
             } else {
                 None
             },
@@ -69,7 +69,7 @@ impl Bitbucket<'_, '_> {
             }),
             cache: truthy(s.get("caches")).map(|caches| joined(Some(caches), ", ")),
             rules: match s.get("condition").and_then(|condition| truthy(condition.get("changesets"))) {
-                Some(changesets) => vec![CiRule::text(ctx.t("изменены {0}", &[&joined(changesets.get("includePaths"), ", ")]))],
+                Some(changesets) => vec![CiRule::text(ctx.t("changed", &[&joined(changesets.get("includePaths"), ", ")]))],
                 None => Vec::new(),
             },
             raw: to_yaml(s),
@@ -83,7 +83,7 @@ impl Bitbucket<'_, '_> {
             if let Some(parallel) = truthy(item.get("parallel")) {
                 let steps = if matches!(parallel, Value::Seq(_)) { as_array(Some(parallel)) } else { as_array(parallel.get("steps")) };
                 let jobs = steps.into_iter().enumerate().map(|(at, step)| self.step_job(step, at)).collect();
-                stages.push(CiStage::new(self.ctx.t("Параллельно", &[]), jobs));
+                stages.push(CiStage::new(self.ctx.t("concurrency", &[]), jobs));
             } else if let Some(stage) = truthy(item.get("stage")) {
                 let jobs = as_array(stage.get("steps")).into_iter().enumerate().map(|(at, step)| self.step_job(step, at)).collect();
                 let name = non_null(stage.get("name")).cloned().unwrap_or_else(|| string_value(format!("Stage {}", index + 1)));
@@ -109,7 +109,7 @@ pub(crate) fn load_bitbucket(ctx: &Ctx<'_>, file: &str) -> LoadResult<CiConfig> 
     let mut builder = Bitbucket { ctx, file, default_image: default_image.clone(), counter: 0 };
     let mut pipelines = Vec::new();
     if let Some(list) = truthy(pipelines_cfg.get("default")) {
-        pipelines.push(builder.build(ctx.t("default — все ветки", &[]), list));
+        pipelines.push(builder.build(ctx.t("default-all-branches", &[]), list));
     }
     for group in ["branches", "tags", "bookmarks", "pull-requests", "custom"] {
         if let Some(Value::Map(map)) = pipelines_cfg.get(group) {
@@ -120,18 +120,18 @@ pub(crate) fn load_bitbucket(ctx: &Ctx<'_>, file: &str) -> LoadResult<CiConfig> 
     }
     let mut info = Vec::new();
     if let Some(image) = default_image {
-        info.push(CiInfo { label: ctx.t("Образ по умолчанию", &[]), value: image });
+        info.push(CiInfo { label: ctx.t("default-image", &[]), value: image });
     }
     if let Some(services) = truthy(definitions.get("services")) {
         let names: Vec<String> = services.js_entries().into_iter().map(|(key, _)| key).collect();
-        info.push(CiInfo { label: ctx.t("Сервисы", &[]), value: string_value(names.join(", ")) });
+        info.push(CiInfo { label: ctx.t("services", &[]), value: string_value(names.join(", ")) });
     }
     Ok(CiConfig {
         errors: Ctx::file_errors(&parsed, file),
-        warnings: if pipelines.is_empty() { vec![ctx.t("Не найден раздел pipelines", &[])] } else { Vec::new() },
+        warnings: if pipelines.is_empty() { vec![ctx.t("pipelines-section-not-found", &[])] } else { Vec::new() },
         info,
         triggers: pipelines.iter().map(|pipeline| CiRule::text(pipeline.title.clone())).collect(),
-        triggers_title: Some(ctx.t("Пайплайны", &[])),
+        triggers_title: Some(ctx.t("pipelines", &[])),
         pipelines,
         files: vec![CiFile { path: file.to_owned(), text, hash: None, draft: false }],
         ..CiConfig::default()
@@ -228,7 +228,7 @@ pub(crate) fn load_circle(ctx: &Ctx<'_>, file: &str) -> LoadResult<CiConfig> {
     }
     if pipelines.is_empty() && !job_defs.as_map().is_none_or(JsMap::is_empty) {
         let jobs = job_defs.as_map().map_or_else(Vec::new, |map| map.keys().map(|key| make_job(key.clone(), key, &empty)).collect());
-        pipelines.push(CiPipeline { id: "jobs".to_owned(), title: "jobs".to_owned(), stages: vec![CiStage::new(ctx.t("Задания", &[]), jobs)] });
+        pipelines.push(CiPipeline { id: "jobs".to_owned(), title: "jobs".to_owned(), stages: vec![CiStage::new(ctx.t("jobs-2", &[]), jobs)] });
     }
     let includes = truthy(data.get("orbs")).map_or_else(Vec::new, |orbs| {
         orbs.js_entries()
@@ -248,7 +248,7 @@ pub(crate) fn load_circle(ctx: &Ctx<'_>, file: &str) -> LoadResult<CiConfig> {
         errors: Ctx::file_errors(&parsed, file),
         includes,
         info: truthy(data.get("version")).map_or_else(Vec::new, |version| {
-            vec![CiInfo { label: ctx.t("Версия конфига", &[]), value: string_value(version.js_string()) }]
+            vec![CiInfo { label: ctx.t("config-version", &[]), value: string_value(version.js_string()) }]
         }),
         triggers: pipelines.iter().map(|pipeline| CiRule::text(format!("workflow {}", pipeline.title))).collect(),
         triggers_title: Some("Workflows".to_owned()),
@@ -374,16 +374,16 @@ pub(crate) fn load_azure(ctx: &Ctx<'_>, file: &str) -> LoadResult<CiConfig> {
         levelize(ctx, jobs)
     } else {
         let mut cfg = JsMap::new();
-        cfg.insert("displayName".to_owned(), string_value(ctx.t("Задание", &[])));
+        cfg.insert("displayName".to_owned(), string_value(ctx.t("job-4", &[])));
         for key in ["steps", "pool"] {
             if let Some(value) = data.get(key) {
                 cfg.insert(key.to_owned(), value.clone());
             }
         }
-        vec![CiStage::new(ctx.t("Шаги", &[]), vec![azure.make_job(&Value::Map(cfg))])]
+        vec![CiStage::new(ctx.t("steps", &[]), vec![azure.make_job(&Value::Map(cfg))])]
     };
 
-    let switch_text = |value: &Value| if value.as_str() == Some("none") { ctx.t("выключен", &[]) } else { compact(value) };
+    let switch_text = |value: &Value| if value.as_str() == Some("none") { ctx.t("disabled", &[]) } else { compact(value) };
     let mut triggers = Vec::new();
     if let Some(trigger) = data.get("trigger") {
         triggers.push(CiRule::text(format!("push: {}", switch_text(trigger))));
@@ -414,16 +414,16 @@ pub(crate) fn load_azure(ctx: &Ctx<'_>, file: &str) -> LoadResult<CiConfig> {
     }
     let info = truthy(data.get("pool")).map_or_else(Vec::new, |pool| {
         let value = pool_name(pool).unwrap_or_else(|| string_value(to_yaml(pool)));
-        vec![CiInfo { label: ctx.t("Пул", &[]), value }]
+        vec![CiInfo { label: ctx.t("pool", &[]), value }]
     });
     Ok(CiConfig {
         errors: Ctx::file_errors(&parsed, file),
         includes,
         info,
         triggers,
-        triggers_title: Some(ctx.t("Когда запускается", &[])),
+        triggers_title: Some(ctx.t("when-it-runs", &[])),
         variables: azure_variables(data.get("variables")),
-        pipelines: vec![CiPipeline { id: "main".to_owned(), title: ctx.t("Пайплайн", &[]), stages }],
+        pipelines: vec![CiPipeline { id: "main".to_owned(), title: ctx.t("pipeline", &[]), stages }],
         files: vec![CiFile { path: file.to_owned(), text, hash: None, draft: false }],
         ..CiConfig::default()
     })
@@ -438,7 +438,7 @@ pub(crate) fn load_generic(ctx: &Ctx<'_>, file: &str) -> LoadResult<CiConfig> {
     let info = match parsed.data.as_map() {
         Some(map) if !map.is_empty() => {
             let keys: Vec<&str> = map.keys().map(String::as_str).collect();
-            vec![CiInfo { label: ctx.t("Разделы", &[]), value: string_value(keys.join(", ")) }]
+            vec![CiInfo { label: ctx.t("sections", &[]), value: string_value(keys.join(", ")) }]
         }
         _ => Vec::new(),
     };

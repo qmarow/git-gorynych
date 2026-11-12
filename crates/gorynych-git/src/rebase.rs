@@ -70,21 +70,21 @@ fn brief(commit: &PlanCommit) -> RebaseCommit {
 
 async fn require_branch_state(cwd: &Path) -> Result<(String, String)> {
     if detect_operation(cwd).await.is_some() {
-        return Err(GorynychError::new(ErrorCode::OperationInProgress, t("Сначала завершите текущую операцию (merge / rebase / cherry-pick)", &[])).with_hint(t("Продолжите или прервите её в жёлтой панели сверху.", &[])));
+        return Err(GorynychError::new(ErrorCode::OperationInProgress, t("finish-current-operation-first-merge", &[])).with_hint(t("continue-or-abort-it-in", &[])));
     }
     let Some(head) = head_hash(cwd).await else {
-        return Err(GorynychError::new(ErrorCode::NoCommits, t("В репозитории ещё нет коммитов", &[])));
+        return Err(GorynychError::new(ErrorCode::NoCommits, t("repository-has-no-commits-yet", &[])));
     };
     let branch = quiet(cwd, &["symbolic-ref", "--quiet", "--short", "HEAD"]).await;
     if branch.is_empty() {
-        return Err(GorynychError::new(ErrorCode::Detached, t("Rebase делается для ветки, а сейчас detached HEAD", &[])).with_hint(t("Переключитесь на ветку, историю которой хотите изменить.", &[])));
+        return Err(GorynychError::new(ErrorCode::Detached, t("rebase-works-on-branch-but", &[])).with_hint(t("switch-to-branch-whose-history", &[])));
     }
     Ok((head, branch))
 }
 
 async fn resolve_commit(cwd: &Path, reference: Option<&str>, what: &str) -> Result<String> {
-    let reference = reference.filter(|text| !js::trim(text).is_empty() && !text.starts_with('-')).ok_or_else(|| GorynychError::new(ErrorCode::BadArgs, t("Не указан {0}", &[&what])))?;
-    commit_of(cwd, reference).await.ok_or_else(|| GorynychError::new(ErrorCode::NotFoundRef, t("Не найдено: {0}", &[&reference])))
+    let reference = reference.filter(|text| !js::trim(text).is_empty() && !text.starts_with('-')).ok_or_else(|| GorynychError::new(ErrorCode::BadArgs, t("no-specified-2", &[&what])))?;
+    commit_of(cwd, reference).await.ok_or_else(|| GorynychError::new(ErrorCode::NotFoundRef, t("not-found-2", &[&reference])))
 }
 
 fn read_commit_list(out: &str) -> Vec<PlanCommit> {
@@ -113,7 +113,7 @@ fn log_format() -> String {
 
 async fn commit_info(cwd: &Path, hash: &str) -> Result<PlanCommit> {
     let out = git(cwd, &["log", "-1", &log_format(), hash]).await?;
-    read_commit_list(&out).into_iter().next().ok_or_else(|| GorynychError::new(ErrorCode::NotFoundRef, t("Не найдено: {0}", &[&hash])))
+    read_commit_list(&out).into_iter().next().ok_or_else(|| GorynychError::new(ErrorCode::NotFoundRef, t("not-found-2", &[&hash])))
 }
 
 struct Scope {
@@ -128,14 +128,14 @@ struct Scope {
 
 async fn scope(cwd: &Path, upstream: Option<&str>, onto: Option<&str>) -> Result<Scope> {
     let (head, branch) = require_branch_state(cwd).await?;
-    let what = t("коммит", &[]);
+    let what = t("commit", &[]);
     let upstream = resolve_commit(cwd, upstream, &what).await?;
     let onto = match filled(onto) {
         Some(onto) => resolve_commit(cwd, Some(onto), &what).await?,
         None => upstream.clone(),
     };
     if upstream == head {
-        return Err(GorynychError::new(ErrorCode::UpToDate, t("Это и есть последний коммит ветки — после него нечего менять", &[])));
+        return Err(GorynychError::new(ErrorCode::UpToDate, t("this-is-branchs-last-commit", &[])));
     }
     let range = format!("{upstream}...{head}");
     let out = git(cwd, &["log", "--reverse", "--topo-order", "--no-merges", "--cherry-pick", "--right-only", &log_format(), &range]).await?;
@@ -143,7 +143,7 @@ async fn scope(cwd: &Path, upstream: Option<&str>, onto: Option<&str>) -> Result
     let merges = trimmed(cwd, &["rev-list", "--count", "--merges", &format!("{upstream}..{head}")]).await?.parse().unwrap_or(0);
     let is_ancestor = succeeds(cwd, &["merge-base", "--is-ancestor", &upstream, &head]).await;
     if commits.len() > MAX_COMMITS {
-        return Err(GorynychError::new(ErrorCode::TooMany, t("Слишком много коммитов для rebase: {0}", &[&commits.len()])).with_hint(t("Выберите точку поближе (не больше {0} коммитов).", &[&MAX_COMMITS])));
+        return Err(GorynychError::new(ErrorCode::TooMany, t("too-many-commits-for-rebase", &[&commits.len()])).with_hint(t("choose-closer-point-no-more", &[&MAX_COMMITS])));
     }
     Ok(Scope { head, branch, upstream, onto, commits, merges, is_ancestor })
 }
@@ -177,7 +177,7 @@ async fn merge_tree(cwd: &Path, base: &str, ours: &str, theirs: &str) -> Result<
         return Ok(Merge::Conflict { files: files.into_iter().collect(), messages });
     }
     if !MERGE_TREE_CHECKED.load(Ordering::SeqCst) && OLD_GIT.is_match(&error.details) {
-        return Err(GorynychError::new(ErrorCode::GitTooOld, t("Для предпросмотра rebase нужен Git 2.40 или новее", &[])).with_hint(t("Обновите Git for Windows (git-scm.com) и перезапустите приложение.", &[])).with_details(error.details));
+        return Err(GorynychError::new(ErrorCode::GitTooOld, t("rebase-preview-needs-git-2", &[])).with_hint(t("update-git-for-windows-git", &[])).with_details(error.details));
     }
     Err(error)
 }
@@ -204,7 +204,7 @@ pub struct PlanItem {
 }
 
 fn plan_stale() -> GorynychError {
-    GorynychError::new(ErrorCode::PlanStale, t("План устарел — список коммитов изменился", &[])).with_hint(t("Откройте rebase заново.", &[]))
+    GorynychError::new(ErrorCode::PlanStale, t("plan-is-outdated-commit-list", &[])).with_hint(t("open-rebase-again", &[]))
 }
 
 fn validate_plan(commits: &[PlanCommit], plan: Option<&[PlanItem]>) -> Result<()> {
@@ -216,15 +216,15 @@ fn validate_plan(commits: &[PlanCommit], plan: Option<&[PlanItem]>) -> Result<()
             return Err(plan_stale());
         }
         if !matches!(item.action.as_deref(), Some("pick" | "reword" | "squash" | "fixup" | "drop")) {
-            return Err(GorynychError::new(ErrorCode::BadArgs, t("Неизвестное действие: {0}", &[&item.action.as_deref().unwrap_or_default()])));
+            return Err(GorynychError::new(ErrorCode::BadArgs, t("unknown-action-2", &[&item.action.as_deref().unwrap_or_default()])));
         }
         if item.message.as_deref().is_some_and(|text| js::trim(text).is_empty()) {
-            return Err(GorynychError::new(ErrorCode::EmptyMessage, t("Сообщение коммита не может быть пустым", &[])));
+            return Err(GorynychError::new(ErrorCode::EmptyMessage, t("commit-message-cant-be-empty", &[])));
         }
         seen.insert(hash);
     }
     if plan.iter().find(|item| item.action.as_deref() != Some("drop")).is_some_and(|item| matches!(item.action.as_deref(), Some("squash" | "fixup"))) {
-        return Err(GorynychError::new(ErrorCode::BadPlan, t("Первый коммит не с чем объединить", &[])).with_hint(t("Squash и fixup присоединяют коммит к предыдущему — у самого первого предыдущего нет.", &[])));
+        return Err(GorynychError::new(ErrorCode::BadPlan, t("first-commit-has-nothing-to", &[])).with_hint(t("squash-and-fixup-join-commit", &[])));
     }
     Ok(())
 }
@@ -386,7 +386,7 @@ pub async fn simulate(cwd: &Path, request: &RebaseRequest) -> Result<RebasePrevi
         let last = group.members.len() - 1;
         for (index, Member { item, commit }) in group.members.iter().enumerate() {
             let Some(parent) = commit.parents.first() else {
-                return Err(GorynychError::new(ErrorCode::RootCommit, t("Нельзя перенести самый первый коммит репозитория", &[])));
+                return Err(GorynychError::new(ErrorCode::RootCommit, t("very-first-commit-of-repository", &[])));
             };
             // Коммит остаётся на своём месте без изменений: git переиспользует его как есть
             if group.members.len() == 1 && item.action.as_deref() != Some("reword") && filled(item.message.as_deref()).is_none() && *parent == work {
@@ -503,25 +503,25 @@ pub struct RebaseDone {
 
 /// `apply`: перевести ветку на посчитанный результат.
 pub async fn apply(cwd: &Path, request: &RebaseApply) -> Result<RebaseDone> {
-    let bad = || GorynychError::new(ErrorCode::BadArgs, t("Некорректный предпросмотр", &[]));
+    let bad = || GorynychError::new(ErrorCode::BadArgs, t("invalid-preview", &[]));
     let hash = |value: &Option<String>| value.as_deref().filter(|text| is_hash(text)).map(str::to_owned);
     let (old_head, new_head, onto) = (hash(&request.old_head).ok_or_else(bad)?, hash(&request.new_head).ok_or_else(bad)?, hash(&request.onto).ok_or_else(bad)?);
     let (head, branch) = require_branch_state(cwd).await?;
     if head != old_head || Some(&branch) != request.branch.as_ref() {
-        return Err(GorynychError::new(ErrorCode::PlanStale, t("Ветка изменилась после предпросмотра", &[])).with_hint(t("Предпросмотр обновится — проверьте его и примените снова.", &[])));
+        return Err(GorynychError::new(ErrorCode::PlanStale, t("branch-changed-after-preview", &[])).with_hint(t("preview-will-refresh-check-it", &[])));
     }
     if new_head == old_head {
-        return Err(GorynychError::new(ErrorCode::UpToDate, t("Ничего не меняется", &[])));
+        return Err(GorynychError::new(ErrorCode::UpToDate, t("nothing-changes", &[])));
     }
     // Результат должен быть посчитан поверх выбранной основы
     if !succeeds(cwd, &["merge-base", "--is-ancestor", &onto, &new_head]).await {
-        return Err(GorynychError::new(ErrorCode::BadArgs, t("Некорректный результат предпросмотра", &[])));
+        return Err(GorynychError::new(ErrorCode::BadArgs, t("invalid-preview-result", &[])));
     }
     // --keep переносит ветку и обновляет файлы, но не трогает несвязанные локальные правки
-    let env = vec![("GIT_REFLOG_ACTION".to_owned(), t("rebase (предпросмотр): {0}", &[&branch]))];
+    let env = vec![("GIT_REFLOG_ACTION".to_owned(), t("rebase-preview", &[&branch]))];
     if let Err(error) = git_with(cwd, &["reset", "--keep", &new_head], GitOptions { env, ..GitOptions::default() }).await {
         if DIRTY_TEXT.is_match(&error.details) {
-            return Err(GorynychError::new(ErrorCode::Dirty, t("Незакоммиченные правки в файлах, которые меняет rebase", &[])).with_hint(t("Закоммитьте их или сделайте Stash, затем примените rebase.", &[])).with_details(error.details));
+            return Err(GorynychError::new(ErrorCode::Dirty, t("uncommitted-edits-in-files-rebase", &[])).with_hint(t("commit-them-or-stash-then-apply", &[])).with_details(error.details));
         }
         return Err(error);
     }
@@ -648,8 +648,8 @@ impl RebaseSessions {
         run_env.push(("GIT_REFLOG_ACTION".to_owned(), "rebase (interactive)".to_owned()));
         if let Err(error) = git_with(cwd, &args, GitOptions { env: run_env, ..GitOptions::default() }).await {
             if detect_operation(cwd).await.is_some() {
-                return Err(GorynychError::new(ErrorCode::Conflict, t("Rebase остановился на конфликте", &[]))
-                    .with_hint(t("Разрешите конфликты в файлах и нажмите «Продолжить» в жёлтой панели сверху. «Прервать» вернёт всё как было.", &[]))
+                return Err(GorynychError::new(ErrorCode::Conflict, t("rebase-stopped-at-conflict", &[]))
+                    .with_hint(t("resolve-conflicts-in-files-and", &[]))
                     .with_details(error.details));
             }
             self.cleanup(cwd);

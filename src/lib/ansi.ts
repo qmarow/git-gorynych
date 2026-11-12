@@ -125,8 +125,8 @@ interface Annotation {
   error?: boolean;
 }
 const ANNOTATION: Record<AnnotationKind, Annotation> = {
-  error: { fg: '#ff6b6b', bold: true, prefix: t('Ошибка: ') },
-  warning: { fg: '#f5c451', bold: true, prefix: t('Предупреждение: ') },
+  error: { fg: '#ff6b6b', bold: true, prefix: t('error-2') },
+  warning: { fg: '#f5c451', bold: true, prefix: t('warning-2') },
   notice: { fg: '#5aa2ff', bold: false, prefix: '' },
   debug: { fg: null, dim: true, prefix: '' },
   command: { fg: '#56d4e0', bold: false, prefix: '' },
@@ -171,7 +171,7 @@ export function parseLog(text: string): LogTree {
       const rest = gh[3];
       if (kind === 'group') {
         n += 1;
-        const section: LogSection = { type: 'section', group: true, key: key++, name: `::group${key}`, start: null, end: null, duration: null, collapsed: true, title: toSegments(rest || t('Группа'), { ...state }), n, children: [] };
+        const section: LogSection = { type: 'section', group: true, key: key++, name: `::group${key}`, start: null, end: null, duration: null, collapsed: true, title: toSegments(rest || t('group'), { ...state }), n, children: [] };
         top().children.push(section);
         stack.push(section);
       } else if (kind === 'endgroup') {

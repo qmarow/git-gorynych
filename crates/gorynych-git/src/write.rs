@@ -43,7 +43,7 @@ impl<'de> Deserialize<'de> for PathsArg {
 }
 
 fn invalid_paths() -> GorynychError {
-    GorynychError::unknown(t("Некорректный список файлов", &[]))
+    GorynychError::unknown(t("invalid-file-list", &[]))
 }
 
 /// `stage`.
@@ -86,7 +86,7 @@ pub struct CommitResult {
 pub async fn commit(dir: &Path, summary: &str, description: Option<&str>) -> Result<CommitResult> {
     let summary = js::trim(summary);
     if summary.is_empty() {
-        return Err(GorynychError::unknown(t("Пустое сообщение коммита", &[])));
+        return Err(GorynychError::unknown(t("empty-commit-message", &[])));
     }
     let mut args = vec!["commit", "-m", summary];
     if let Some(text) = description.map(js::trim).filter(|text| !text.is_empty()) {
@@ -140,7 +140,7 @@ pub async fn read_commit_template(cwd: &Path) -> Option<CommitTemplate> {
     let absolute = Path::new(&file);
     let full = if absolute.is_absolute() { absolute.to_path_buf() } else { cwd.join(absolute) };
     let failed = |error: String| CommitTemplate { path: file.clone(), error: Some(error), ..CommitTemplate::default() };
-    let not_found = || failed(t("Файл шаблона не найден: {0}", &[&full.display()]));
+    let not_found = || failed(t("template-file-not-found", &[&full.display()]));
     let Ok(meta) = std::fs::metadata(&full) else {
         return Some(not_found());
     };
@@ -148,7 +148,7 @@ pub async fn read_commit_template(cwd: &Path) -> Option<CommitTemplate> {
         return Some(not_found());
     }
     if meta.len() > TEMPLATE_MAX {
-        return Some(failed(t("Файл шаблона слишком большой (больше 64 КБ)", &[])));
+        return Some(failed(t("template-file-is-too-large", &[])));
     }
     let Ok(bytes) = std::fs::read(&full) else {
         return Some(not_found());
@@ -197,13 +197,13 @@ pub struct BranchLogRequest {
 pub async fn branch_log(cwd: &Path, request: &BranchLogRequest) -> Result<BranchLog> {
     let branch = request.branch.as_deref().unwrap_or_default();
     if branch.is_empty() || branch.starts_with('-') || BAD_BRANCH.is_match(branch) {
-        return Err(GorynychError::new(ErrorCode::BadArgs, t("Некорректное имя ветки", &[])));
+        return Err(GorynychError::new(ErrorCode::BadArgs, t("invalid-branch-name-2", &[])));
     }
     let local = format!("refs/heads/{branch}");
     let found = git(cwd, &["for-each-ref", "--format=%(upstream)", &local]).await.unwrap_or_default();
     let upstream = js::trim(&found);
     if upstream.is_empty() {
-        return Err(GorynychError::new(ErrorCode::NoUpstream, t("У ветки «{0}» нет upstream", &[&branch])));
+        return Err(GorynychError::new(ErrorCode::NoUpstream, t("branch-has-no-upstream", &[&branch])));
     }
     let range = if request.direction.as_deref() == Some("out") { format!("{upstream}..{local}") } else { format!("{local}..{upstream}") };
     let wanted = request.limit.filter(|limit| *limit != 0.0 && !limit.is_nan()).unwrap_or(50.0);

@@ -15,14 +15,14 @@ export interface CcType {
 }
 
 export const CC_TYPES: readonly CcType[] = [
-  { id: 'feat', hint: tr('Новая возможность'), color: '#3cf0a0' },
-  { id: 'fix', hint: tr('Исправление ошибки'), color: '#f25d5d' },
-  { id: 'refactor', hint: tr('Переделка кода без изменения поведения'), color: '#b98cff' },
-  { id: 'chore', hint: tr('Рутина: зависимости, конфиги, сборка'), color: '#9aa3b2' },
-  { id: 'docs', hint: tr('Документация'), color: '#2f9bff' },
-  { id: 'style', hint: tr('Форматирование, пробелы, без изменения логики'), color: '#ff7ab6' },
-  { id: 'test', hint: tr('Тесты'), color: '#f2ca33' },
-  { id: 'perf', hint: tr('Производительность'), color: '#ff9f43' },
+  { id: 'feat', hint: tr('new-feature'), color: '#3cf0a0' },
+  { id: 'fix', hint: tr('bug-fix'), color: '#f25d5d' },
+  { id: 'refactor', hint: tr('code-rework-without-behavior-changes'), color: '#b98cff' },
+  { id: 'chore', hint: tr('chores-dependencies-configs-build'), color: '#9aa3b2' },
+  { id: 'docs', hint: tr('documentation'), color: '#2f9bff' },
+  { id: 'style', hint: tr('formatting-whitespace-no-logic-changes'), color: '#ff7ab6' },
+  { id: 'test', hint: tr('tests'), color: '#f2ca33' },
+  { id: 'perf', hint: tr('performance'), color: '#ff9f43' },
 ];
 
 // Распознаём и «служебные» типы из спецификации, чтобы не принимать их за текст
@@ -160,10 +160,10 @@ export function extractTicket(branch: unknown, pattern = ''): string | null {
 export type TicketFormat = 'prefix' | 'scope' | 'suffix' | 'footer';
 
 export const TICKET_FORMATS: readonly { id: TicketFormat; label: string; hint: string }[] = [
-  { id: 'prefix', label: '[PROJ-123] feat: …', hint: tr('В квадратных скобках в начале') },
-  { id: 'scope', label: 'feat(PROJ-123): …', hint: tr('Вместо scope; без типа — в скобках в начале') },
-  { id: 'suffix', label: 'feat: … (PROJ-123)', hint: tr('В конце, как в GitHub') },
-  { id: 'footer', label: 'Refs: PROJ-123', hint: tr('Отдельной строкой в конце Description') },
+  { id: 'prefix', label: '[PROJ-123] feat: …', hint: tr('in-square-brackets-at-start') },
+  { id: 'scope', label: 'feat(PROJ-123): …', hint: tr('instead-of-scope-without-type') },
+  { id: 'suffix', label: 'feat: … (PROJ-123)', hint: tr('at-end-as-on-github') },
+  { id: 'footer', label: 'Refs: PROJ-123', hint: tr('on-separate-line-at-end') },
 ];
 
 const same = (a: string | null | undefined, b: string | null | undefined) => Boolean(a && b) && a!.toLowerCase() === b!.toLowerCase();
@@ -336,18 +336,18 @@ export interface CommitTemplate {
 export const DEFAULT_TEMPLATES: readonly CommitTemplate[] = [
   {
     id: 'tpl-what-how',
-    name: tr('Что сделано / Как проверить'),
-    body: tr('Что сделано:\n- \n\nКак проверить:\n1. \n\nЗадача: {ticket}'),
+    name: tr('what-was-done-how-to-test'),
+    body: tr('what-was-done-how-to-test-1'),
   },
   {
     id: 'tpl-bugfix',
-    name: tr('Исправление ошибки'),
-    body: tr('Проблема:\n\nПричина:\n\nРешение:\n\nКак проверить:\n'),
+    name: tr('bug-fix'),
+    body: tr('problem-cause-solution-how-to'),
   },
   {
     id: 'tpl-breaking',
-    name: tr('Несовместимое изменение'),
-    body: tr('BREAKING CHANGE: \n\nЧто сделать при обновлении:\n- '),
+    name: tr('breaking-change'),
+    body: tr('breaking-change-what-to-do'),
   },
 ];
 

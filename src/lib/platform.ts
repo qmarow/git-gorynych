@@ -55,32 +55,32 @@ export function kb<T>(text: T, mac: boolean = IS_MAC): T | string {
 }
 
 /** Где хранится зашифрованный токен — по-честному для каждой ОС. subject — что шифруется (по умолчанию «Токен») */
-export function secretStorageText(platform: Platform = PLATFORM, subject: string = t('Токен')): string {
+export function secretStorageText(platform: Platform = PLATFORM, subject: string = t('token')): string {
   const plural = /ые$|и$/.test(subject); // «Данные шифруются», «Токен шифруется»
-  const verb = plural ? t('шифруются') : t('шифруется');
-  const kept = plural ? t('хранятся') : t('хранится');
-  if (platform === 'darwin') return t('{0} {1} в Связке ключей macOS (Keychain) и {2} только на этом компьютере.', subject, verb, kept);
-  if (platform === 'win32') return t('{0} {1} средствами Windows (DPAPI) и {2} только на этом компьютере.', subject, verb, kept);
-  return t('{0} {1} системным хранилищем ключей (GNOME Keyring / KWallet) и {2} только на этом компьютере.', subject, verb, kept);
+  const verb = plural ? t('are-encrypted') : t('is-encrypted');
+  const kept = plural ? t('kept-for') : t('stored');
+  if (platform === 'darwin') return t('in-macos-keychain-and-only', subject, verb, kept);
+  if (platform === 'win32') return t('with-windows-tools-dpapi-and', subject, verb, kept);
+  return t('by-system-keyring-gnome-keyring', subject, verb, kept);
 }
 
 /** Как установить Git — для подсказок «Git не найден» */
 export function installGitHint(platform: Platform = PLATFORM): string {
-  if (platform === 'darwin') return t('установите Git: в Терминале выполните xcode-select --install (или brew install git)');
-  if (platform === 'win32') return t('установите Git for Windows (git-scm.com)');
-  return t('установите Git из менеджера пакетов (например, sudo apt install git)');
+  if (platform === 'darwin') return t('install-git-run-xcode-select');
+  if (platform === 'win32') return t('install-git-for-windows-git-scm');
+  return t('install-git-from-package-manager');
 }
 
 /** Подпись пункта «открыть папку» в системном файловом менеджере */
 export function openFolderLabel(platform: Platform = PLATFORM): string {
-  if (platform === 'darwin') return t('Показать в Finder');
-  if (platform === 'win32') return t('Открыть в Проводнике');
-  return t('Открыть в файловом менеджере');
+  if (platform === 'darwin') return t('show-in-finder');
+  if (platform === 'win32') return t('open-in-explorer');
+  return t('open-in-file-manager');
 }
 
 /** Подпись пункта «открыть терминал» */
 export function openTerminalLabel(platform: Platform = PLATFORM): string {
-  if (platform === 'darwin') return t('Открыть в Терминале');
-  if (platform === 'win32') return t('Открыть в терминале (командной строке)');
-  return t('Открыть в терминале');
+  if (platform === 'darwin') return t('open-in-terminal');
+  if (platform === 'win32') return t('open-in-terminal-command-line');
+  return t('open-in-terminal-2');
 }

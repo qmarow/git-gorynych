@@ -9,47 +9,47 @@ export interface CiSnippet {
 }
 
 const GH: readonly CiSnippet[] = [
-  { id: 'checkout', label: t('Checkout репозитория'), text: '- uses: actions/checkout@v4\n  with:\n    fetch-depth: 0' },
+  { id: 'checkout', label: t('repository-checkout'), text: '- uses: actions/checkout@v4\n  with:\n    fetch-depth: 0' },
   {
     id: 'cache',
-    label: t('Кэширование зависимостей'),
+    label: t('dependency-caching'),
     text: "- uses: actions/cache@v4\n  with:\n    path: ~/.npm\n    key: ${{ runner.os }}-npm-${{ hashFiles('**/package-lock.json') }}\n    restore-keys: |\n      ${{ runner.os }}-npm-",
   },
   {
     id: 'docker',
-    label: t('Сборка Docker-образа'),
+    label: t('docker-image-build'),
     text: '- uses: docker/setup-buildx-action@v3\n- uses: docker/build-push-action@v6\n  with:\n    context: .\n    push: false\n    tags: app:${{ github.sha }}',
   },
   {
     id: 'ssh',
-    label: t('Деплой по SSH'),
-    text: t('- name: Деплой по SSH\n  uses: appleboy/ssh-action@v1\n  with:\n    host: ${{ secrets.DEPLOY_HOST }}\n    username: ${{ secrets.DEPLOY_USER }}\n    key: ${{ secrets.DEPLOY_KEY }}\n    script: |\n      cd /srv/app\n      git pull\n      ./restart.sh'),
+    label: t('ssh-deploy'),
+    text: t('name-ssh-deploy-uses-appleboy'),
   },
 ];
 
 const GL: readonly CiSnippet[] = [
-  { id: 'checkout', label: t('Checkout: глубина и стратегия клона'), text: 'variables:\n  GIT_DEPTH: "20"\n  GIT_STRATEGY: fetch' },
-  { id: 'cache', label: t('Кэширование зависимостей'), text: 'cache:\n  key:\n    files: [package-lock.json]\n  paths:\n    - .npm/' },
+  { id: 'checkout', label: t('checkout-clone-depth-and-strategy'), text: 'variables:\n  GIT_DEPTH: "20"\n  GIT_STRATEGY: fetch' },
+  { id: 'cache', label: t('dependency-caching'), text: 'cache:\n  key:\n    files: [package-lock.json]\n  paths:\n    - .npm/' },
   {
     id: 'docker',
-    label: t('Задание: сборка Docker-образа'),
+    label: t('job-docker-image-build'),
     text: 'build-image:\n  stage: build\n  image: docker:27\n  services: [docker:27-dind]\n  variables:\n    DOCKER_TLS_CERTDIR: "/certs"\n  script:\n    - docker login -u "$CI_REGISTRY_USER" -p "$CI_REGISTRY_PASSWORD" "$CI_REGISTRY"\n    - docker build -t "$CI_REGISTRY_IMAGE:$CI_COMMIT_SHORT_SHA" .\n    - docker push "$CI_REGISTRY_IMAGE:$CI_COMMIT_SHORT_SHA"',
   },
   {
     id: 'ssh',
-    label: t('Задание: деплой по SSH'),
+    label: t('job-ssh-deploy'),
     text: 'deploy:\n  stage: deploy\n  image: alpine:3.20\n  before_script:\n    - apk add --no-cache openssh-client\n    - eval $(ssh-agent -s)\n    - echo "$SSH_PRIVATE_KEY" | tr -d \'\\r\' | ssh-add -\n    - mkdir -p ~/.ssh && echo "$SSH_KNOWN_HOSTS" > ~/.ssh/known_hosts\n  script:\n    - ssh "$DEPLOY_USER@$DEPLOY_HOST" "cd /srv/app && git pull && ./restart.sh"\n  environment: production\n  when: manual',
   },
 ];
 
 const BB: readonly CiSnippet[] = [
-  { id: 'checkout', label: t('Checkout: глубина клона'), text: 'clone:\n  depth: 20' },
-  { id: 'cache', label: t('Кэширование зависимостей'), text: 'caches:\n  - node' },
-  { id: 'docker', label: t('Шаг: сборка Docker-образа'), text: t('- step:\n    name: Сборка образа\n    services: [docker]\n    script:\n      - docker build -t app:$BITBUCKET_COMMIT .') },
+  { id: 'checkout', label: t('checkout-clone-depth'), text: 'clone:\n  depth: 20' },
+  { id: 'cache', label: t('dependency-caching'), text: 'caches:\n  - node' },
+  { id: 'docker', label: t('step-docker-image-build'), text: t('step-name-image-build-services') },
   {
     id: 'ssh',
-    label: t('Шаг: деплой по SSH'),
-    text: t('- step:\n    name: Деплой\n    deployment: production\n    trigger: manual\n    script:\n      - pipe: atlassian/ssh-run:0.8.1\n        variables:\n          SSH_USER: $DEPLOY_USER\n          SERVER: $DEPLOY_HOST\n          COMMAND: \'cd /srv/app && git pull && ./restart.sh\''),
+    label: t('step-ssh-deploy'),
+    text: t('step-name-deploy-deployment-production'),
   },
 ];
 

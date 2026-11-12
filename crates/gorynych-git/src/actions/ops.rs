@@ -39,13 +39,13 @@ async fn validate_branch_name(cwd: &Path, name: Option<&str>) -> Result<String> 
     let raw = name.unwrap_or_default();
     let name = js::trim(raw);
     if name.is_empty() {
-        return Err(GorynychError::new(ErrorCode::InvalidName, t("Введите имя ветки", &[])));
+        return Err(GorynychError::new(ErrorCode::InvalidName, t("enter-branch-name", &[])));
     }
     if !succeeds(cwd, &["check-ref-format", "--branch", name]).await {
-        return Err(GorynychError::new(ErrorCode::InvalidName, t("Недопустимое имя ветки: «{0}»", &[&raw])).with_hint(t("Нельзя использовать пробелы, «..», «~», «^», «:», «?», «*», «[» и «\\».", &[])));
+        return Err(GorynychError::new(ErrorCode::InvalidName, t("invalid-branch-name", &[&raw])).with_hint(t("spaces-and-are-not-allowed", &[])));
     }
     if succeeds(cwd, &["show-ref", "--verify", "--quiet", &format!("refs/heads/{name}")]).await {
-        return Err(GorynychError::new(ErrorCode::BranchExists, t("Ветка «{0}» уже существует", &[&raw])));
+        return Err(GorynychError::new(ErrorCode::BranchExists, t("branch-already-exists", &[&raw])));
     }
     Ok(name.to_owned())
 }
@@ -79,7 +79,7 @@ pub struct BranchCreated {
 pub async fn create_branch(cwd: &Path, request: &CreateBranch) -> Result<BranchCreated> {
     let checkout = request.checkout != Some(false);
     if !has_head(cwd).await {
-        return Err(GorynychError::new(ErrorCode::NoCommits, t("Сначала сделайте первый коммит", &[])));
+        return Err(GorynychError::new(ErrorCode::NoCommits, t("make-first-commit-first", &[])));
     }
     if checkout {
         require_no_operation(&current_state(cwd).await?, "checkout")?;
@@ -89,10 +89,10 @@ pub async fn create_branch(cwd: &Path, request: &CreateBranch) -> Result<BranchC
     let mut start_point = "HEAD".to_owned();
     if let Some(start) = filled(request.start.as_deref()) {
         if start.starts_with('-') {
-            return Err(GorynychError::new(ErrorCode::BadArgs, t("Некорректный коммит", &[])));
+            return Err(GorynychError::new(ErrorCode::BadArgs, t("invalid-commit", &[])));
         }
         let Some(found) = commit_of(cwd, start).await else {
-            return Err(GorynychError::new(ErrorCode::NotFoundRef, t("Не найдено: {0}", &[&start])).with_hint(t("Проверьте имя ветки или сделайте Fetch.", &[])));
+            return Err(GorynychError::new(ErrorCode::NotFoundRef, t("not-found-2", &[&start])).with_hint(t("check-branch-name-or-fetch", &[])));
         };
         start_point = found;
     }
@@ -132,7 +132,7 @@ pub fn split_args(line: &str) -> Result<Vec<String>> {
         }
     }
     if quote.is_some() {
-        return Err(GorynychError::new(ErrorCode::BadArgs, t("Незакрытая кавычка в команде", &[])));
+        return Err(GorynychError::new(ErrorCode::BadArgs, t("unclosed-quote-in-command", &[])));
     }
     if !current.is_empty() || has {
         args.push(current);
@@ -161,7 +161,7 @@ pub async fn git_raw(cwd: &Path, request: &GitRaw) -> Result<GitRawResult> {
     let command = request.command.as_deref().unwrap_or_default();
     let args = split_args(&GIT_PREFIX.replace(command, ""))?;
     if args.is_empty() {
-        return Err(GorynychError::new(ErrorCode::BadArgs, t("Пустая команда", &[])));
+        return Err(GorynychError::new(ErrorCode::BadArgs, t("empty-command", &[])));
     }
     let out = git_with(cwd, &args, no_editor()).await?;
     Ok(GitRawResult { command: format!("git {}", args.join(" ")), output: js::trim(&out).chars().take(4000).collect() })
@@ -190,10 +190,10 @@ pub struct StashPushed {
 pub(crate) async fn stash_push(cwd: &Path, message: Option<&str>) -> Result<StashPushed> {
     let files = read_status(cwd, false).await?;
     if files.is_empty() {
-        return Err(GorynychError::new(ErrorCode::NothingToStash, t("Нет изменений для stash", &[])));
+        return Err(GorynychError::new(ErrorCode::NothingToStash, t("no-changes-to-stash", &[])));
     }
     if !has_head(cwd).await {
-        return Err(GorynychError::new(ErrorCode::NoCommits, t("Stash недоступен до первого коммита", &[])));
+        return Err(GorynychError::new(ErrorCode::NoCommits, t("stash-is-unavailable-until-first", &[])));
     }
     let mut args = vec!["stash", "push", "--include-untracked"];
     if let Some(text) = message.map(js::trim).filter(|text| !text.is_empty()) {
@@ -215,7 +215,7 @@ pub struct StashPopped {
 pub(crate) async fn stash_pop(cwd: &Path) -> Result<StashPopped> {
     let top = quiet(cwd, &["rev-parse", "--verify", "--quiet", "stash@{0}"]).await;
     if top.is_empty() {
-        return Err(GorynychError::new(ErrorCode::NoStash, t("Нет сташей", &[])));
+        return Err(GorynychError::new(ErrorCode::NoStash, t("no-stashes", &[])));
     }
     git(cwd, &["stash", "pop"]).await?; // при конфликте stash остаётся в списке, ошибка = CONFLICT
     Ok(StashPopped { hash: top })
@@ -244,14 +244,14 @@ pub struct StashRef {
 // stash@{n} сдвигаются при каждом изменении списка: проверяем, что по индексу всё ещё нужный stash
 async fn resolve_stash(cwd: &Path, request: &StashAt) -> Result<StashRef> {
     let Some(id) = request.id.as_deref().filter(|id| STASH_ID.is_match(id)) else {
-        return Err(GorynychError::new(ErrorCode::BadArgs, t("Некорректный stash", &[])));
+        return Err(GorynychError::new(ErrorCode::BadArgs, t("invalid-stash", &[])));
     };
     let actual = quiet(cwd, &["rev-parse", "--verify", "--quiet", id]).await;
     if actual.is_empty() {
-        return Err(GorynychError::new(ErrorCode::NoStash, t("Stash не найден — список изменился", &[])));
+        return Err(GorynychError::new(ErrorCode::NoStash, t("stash-not-found-list-has", &[])));
     }
     if filled(request.hash.as_deref()).is_some_and(|hash| hash != actual) {
-        return Err(GorynychError::new(ErrorCode::HistoryStale, t("Список stash изменился — обновите и повторите", &[])));
+        return Err(GorynychError::new(ErrorCode::HistoryStale, t("stash-list-has-changed-refresh", &[])));
     }
     let message = quiet(cwd, &["log", "-1", "--format=%gs", "-g", id]).await;
     Ok(StashRef { id: id.to_owned(), hash: actual, message })
@@ -317,14 +317,14 @@ pub async fn create_tag(cwd: &Path, request: &CreateTag) -> Result<TagInfo> {
     let hash = require_hash(request.hash.as_deref())?;
     let tag = js::trim(request.name.as_deref().unwrap_or_default());
     if tag.is_empty() {
-        return Err(GorynychError::new(ErrorCode::InvalidName, t("Введите имя тега", &[])));
+        return Err(GorynychError::new(ErrorCode::InvalidName, t("enter-tag-name", &[])));
     }
     let full = format!("refs/tags/{tag}");
     if !succeeds(cwd, &["check-ref-format", &full]).await {
-        return Err(GorynychError::new(ErrorCode::InvalidName, t("Недопустимое имя тега: «{0}»", &[&tag])));
+        return Err(GorynychError::new(ErrorCode::InvalidName, t("invalid-tag-name", &[&tag])));
     }
     if succeeds(cwd, &["show-ref", "--verify", "--quiet", &full]).await {
-        return Err(GorynychError::new(ErrorCode::TagExists, t("Тег «{0}» уже существует", &[&tag])));
+        return Err(GorynychError::new(ErrorCode::TagExists, t("tag-already-exists", &[&tag])));
     }
     let message = request.message.as_deref().map(js::trim).filter(|text| !text.is_empty());
     match message {
@@ -349,7 +349,7 @@ pub async fn delete_tag(cwd: &Path, request: &DeleteTag) -> Result<TagInfo> {
     let format = format!("--format=%(objecttype){FS}%(*objectname){FS}%(objectname){FS}%(contents)");
     let info = git(cwd, &["for-each-ref", &format, &format!("refs/tags/{name}")]).await?;
     if js::trim(&info).is_empty() {
-        return Err(GorynychError::new(ErrorCode::NotFoundRef, t("Тег «{0}» не найден", &[&request.name.as_deref().unwrap_or_default()])));
+        return Err(GorynychError::new(ErrorCode::NotFoundRef, t("tag-not-found", &[&request.name.as_deref().unwrap_or_default()])));
     }
     let mut fields = info.split(FS);
     let mut next = || fields.next().unwrap_or_default();
@@ -382,19 +382,19 @@ pub struct BranchRenamed {
 pub async fn rename_branch(cwd: &Path, request: &RenameBranch) -> Result<BranchRenamed> {
     let next = js::trim(request.to.as_deref().unwrap_or_default());
     let Some(from) = filled(request.from.as_deref()).filter(|_| !next.is_empty()) else {
-        return Err(GorynychError::new(ErrorCode::BadArgs, t("Укажите новое имя ветки", &[])));
+        return Err(GorynychError::new(ErrorCode::BadArgs, t("enter-new-branch-name", &[])));
     };
     if next == from {
-        return Err(GorynychError::new(ErrorCode::BadArgs, t("Имя не изменилось", &[])));
+        return Err(GorynychError::new(ErrorCode::BadArgs, t("name-hasnt-changed", &[])));
     }
     if branch_tip(cwd, from).await.is_none() {
-        return Err(GorynychError::new(ErrorCode::NotFoundRef, t("Ветка «{0}» не найдена", &[&from])));
+        return Err(GorynychError::new(ErrorCode::NotFoundRef, t("branch-not-found", &[&from])));
     }
     if !succeeds(cwd, &["check-ref-format", "--branch", next]).await {
-        return Err(GorynychError::new(ErrorCode::InvalidName, t("Недопустимое имя ветки: «{0}»", &[&next])).with_hint(t("Без пробелов, «..», «~», «^», «:», «?», «*», «[» и «\\».", &[])));
+        return Err(GorynychError::new(ErrorCode::InvalidName, t("invalid-branch-name", &[&next])).with_hint(t("no-spaces-or", &[])));
     }
     if branch_tip(cwd, next).await.is_some() {
-        return Err(GorynychError::new(ErrorCode::BranchExists, t("Ветка «{0}» уже есть", &[&next])));
+        return Err(GorynychError::new(ErrorCode::BranchExists, t("branch-already-exists-2", &[&next])));
     }
     git(cwd, &["branch", "-m", from, next]).await?;
     Ok(BranchRenamed { from: from.to_owned(), to: next.to_owned() })
@@ -424,15 +424,15 @@ pub async fn delete_branch(cwd: &Path, request: &DeleteBranch) -> Result<BranchD
     let name = or_undefined(request.name.as_deref());
     let state = current_state(cwd).await?;
     if state.branch_name.as_deref() == request.name.as_deref() && state.branch_name.is_some() {
-        return Err(GorynychError::new(ErrorCode::CurrentBranch, t("Нельзя удалить текущую ветку", &[])).with_hint(t("Сначала переключитесь на другую ветку.", &[])));
+        return Err(GorynychError::new(ErrorCode::CurrentBranch, t("cant-delete-current-branch", &[])).with_hint(t("switch-to-another-branch-first", &[])));
     }
     let Some(hash) = branch_tip(cwd, name).await else {
-        return Err(GorynychError::new(ErrorCode::NotFoundRef, t("Ветка «{0}» не найдена", &[&request.name.as_deref().unwrap_or_default()])));
+        return Err(GorynychError::new(ErrorCode::NotFoundRef, t("branch-not-found", &[&request.name.as_deref().unwrap_or_default()])));
     };
     let flag = if request.force == Some(true) { "-D" } else { "-d" };
     if let Err(error) = git(cwd, &["branch", flag, name]).await {
         if NOT_MERGED.is_match(&error.details) {
-            return Err(GorynychError::new(ErrorCode::NotMerged, t("Ветка «{0}» не слита с текущей", &[&name])).with_hint(t("Коммиты, которые есть только в этой ветке, станут недоступны (их можно вернуть через Undo).", &[])));
+            return Err(GorynychError::new(ErrorCode::NotMerged, t("branch-is-not-merged-into", &[&name])).with_hint(t("commits-that-exist-only-in", &[])));
         }
         return Err(error);
     }
@@ -453,7 +453,7 @@ pub async fn cherry_pick(cwd: &Path, request: &HashRequest) -> Result<HeadMoved>
     let state = current_state(cwd).await?;
     require_head(&state, "cherry-pick")?;
     if is_ancestor(cwd, hash, "HEAD").await {
-        return Err(GorynychError::new(ErrorCode::AlreadyInBranch, t("Этот коммит уже есть в текущей ветке", &[])));
+        return Err(GorynychError::new(ErrorCode::AlreadyInBranch, t("this-commit-is-already-in", &[])));
     }
     let mut args = vec!["cherry-pick"];
     if parents_of(cwd, hash).await? > 1 {
@@ -505,7 +505,7 @@ pub async fn reset_to(cwd: &Path, request: &ResetRequest) -> Result<ResetResult>
     let hash = require_hash(request.hash.as_deref())?;
     let mode = request.mode.as_deref().unwrap_or("mixed");
     if !matches!(mode, "soft" | "mixed" | "hard") {
-        return Err(GorynychError::new(ErrorCode::BadArgs, t("Неизвестный режим reset", &[])));
+        return Err(GorynychError::new(ErrorCode::BadArgs, t("unknown-reset-mode", &[])));
     }
     let state = current_state(cwd).await?;
     require_head(&state, "reset")?;
@@ -538,11 +538,11 @@ pub async fn merge_ref(cwd: &Path, request: &RefRequest) -> Result<RefMoved> {
     let state = current_state(cwd).await?;
     require_branch(&state, "merge")?;
     if commit_of(cwd, reference).await.is_none() {
-        return Err(GorynychError::new(ErrorCode::NotFoundRef, t("Не найдено: {0}", &[&request.reference.as_deref().unwrap_or_default()])));
+        return Err(GorynychError::new(ErrorCode::NotFoundRef, t("not-found-2", &[&request.reference.as_deref().unwrap_or_default()])));
     }
     let branch = state.branch_name.clone().unwrap_or_default();
     if is_ancestor(cwd, reference, "HEAD").await {
-        return Err(GorynychError::new(ErrorCode::UpToDate, t("{0} уже слита в {1}", &[&reference, &branch])));
+        return Err(GorynychError::new(ErrorCode::UpToDate, t("is-already-merged-into", &[&reference, &branch])));
     }
     git_with(cwd, &["merge", "--no-edit", reference], no_editor()).await?;
     Ok(RefMoved { reference: reference.to_owned(), branch: Some(branch), from: state.head_hash, to: head_hash(cwd).await })
@@ -555,7 +555,7 @@ pub async fn rebase_onto(cwd: &Path, request: &RefRequest) -> Result<RefMoved> {
     require_branch(&state, "rebase")?;
     let branch = state.branch_name.clone().unwrap_or_default();
     if is_ancestor(cwd, reference, "HEAD").await {
-        return Err(GorynychError::new(ErrorCode::UpToDate, t("{0} уже содержит {1}", &[&branch, &reference])));
+        return Err(GorynychError::new(ErrorCode::UpToDate, t("already-contains", &[&branch, &reference])));
     }
     git_with(cwd, &["rebase", reference], no_editor()).await?;
     Ok(RefMoved { reference: reference.to_owned(), branch: Some(branch), from: state.head_hash, to: head_hash(cwd).await })
@@ -585,20 +585,20 @@ pub struct FastForwarded {
 /// `fastForward`: перемотать ветку вперёд без переключения на неё.
 pub async fn fast_forward(cwd: &Path, request: &FastForward) -> Result<FastForwarded> {
     let (Some(branch), Some(to)) = (filled(request.branch.as_deref()), filled(request.to.as_deref()).filter(|to| !to.starts_with('-'))) else {
-        return Err(GorynychError::new(ErrorCode::BadArgs, t("Не указана ветка", &[])));
+        return Err(GorynychError::new(ErrorCode::BadArgs, t("no-branch-specified", &[])));
     };
     let Some(tip) = branch_tip(cwd, branch).await else {
-        return Err(GorynychError::new(ErrorCode::NotFoundRef, t("Ветка «{0}» не найдена", &[&branch])));
+        return Err(GorynychError::new(ErrorCode::NotFoundRef, t("branch-not-found", &[&branch])));
     };
     let Some(target) = commit_of(cwd, to).await else {
-        return Err(GorynychError::new(ErrorCode::NotFoundRef, t("Не найдено: {0}", &[&to])));
+        return Err(GorynychError::new(ErrorCode::NotFoundRef, t("not-found-2", &[&to])));
     };
     if tip == target {
-        return Err(GorynychError::new(ErrorCode::UpToDate, t("{0} уже указывает на этот коммит", &[&branch])));
+        return Err(GorynychError::new(ErrorCode::UpToDate, t("already-points-to-this-commit", &[&branch])));
     }
     if !is_ancestor(cwd, &tip, &target).await {
         let shown = if js::utf16_len(to) == 40 { short(to) } else { to.to_owned() };
-        return Err(GorynychError::new(ErrorCode::NotFastForward, t("Перемотать {0} нельзя: в ней есть коммиты, которых нет в {1}", &[&branch, &shown])).with_hint(t("Используйте слияние (merge) или rebase.", &[])));
+        return Err(GorynychError::new(ErrorCode::NotFastForward, t("cant-fast-forward-it-has", &[&branch, &shown])).with_hint(t("use-merge-or-rebase", &[])));
     }
     let state = current_state(cwd).await?;
     let current = state.branch_name.as_deref() == Some(branch);
@@ -623,7 +623,7 @@ pub async fn discard_all(cwd: &Path) -> Result<Discarded> {
     require_no_operation(&current_state(cwd).await?, "discard")?;
     let files = read_status(cwd, false).await?;
     if files.is_empty() {
-        return Err(GorynychError::new(ErrorCode::NothingToDiscard, t("Нет изменений", &[])));
+        return Err(GorynychError::new(ErrorCode::NothingToDiscard, t("no-changes", &[])));
     }
     if has_head(cwd).await {
         git(cwd, &["reset", "--hard", "-q", "HEAD"]).await?;
@@ -772,15 +772,15 @@ pub struct RevertedTo {
 pub async fn revert_to(cwd: &Path, request: &RevertTo) -> Result<RevertedTo> {
     let preview = revert_to_preview(cwd, &HashRequest { hash: request.hash.clone() }).await?;
     if preview.identical {
-        return Err(GorynychError::new(ErrorCode::UpToDate, t("Файлы уже совпадают с этим коммитом — откатывать нечего", &[])));
+        return Err(GorynychError::new(ErrorCode::UpToDate, t("files-already-match-this-commit", &[])));
     }
     if preview.dirty_count > 0 {
-        return Err(GorynychError::new(ErrorCode::Dirty, t("Есть незакоммиченные изменения ({0})", &[&preview.dirty_count])).with_hint(t("Закоммитьте их или сделайте Stash, затем повторите.", &[])));
+        return Err(GorynychError::new(ErrorCode::Dirty, t("there-are-uncommitted-changes", &[&preview.dirty_count])).with_hint(t("commit-them-or-stash-then", &[])));
     }
     if !preview.collisions.is_empty() {
         let shown = preview.collisions.iter().take(5).map(String::as_str).collect::<Vec<_>>().join(", ");
         let more = if preview.collisions.len() > 5 { "…" } else { "" };
-        return Err(GorynychError::new(ErrorCode::Dirty, t("Неотслеживаемые файлы мешают откату", &[])).with_hint(t("Переместите или удалите: {0}{1}", &[&shown, &more])));
+        return Err(GorynychError::new(ErrorCode::Dirty, t("untracked-files-are-in-way", &[])).with_hint(t("move-or-delete", &[&shown, &more])));
     }
     let hash = &preview.hash;
     let from = trimmed(cwd, &["rev-parse", "HEAD"]).await?;
@@ -788,9 +788,9 @@ pub async fn revert_to(cwd: &Path, request: &RevertTo) -> Result<RevertedTo> {
     let body = if preview.ancestor {
         let list = preview.commits.iter().map(|commit| format!("- {} {}", short(&commit.hash), commit.message)).collect::<Vec<_>>().join("\n");
         let more = if preview.count > preview.commits.len() as u64 { "\n- …" } else { "" };
-        t("Файлы возвращены к состоянию {0}.\nОтменены изменения {1} коммитов:\n{2}{3}", &[hash, &preview.count, &list, &more])
+        t("files-restored-to-state-of", &[hash, &preview.count, &list, &more])
     } else {
-        t("Файлы приведены к состоянию {0}.", &[hash])
+        t("files-brought-to-state-of", &[hash])
     };
     // Индекс и рабочие файлы: ровно как в целевом коммите (удалённые там файлы тоже удаляются)
     git(cwd, &["read-tree", "-u", "--reset", hash]).await?;
@@ -807,7 +807,7 @@ pub struct OperationResult {
 }
 
 fn no_operation() -> GorynychError {
-    GorynychError::new(ErrorCode::NoOperation, t("Нет незавершённой операции", &[]))
+    GorynychError::new(ErrorCode::NoOperation, t("no-operation-in-progress", &[]))
 }
 
 /// `abortOperation`.
@@ -822,7 +822,7 @@ pub(crate) async fn continue_operation(cwd: &Path, rebase_env: Option<Vec<(Strin
     let operation = detect_operation(cwd).await.ok_or_else(no_operation)?;
     let conflicted: Vec<String> = read_status(cwd, false).await?.into_iter().filter(|file| file.status == "U").map(|file| file.path).collect();
     if !conflicted.is_empty() {
-        return Err(GorynychError::new(ErrorCode::Conflict, t("Остались неразрешённые конфликты: {0}", &[&conflicted.len()])).with_hint(t("Исправьте файлы с пометкой U и застейджите их (кнопка + в списке файлов).", &[])).with_details(conflicted.join("\n")));
+        return Err(GorynychError::new(ErrorCode::Conflict, t("unresolved-conflicts-remain", &[&conflicted.len()])).with_hint(t("fix-files-marked-u-and", &[])).with_details(conflicted.join("\n")));
     }
     if operation == "merge" {
         git_with(cwd, &["commit", "--no-edit"], no_editor()).await?;

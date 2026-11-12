@@ -107,7 +107,7 @@ export default function ActionBuilder({ actions, branches, initialId, onChange, 
   };
 
   const create = (base?: Partial<CustomAction>) => {
-    const a: CustomAction = { id: uid(), name: tr('Новое действие'), icon: 'Zap', steps: [], hotkey: null, toolbar: true, ...(base ?? {}) };
+    const a: CustomAction = { id: uid(), name: tr('new-action'), icon: 'Zap', steps: [], hotkey: null, toolbar: true, ...(base ?? {}) };
     onChange([...actions, a]);
     setSelectedId(a.id);
     if (!base) setPalette(true);
@@ -119,10 +119,10 @@ export default function ActionBuilder({ actions, branches, initialId, onChange, 
         {/* Список действий */}
         <nav className="flex w-64 shrink-0 flex-col border-r border-gk-border bg-gk-sink/10">
           <div className="flex items-center gap-2 px-4 pb-3 pt-4">
-            {tj('{0}<1>Конструктор действий</1>', [<WandSparkles size={16} className="text-gk-green" />, <span className="text-[14px] font-semibold text-gk-strong" />])}
+            {tj('action-builder-2', [<WandSparkles size={16} className="text-gk-green" />, <span className="text-[14px] font-semibold text-gk-strong" />])}
           </div>
           <div className="min-h-0 flex-1 overflow-y-auto px-2">
-            {actions.length > 0 && <div className="px-2 pb-1 text-[10.5px] font-semibold uppercase tracking-wider text-gk-dim">{tr('Мои действия')}</div>}
+            {actions.length > 0 && <div className="px-2 pb-1 text-[10.5px] font-semibold uppercase tracking-wider text-gk-dim">{tr('my-actions')}</div>}
             {actions.map((a) => {
               const Icon = ACTION_ICONS[a.icon!] ?? Zap;
               const bad = validateAction(a).length > 0;
@@ -135,7 +135,7 @@ export default function ActionBuilder({ actions, branches, initialId, onChange, 
                   }`}
                 >
                   <Icon size={14} className={`shrink-0 ${a.id === selectedId ? 'text-gk-blue' : ''}`} />
-                  <span className="min-w-0 flex-1 truncate">{a.name || tr('Без названия')}</span>
+                  <span className="min-w-0 flex-1 truncate">{a.name || tr('untitled')}</span>
                   {bad && <AlertTriangle size={12} className="shrink-0 text-gk-yellow" />}
                   {a.hotkey && <span className="shrink-0 font-mono text-[10px] text-gk-dim">{a.hotkey}</span>}
                 </button>
@@ -145,8 +145,8 @@ export default function ActionBuilder({ actions, branches, initialId, onChange, 
               onClick={() => create()}
               className="mt-1 flex w-full items-center gap-2 rounded-md border border-dashed border-gk-border px-2.5 py-1.5 text-[12.5px] text-gk-muted hover:border-gk-blue/50 hover:text-gk-blue"
             >
-              {tj('{0} Новое действие', [<Plus size={13} />])}</button>
-            <div className="px-2 pb-1 pt-4 text-[10.5px] font-semibold uppercase tracking-wider text-gk-dim">{tr('Готовые шаблоны')}</div>
+              {tj('new-action-2', [<Plus size={13} />])}</button>
+            <div className="px-2 pb-1 pt-4 text-[10.5px] font-semibold uppercase tracking-wider text-gk-dim">{tr('ready-made-templates')}</div>
             {TEMPLATES.map((t) => (
               <button
                 key={t.id}
@@ -166,7 +166,7 @@ export default function ActionBuilder({ actions, branches, initialId, onChange, 
         {/* Редактор */}
         <div className="flex min-w-0 flex-1 flex-col">
           <div className="flex h-12 shrink-0 items-center gap-2 border-b border-gk-border px-4">
-            {tj('<0>Изменения сохраняются сразу</0>{1}', [<span className="flex-1 text-[12px] text-gk-dim" />, <button onClick={onClose} title={tr('Закрыть (Esc)')} className="rounded p-1 text-gk-dim hover:bg-gk-hover hover:text-gk-text">
+            {tj('changes-are-saved-immediately', [<span className="flex-1 text-[12px] text-gk-dim" />, <button onClick={onClose} title={tr('close-esc')} className="rounded p-1 text-gk-dim hover:bg-gk-hover hover:text-gk-text">
               <X size={16} />
             </button>])}
           </div>
@@ -183,7 +183,7 @@ export default function ActionBuilder({ actions, branches, initialId, onChange, 
               onUpdate={update}
               onUpdateStep={updateStep}
               onMoveStep={moveStep}
-              onDuplicate={() => create({ ...selected, id: uid(), name: tr('{0} (копия)', selected.name), hotkey: null, steps: selected.steps.map((s) => ({ ...s, id: uid() })) })}
+              onDuplicate={() => create({ ...selected, id: uid(), name: tr('copy-2', selected.name), hotkey: null, steps: selected.steps.map((s) => ({ ...s, id: uid() })) })}
               onDelete={() => {
                 onChange(actions.filter((a) => a.id !== selected.id));
                 setSelectedId(actions.find((a) => a.id !== selected.id)?.id ?? null);
@@ -204,9 +204,9 @@ function EmptyState({ onCreate, onTemplate }: { onCreate: () => void; onTemplate
         <WandSparkles size={28} className="text-gk-green" />
       </div>
       <div>
-        <div className="text-[15px] font-semibold text-gk-strong">{tr('Свои кнопки для частых дел')}</div>
+        <div className="text-[15px] font-semibold text-gk-strong">{tr('your-own-buttons-for-frequent')}</div>
         <p className="mt-1 max-w-md text-[13px] leading-relaxed text-gk-muted">
-          {tr('Соберите цепочку шагов — например, «создать ветку от main, rebase, push, merge request» — и запускайте её одной кнопкой на панели или сочетанием клавиш.')}</p>
+          {tr('build-chain-of-steps-for')}</p>
       </div>
       <div className="grid w-full max-w-xl grid-cols-2 gap-2">
         {TEMPLATES.slice(0, 4).map((t) => (
@@ -217,7 +217,7 @@ function EmptyState({ onCreate, onTemplate }: { onCreate: () => void; onTemplate
         ))}
       </div>
       <button onClick={onCreate} className="flex items-center gap-1.5 rounded-md bg-gk-green px-3 py-1.5 text-[13px] font-semibold text-gk-ink hover:brightness-110">
-        {tj('{0} Пустое действие', [<Plus size={14} />])}</button>
+        {tj('empty-action', [<Plus size={14} />])}</button>
     </div>
   );
 }
@@ -252,7 +252,7 @@ function Editor({ action: a, actions, branches, palette, setPalette, onUpdate, o
           <div className="relative">
             <button
               onClick={() => setIconsOpen((v) => !v)}
-              title={tr('Иконка')}
+              title={tr('icon')}
               className="flex h-9 w-9 items-center justify-center rounded-lg bg-gk-blue/15 text-gk-blue ring-1 ring-gk-blue/30 hover:bg-gk-blue/25"
             >
               <Icon size={17} />
@@ -277,7 +277,7 @@ function Editor({ action: a, actions, branches, palette, setPalette, onUpdate, o
           <input
             value={a.name}
             onChange={(e) => onUpdate({ name: e.target.value })}
-            placeholder={tr('Название действия')}
+            placeholder={tr('action-name')}
             className="min-w-0 flex-1 rounded-md bg-transparent px-2 py-1.5 text-[16px] font-semibold text-gk-strong outline-none ring-1 ring-transparent placeholder:text-gk-dim hover:ring-gk-border focus:ring-gk-blue"
           />
         </div>
@@ -287,15 +287,15 @@ function Editor({ action: a, actions, branches, palette, setPalette, onUpdate, o
           <HotkeyField action={a} actions={actions} onChange={(hotkey) => onUpdate({ hotkey })} />
           <div className="space-y-2 pt-0.5">
             <Check2 checked={a.toolbar as boolean} onChange={(v) => onUpdate({ toolbar: v })}>
-              {tr('Кнопка на панели сверху')}</Check2>
+              {tr('button-on-top-toolbar')}</Check2>
             <Check2 checked={Boolean(a.confirm)} onChange={(v) => onUpdate({ confirm: v })}>
-              {tr('Спрашивать подтверждение перед запуском')}</Check2>
+              {tr('ask-for-confirmation-before-running')}</Check2>
           </div>
         </div>
 
         {/* Шаги */}
         <div className="mt-5 flex items-center gap-2">
-          {tj('{0}<1>выполняются по порядку; ошибка останавливает цепочку</1>', [<h3 className="text-[11px] font-semibold uppercase tracking-wider text-gk-muted">{tr('Шаги')}</h3>, <span className="text-[11px] text-gk-dim" />])}
+          {tj('run-in-order-error-stops', [<h3 className="text-[11px] font-semibold uppercase tracking-wider text-gk-muted">{tr('steps')}</h3>, <span className="text-[11px] text-gk-dim" />])}
         </div>
         <div className="relative mt-2">
           {a.steps.length > 1 && <span className="absolute bottom-6 left-[15px] top-6 w-px bg-gk-border" />}
@@ -335,19 +335,19 @@ function Editor({ action: a, actions, branches, palette, setPalette, onUpdate, o
               onClick={() => setPalette(true)}
               className="relative ml-0 mt-1 flex items-center gap-2 rounded-lg border border-dashed border-gk-border px-3 py-2 text-[12.5px] text-gk-muted hover:border-gk-green/50 hover:text-gk-green"
             >
-              {tj('{0} Добавить шаг', [<Plus size={14} />])}</button>
+              {tj('add-step', [<Plus size={14} />])}</button>
           )}
         </div>
 
         {/* Переменные */}
         <div className="mt-5 rounded-lg border border-gk-border bg-gk-fg/[0.015] p-3">
-          <div className="mb-1.5 text-[11px] font-semibold uppercase tracking-wider text-gk-muted">{tr('Переменные в полях')}</div>
+          <div className="mb-1.5 text-[11px] font-semibold uppercase tracking-wider text-gk-muted">{tr('variables-in-fields')}</div>
           <div className="grid grid-cols-2 gap-x-4 gap-y-1">
             {VARIABLES.map(([v, d]) => (
               <button
                 key={v}
                 onClick={() => navigator.clipboard?.writeText(v)}
-                title={tr('Скопировать')}
+                title={tr('copy-3')}
                 className="flex items-baseline gap-2 rounded px-1 text-left text-[12px] hover:bg-gk-fg/5"
               >
                 <code className="shrink-0 font-mono text-gk-blue">{v}</code>
@@ -357,7 +357,7 @@ function Editor({ action: a, actions, branches, palette, setPalette, onUpdate, o
           </div>
           {inputs.length > 0 && (
             <div className="mt-2 text-[11.5px] text-gk-muted">
-              {tj('При запуске спросит: {0}', [inputs.map((x) => `«${x.label}»`).join(', ')])}
+              {tj('will-ask-at-run-time', [inputs.map((x) => `«${x.label}»`).join(', ')])}
             </div>
           )}
         </div>
@@ -374,10 +374,10 @@ function Editor({ action: a, actions, branches, palette, setPalette, onUpdate, o
           }}
           className={`flex items-center gap-1.5 rounded px-2.5 py-1.5 text-[12px] transition-colors ${armDelete ? 'bg-gk-red text-white' : 'text-gk-red hover:bg-gk-red/10'}`}
         >
-          <Trash2 size={13} /> {armDelete ? tr('Точно удалить?') : tr('Удалить')}
+          <Trash2 size={13} /> {armDelete ? tr('delete-for-sure') : tr('delete-2')}
         </button>
         <button onClick={onDuplicate} className="flex items-center gap-1.5 rounded px-2.5 py-1.5 text-[12px] text-gk-muted hover:bg-gk-hover hover:text-gk-text">
-          {tj('{0} Копия', [<Copy size={13} />])}</button>
+          {tj('copy-4', [<Copy size={13} />])}</button>
         <div className="min-w-0 flex-1 truncate text-right text-[12px] text-gk-yellow" title={problems.join('\n')}>
           {problems[0] ?? ''}
           {problems.length > 1 ? ` (+${problems.length - 1})` : ''}
@@ -387,7 +387,7 @@ function Editor({ action: a, actions, branches, palette, setPalette, onUpdate, o
           onClick={onRun}
           className="flex items-center gap-1.5 rounded-md bg-gk-green px-3 py-1.5 text-[12.5px] font-semibold text-gk-ink hover:brightness-110 disabled:opacity-40"
         >
-          {tj('{0} Запустить', [<Play size={13} />])}</button>
+          {tj('run-2', [<Play size={13} />])}</button>
       </div>
     </>
   );
@@ -429,7 +429,7 @@ function StepCard({ step, index, count, branches, dragging, onDragStart, onDragE
         draggable
         onDragStart={onDragStart}
         onDragEnd={onDragEnd}
-        title={tr('Перетащите, чтобы изменить порядок')}
+        title={tr('drag-to-reorder')}
         className="relative z-10 flex h-8 w-8 shrink-0 cursor-grab items-center justify-center rounded-full bg-gk-panel-2 text-[12px] font-semibold text-gk-muted ring-1 ring-gk-border"
       >
         {index + 1}
@@ -440,13 +440,13 @@ function StepCard({ step, index, count, branches, dragging, onDragStart, onDragE
           <span className="text-[13px] font-medium text-gk-text">{t.label}</span>
           <span className="min-w-0 flex-1 truncate text-[11.5px] text-gk-dim">{t.hint}</span>
           <div className="flex shrink-0 items-center opacity-0 transition-opacity group-hover:opacity-100">
-            <SmallBtn title={tr('Выше')} disabled={index === 0} onClick={() => onMove(-1)}>
+            <SmallBtn title={tr('up')} disabled={index === 0} onClick={() => onMove(-1)}>
               <ArrowUp size={12} />
             </SmallBtn>
-            <SmallBtn title={tr('Ниже')} disabled={index === count - 1} onClick={() => onMove(1)}>
+            <SmallBtn title={tr('down')} disabled={index === count - 1} onClick={() => onMove(1)}>
               <ArrowDown size={12} />
             </SmallBtn>
-            <SmallBtn title={tr('Убрать шаг')} danger onClick={onRemove}>
+            <SmallBtn title={tr('remove-step')} danger onClick={onRemove}>
               <X size={12} />
             </SmallBtn>
           </div>
@@ -494,7 +494,7 @@ function StepCard({ step, index, count, branches, dragging, onDragStart, onDragE
         </datalist>
         {step.type === 'git' && (
           <div className="mt-1.5 flex items-center gap-1 text-[11px] text-gk-dim">
-            {tj('{0} Выполняется как есть — Undo для своих команд не работает', [<AlertTriangle size={11} className="text-gk-yellow" />])}</div>
+            {tj('runs-as-is-undo-doesnt', [<AlertTriangle size={11} className="text-gk-yellow" />])}</div>
         )}
       </div>
     </div>
@@ -505,7 +505,7 @@ function StepPalette({ onPick, onClose }: { onPick: (type: StepTypeId) => void; 
   return (
     <div className="relative mt-1 animate-pop-in rounded-lg border border-gk-blue/40 bg-gk-panel-2 p-3 shadow-xl">
       <div className="mb-2 flex items-center">
-        {tj('<0>Какой шаг добавить?</0>{1}', [<span className="flex-1 text-[12px] font-medium text-gk-text" />, <SmallBtn title={tr('Закрыть (Esc)')} onClick={onClose}>
+        {tj('which-step-to-add', [<span className="flex-1 text-[12px] font-medium text-gk-text" />, <SmallBtn title={tr('close-esc')} onClick={onClose}>
           <X size={13} />
         </SmallBtn>])}
       </div>
@@ -544,7 +544,7 @@ function HotkeyField({ action, actions, onChange }: { action: CustomAction; acti
   return (
     <div>
       <div className="mb-1 flex items-center gap-1.5 text-[11px] text-gk-muted">
-        {tj('{0} Горячая клавиша', [<Keyboard size={12} />])}</div>
+        {tj('keyboard-shortcut', [<Keyboard size={12} />])}</div>
       <div className="flex items-center gap-1.5">
         <button
           ref={ref}
@@ -587,10 +587,10 @@ function HotkeyField({ action, actions, onChange }: { action: CustomAction; acti
             recording ? 'bg-gk-blue/10 text-gk-blue ring-gk-blue' : 'bg-gk-bg text-gk-text ring-gk-border hover:ring-gk-muted'
           }`}
         >
-          {recording ? pending ?? tr('Нажмите сочетание… (Esc — отмена, Backspace — убрать)') : action.hotkey ?? <span className="font-sans text-gk-dim">{tr('Нет — нажмите, чтобы назначить')}</span>}
+          {recording ? pending ?? tr('press-shortcut-esc-cancel-backspace') : action.hotkey ?? <span className="font-sans text-gk-dim">{tr('none-click-to-assign')}</span>}
         </button>
         {action.hotkey && !recording && (
-          <SmallBtn title={tr('Убрать сочетание')} onClick={() => onChange(null)}>
+          <SmallBtn title={tr('remove-shortcut')} onClick={() => onChange(null)}>
             <X size={13} />
           </SmallBtn>
         )}

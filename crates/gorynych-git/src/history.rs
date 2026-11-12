@@ -83,7 +83,7 @@ fn check_rev(rev: Option<&Value>) -> Result<Option<String>> {
     match rev {
         None | Some(Value::Null) => Ok(None),
         Some(Value::String(text)) if text == "HEAD" || is_hash(text) => Ok(Some(text.clone())),
-        Some(_) => Err(GorynychError::new(ErrorCode::BadArgs, t("Некорректный коммит", &[]))),
+        Some(_) => Err(GorynychError::new(ErrorCode::BadArgs, t("invalid-commit", &[]))),
     }
 }
 
@@ -140,7 +140,7 @@ pub struct FileHistoryRequest {
 }
 
 fn file_arg(path: Option<&Value>) -> Result<&str> {
-    path.and_then(Value::as_str).filter(|file| !file.is_empty()).ok_or_else(|| GorynychError::new(ErrorCode::BadArgs, t("Не указан файл", &[])))
+    path.and_then(Value::as_str).filter(|file| !file.is_empty()).ok_or_else(|| GorynychError::new(ErrorCode::BadArgs, t("no-file-specified", &[])))
 }
 
 fn error_text(error: &GorynychError) -> &str {
@@ -339,10 +339,10 @@ pub async fn blame(dir: &Path, request: &BlameRequest) -> Result<Blame> {
         Ok(out) => out,
         Err(error) if NO_FILE.is_match(error_text(&error)) => {
             let message = match &rev {
-                Some(rev) => t("Файла {0} нет в версии {1}", &[&file, &rev.chars().take(7).collect::<String>()]),
-                None => t("Файла {0} нет", &[&file]),
+                Some(rev) => t("file-isnt-in-version", &[&file, &rev.chars().take(7).collect::<String>()]),
+                None => t("file-doesnt-exist", &[&file]),
             };
-            return Err(GorynychError::new(ErrorCode::NotFound, message).with_hint(t("Возможно, файл был создан позже или переименован", &[])));
+            return Err(GorynychError::new(ErrorCode::NotFound, message).with_hint(t("file-may-have-been-created", &[])));
         }
         Err(error) => return Err(error),
     };
@@ -437,7 +437,7 @@ pub struct CommitInfoRequest {
 /// `commitInfo`.
 pub async fn commit_info(dir: &Path, request: &CommitInfoRequest) -> Result<CommitInfo> {
     let root = resolve_repo_root(dir).await?;
-    let hash = request.hash.as_deref().filter(|hash| is_hash(hash)).ok_or_else(|| GorynychError::new(ErrorCode::BadArgs, t("Некорректный коммит", &[])))?;
+    let hash = request.hash.as_deref().filter(|hash| is_hash(hash)).ok_or_else(|| GorynychError::new(ErrorCode::BadArgs, t("invalid-commit", &[])))?;
     let format = format!("--format=%H{FS}%P{FS}%an{FS}%ae{FS}%aI{FS}%cn{FS}%s{FS}%b{RS}");
     let out = git(&root, &["show", "--numstat", "-M", "--no-color", &format, hash]).await?;
     let (meta, stat) = out.split_once(RS).unwrap_or((&out, ""));

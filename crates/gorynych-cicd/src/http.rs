@@ -231,11 +231,11 @@ async fn send(ctx: &HttpCtx, method: reqwest::Method, api_path: &str, opts: &Opt
     let body = opts.body.as_ref().map(Value::to_string);
 
     let network = |message: String, details: String| {
-        GorynychError::new(ErrorCode::Network, message).with_hint(t("Проверьте интернет, VPN и адрес API {0}", &[&ctx.label])).with_details(details)
+        GorynychError::new(ErrorCode::Network, message).with_hint(t("check-internet-vpn-and-api", &[&ctx.label])).with_details(details)
     };
     let response = match tokio::time::timeout(timeout, send_following(&ctx.client, method, url, auth, &headers, body)).await {
-        Err(_) => return Err(network(t("{0} не ответил за {1} с", &[&ctx.label, &timeout.as_secs()]), "This operation was aborted".to_owned())),
-        Ok(Err(error)) => return Err(network(t("Нет связи с {0}", &[&host]), error.to_string())),
+        Err(_) => return Err(network(t("didnt-respond-within-s", &[&ctx.label, &timeout.as_secs()]), "This operation was aborted".to_owned())),
+        Ok(Err(error)) => return Err(network(t("no-connection-to", &[&host]), error.to_string())),
         Ok(Ok(response)) => response,
     };
     if response.status().is_success() {
@@ -246,25 +246,25 @@ async fn send(ctx: &HttpCtx, method: reqwest::Method, api_path: &str, opts: &Opt
     let limited = response.headers().get("x-ratelimit-remaining").is_some_and(|value| value == "0");
     let message = error_message(&response.text().await.unwrap_or_default());
     Err(match status {
-        401 => GorynychError::new(ErrorCode::Auth, t("{0} не принял авторизацию репозитория", &[&ctx.label]))
-            .with_hint(t("Токен неверный, отозван или истёк — обновите авторизацию репозитория", &[]))
+        401 => GorynychError::new(ErrorCode::Auth, t("didnt-accept-repository-sign-in", &[&ctx.label]))
+            .with_hint(t("token-is-wrong-revoked-or-expired", &[]))
             .with_details(message),
-        403 if limited => GorynychError::new(ErrorCode::RateLimit, t("{0} ограничил частоту запросов — попробуйте позже", &[&ctx.label])).with_details(message),
-        403 => GorynychError::new(ErrorCode::Forbidden, t("Недостаточно прав", &[]))
-            .with_hint(ctx.scope_hint.clone().unwrap_or_else(|| t("У токена нет нужного права или ваша роль в репозитории не позволяет это действие", &[])))
+        403 if limited => GorynychError::new(ErrorCode::RateLimit, t("rate-limited-requests-try-again", &[&ctx.label])).with_details(message),
+        403 => GorynychError::new(ErrorCode::Forbidden, t("insufficient-permissions", &[]))
+            .with_hint(ctx.scope_hint.clone().unwrap_or_else(|| t("token-lacks-required-permission-or", &[])))
             .with_details(message),
         404 => match &opts.not_found {
             Some(text) => GorynychError::new(ErrorCode::NotFound, text.clone()).with_details(message),
-            None => GorynychError::new(ErrorCode::NotFound, t("Не найдено в {0}", &[&ctx.label]))
-                .with_hint(t("Репозиторий не существует, у токена нет к нему доступа или {0} не поддерживает этот запрос", &[&ctx.label]))
+            None => GorynychError::new(ErrorCode::NotFound, t("not-found-on", &[&ctx.label]))
+                .with_hint(t("repository-doesnt-exist-token-has", &[&ctx.label]))
                 .with_details(message),
         },
         400 | 409 | 422 => {
-            let text = if message.is_empty() { t("{0} отклонил запрос", &[&ctx.label]) } else { format!("{}: {message}", ctx.label) };
+            let text = if message.is_empty() { t("rejected-request", &[&ctx.label]) } else { format!("{}: {message}", ctx.label) };
             GorynychError::new(ErrorCode::Validation, text).with_details(message)
         }
-        429 => GorynychError::new(ErrorCode::RateLimit, t("{0} ограничил частоту запросов — попробуйте через минуту", &[&ctx.label])),
-        _ => GorynychError::new(ErrorCode::ApiError, t("{0} вернул ошибку {1}", &[&ctx.label, &status])).with_details(message),
+        429 => GorynychError::new(ErrorCode::RateLimit, t("rate-limited-requests-try-again-in", &[&ctx.label])),
+        _ => GorynychError::new(ErrorCode::ApiError, t("returned-error", &[&ctx.label, &status])).with_details(message),
     })
 }
 

@@ -113,7 +113,7 @@ pub(crate) fn runs_of(data: &Value) -> Result<Vec<PipelineRun>> {
 
 /// `init`: права в репозитории.
 pub(crate) async fn init_repo(ctx: &mut Ctx) -> Result<()> {
-    let opts = Opts::not_found(t("Репозиторий {0}/{1} не найден или у токена нет к нему доступа", &[&ctx.owner, &ctx.repo]));
+    let opts = Opts::not_found(t("repository-not-found-or-token", &[&ctx.owner, &ctx.repo]));
     let r = request(&ctx.http, Method::GET, &ctx.repo_api(), opts).await?;
     let perms = field(&r, "permissions").filter(|item| crate::json::truthy(item));
     ctx.can_write = Some(perms.is_none_or(|perms| flag(perms, "push") || flag(perms, "admin")));
@@ -241,10 +241,10 @@ impl CiCdProvider for GithubProvider {
         let write = input.can_write != Some(false);
         let admin = input.is_admin != Some(false);
         let mut why: BTreeMap<String, String> = reasons("GitHub", &["canPauseRunner", "canEditRunnerSettings", "canRunWithVariables", "canCancelJob", "canPlayManualJob"]);
-        why.insert("canRunWithVariables".into(), t("GitHub запускает workflow только с входными параметрами (inputs) — переменные окружения задаются в самом workflow", &[]));
-        why.insert("canPauseRunner".into(), t("У GitHub нет паузы раннера — остановите службу раннера на сервере", &[]));
+        why.insert("canRunWithVariables".into(), t("github-runs-workflow-only-with", &[]));
+        why.insert("canPauseRunner".into(), t("github-has-no-runner-pause", &[]));
         if !admin {
-            why.insert("canListRunners".into(), t("Раннеры и секреты видны только администраторам репозитория", &[]));
+            why.insert("canListRunners".into(), t("runners-and-secrets-are-visible", &[]));
         }
         Capabilities {
             can_list_pipelines: true,
@@ -287,7 +287,7 @@ impl CiCdProvider for GithubProvider {
         let run_id = id.number_text();
         let api = ctx.repo_api();
         let (r, jobs, arts) = tokio::join!(
-            request(&ctx.http, Method::GET, format!("{api}/actions/runs/{run_id}"), Opts::not_found(t("Запуск #{0} не найден — возможно, его удалили", &[&run_id]))),
+            request(&ctx.http, Method::GET, format!("{api}/actions/runs/{run_id}"), Opts::not_found(t("run-not-found-it-may", &[&run_id]))),
             request(&ctx.http, Method::GET, format!("{api}/actions/runs/{run_id}/jobs"), Opts::query(&[("per_page", Some("100".into())), ("filter", Some("latest".into()))])),
             request(&ctx.http, Method::GET, format!("{api}/actions/runs/{run_id}/artifacts"), Opts::query(&[("per_page", Some("100".into()))])),
         );
@@ -300,7 +300,7 @@ impl CiCdProvider for GithubProvider {
         let n = id.number_text();
         let api = ctx.repo_api();
         let (j, log) = tokio::join!(
-            request(&ctx.http, Method::GET, format!("{api}/actions/jobs/{n}"), Opts::not_found(t("Задание #{0} не найдено", &[&n]))),
+            request(&ctx.http, Method::GET, format!("{api}/actions/jobs/{n}"), Opts::not_found(t("job-not-found", &[&n]))),
             request_text(&ctx.http, Method::GET, format!("{api}/actions/jobs/{n}/logs"), Opts::default()),
         );
         let j = j?;
@@ -319,7 +319,7 @@ impl CiCdProvider for GithubProvider {
             "pipeline.retry" => format!("{base}/actions/runs/{id}/rerun"),
             "pipeline.retry-failed" => format!("{base}/actions/runs/{id}/rerun-failed-jobs"),
             "job.retry" => format!("{base}/actions/jobs/{id}/rerun"),
-            _ => return Err(GorynychError::new(ErrorCode::Unsupported, t("GitHub не поддерживает это действие", &[]))),
+            _ => return Err(GorynychError::new(ErrorCode::Unsupported, t("github-doesnt-support-this-action", &[]))),
         };
         request(&ctx.http, Method::POST, &path, Opts::body(json!({}))).await?;
         Ok(ActionResult { kind: a.kind.clone().unwrap_or_default(), id: a.id.clone(), status: None, web_url: None })
@@ -327,13 +327,13 @@ impl CiCdProvider for GithubProvider {
 
     async fn run_pipeline(&self, ctx: &Ctx, input: &RunInput) -> Result<RunResult> {
         let Some(workflow) = input.workflow.as_deref().filter(|workflow| !workflow.is_empty()) else {
-            return Err(GorynychError::new(ErrorCode::BadArgs, t("Выберите workflow для запуска", &[])));
+            return Err(GorynychError::new(ErrorCode::BadArgs, t("choose-workflow-to-run", &[])));
         };
         let file = base_name(workflow);
         let encoded = js::encode_uri_component(file);
         let api = ctx.repo_api();
         let body = json!({ "ref": input.reference, "inputs": inputs_as_text(input) });
-        let opts = Opts::body(body).with_not_found(t("Workflow {0} не найден на сервере — он закоммичен и отправлен в ветку по умолчанию?", &[&file]));
+        let opts = Opts::body(body).with_not_found(t("workflow-not-found-on-server", &[&file]));
         request(&ctx.http, Method::POST, format!("{api}/actions/workflows/{encoded}/dispatches"), opts).await?;
         // GitHub не возвращает номер запуска: ищем свежий запуск этого workflow
         for attempt in 0..4 {
@@ -386,13 +386,13 @@ impl CiCdProvider for GithubProvider {
         .map(|(name, _)| *name)
         .collect();
         if !unsupported.is_empty() {
-            return Err(GorynychError::new(ErrorCode::Unsupported, t("GitHub не позволяет менять эти настройки раннера", &[])).with_hint(unsupported.join(", ")));
+            return Err(GorynychError::new(ErrorCode::Unsupported, t("github-doesnt-allow-changing-these", &[])).with_hint(unsupported.join(", ")));
         }
         Ok(RunnerResult { id: Some(id.clone()) })
     }
 
     async fn delete_runner(&self, ctx: &Ctx, id: &CiId) -> Result<RunnerResult> {
-        request(&ctx.http, Method::DELETE, format!("{}/actions/runners/{id}", ctx.repo_api()), Opts::not_found(t("Раннер уже удалён", &[]))).await?;
+        request(&ctx.http, Method::DELETE, format!("{}/actions/runners/{id}", ctx.repo_api()), Opts::not_found(t("runner-is-already-deleted", &[]))).await?;
         Ok(RunnerResult { id: Some(id.clone()) })
     }
 

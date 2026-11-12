@@ -30,7 +30,7 @@ pub(crate) async fn current_state(cwd: &Path) -> Result<State> {
 
 pub(crate) fn require_no_operation(state: &State, action: &str) -> Result<()> {
     if let Some(operation) = state.operation {
-        return Err(GorynychError::new(ErrorCode::OperationInProgress, t("Нельзя сделать {0}: не завершён {1}", &[&action, &operation])).with_hint(t("Разрешите конфликты и нажмите «Продолжить» в жёлтой панели сверху, либо «Прервать».", &[])));
+        return Err(GorynychError::new(ErrorCode::OperationInProgress, t("cant-is-not-finished", &[&action, &operation])).with_hint(t("resolve-conflicts-and-click-continue", &[])));
     }
     Ok(())
 }
@@ -48,10 +48,10 @@ pub(crate) fn pick_remote(state: &State) -> Option<String> {
 pub(crate) fn require_branch(state: &State, action: &str) -> Result<()> {
     require_no_operation(state, action)?;
     if state.head_hash.is_none() {
-        return Err(GorynychError::new(ErrorCode::NoCommits, t("Нельзя сделать {0}: в репозитории ещё нет коммитов", &[&action])));
+        return Err(GorynychError::new(ErrorCode::NoCommits, t("cant-repository-has-no-commits", &[&action])));
     }
     if state.branch_name.is_none() {
-        return Err(GorynychError::new(ErrorCode::Detached, t("Нельзя сделать {0} из состояния detached HEAD", &[&action])).with_hint(t("Переключитесь на ветку (двойной клик по ветке в списке слева) или создайте новую.", &[])));
+        return Err(GorynychError::new(ErrorCode::Detached, t("cant-from-detached-head", &[&action])).with_hint(t("switch-to-branch-double-click", &[])));
     }
     Ok(())
 }
@@ -59,13 +59,13 @@ pub(crate) fn require_branch(state: &State, action: &str) -> Result<()> {
 pub(crate) fn require_head(state: &State, action: &str) -> Result<()> {
     require_no_operation(state, action)?;
     if state.head_hash.is_none() {
-        return Err(GorynychError::new(ErrorCode::NoCommits, t("Нельзя сделать {0}: нет коммитов", &[&action])));
+        return Err(GorynychError::new(ErrorCode::NoCommits, t("cant-no-commits", &[&action])));
     }
     Ok(())
 }
 
 pub(crate) fn require_hash(hash: Option<&str>) -> Result<&str> {
-    hash.filter(|hash| is_hash(hash)).ok_or_else(|| GorynychError::new(ErrorCode::BadArgs, t("Некорректный коммит", &[])))
+    hash.filter(|hash| is_hash(hash)).ok_or_else(|| GorynychError::new(ErrorCode::BadArgs, t("invalid-commit", &[])))
 }
 
 /// Где находится HEAD: ветка или отдельный коммит.

@@ -153,7 +153,7 @@ pub(crate) async fn checkout(cwd: &Path, target: &Target) -> Result<Checkout> {
     // Remote-ветка: переключаемся на локальную с тем же именем или создаём отслеживающую
     let remote = target.remote_branch.as_ref();
     let (Some(local), Some(full_name)) = (remote.and_then(|item| filled(item.name.as_deref())), remote.and_then(|item| filled(item.full_name.as_deref()))) else {
-        return Err(GorynychError::new(ErrorCode::BadArgs, t("Не указана ветка", &[])));
+        return Err(GorynychError::new(ErrorCode::BadArgs, t("no-branch-specified", &[])));
     };
     if local_exists(cwd, local).await {
         if previous.branch.as_deref() != Some(local) {
@@ -247,7 +247,7 @@ async fn pop_stash(cwd: &Path, id: &str) -> Result<()> {
 }
 
 fn conflicted_error() -> GorynychError {
-    GorynychError::new(ErrorCode::Conflict, t("В рабочей папке есть неразрешённые конфликты", &[])).with_hint(t("Сначала решите их, затем переключайтесь.", &[]))
+    GorynychError::new(ErrorCode::Conflict, t("there-are-unresolved-conflicts-in", &[])).with_hint(t("resolve-them-first-then-switch", &[]))
 }
 
 fn has_conflict(files: &[WipEntry]) -> bool {
@@ -298,7 +298,7 @@ pub(crate) async fn smart_checkout(cwd: &Path, target: &Target) -> Result<Checko
         result.restored = Some(match pop_stash(cwd, &found.id).await {
             Ok(()) => RestoredStash { branch: found.branch.clone(), hash: found.hash.clone(), conflict: false, more, message: None },
             Err(error) => {
-                let message = if error.code == ErrorCode::Conflict { t("Изменения вернулись с конфликтами — stash сохранён", &[]) } else { error.message };
+                let message = if error.code == ErrorCode::Conflict { t("changes-came-back-with-conflicts", &[]) } else { error.message };
                 RestoredStash { branch: found.branch.clone(), hash: found.hash.clone(), conflict: true, more, message: Some(message) }
             }
         });
@@ -315,7 +315,7 @@ async fn target_commit(cwd: &Path, target: &Target) -> Result<String> {
     } else if let Some(full) = full_name {
         format!("refs/remotes/{full}")
     } else {
-        return Err(GorynychError::new(ErrorCode::BadArgs, t("Не указана ветка", &[])));
+        return Err(GorynychError::new(ErrorCode::BadArgs, t("no-branch-specified", &[])));
     };
     // Remote-ветка, у которой уже есть локальная: переключимся на локальную
     if let Some(remote) = &target.remote_branch {
@@ -326,7 +326,7 @@ async fn target_commit(cwd: &Path, target: &Target) -> Result<String> {
     }
     commit_of(cwd, &reference).await.ok_or_else(|| {
         let name = target.branch.as_deref().or(full_name).unwrap_or_default();
-        GorynychError::new(ErrorCode::NotFound, t("Ветка «{0}» не найдена", &[&name])).with_hint(t("Возможно, её удалили — обновите список (Fetch)", &[]))
+        GorynychError::new(ErrorCode::NotFound, t("branch-not-found", &[&name])).with_hint(t("it-may-have-been-deleted", &[]))
     })
 }
 
@@ -469,7 +469,7 @@ pub(crate) async fn checkout_with_strategy(cwd: &Path, request: &CheckoutRequest
         Some("stash") => return Ok((CheckoutKind::Smart, smart_checkout(cwd, &target).await?)),
         Some("merge") => return Ok((CheckoutKind::Move, move_checkout(cwd, &target).await?)),
         Some("force") => return Ok((CheckoutKind::Discard, discard_checkout(cwd, &target).await?)),
-        Some(other) if !other.is_empty() && other != "none" => return Err(GorynychError::new(ErrorCode::BadArgs, t("Неизвестная стратегия: {0}", &[&other]))),
+        Some(other) if !other.is_empty() && other != "none" => return Err(GorynychError::new(ErrorCode::BadArgs, t("unknown-strategy", &[&other]))),
         _ => {}
     }
     let wip = inspect_wip(cwd, &target).await?;
@@ -480,8 +480,8 @@ pub(crate) async fn checkout_with_strategy(cwd: &Path, request: &CheckoutRequest
         }
         return Ok((CheckoutKind::Plain, checkout(cwd, &target).await?));
     };
-    Err(GorynychError::new(ErrorCode::WipConflict, t("В рабочей папке есть незакоммиченные изменения ({0})", &[&wip.files]))
-        .with_hint(t("Выберите, что с ними сделать: спрятать, перенести в новую ветку или выбросить.", &[]))
+    Err(GorynychError::new(ErrorCode::WipConflict, t("there-are-uncommitted-changes-in", &[&wip.files]))
+        .with_hint(t("choose-what-to-do-with", &[]))
         .with_data(ErrorData::WipConflict(wip)))
 }
 

@@ -176,7 +176,7 @@ fn not_found() -> GorynychError {
     state.binary = None; // при следующем вызове поищем снова: вдруг Git уже установили
     let list: Vec<String> = state.searched.iter().map(|dir| dir.display().to_string()).collect();
     let shown = if list.is_empty() { "(PATH)".to_owned() } else { list.join("\n") };
-    from_process_error(ProcessFailure::NotFound, "", "", i18n::language()).with_details(t("Искали git.exe в:\n{0}", &[&shown]))
+    from_process_error(ProcessFailure::NotFound, "", "", i18n::language()).with_details(t("looked-for-git-exe-in", &[&shown]))
 }
 
 fn finish(output: Output, binary: &Path, args: &[std::ffi::OsString]) -> Result<Vec<u8>> {

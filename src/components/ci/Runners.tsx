@@ -78,10 +78,10 @@ interface RunnersProps {
 }
 
 export const RUNNER_STATUS: Record<string, { label: string; ru: string; dot: string; text: string }> = {
-  online: { label: 'Online', ru: t('свободен'), dot: 'bg-gk-green shadow-[0_0_8px] shadow-gk-green/60', text: 'text-gk-green' },
-  busy: { label: 'Busy', ru: t('занят'), dot: 'bg-gk-blue shadow-[0_0_8px] shadow-gk-blue/60 animate-pulse', text: 'text-gk-blue' },
-  offline: { label: 'Offline', ru: t('не в сети'), dot: 'bg-gk-red', text: 'text-gk-red' },
-  paused: { label: 'Paused', ru: t('на паузе'), dot: 'bg-gk-yellow', text: 'text-gk-yellow' },
+  online: { label: 'Online', ru: t('idle'), dot: 'bg-gk-green shadow-[0_0_8px] shadow-gk-green/60', text: 'text-gk-green' },
+  busy: { label: 'Busy', ru: t('busy'), dot: 'bg-gk-blue shadow-[0_0_8px] shadow-gk-blue/60 animate-pulse', text: 'text-gk-blue' },
+  offline: { label: 'Offline', ru: t('offline'), dot: 'bg-gk-red', text: 'text-gk-red' },
+  paused: { label: 'Paused', ru: t('paused'), dot: 'bg-gk-yellow', text: 'text-gk-yellow' },
 };
 
 /** Значок Windows — четыре окна (в наборе иконок брендов нет) */
@@ -149,13 +149,13 @@ export default function Runners({ repoPath, opts, caps, provider, providerLabel,
     const { removed, failed } = res.data;
     notify?.({
       type: failed.length ? 'info' : 'success',
-      title: t('Удалено неактивных раннеров: {0}', removed.length),
-      hint: failed.length ? t('Не удалось: {0}', failed.map((f) => `${f.name} (${f.error})`).join(', ')) : removed.map((r) => r.name).join(', '),
+      title: t('inactive-runners-deleted', removed.length),
+      hint: failed.length ? t('failed-2', failed.map((f) => `${f.name} (${f.error})`).join(', ')) : removed.map((r) => r.name).join(', '),
     });
     load();
   };
 
-  if (state.loading && !state.data) return <Loading text={t('Загружаем раннеры…')} />;
+  if (state.loading && !state.data) return <Loading text={t('loading-runners')} />;
   if (state.error && !state.data) {
     return (
       <div className="min-h-0 flex-1 overflow-y-auto">
@@ -169,44 +169,44 @@ export default function Runners({ repoPath, opts, caps, provider, providerLabel,
       <div className="flex shrink-0 flex-wrap items-center gap-2 border-b border-gk-border px-3 py-2">
         <div className="flex overflow-hidden rounded ring-1 ring-gk-border" data-testid="runner-filter">
           <SegButton active={filter === 'own'} onClick={() => setFilter('own')} data-filter="own">
-            {tj('{0} Собственные <1>{2}</1>', [<Server size={11} />, <span className="text-gk-dim" />, counts.own])}
+            {tj('self-hosted', [<Server size={11} />, <span className="text-gk-dim" />, counts.own])}
           </SegButton>
           <SegButton active={filter === 'shared'} onClick={() => setFilter('shared')} data-filter="shared">
-            {tj('{0} Облачные <1>{2}</1>', [<Cloud size={11} />, <span className="text-gk-dim" />, counts.shared])}
+            {tj('cloud', [<Cloud size={11} />, <span className="text-gk-dim" />, counts.shared])}
           </SegButton>
           <SegButton active={filter === 'all'} onClick={() => setFilter('all')} data-filter="all">
-            {t('Все')}</SegButton>
+            {t('all-2')}</SegButton>
         </div>
         <label className="flex min-w-40 flex-1 items-center gap-1.5 rounded-md bg-gk-bg px-2 py-1 ring-1 ring-gk-border focus-within:ring-gk-blue">
           <Search size={12} className="text-gk-dim" />
-          <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder={t('Имя или тег')} className="min-w-0 flex-1 bg-transparent text-[12px] outline-none placeholder:text-gk-dim" />
+          <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder={t('name-or-tag')} className="min-w-0 flex-1 bg-transparent text-[12px] outline-none placeholder:text-gk-dim" />
         </label>
-        <IconBtn title={t('Обновить')} onClick={() => load()}>
+        <IconBtn title={t('refresh')} onClick={() => load()}>
           <RefreshCw size={13} className={state.loading ? 'animate-spin' : ''} />
         </IconBtn>
         <ConfirmAction
           icon={Eraser}
           busy={pruning}
           testid="runners-prune"
-          label={t('Очистить неактивные{0}', dead.length ? ` (${dead.length})` : '')}
-          confirmLabel={t('Удалить {0} офлайн?', dead.length)}
-          why={!live.canDeleteRunner ? live.why?.canDeleteRunner ?? t('Нет прав') : !dead.length ? t('Нет собственных раннеров не в сети') : null}
+          label={t('clean-up-inactive', dead.length ? ` (${dead.length})` : '')}
+          confirmLabel={t('delete-offline', dead.length)}
+          why={!live.canDeleteRunner ? live.why?.canDeleteRunner ?? t('no-permission') : !dead.length ? t('no-offline-self-hosted-runners') : null}
           onConfirm={prune}
         />
-        <ActionButton icon={Plus} tone="green" why={live.canCreateRunnerToken ? null : live.why?.canCreateRunnerToken ?? t('Нет прав')} onClick={() => setWizard(true)} data-testid="runner-add">
-          {t('Подключить раннер')}</ActionButton>
+        <ActionButton icon={Plus} tone="green" why={live.canCreateRunnerToken ? null : live.why?.canCreateRunnerToken ?? t('no-permission')} onClick={() => setWizard(true)} data-testid="runner-add">
+          {t('connect-runner')}</ActionButton>
       </div>
 
       <div className="min-h-0 flex-1 overflow-y-auto p-3">
-        {state.error && <div className="mb-2 text-[11px] text-gk-yellow">{tj('Не удалось обновить: {0}', [state.error.message])}</div>}
+        {state.error && <div className="mb-2 text-[11px] text-gk-yellow">{tj('couldnt-refresh', [state.error.message])}</div>}
         {local?.runners?.length! > 0 && <LocalRunners list={local!.runners} onChanged={loadLocal} notify={notify} />}
         {shown.length === 0 ? (
           <div className="rounded-lg border border-dashed border-gk-border p-6 text-center text-[13px] text-gk-dim" data-testid="runners-empty">
             {runners.length === 0
-              ? t('Нет доступных раннеров — задания будут ждать в очереди. Нажмите «Подключить раннер».')
+              ? t('no-runners-available-jobs-will')
               : filter === 'own'
-                ? t('Собственных раннеров нет — задания берут облачные')
-                : t('Ничего не найдено')}
+                ? t('no-self-hosted-runners-jobs')
+                : t('nothing-found')}
           </div>
         ) : (
           <div className="grid grid-cols-[repeat(auto-fill,minmax(290px,1fr))] gap-2">
@@ -276,7 +276,7 @@ function StatusBadge({ runner, onOpenJob }: { runner: Runner; onOpenJob?: Runner
             }}
             data-testid="runner-job"
             className="max-w-[140px] truncate text-gk-blue hover:underline"
-            data-tip={t('Открыть задание')}
+            data-tip={t('open-job')}
           >
             {runner.currentJob.name ?? `#${runner.currentJob.id}`}
           </button>
@@ -300,14 +300,14 @@ function RunnerCard({ runner: r, index, onOpen, onOpenJob, onInsert }: { runner:
       style={{ animationDelay: `${Math.min(index, 12) * 25}ms` }}
     >
       <div className="flex items-center gap-2">
-        <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-gk-fg/5 text-gk-muted" data-tip={OS_NAMES[r.os!] ?? t('ОС неизвестна')}>
+        <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-gk-fg/5 text-gk-muted" data-tip={OS_NAMES[r.os!] ?? t('unknown-os')}>
           <OsIcon os={r.os} />
         </span>
         <span className="min-w-0 flex-1 truncate text-[13px] font-medium text-gk-text" title={r.description ?? r.name}>
           {r.name}
         </span>
-        {r.virtual && <span className="rounded bg-gk-purple/15 px-1.5 text-[10px] text-gk-purple">{t('облачный')}</span>}
-        {r.isShared && !r.virtual && <span className="rounded bg-gk-fg/5 px-1.5 text-[10px] text-gk-dim">{t('общий')}</span>}
+        {r.virtual && <span className="rounded bg-gk-purple/15 px-1.5 text-[10px] text-gk-purple">{t('cloud-2')}</span>}
+        {r.isShared && !r.virtual && <span className="rounded bg-gk-fg/5 px-1.5 text-[10px] text-gk-dim">{t('shared')}</span>}
         <span className="font-mono text-[10px] text-gk-dim">{r.virtual ? '' : `#${r.id}`}</span>
       </div>
       <div className="mt-1.5">
@@ -322,7 +322,7 @@ function RunnerCard({ runner: r, index, onOpen, onOpenJob, onInsert }: { runner:
         )}
         {r.version && <span>v{r.version}</span>}
         {r.ipAddress && <span className="font-mono">{r.ipAddress}</span>}
-        {r.contactedAt && r.status === 'offline' && <span>{tj('был в сети {0}', [relativeTime(r.contactedAt)])}</span>}
+        {r.contactedAt && r.status === 'offline' && <span>{tj('last-online', [relativeTime(r.contactedAt)])}</span>}
       </div>
       {r.labels.length > 0 && (
         <div className="mt-1.5 flex flex-wrap gap-1" data-testid="runner-labels">
@@ -342,7 +342,7 @@ function RunnerCard({ runner: r, index, onOpen, onOpenJob, onInsert }: { runner:
           data-testid="runner-insert"
           className="mt-2 flex items-center gap-1 text-[11px] text-gk-muted opacity-0 transition-opacity hover:text-gk-blue group-hover:opacity-100"
         >
-          {tj('{0} Вставить в конфиг', [<ClipboardPaste size={11} />])}</button>
+          {tj('insert-into-config', [<ClipboardPaste size={11} />])}</button>
       )}
     </div>
   );
@@ -361,9 +361,9 @@ function RunnerEditor({ runner, caps, provider, suggestions, repoPath, opts, not
   const [error, setError] = useState<ApiError | null>(null);
 
   const readOnly = !runner.editable;
-  const settingsWhy = readOnly ? t('Общий раннер меняет администратор сервера') : caps.canEditRunnerSettings ? null : caps.why?.canEditRunnerSettings ?? t('Недоступно');
-  const labelsWhy = readOnly ? t('Общий раннер меняет администратор сервера') : caps.canEditRunnerLabels ? null : caps.why?.canEditRunnerLabels ?? t('Недоступно');
-  const pauseWhy = readOnly ? t('Общий раннер меняет администратор сервера') : caps.canPauseRunner ? null : caps.why?.canPauseRunner ?? t('Недоступно');
+  const settingsWhy = readOnly ? t('shared-runner-is-changed-by') : caps.canEditRunnerSettings ? null : caps.why?.canEditRunnerSettings ?? t('unavailable-2');
+  const labelsWhy = readOnly ? t('shared-runner-is-changed-by') : caps.canEditRunnerLabels ? null : caps.why?.canEditRunnerLabels ?? t('unavailable-2');
+  const pauseWhy = readOnly ? t('shared-runner-is-changed-by') : caps.canPauseRunner ? null : caps.why?.canPauseRunner ?? t('unavailable-2');
 
   const patch: Record<string, unknown> = {};
   const same = (a: string[], b: string[]) => a.length === b.length && a.every((x, i) => x === b[i]);
@@ -384,7 +384,7 @@ function RunnerEditor({ runner, caps, provider, suggestions, repoPath, opts, not
     const res = await api.cicd.updateRunner(repoPath, { id: runner.id, patch }, opts);
     setBusy(null);
     if (!res.ok) return setError(res.error);
-    notify?.({ type: 'success', title: t('Раннер {0} сохранён', runner.name) });
+    notify?.({ type: 'success', title: t('runner-saved', runner.name) });
     onChanged();
     onClose();
   };
@@ -393,14 +393,14 @@ function RunnerEditor({ runner, caps, provider, suggestions, repoPath, opts, not
     const res = await api.cicd.deleteRunner(repoPath, { id: runner.id }, opts);
     setBusy(null);
     if (!res.ok) return setError(res.error);
-    notify?.({ type: 'success', title: t('Раннер {0} удалён', runner.name) });
+    notify?.({ type: 'success', title: t('runner-deleted', runner.name) });
     onChanged();
     onClose();
   };
 
   return (
     <Modal
-      title={t('Раннер {0}', runner.name)}
+      title={t('runner', runner.name)}
       icon={Server}
       onClose={onClose}
       width={520}
@@ -411,17 +411,17 @@ function RunnerEditor({ runner, caps, provider, suggestions, repoPath, opts, not
               <ConfirmAction
                 icon={Trash2}
                 busy={busy === 'delete'}
-                label={t('Удалить')}
-                confirmLabel={t('Точно удалить раннер?')}
+                label={t('delete-2')}
+                confirmLabel={t('delete-runner-for-sure')}
                 testid="runner-delete"
-                why={readOnly ? t('Общий раннер удаляет администратор сервера') : caps.canDeleteRunner ? null : caps.why?.canDeleteRunner ?? t('Нет прав')}
+                why={readOnly ? t('shared-runner-is-deleted-by') : caps.canDeleteRunner ? null : caps.why?.canDeleteRunner ?? t('no-permission')}
                 onConfirm={remove}
               />
             </div>
           )}
-          <Button onClick={onClose}>{t('Закрыть')}</Button>
+          <Button onClick={onClose}>{t('close')}</Button>
           <Button variant="primary" disabled={(!dirty || busy) as boolean} onClick={save} data-testid="runner-save">
-            {tj('{0} Сохранить', [busy === 'save' ? <Loader2 size={13} className="animate-spin" /> : <Save size={13} />])}</Button>
+            {tj('save-2', [busy === 'save' ? <Loader2 size={13} className="animate-spin" /> : <Save size={13} />])}</Button>
         </>
       }
     >
@@ -432,12 +432,12 @@ function RunnerEditor({ runner, caps, provider, suggestions, repoPath, opts, not
             <OsIcon os={runner.os} size={12} /> {OS_NAMES[runner.os!] ?? '—'} {runner.architecture ?? ''} {runner.version ? `· v${runner.version}` : ''}
           </span>
         </div>
-        {runner.virtual && <p className="text-[12px] text-gk-dim">{t('Облачный раннер провайдера — им управляет сам сервис.')}</p>}
-        {!runner.virtual && readOnly && <p className="text-[12px] text-gk-yellow">{t('Общий раннер сервера: менять его может только администратор.')}</p>}
+        {runner.virtual && <p className="text-[12px] text-gk-dim">{t('providers-cloud-runner-managed-by')}</p>}
+        {!runner.virtual && readOnly && <p className="text-[12px] text-gk-yellow">{t('servers-shared-runner-only-admin')}</p>}
 
         <div>
           <div className="mb-1 flex items-center gap-1.5 text-[12px] text-gk-muted">
-            {tj('Теги / метки {0}', [provider === 'github' && <span className="text-gk-dim">{t('(серые — системные, их задаёт GitHub)')}</span>])}
+            {tj('tags-labels', [provider === 'github' && <span className="text-gk-dim">{t('gray-ones-are-system-labels')}</span>])}
           </div>
           <div data-tip={labelsWhy || undefined}>
             <ChipsInput value={labels} onChange={setLabels} suggestions={[...suggestions, 'docker', 'linux', 'prod', 'gpu']} locked={runner.readOnlyLabels ?? []} disabled={Boolean(labelsWhy)} testid="runner-labels-input" />
@@ -448,15 +448,15 @@ function RunnerEditor({ runner, caps, provider, suggestions, repoPath, opts, not
         <Toggle
           checked={!paused}
           onChange={(v) => setPaused(!v)}
-          label={paused ? t('На паузе') : t('Активен')}
-          hint={t('На паузе раннер не берёт новые задания, а текущие доделывает — можно вывести сервер на обслуживание без обрыва сборок')}
+          label={paused ? t('paused-2') : t('active')}
+          hint={t('paused-runner-doesnt-take-new')}
           why={pauseWhy}
           testid="runner-active"
         />
-        <Toggle checked={untagged} onChange={setUntagged} label={t('Брать задания без тегов (Run untagged jobs)')} why={settingsWhy} testid="runner-untagged" />
-        <Toggle checked={locked} onChange={setLocked} label={t('Только для этого проекта (Locked to current project)')} why={settingsWhy} testid="runner-locked" />
+        <Toggle checked={untagged} onChange={setUntagged} label={t('run-untagged-jobs')} why={settingsWhy} testid="runner-untagged" />
+        <Toggle checked={locked} onChange={setLocked} label={t('locked-to-current-project')} why={settingsWhy} testid="runner-locked" />
         <label className="block" data-tip={settingsWhy || undefined}>
-          {tj('<0>Описание (Description)</0>{1}', [<span className="mb-1 block text-[12px] text-gk-muted" />, <input
+          {tj('description-2', [<span className="mb-1 block text-[12px] text-gk-muted" />, <input
             value={description}
             onChange={(e) => setDescription(e.target.value)}
             disabled={Boolean(settingsWhy)}
@@ -465,13 +465,13 @@ function RunnerEditor({ runner, caps, provider, suggestions, repoPath, opts, not
           />])}
         </label>
         <label className="block" data-tip={settingsWhy || undefined}>
-          {tj('<0>Максимальный тайм-аут задания, минут (Maximum job timeout)</0>{1}', [<span className="mb-1 block text-[12px] text-gk-muted" />, <input
+          {tj('maximum-job-timeout-minutes', [<span className="mb-1 block text-[12px] text-gk-muted" />, <input
             type="number"
             min="10"
             value={timeout}
             onChange={(e) => setTimeoutMin(e.target.value)}
             disabled={Boolean(settingsWhy)}
-            placeholder={t('как в проекте')}
+            placeholder={t('as-in-project')}
             data-testid="runner-timeout"
             className="w-40 rounded-md bg-gk-bg px-2 py-1.5 text-[12.5px] outline-none ring-1 ring-gk-border focus:ring-gk-blue disabled:opacity-50"
           />])}
@@ -496,7 +496,7 @@ function CodeBlock({ text, testid }: { text: string; testid?: string }) {
           setCopied(true);
           setTimeout(() => setCopied(false), 1500);
         }}
-        aria-label={t('Скопировать')}
+        aria-label={t('copy-3')}
         data-testid={`${testid}-copy`}
         className="absolute right-2 top-2 rounded bg-white/10 p-1.5 text-white/70 hover:bg-white/20 hover:text-white"
       >
@@ -534,36 +534,36 @@ function RegisterWizard({ repoPath, opts, caps, provider, providerLabel, suggest
     const res = await api.cicd.startLocalRunner(repoPath, { labels }, opts);
     setBusy(null);
     if (!res.ok) return setError(res.error);
-    notify?.({ type: 'success', title: t('Локальный раннер {0} запущен в Docker', res.data.name), hint: t('Через несколько секунд он появится в списке со статусом Online') });
+    notify?.({ type: 'success', title: t('local-runner-started-in-docker', res.data.name), hint: t('in-few-seconds-it-will') });
     onLocalStarted();
     onClose();
   };
 
   const command = reg?.commands?.find((c) => c.id === tab) ?? reg?.commands?.[0];
   return (
-    <Modal title={t('Подключить раннер · {0}', providerLabel)} icon={Plug} iconClass="text-gk-green" onClose={onClose} width={640} footer={<Button onClick={onClose}>{t('Готово')}</Button>}>
+    <Modal title={t('connect-runner-2', providerLabel)} icon={Plug} iconClass="text-gk-green" onClose={onClose} width={640} footer={<Button onClick={onClose}>{t('done')}</Button>}>
       <div className="space-y-3" data-testid="runner-wizard">
         <div>
-          <div className="mb-1 text-[12px] text-gk-muted">{t('Теги нового раннера')}</div>
+          <div className="mb-1 text-[12px] text-gk-muted">{t('new-runners-tags')}</div>
           <ChipsInput value={labels} onChange={setLabels} suggestions={[...suggestions, 'docker', 'linux', 'prod', 'gpu', 'windows', 'macos']} placeholder="docker, prod, gpu…" testid="wizard-labels" />
         </div>
         <label className="block">
-          {tj('<0>Имя (необязательно)</0>{1}', [<span className="mb-1 block text-[12px] text-gk-muted" />, <input value={name} onChange={(e) => setName(e.target.value)} placeholder="build-server-1" className="w-full rounded-md bg-gk-bg px-2 py-1.5 text-[12.5px] outline-none ring-1 ring-gk-border focus:ring-gk-blue" />])}
+          {tj('name-optional', [<span className="mb-1 block text-[12px] text-gk-muted" />, <input value={name} onChange={(e) => setName(e.target.value)} placeholder="build-server-1" className="w-full rounded-md bg-gk-bg px-2 py-1.5 text-[12.5px] outline-none ring-1 ring-gk-border focus:ring-gk-blue" />])}
         </label>
-        {provider === 'gitlab' && <Toggle checked={untagged || !labels.length} onChange={setUntagged} label={t('Брать задания без тегов')} hint={t('Без тегов раннер берёт только такие задания')} />}
+        {provider === 'gitlab' && <Toggle checked={untagged || !labels.length} onChange={setUntagged} label={t('run-untagged-jobs-2')} hint={t('without-tags-runner-picks-up')} />}
 
         {!reg ? (
           <ActionButton icon={KeyRound} tone="blue" busy={busy === 'token'} onClick={getToken} data-testid="wizard-token">
-            {t('Получить токен и команды')}</ActionButton>
+            {t('get-token-and-commands')}</ActionButton>
         ) : (
           <div className="space-y-2" data-testid="wizard-result">
             <div className="flex items-center gap-2 rounded-md border border-gk-green/30 bg-gk-green/[0.06] px-3 py-2 text-[12px]">
               <KeyRound size={13} className="text-gk-green" />
-              <span className="text-gk-muted">{reg.kind === 'auth' ? t('Токен раннера') : t('Токен регистрации')}:</span>
+              <span className="text-gk-muted">{reg.kind === 'auth' ? t('runner-token') : t('registration-token')}:</span>
               <code className="min-w-0 flex-1 truncate font-mono text-gk-text" data-testid="wizard-token-value">
                 {reg.token}
               </code>
-              {reg.expiresAt && <span className="shrink-0 text-gk-dim">{tj('действует до {0}', [new Date(reg.expiresAt).toLocaleTimeString(locale(), { hour: '2-digit', minute: '2-digit' })])}</span>}
+              {reg.expiresAt && <span className="shrink-0 text-gk-dim">{tj('valid-until', [new Date(reg.expiresAt).toLocaleTimeString(locale(), { hour: '2-digit', minute: '2-digit' })])}</span>}
             </div>
             <div className="flex overflow-hidden rounded ring-1 ring-gk-border" data-testid="wizard-tabs">
               {reg.commands.map((c) => (
@@ -574,14 +574,14 @@ function RegisterWizard({ repoPath, opts, caps, provider, providerLabel, suggest
             </div>
             {command && <CodeBlock text={command.text} testid="wizard-command" />}
             <p className="text-[11.5px] text-gk-dim">
-              {tj('{0} Токен показывается один раз — не публикуйте его.', [command?.shell === 'powershell' ? t('Выполните в PowerShell от администратора.') : t('Выполните в терминале сервера, где будет работать раннер.')])}</p>
+              {tj('token-is-shown-once-dont', [command?.shell === 'powershell' ? t('run-in-powershell-as-administrator') : t('run-in-terminal-of-server')])}</p>
           </div>
         )}
 
         {caps.localRunner && (
           <div className="rounded-lg border border-gk-border p-3" data-testid="wizard-local">
             <div className="flex items-center gap-2">
-              {tj('{0}<1>Локальный раннер в Docker на этом компьютере</1>{2}', [<Container size={15} className="text-[#2496ed]" />, <span className="flex-1 text-[12.5px] font-medium text-gk-text" />, docker === null ? (
+              {tj('local-runner-in-docker-on', [<Container size={15} className="text-[#2496ed]" />, <span className="flex-1 text-[12.5px] font-medium text-gk-text" />, docker === null ? (
                 <Loader2 size={12} className="animate-spin text-gk-dim" />
               ) : docker.available ? (
                 <span className="text-[11px] text-gk-green" data-testid="docker-state">
@@ -594,7 +594,7 @@ function RegisterWizard({ repoPath, opts, caps, provider, providerLabel, suggest
               )])}
             </div>
             <p className="mt-1 text-[11.5px] leading-snug text-gk-dim">
-              {tj('Поднимет контейнер раннера с этими тегами и зарегистрирует его в {0} — чтобы гонять пайплайны на своём компьютере. Остановить можно здесь же, во вкладке «Раннеры».', [providerLabel])}</p>
+              {tj('starts-runner-container-with-these', [providerLabel])}</p>
             <ActionButton
               className="mt-2"
               icon={Play}
@@ -605,7 +605,7 @@ function RegisterWizard({ repoPath, opts, caps, provider, providerLabel, suggest
               onClick={startLocal}
               data-testid="wizard-local-start"
             >
-              {t('Запустить локально')}</ActionButton>
+              {t('run-locally')}</ActionButton>
           </div>
         )}
         <ErrorBox error={error} />
@@ -629,7 +629,7 @@ function LocalRunners({ list, onChanged, notify }: { list: LocalRunner_Serialize
   return (
     <div className="mb-3 rounded-lg border border-[#2496ed]/30 bg-[#2496ed]/[0.05] p-2.5" data-testid="local-runners">
       <div className="mb-1.5 flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wider text-gk-muted">
-        {tj('{0} Локальные раннеры (Docker)', [<Container size={12} className="text-[#2496ed]" />])}</div>
+        {tj('local-runners-docker', [<Container size={12} className="text-[#2496ed]" />])}</div>
       {list.map((c) => (
         <div key={c.id} className="flex items-center gap-2 py-1 text-[12px]" data-testid="local-runner" data-state={c.state}>
           <span className={`h-2 w-2 rounded-full ${c.state === 'running' ? 'bg-gk-green' : 'bg-gk-dim'}`} />
@@ -637,11 +637,11 @@ function LocalRunners({ list, onChanged, notify }: { list: LocalRunner_Serialize
           <span className="truncate text-[11px] text-gk-dim">{c.status}</span>
           {c.runnerLabels.length > 0 && <span className="truncate font-mono text-[10.5px] text-gk-blue">{c.runnerLabels.join(', ')}</span>}
           {c.state !== 'running' && (
-            <IconBtn title={t('Запустить')} onClick={() => act(api.cicd.resumeLocalRunner, c.name!, t('Контейнер {0} запущен', c.name))}>
+            <IconBtn title={t('run-3')} onClick={() => act(api.cicd.resumeLocalRunner, c.name!, t('container-is-running', c.name))}>
               {busy === c.name ? <Loader2 size={13} className="animate-spin" /> : <Play size={13} />}
             </IconBtn>
           )}
-          <IconBtn title={t('Остановить и удалить контейнер')} onClick={() => act(api.cicd.stopLocalRunner, c.name!, t('Контейнер {0} остановлен и удалён', c.name))} data-testid="local-runner-stop">
+          <IconBtn title={t('stop-and-remove-container')} onClick={() => act(api.cicd.stopLocalRunner, c.name!, t('container-stopped-and-removed', c.name))} data-testid="local-runner-stop">
             {busy === c.name ? <Loader2 size={13} className="animate-spin" /> : <Square size={13} />}
           </IconBtn>
         </div>

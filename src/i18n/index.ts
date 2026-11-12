@@ -1,8 +1,18 @@
-// Перевод интерфейса. Ключ — русский текст (как в gettext): t('Ветка «{0}» уже существует', name).
-// Русский — язык исходников, ему словарь не нужен; английский — electron/i18n/en.json (общий с main-процессом).
+// Перевод интерфейса: семантический ключ Fluent — t('branch-already-exists', name).
+// Сообщения — crates/gorynych-core/i18n/{ru,en}/ui.ftl; аргументы t()/tj() по порядку — переменные { $a0 }, { $a1 }…
+// Нет английского текста — показывается русский; нет ключа вовсе — сам ключ (так старый код с русским текстом
+// вместо ключа показывает его как есть).
 // Язык меняется в Настройках → Оформление: окно перезагружается, и весь интерфейс строится на новом языке.
+//
+// Подстановка — как в 1.x: сообщение раскрывается Fluent один раз с аргументами «{0}», «{1}»… и кэшируется, дальше
+// /{(d+)}/g заменяет их значениями (однопроходно; без аргументов и при нехватке аргументов «{N}» остаётся как есть).
 import { Fragment, cloneElement, createElement, isValidElement, type ReactElement, type ReactNode } from 'react';
-import enJson from '../../electron/i18n/en.json';
+import { FluentBundle, FluentResource } from '@fluent/bundle';
+import ruFtl from '../../crates/gorynych-core/i18n/ru/ui.ftl?raw';
+import enFtl from '../../crates/gorynych-core/i18n/en/ui.ftl?raw';
+import type { MessageId } from './messages.ts';
+
+export type { MessageId };
 
 export type Language = 'ru' | 'en';
 
@@ -11,8 +21,7 @@ export const LANGUAGES: readonly { id: Language; label: string; english: string 
   { id: 'en', label: 'English', english: 'English' },
 ];
 const KEY = 'language';
-// Плоский словарь «русский текст → перевод»; тип общий, а не выведенный из 4 тыс. ключей
-const DICTS: Partial<Record<Language, Record<string, string>>> = { en: enJson as Record<string, string> };
+const SOURCES: Record<Language, string> = { ru: ruFtl, en: enFtl };
 
 const isLanguage = (value: unknown): value is Language => LANGUAGES.some((l) => l.id === value);
 
@@ -61,28 +70,54 @@ export function syncLanguageToMain(): void {
   }
 }
 
-const lookup = (msg: string): string => (lang === 'ru' ? msg : DICTS[lang]?.[msg] ?? msg);
+// Аргументы Fluent для раскрытия шаблона: $aN → «{N}»
+const PLACEHOLDERS = Object.fromEntries(Array.from({ length: 30 }, (_, i) => [`a${i}`, `{${i}}`]));
 
-/** Строка: t('Удалено файлов: {0}', n). Подстановки {0}, {1}… — по порядку аргументов */
-export function t(msg: string, ...args: unknown[]): string {
+interface Catalog {
+  bundle: FluentBundle;
+  cache: Map<string, string | null>;
+}
+const catalogs: Partial<Record<Language, Catalog>> = {};
+
+function catalog(language: Language): Catalog {
+  let c = catalogs[language];
+  if (!c) {
+    const bundle = new FluentBundle(language, { useIsolating: false });
+    bundle.addResource(new FluentResource(SOURCES[language]));
+    c = catalogs[language] = { bundle, cache: new Map() };
+  }
+  return c;
+}
+
+/** Шаблон сообщения с «{N}» на местах аргументов; null — ключа нет. */
+function template(language: Language, id: string): string | null {
+  const c = catalog(language);
+  let s = c.cache.get(id);
+  if (s === undefined) {
+    const value = c.bundle.getMessage(id)?.value;
+    s = value ? c.bundle.formatPattern(value, PLACEHOLDERS) : null;
+    c.cache.set(id, s);
+  }
+  return s;
+}
+
+const lookup = (id: string): string => (lang === 'ru' ? null : template(lang, id)) ?? template('ru', id) ?? id;
+
+/** Строка: t('files-deleted', n). Подстановки { $a0 }, { $a1 }… — по порядку аргументов */
+export function t(msg: MessageId, ...args: unknown[]): string {
   const s = lookup(msg);
   if (!args.length) return s;
   return s.replace(/\{(\d+)\}/g, (m, i) => (Number(i) < args.length ? String(args[Number(i)] ?? '') : m));
-}
-
-/** Сообщение без перевода, если его нет в словаре (для текста, пришедшего из main-процесса) */
-export function translateKnown<T>(msg: T): T | string {
-  return typeof msg === 'string' && lang !== 'ru' ? DICTS[lang]?.[msg] ?? msg : msg;
 }
 
 /** Часть разметки `tj`: элемент (для `<n>…</n>` и `{n}`) или значение для `{n}`. */
 export type TjPart = ReactNode;
 
 /**
- * Текст с разметкой для JSX: tj('Нажмите <0>Сохранить</0> или {1}', [<B />, kbdNode]).
+ * Текст с разметкой для JSX: tj('press-save-or', [<B />, kbdNode]) для «Нажмите <0>Сохранить</0> или {1}».
  * <n>…</n> — элемент parts[n] с переведённым содержимым, {n} — значение parts[n] (строка, число или элемент).
  */
-export function tj(msg: string, parts: readonly TjPart[] = []): ReactNode {
+export function tj(msg: MessageId, parts: readonly TjPart[] = []): ReactNode {
   const s = lookup(msg);
   const nodes = parse(s, parts);
   if (nodes.every((n) => typeof n === 'string' || typeof n === 'number')) return nodes.join('');

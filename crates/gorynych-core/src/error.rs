@@ -229,24 +229,22 @@ impl GorynychError {
     }
 }
 
-/// Правило классификатора. Тексты — русские ключи словаря.
+/// Правило классификатора.
 #[derive(Debug)]
 pub struct Rule {
     pub code: ErrorCode,
-    /// Ключ Fluent: сообщение `error-…` и подсказка `error-…-hint`.
+    /// Ключ Fluent: сообщение `error-…` и подсказка `error-…-hint` (в 1.x подсказка `AUTH` склеивалась из двух
+    /// переводимых частей, в `main.ftl` она записана целиком). Тексты сверяет эталон `tests/parity.rs` (`classify`).
     pub fluent_id: &'static str,
-    message: &'static str,
-    /// В 1.x подсказка `AUTH` собрана из двух независимо переводимых частей.
-    hint: &'static [&'static str],
 }
 
 impl Rule {
     pub fn message(&self, language: Language) -> String {
-        translate(language, self.message).to_owned()
+        translate(language, self.fluent_id).to_owned()
     }
 
     pub fn hint(&self, language: Language) -> String {
-        self.hint.iter().map(|part| translate(language, part)).collect()
+        translate(language, &format!("{}-hint", self.fluent_id)).to_owned()
     }
 }
 
@@ -259,8 +257,6 @@ static RULES: [(Rule, &str); 11] = [
         Rule {
             code: ErrorCode::Protected,
             fluent_id: "error-protected",
-            message: "Ветка защищена на сервере — прямой push запрещён",
-            hint: &["Создайте отдельную ветку и откройте Pull Request, либо попросите администратора изменить правила защиты."],
         },
         r"protected branch|GH006|GH013|not allowed to (push|force push) (code )?to protected|cannot force-push to a protected|push declined due to repository rule|branch is protected",
     ),
@@ -268,8 +264,6 @@ static RULES: [(Rule, &str); 11] = [
         Rule {
             code: ErrorCode::HookDeclined,
             fluent_id: "error-hook-declined",
-            message: "Сервер отклонил push (серверный хук)",
-            hint: &["Посмотрите подробности: сервер обычно сообщает причину в строках, начинающихся с «remote:»."],
         },
         r"pre-receive hook declined|hook declined",
     ),
@@ -277,8 +271,6 @@ static RULES: [(Rule, &str); 11] = [
         Rule {
             code: ErrorCode::Forbidden,
             fluent_id: "error-forbidden",
-            message: "Нет прав на запись в этот репозиторий",
-            hint: &["Ваш аккаунт или токен имеет только права на чтение. Попросите доступ Write у владельца репозитория или используйте токен со scope «repo»."],
         },
         r"The requested URL returned error: 403|Permission to \S+ denied|You don't have permission|write access to repository not granted|not allowed to push|insufficient permission|HTTP 403|access forbidden|You are not allowed to push",
     ),
@@ -286,8 +278,6 @@ static RULES: [(Rule, &str); 11] = [
         Rule {
             code: ErrorCode::HostKey,
             fluent_id: "error-host-key",
-            message: "SSH: ключ сервера не подтверждён",
-            hint: &["Один раз подключитесь из терминала (например, «ssh -T git@github.com») и подтвердите отпечаток сервера."],
         },
         r"Host key verification failed|REMOTE HOST IDENTIFICATION HAS CHANGED",
     ),
@@ -295,11 +285,6 @@ static RULES: [(Rule, &str); 11] = [
         Rule {
             code: ErrorCode::Auth,
             fluent_id: "error-auth",
-            message: "Ошибка авторизации на сервере",
-            hint: &[
-                "Введите логин и пароль, токен доступа или выберите SSH-ключ в окне «Авторизация репозитория» — программа запомнит их для этого репозитория. ",
-                "Для HTTPS также подойдёт окно Git Credential Manager; для SSH — ключ, добавленный в аккаунт на сервере.",
-            ],
         },
         r"Authentication failed|could not read (Username|Password)|terminal prompts disabled|Invalid username or password|HTTP Basic: Access denied|Permission denied \(publickey|returned error: 401|Bad credentials|invalid credentials|logon failed|unable to get password|SSH_AUTH_SOCK|passphrase",
     ),
@@ -307,8 +292,6 @@ static RULES: [(Rule, &str); 11] = [
         Rule {
             code: ErrorCode::NotFound,
             fluent_id: "error-not-found",
-            message: "Репозиторий не найден или к нему нет доступа",
-            hint: &["Проверьте URL remote. Для приватных репозиториев сервер отвечает «not found», если у аккаунта нет доступа."],
         },
         r"Repository not found|does not appear to be a git repository|repository '{DOT}*' not found|returned error: 404|project you were looking for could not be found|No such remote",
     ),
@@ -316,8 +299,6 @@ static RULES: [(Rule, &str); 11] = [
         Rule {
             code: ErrorCode::RejectedNonFf,
             fluent_id: "error-rejected-non-ff",
-            message: "Remote-ветка содержит коммиты, которых нет у вас",
-            hint: &["Сначала сделайте Pull, либо Force Push (with lease), если уверены, что хотите перезаписать remote."],
         },
         r"\[rejected\]{DOT}*(non-fast-forward|fetch first)|Updates were rejected because|stale info|\[rejected\]",
     ),
@@ -325,8 +306,6 @@ static RULES: [(Rule, &str); 11] = [
         Rule {
             code: ErrorCode::Diverged,
             fluent_id: "error-diverged",
-            message: "Ветки разошлись — fast-forward невозможен",
-            hint: &["Используйте Pull (fast-forward if possible) или Pull (rebase)."],
         },
         r"Not possible to fast-forward|diverging branches|Need to specify how to reconcile",
     ),
@@ -334,8 +313,6 @@ static RULES: [(Rule, &str); 11] = [
         Rule {
             code: ErrorCode::Conflict,
             fluent_id: "error-conflict",
-            message: "Возникли конфликты слияния",
-            hint: &["Разрешите конфликты в отмеченных файлах, затем застейджите их и сделайте коммит."],
         },
         r"CONFLICT|Automatic merge failed|could not apply|Merge conflict|fix conflicts",
     ),
@@ -343,8 +320,6 @@ static RULES: [(Rule, &str); 11] = [
         Rule {
             code: ErrorCode::Dirty,
             fluent_id: "error-dirty",
-            message: "Локальные изменения мешают операции",
-            hint: &["Закоммитьте изменения или сделайте Stash, затем повторите."],
         },
         r"would be overwritten|Please commit your changes or stash them|cannot (pull|rebase) with uncommitted|You have unstaged changes|contains uncommitted changes",
     ),
@@ -352,8 +327,6 @@ static RULES: [(Rule, &str); 11] = [
         Rule {
             code: ErrorCode::Network,
             fluent_id: "error-network",
-            message: "Не удалось связаться с сервером",
-            hint: &["Проверьте подключение к интернету, VPN или прокси."],
         },
         r"Could not resolve host|Failed to connect|Connection (timed out|refused|reset)|Network is unreachable|unable to access|Operation timed out|SSL|TLS|early EOF|The remote end hung up|Could not read from remote repository",
     ),
@@ -397,10 +370,10 @@ pub fn from_process_error(failure: ProcessFailure<'_>, stdout: &str, stderr: &st
         ProcessFailure::NotFound => {
             let hint = format!(
                 "{}{}",
-                translate(language, "Установите Git for Windows (git-scm.com). Если Git уже установлен — полностью закройте терминал/VS Code, "),
-                translate(language, "из которого запускали приложение, и откройте заново: старые окна не видят обновлённый PATH."),
+                translate(language, "install-git-for-windows-git"),
+                translate(language, "app-was-started-from-and"),
             );
-            return GorynychError::new(ErrorCode::GitMissing, tr(language, "Git не найден", &[])).with_hint(hint);
+            return GorynychError::new(ErrorCode::GitMissing, tr(language, "git-not-found", &[])).with_hint(hint);
         }
         ProcessFailure::TimedOut { message } | ProcessFailure::Exited { message } => message,
     };
@@ -408,8 +381,8 @@ pub fn from_process_error(failure: ProcessFailure<'_>, stdout: &str, stderr: &st
     let details = js_trim(if stderr.is_empty() { message } else { stderr });
 
     if matches!(failure, ProcessFailure::TimedOut { .. }) {
-        return GorynychError::new(ErrorCode::Timeout, tr(language, "Операция прервана по таймауту", &[]))
-            .with_hint(tr(language, "Сервер не ответил вовремя, либо Git ждал ввода логина. Попробуйте ещё раз.", &[]))
+        return GorynychError::new(ErrorCode::Timeout, tr(language, "operation-timed-out", &[]))
+            .with_hint(tr(language, "server-didnt-respond-in-time", &[]))
             .with_details(details)
             .with_stdout(stdout);
     }
@@ -424,7 +397,7 @@ pub fn from_process_error(failure: ProcessFailure<'_>, stdout: &str, stderr: &st
     let first_line = details
         .split('\n')
         .find(|line| !js_trim(line).is_empty())
-        .map_or_else(|| tr(language, "Ошибка Git", &[]), str::to_owned);
+        .map_or_else(|| tr(language, "git-error", &[]), str::to_owned);
     let message = match LEADING_LABEL.find(&first_line) {
         Some(label) => first_line[label.end()..].trim_start_matches(is_js_whitespace).to_owned(),
         None => first_line,
@@ -435,7 +408,6 @@ pub fn from_process_error(failure: ProcessFailure<'_>, stdout: &str, stderr: &st
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::i18n::fluent_message;
 
     #[test]
     fn wire_format_matches_to_json() {
@@ -486,16 +458,5 @@ mod tests {
     fn rule_order_wins_over_text_order() {
         let rule = classify("Could not resolve host\nprotected branch", "").unwrap();
         assert_eq!(rule.code, ErrorCode::Protected);
-    }
-
-    #[test]
-    fn fluent_keys_match_dictionary_for_every_rule() {
-        for language in [Language::Ru, Language::En] {
-            for rule in rules() {
-                let hint_id = format!("{}-hint", rule.fluent_id);
-                assert_eq!(fluent_message(language, rule.fluent_id, &[]).as_deref(), Some(rule.message(language).as_str()));
-                assert_eq!(fluent_message(language, &hint_id, &[]).as_deref(), Some(rule.hint(language).as_str()));
-            }
-        }
     }
 }

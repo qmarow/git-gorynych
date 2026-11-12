@@ -309,11 +309,11 @@ export function searchRegex(query: string | null | undefined, { regex = false, c
   try {
     const source = regex ? query : query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
     const re = new RegExp(source, caseSensitive ? 'g' : 'gi');
-    if (re.test('')) return { error: tr('Выражение совпадает с пустой строкой') };
+    if (re.test('')) return { error: tr('expression-matches-empty-string') };
     re.lastIndex = 0;
     return { re };
   } catch (error) {
-    return { error: tr('Неверное выражение: {0}', (error as Error).message.replace(/^Invalid regular expression: /, '')) };
+    return { error: tr('invalid-expression', (error as Error).message.replace(/^Invalid regular expression: /, '')) };
   }
 }
 

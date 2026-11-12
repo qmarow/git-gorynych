@@ -56,15 +56,15 @@ export function SyncBadges({ branch, current, busy, actions }: BadgeProps) {
             if (canUpdate && !busy) actions?.update?.(branch.name);
           }}
           onDoubleClick={(e) => e.stopPropagation()}
-          title={canUpdate ? t('Обновить {0} (Pull){1}', branch.name, current ? '' : t(' без переключения')) : t('{0} разошлась с сервером — переключитесь и сделайте Pull', branch.name)}
-          aria-label={t('Обновить {0}', branch.name)}
+          title={canUpdate ? t('update-pull', branch.name, current ? '' : t('without-switching-2')) : t('has-diverged-from-server-switch', branch.name)}
+          aria-label={t('update-3', branch.name)}
           className={`hidden rounded p-0.5 text-gk-blue hover:bg-gk-blue/15 ${canUpdate && !busy ? 'group-hover:inline-flex' : ''}`}
         >
           <ArrowDownToLine size={12} />
         </span>
       )}
       {branch.gone && (
-        <span title={t('{0} удалена на сервере', branch.upstream)} className="rounded bg-gk-red/10 px-1 text-[10px] leading-4 text-gk-red/80">
+        <span title={t('was-deleted-on-server', branch.upstream)} className="rounded bg-gk-red/10 px-1 text-[10px] leading-4 text-gk-red/80">
           gone
         </span>
       )}
@@ -87,7 +87,7 @@ function CountBadge({ branch, direction, current, busy, actions }: BadgeProps & 
         onMouseLeave={() => pop.hide()}
         onClick={(e) => e.stopPropagation()}
         onDoubleClick={(e) => e.stopPropagation()}
-        aria-label={incoming ? t('Входящие коммиты: {0}', n) : t('Исходящие коммиты: {0}', n)}
+        aria-label={incoming ? t('incoming-commits', n) : t('outgoing-commits', n)}
         className={`flex h-4 cursor-default items-center rounded px-1 font-mono text-[10.5px] font-semibold tabular-nums ${
           incoming ? 'bg-gk-blue/15 text-gk-blue' : 'bg-gk-green/15 text-gk-green'
         }`}
@@ -132,7 +132,7 @@ function CommitsPopover({ anchor, branch, direction, current, busy, actions, onE
         logCache.set(key, res.data!);
         if (logCache.size > 100) logCache.delete(logCache.keys().next().value!);
         setData(res.data!);
-      } else setError(res?.error?.message ?? t('Не удалось получить список коммитов'));
+      } else setError(res?.error?.message ?? t('couldnt-get-commit-list'));
     });
     return () => {
       alive = false;
@@ -168,7 +168,7 @@ function CommitsPopover({ anchor, branch, direction, current, busy, actions, onE
           {n}
         </span>
         <span className="min-w-0 flex-1 truncate text-gk-text">
-          {incoming ? t('Придут при Pull') : t('Уйдут при Push')}
+          {incoming ? t('will-arrive-on-pull') : t('will-leave-on-push')}
           <span className="text-gk-dim"> · {incoming ? `${branch.upstream} → ${branch.name}` : `${branch.name} → ${branch.upstream}`}</span>
         </span>
       </div>
@@ -177,7 +177,7 @@ function CommitsPopover({ anchor, branch, direction, current, busy, actions, onE
           <div className="px-3 py-2 text-gk-red">{error}</div>
         ) : !data ? (
           <div className="flex items-center gap-2 px-3 py-2 text-gk-dim">
-            {tj('{0} Загружаем…', [<Loader2 size={13} className="animate-spin" />])}</div>
+            {tj('loading-2', [<Loader2 size={13} className="animate-spin" />])}</div>
         ) : (
           data.commits.map((c) => (
             <button
@@ -186,7 +186,7 @@ function CommitsPopover({ anchor, branch, direction, current, busy, actions, onE
                 actions?.select?.(c.hash);
                 onDone();
               }}
-              title={t('{0}\n{1}\nКлик — показать в графе', c.hash, c.subject)}
+              title={t('click-show-in-graph', c.hash, c.subject)}
               className="flex w-full items-start gap-2 px-3 py-1 text-left hover:bg-gk-hover"
             >
               <span className={`mt-px shrink-0 font-mono text-[11px] ${incoming ? 'text-gk-blue' : 'text-gk-green'}`}>{c.short}</span>
@@ -199,7 +199,7 @@ function CommitsPopover({ anchor, branch, direction, current, busy, actions, onE
             </button>
           ))
         )}
-        {data && data.total > data.commits.length && <div className="px-3 py-1 text-[11px] text-gk-dim">{tj('…и ещё {0}', [data.total - data.commits.length])}</div>}
+        {data && data.total > data.commits.length && <div className="px-3 py-1 text-[11px] text-gk-dim">{tj('and-more-2', [data.total - data.commits.length])}</div>}
       </div>
       <div className="flex items-center gap-2 border-t border-gk-border px-3 py-2">
         {incoming ? (
@@ -212,10 +212,10 @@ function CommitsPopover({ anchor, branch, direction, current, busy, actions, onE
               }}
               className="flex items-center gap-1.5 rounded-md bg-gk-blue/15 px-2 py-1 text-[12px] font-medium text-gk-blue hover:bg-gk-blue/25 disabled:opacity-40"
             >
-              {tj('{0} Обновить (Pull)', [<ArrowDownToLine size={13} />])}</button>
+              {tj('update-pull-2', [<ArrowDownToLine size={13} />])}</button>
           ) : (
             <span className="text-[11.5px] leading-snug text-gk-yellow">
-              {tj('В ветке есть свои коммиты (↑{0}) — переключитесь на неё и сделайте Pull.', [branch.ahead])}</span>
+              {tj('branch-has-its-own-commits', [branch.ahead])}</span>
           )
         ) : current ? (
           <button
@@ -229,9 +229,9 @@ function CommitsPopover({ anchor, branch, direction, current, busy, actions, onE
             <ArrowUpFromLine size={13} /> Push
           </button>
         ) : (
-          <span className="text-[11.5px] text-gk-dim">{t('Чтобы отправить — переключитесь на ветку и сделайте Push.')}</span>
+          <span className="text-[11.5px] text-gk-dim">{t('to-send-them-switch-to')}</span>
         )}
-        {incoming && canUpdate && <span className="ml-auto text-[10.5px] text-gk-dim">{current ? 'fast-forward' : t('без переключения ветки')}</span>}
+        {incoming && canUpdate && <span className="ml-auto text-[10.5px] text-gk-dim">{current ? 'fast-forward' : t('without-switching-branches')}</span>}
       </div>
     </div>,
     document.body,

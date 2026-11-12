@@ -111,7 +111,7 @@ function MenuList({ items, onClose }: { items: MenuEntry[]; onClose: () => void 
                 onClose();
                 item.onCopy!();
               }}
-              data-tip={item.copyTip ?? t('Скопировать')}
+              data-tip={item.copyTip ?? t('copy-3')}
               data-testid="menu-header-copy"
               className="group/h flex w-full items-center gap-1.5 px-3 pb-1 pt-1.5 text-left text-[11.5px] text-gk-dim hover:text-gk-text"
             >

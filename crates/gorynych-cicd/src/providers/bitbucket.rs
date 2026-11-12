@@ -68,9 +68,9 @@ impl CiCdProvider for BitbucketProvider {
     fn capabilities(&self, input: CapsInput) -> Capabilities {
         let write = input.can_write != Some(false);
         let mut why = reasons("Bitbucket", &["canRetryFailed", "canRerunSingleJob", "canCancelJob", "canPlayManualJob", "canRunWithInputs"]);
-        why.insert("canListRunners".into(), t("Bitbucket не открывает раннеры в публичном API — управляйте ими в настройках репозитория (Repository settings → Runners)", &[]));
-        why.insert("canDownloadArtifacts".into(), t("Bitbucket не отдаёт артефакты пайплайна через публичный API", &[]));
-        why.insert("canCreateRunnerToken".into(), t("Раннер Bitbucket регистрируется в настройках репозитория — команда запуска показывается там", &[]));
+        why.insert("canListRunners".into(), t("bitbucket-doesnt-expose-runners-in", &[]));
+        why.insert("canDownloadArtifacts".into(), t("bitbucket-doesnt-provide-pipeline", &[]));
+        why.insert("canCreateRunnerToken".into(), t("bitbucket-runner-is-registered-in", &[]));
         Capabilities {
             can_list_pipelines: true,
             can_run_pipeline: write,
@@ -86,9 +86,9 @@ impl CiCdProvider for BitbucketProvider {
 
     async fn init(&self, ctx: &mut Ctx) -> Result<()> {
         if ctx.host != "bitbucket.org" && !ctx.api_override {
-            return Err(GorynychError::new(ErrorCode::Unsupported, t("Bitbucket Data Center не поддерживает Pipelines", &[])).with_hint(t("На своём сервере Bitbucket сборки обычно идут в Bamboo или Jenkins", &[])));
+            return Err(GorynychError::new(ErrorCode::Unsupported, t("bitbucket-data-center-doesnt-support", &[])).with_hint(t("on-self-hosted-bitbucket-builds", &[])));
         }
-        let opts = Opts::not_found(t("Репозиторий {0}/{1} не найден или у входа нет к нему доступа", &[&ctx.owner, &ctx.repo]));
+        let opts = Opts::not_found(t("repository-not-found-or-sign", &[&ctx.owner, &ctx.repo]));
         let r = request(&ctx.http, Method::GET, &repo_api(ctx), opts).await?;
         ctx.default_branch = r.get("mainbranch").and_then(|branch| text(branch, "name"));
         if let Some(url) = r.get("links").and_then(|links| links.get("html")).and_then(|html| text(html, "href")) {
@@ -125,14 +125,14 @@ impl CiCdProvider for BitbucketProvider {
         let n = id.number_text();
         let api = repo_api(ctx);
         let (p, steps) = tokio::join!(
-            request(&ctx.http, Method::GET, format!("{api}/pipelines/{n}"), Opts::not_found(t("Пайплайн #{0} не найден", &[id]))),
+            request(&ctx.http, Method::GET, format!("{api}/pipelines/{n}"), Opts::not_found(t("pipeline-not-found", &[id]))),
             request(&ctx.http, Method::GET, format!("{api}/pipelines/{n}/steps/"), Opts::query(&[("pagelen", Some("100".into()))])),
         );
         let (p, steps) = (p?, steps?);
         let pipeline = run_of(&p, ctx)?;
         let mut jobs = Vec::new();
         for (index, s) in items(&steps, "values").iter().enumerate() {
-            let name = text(s, "name").unwrap_or_else(|| t("Шаг {0}", &[&(index + 1)]));
+            let name = text(s, "name").unwrap_or_else(|| t("step-4", &[&(index + 1)]));
             let runs_on = strings(s, "runs_on");
             jobs.push(PipelineJob {
                 id: CiId::field(s, "uuid"),
@@ -158,7 +158,7 @@ impl CiCdProvider for BitbucketProvider {
 
     async fn job_log(&self, ctx: &Ctx, id: &CiId, pipeline_id: Option<&CiId>) -> Result<JobLog> {
         let Some(pipeline) = pipeline_id.filter(|pipeline| pipeline.number() != 0.0 && !matches!(pipeline, CiId::Text(text) if text.is_empty())) else {
-            return Err(GorynychError::new(ErrorCode::BadArgs, t("Не указан пайплайн шага", &[])));
+            return Err(GorynychError::new(ErrorCode::BadArgs, t("no-pipeline-specified-for-step", &[])));
         };
         let path = format!("{}/pipelines/{}/steps/{}/log", repo_api(ctx), pipeline.number_text(), js::encode_uri_component(&id.to_string()));
         let log = match request_text(&ctx.http, Method::GET, &path, Opts::default()).await {
@@ -187,7 +187,7 @@ impl CiCdProvider for BitbucketProvider {
                 let res = request(&ctx.http, Method::POST, format!("{api}/pipelines/"), Opts::body(Value::Object(body))).await?;
                 Ok(ActionResult { kind, id: CiId::field(&res, "build_number"), status: None, web_url: None })
             }
-            _ => Err(GorynychError::new(ErrorCode::Unsupported, t("Bitbucket не поддерживает это действие", &[]))),
+            _ => Err(GorynychError::new(ErrorCode::Unsupported, t("bitbucket-doesnt-support-this-action", &[]))),
         }
     }
 
@@ -203,7 +203,7 @@ impl CiCdProvider for BitbucketProvider {
         let vars: Vec<&RunVariable> = input.variables.iter().filter(|v| v.key.as_deref().is_some_and(|key| !key.is_empty())).collect();
         if let Some(bad) = vars.iter().find(|v| !VAR_KEY.is_match(v.key.as_deref().unwrap_or_default())) {
             let key = bad.key.as_deref().unwrap_or_default();
-            return Err(GorynychError::new(ErrorCode::BadArgs, t("Некорректное имя переменной: {0}", &[&key])));
+            return Err(GorynychError::new(ErrorCode::BadArgs, t("invalid-variable-name-2", &[&key])));
         }
         let mut body = Map::new();
         body.insert("target".into(), target);
@@ -216,7 +216,7 @@ impl CiCdProvider for BitbucketProvider {
     }
 
     async fn list_runners(&self, _ctx: &Ctx) -> Result<Vec<CiRunner>> {
-        Err(GorynychError::new(ErrorCode::Unsupported, t("Bitbucket не открывает раннеры в публичном API", &[])).with_hint("Repository settings → Runners"))
+        Err(GorynychError::new(ErrorCode::Unsupported, t("bitbucket-doesnt-expose-runners-in-its", &[])).with_hint("Repository settings → Runners"))
     }
 
     async fn list_secrets(&self, ctx: &Ctx) -> Result<Vec<CiSecretVariable>> {
@@ -232,7 +232,7 @@ impl CiCdProvider for BitbucketProvider {
 
     async fn save_secret(&self, ctx: &Ctx, input: &SecretInput) -> Result<SecretResult> {
         if !VAR_KEY.is_match(&input.key) {
-            return Err(GorynychError::new(ErrorCode::InvalidName, t("Имя переменной: латинские буквы, цифры и _", &[])));
+            return Err(GorynychError::new(ErrorCode::InvalidName, t("variable-name-latin-letters-digits", &[])));
         }
         let body = json!({ "key": input.key, "value": input.value, "secured": input.secret });
         let api = format!("{}/pipelines_config/variables/", repo_api(ctx));
@@ -246,7 +246,7 @@ impl CiCdProvider for BitbucketProvider {
     async fn delete_secret(&self, ctx: &Ctx, secret: &SecretRef) -> Result<SecretResult> {
         let Some(uuid) = secret.uuid.as_deref().filter(|uuid| !uuid.is_empty()) else {
             let key = secret.key.as_deref().unwrap_or("undefined");
-            return Err(GorynychError::new(ErrorCode::NotFound, t("Переменная {0} не найдена", &[&key])));
+            return Err(GorynychError::new(ErrorCode::NotFound, t("variable-not-found", &[&key])));
         };
         request(&ctx.http, Method::DELETE, format!("{}/pipelines_config/variables/{}", repo_api(ctx), js::encode_uri_component(uuid)), Opts::default()).await?;
         Ok(SecretResult { key: secret.key.clone() })

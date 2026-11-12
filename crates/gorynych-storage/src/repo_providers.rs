@@ -91,12 +91,12 @@ pub fn normalize_base(input: Option<&str>, language: Language) -> Result<Option<
     }
     let http = has_http_scheme(raw);
     if has_any_scheme(raw) && !http {
-        return Err(GorynychError::new(ErrorCode::BadArgs, tr(language, "Адрес API должен начинаться с https://", &[])));
+        return Err(GorynychError::new(ErrorCode::BadArgs, tr(language, "api-address-must-start-with", &[])));
     }
     let parsed = if http { Url::parse(raw) } else { Url::parse(&format!("https://{raw}")) };
     let url = parsed.ok().filter(Url::has_host).ok_or_else(|| {
-        GorynychError::new(ErrorCode::BadArgs, tr(language, "Некорректный адрес API", &[]))
-            .with_hint(tr(language, "Например: https://gitlab.company.ru или https://github.company.ru/api/v3", &[]))
+        GorynychError::new(ErrorCode::BadArgs, tr(language, "invalid-api-address", &[]))
+            .with_hint(tr(language, "for-example-https-gitlab-company", &[]))
     })?;
     let host = url.host_str().unwrap_or_default();
     let port = url.port().map(|port| format!(":{port}")).unwrap_or_default();
@@ -153,7 +153,7 @@ impl Db {
         let provider = match provider.filter(|text| !text.is_empty()) {
             None => None,
             Some(text) => Some(text.parse::<CiProvider>().map_err(|()| {
-                GorynychError::new(ErrorCode::BadArgs, tr(language, "Неизвестный провайдер CI/CD", &[]))
+                GorynychError::new(ErrorCode::BadArgs, tr(language, "unknown-ci-cd-provider", &[]))
             })?),
         };
         let base = normalize_base(api_base, language)?;

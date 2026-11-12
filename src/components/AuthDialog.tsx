@@ -64,9 +64,9 @@ interface ParsedUrl {
 type UrlParts = { protocol?: string; user?: string | null; path?: string };
 
 const TABS: { id: AuthMethod; label: string; icon: LucideIcon; https: boolean }[] = [
-  { id: 'password', label: tr('Логин и пароль'), icon: UserRound, https: true },
-  { id: 'token', label: tr('Токен доступа'), icon: KeyRound, https: true },
-  { id: 'ssh', label: tr('SSH-ключ'), icon: FileKey, https: false },
+  { id: 'password', label: tr('username-and-password'), icon: UserRound, https: true },
+  { id: 'token', label: tr('access-token'), icon: KeyRound, https: true },
+  { id: 'ssh', label: tr('ssh-key'), icon: FileKey, https: false },
 ];
 
 /* ---------- Адрес репозитория: сервер + путь ---------- */
@@ -353,7 +353,7 @@ const tabInfo = TABS.find((t) => t.id === tab);
 
   const copyPublic = async () => {
     const res = await api!.creds.copyPublicKey(keyPath);
-    setKeyNote(res.ok ? { type: 'ok', text: tr('Публичный ключ скопирован в буфер обмена') } : { type: 'error', text: res.error.message });
+    setKeyNote(res.ok ? { type: 'ok', text: tr('public-key-copied-to-clipboard') } : { type: 'error', text: res.error.message });
   };
 
   const eye = (field: string) => (
@@ -361,8 +361,8 @@ const tabInfo = TABS.find((t) => t.id === tab);
       type="button"
       tabIndex={-1}
       onClick={() => setShow((s) => ({ ...s, [field]: !s[field] }))}
-      aria-label={show[field] ? tr('Скрыть') : tr('Показать')}
-      data-tip={show[field] ? tr('Скрыть') : tr('Показать')}
+      aria-label={show[field] ? tr('hide-2') : tr('show')}
+      data-tip={show[field] ? tr('hide-2') : tr('show')}
       className="absolute right-1.5 top-1/2 flex h-6 w-6 -translate-y-1/2 items-center justify-center rounded text-gk-dim hover:bg-gk-hover hover:text-gk-text"
     >
       {show[field] ? <EyeOff size={13} /> : <Eye size={13} />}
@@ -377,7 +377,7 @@ const tabInfo = TABS.find((t) => t.id === tab);
 
   return (
     <Modal
-      title={tr('Авторизация репозитория')}
+      title={tr('repository-sign-in-2')}
       icon={Lock}
       iconClass="text-gk-yellow"
       onClose={busy ? () => {} : onClose}
@@ -389,16 +389,16 @@ const tabInfo = TABS.find((t) => t.id === tab);
               onClick={onForget}
               disabled={busy}
               className="mr-auto text-gk-muted"
-              data-tip={saved.shared ? tr('Удалить общий вход для всех репозиториев на {0}', parsed.hostname) : tr('Удалить сохранённый вход этого репозитория')}
+              data-tip={saved.shared ? tr('remove-shared-sign-in-for', parsed.hostname) : tr('remove-this-repositorys-saved-sign')}
             >
-              {tj('{0} Забыть', [<Trash2 size={13} />])}</Button>
+              {tj('forget', [<Trash2 size={13} />])}</Button>
           )}
           <Button onClick={onClose} disabled={busy} data-testid="auth-cancel">
-            {notice ? tr('Готово') : tr('Отмена')}
+            {notice ? tr('done') : tr('cancel')}
           </Button>
           <Button variant="blue" onClick={submit} disabled={!canSubmit} data-testid="auth-submit">
             {busy ? <Loader2 size={13} className="animate-spin" /> : <Lock size={13} />}
-            {busy ? tr('Проверяем…') : actionLabel ?? tr('Войти и повторить')}
+            {busy ? tr('checking') : actionLabel ?? tr('sign-in-and-retry')}
           </Button>
         </>
       }
@@ -413,12 +413,12 @@ const tabInfo = TABS.find((t) => t.id === tab);
                 {parsed.hostname}
               </span>
             ) : (
-              <span className="truncate text-[13px] text-gk-muted">{originalUrl ? tr('Сервер не указан') : tr('Репозиторий без remote')}</span>
+              <span className="truncate text-[13px] text-gk-muted">{originalUrl ? tr('no-server-specified') : tr('repository-without-remote')}</span>
             )}
             {repoName && <span className="truncate text-[12px] text-gk-muted" data-testid="auth-repo-path">{parsed.path}</span>}
           </span>
           <span className={`block truncate text-[11px] text-gk-dim ${url ? 'font-mono' : ''}`}>
-            {url || (originalUrl ? tr('введите адрес своего сервера ниже') : tr('укажите, где он хранится — remote origin будет добавлен'))}
+            {url || (originalUrl ? tr('enter-your-servers-address-below') : tr('specify-where-its-hosted-remote'))}
           </span>
         </span>
         {kindName && choice !== 'self' && (
@@ -446,12 +446,12 @@ const tabInfo = TABS.find((t) => t.id === tab);
 
       {canEditRemote && (
         <div className="space-y-1.5">
-          <Field label={tr('Адрес репозитория')} hint={target?.remote ? `remote ${target.remote}` : tr('будет добавлен как origin')}>
+          <Field label={tr('repository-address')} hint={target?.remote ? `remote ${target.remote}` : tr('will-be-added-as-origin')}>
             <input
               value={url}
               onChange={(e) => changeUrl(e.target.value)}
               placeholder="https://gitlab.company.ru/group/project.git"
-              aria-label={tr('Адрес репозитория')}
+              aria-label={tr('repository-address')}
               spellCheck={false}
               data-testid="auth-url"
               className={`${INPUT} font-mono text-[12px] ${url.trim() && !validUrl ? 'border-gk-red/60' : ''}`}
@@ -459,12 +459,12 @@ const tabInfo = TABS.find((t) => t.id === tab);
           </Field>
           {url.trim() && parsed.hostname && !parsed.path && (
             <div className="text-[11.5px] text-gk-yellow">
-              {tj('Добавьте путь проекта: <0>{1}</0>', [<span className="font-mono" />, buildRepoUrl(domainOfUrl(url), { ...last.current, path: tr('группа/проект') })])}
+              {tj('add-project-path', [<span className="font-mono" />, buildRepoUrl(domainOfUrl(url), { ...last.current, path: tr('group-project') })])}
             </div>
           )}
           {changed && validUrl && (
             <div className="rounded-md border border-gk-blue/30 bg-gk-blue/[0.07] px-3 py-1.5 text-[11.5px] leading-relaxed text-gk-text" data-testid="auth-remote-change">
-              {originalUrl ? tr('При сохранении remote {0} сменится:', target?.remote ?? 'origin') : tr('При сохранении будет добавлен remote origin:')}
+              {originalUrl ? tr('on-save-remote-will-change', target?.remote ?? 'origin') : tr('on-save-remote-origin-will')}
               {originalUrl && <span className="block truncate font-mono text-[11px] text-gk-dim">{originalUrl}</span>}
               <span className="block truncate font-mono text-[11px] text-gk-blue">→ {url.trim()}</span>
             </div>
@@ -502,7 +502,7 @@ const tabInfo = TABS.find((t) => t.id === tab);
               role="tab"
               aria-selected={tab === t.id}
               onClick={() => setTab(t.id, true)}
-              data-tip={off ? (t.https ? tr('Адрес — SSH: логин, пароль и токен для него не используются') : tr('Адрес — HTTPS: SSH-ключ для него не используется')) : undefined}
+              data-tip={off ? (t.https ? tr('address-is-ssh-username-password') : tr('address-is-https-ssh-key')) : undefined}
               className={`flex flex-1 items-center justify-center gap-1.5 rounded-md px-2 py-1.5 text-[12px] transition-colors ${
                 tab === t.id ? 'bg-gk-hover text-gk-strong shadow' : 'text-gk-muted hover:text-gk-text'
               } ${off ? 'opacity-50' : ''}`}
@@ -518,15 +518,15 @@ const tabInfo = TABS.find((t) => t.id === tab);
       {wrongProtocol && parsed.protocol && (
         <div className="rounded-md border border-gk-yellow/30 bg-gk-yellow/10 px-3 py-2 text-[12px] leading-relaxed text-gk-text">
           {proto === 'https'
-            ? tr('Адрес начинается с https:// — SSH-ключ для него не используется. Войдите логином и паролем или токеном, либо переведите адрес на SSH.')
-            : tr('Адрес — SSH (git@…): для него нужен SSH-ключ. Логин, пароль и токен работают только с адресами https://.')}
+            ? tr('address-starts-with-https-ssh')
+            : tr('address-is-ssh-git-it')}
           {canEditRemote && (proto === 'https' ? toSsh(url) : toHttps(url)) && (
             <div className="mt-2 flex items-center gap-2">
               <span className="min-w-0 flex-1 truncate font-mono text-[11px] text-gk-muted" data-tip={(proto === 'https' ? toSsh(url) : toHttps(url))!}>
                 → {proto === 'https' ? toSsh(url) : toHttps(url)}
               </span>
               <Button onClick={() => changeUrl((proto === 'https' ? toSsh(url) : toHttps(url))!)} disabled={busy} className="shrink-0 py-1 text-[12px]" data-testid="switch-to-ssh">
-                <ArrowRightLeft size={12} /> {proto === 'https' ? tr('Перевести адрес на SSH') : tr('Перевести адрес на HTTPS')}
+                <ArrowRightLeft size={12} /> {proto === 'https' ? tr('switch-address-to-ssh') : tr('switch-address-to-https')}
               </Button>
             </div>
           )}
@@ -535,18 +535,18 @@ const tabInfo = TABS.find((t) => t.id === tab);
 
       {tab === 'password' && (
         <div className="space-y-2.5">
-          <Field label={tr('Имя пользователя (Username)')}>
-            <input autoFocus value={username} onChange={(e) => setUsername(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && submit()} aria-label={tr('Имя пользователя')} className={INPUT} spellCheck={false} />
+          <Field label={tr('username')}>
+            <input autoFocus value={username} onChange={(e) => setUsername(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && submit()} aria-label={tr('username-2')} className={INPUT} spellCheck={false} />
           </Field>
-          <Field label={tr('Пароль (Password)')}>
+          <Field label={tr('password')}>
             <div className="relative">
               <input
                 type={show.password ? 'text' : 'password'}
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 onKeyDown={(e) => e.key === 'Enter' && submit()}
-                placeholder={reuseSecret('password') ? tr('•••••• сохранён — введите, чтобы заменить') : ''}
-                aria-label={tr('Пароль')}
+                placeholder={reuseSecret('password') ? tr('saved-type-to-replace') : ''}
+                aria-label={tr('password-2')}
                 className={`${INPUT} pr-9`}
               />
               {eye('password')}
@@ -554,7 +554,7 @@ const tabInfo = TABS.find((t) => t.id === tab);
           </Field>
           {prefersToken(kind) && (
             <p className="text-[11.5px] leading-relaxed text-gk-dim">
-              {tj('{0} с двухфакторной защитой не принимает обычный пароль для Git — используйте вкладку «Токен доступа».', [kindInfo(kind)?.label])}</p>
+              {tj('with-two-factor-authentication-doesnt', [kindInfo(kind)?.label])}</p>
           )}
         </div>
       )}
@@ -569,21 +569,21 @@ const tabInfo = TABS.find((t) => t.id === tab);
                 value={token}
                 onChange={(e) => setToken(e.target.value)}
                 onKeyDown={(e) => e.key === 'Enter' && submit()}
-                placeholder={reuseSecret('token') ? tr('•••••• сохранён — вставьте, чтобы заменить') : tokenPlaceholder(kind)}
-                aria-label={tr('Токен')}
+                placeholder={reuseSecret('token') ? tr('saved-paste-to-replace') : tokenPlaceholder(kind)}
+                aria-label={tr('token')}
                 className={`${INPUT} pr-9 font-mono`}
                 spellCheck={false}
               />
               {eye('token')}
             </div>
           </Field>
-          <Field label={tr('Имя пользователя')} hint={tr('необязательно')}>
+          <Field label={tr('username-2')} hint={tr('optional')}>
             <input
               value={tokenUser}
               onChange={(e) => setTokenUser(e.target.value)}
               onKeyDown={(e) => e.key === 'Enter' && submit()}
-              placeholder={tr('по умолчанию: {0}', defaultTokenUserFor(kind, srv?.defaultTokenUser))}
-              aria-label={tr('Имя пользователя для токена')}
+              placeholder={tr('default', defaultTokenUserFor(kind, srv?.defaultTokenUser))}
+              aria-label={tr('username-for-token')}
               className={INPUT}
               spellCheck={false}
             />
@@ -591,24 +591,24 @@ const tabInfo = TABS.find((t) => t.id === tab);
           <p className="text-[11.5px] leading-relaxed text-gk-dim">
             {scopes ? (
               <>
-                {tj('Нужны права {0}.', [scopes.map((sc, i) => (
+                {tj('requires-scopes', [scopes.map((sc, i) => (
                   <span key={sc}>
-                    {i > 0 && tr(' и ')}
+                    {i > 0 && tr('and')}
                     <b className="text-gk-muted">{sc}</b>
                   </span>
                 ))])}</>
             ) : (
-              tr('Нужен токен с правом записи в репозиторий.')
+              tr('requires-token-with-write-access')
             )}
             {page && (
               <button onClick={() => api?.openExternal(page)} className="ml-1 inline-flex items-center gap-0.5 text-gk-blue hover:underline">
-                {tj('Создать токен {0}', [<ExternalLink size={10} />])}
+                {tj('create-token', [<ExternalLink size={10} />])}
               </button>
             )}
           </p>
           {CI_KINDS.includes(kind) && (
             <p data-testid="auth-ci-hint" className="flex items-start gap-1.5 text-[11.5px] leading-relaxed text-gk-dim">
-              {tj('{0}<1>Эта же авторизация работает и для пайплайнов CI/CD — отдельно входить не нужно. {2}</1>', [<Workflow size={12} className="mt-0.5 shrink-0" />, <span />, CI_SCOPE_HINT[kind!]])}
+              {tj('this-same-sign-in-also', [<Workflow size={12} className="mt-0.5 shrink-0" />, <span />, CI_SCOPE_HINT[kind!]])}
             </p>
           )}
         </div>
@@ -619,8 +619,8 @@ const tabInfo = TABS.find((t) => t.id === tab);
           {/* Выбрать имеющийся ключ или создать новый */}
           <div role="radiogroup" className="flex gap-1 text-[12px]">
             {([
-              ['existing', tr('Существующий ключ'), FileKey],
-              ['new', tr('Создать новый ключ'), Sparkles],
+              ['existing', tr('existing-key'), FileKey],
+              ['new', tr('create-new-key'), Sparkles],
             ] as [string, string, LucideIcon][]).map(([id, label, Icon]) => (
               <button
                 key={id}
@@ -647,7 +647,7 @@ const tabInfo = TABS.find((t) => t.id === tab);
           {created && (
             <CreatedKey
               keyInfo={created}
-              submitLabel={actionLabel ?? tr('Войти и повторить')}
+              submitLabel={actionLabel ?? tr('sign-in-and-retry')}
               page={base ? sshKeysPage(kind, base, parsed.hostname) : null}
               host={parsed.hostname}
               onAnother={() => {
@@ -659,15 +659,15 @@ const tabInfo = TABS.find((t) => t.id === tab);
 
           {sshMode !== 'new' && !created && (
             <>
-              <Field label={tr('Приватный ключ')}>
+              <Field label={tr('private-key-2')}>
                 <div className="max-h-36 space-y-1 overflow-y-auto">
                   {keys === null ? (
                     <div className="flex items-center gap-2 text-[12px] text-gk-dim">
-                      {tj('{0} Ищем ключи в ~/.ssh…', [<Loader2 size={12} className="animate-spin" />])}</div>
+                      {tj('looking-for-keys-in-ssh', [<Loader2 size={12} className="animate-spin" />])}</div>
                   ) : keys.keys.length === 0 ? (
                     <div className="text-[12px] text-gk-dim">
-                      {tj('В {0} ключей не найдено — выберите файл или {1}.', [keys.dir || '~/.ssh', <button onClick={() => setSshMode('new')} className="text-gk-blue hover:underline">
-                        {tr('создайте новый ключ')}</button>])}</div>
+                      {tj('no-keys-found-in-choose', [keys.dir || '~/.ssh', <button onClick={() => setSshMode('new')} className="text-gk-blue hover:underline">
+                        {tr('create-new-key-2')}</button>])}</div>
                   ) : (
                     keys.keys.map((k) => (
                       <button
@@ -690,25 +690,25 @@ const tabInfo = TABS.find((t) => t.id === tab);
               </Field>
               <div className="flex items-center gap-2">
                 <span className="min-w-0 flex-1 truncate font-mono text-[11px] text-gk-dim" data-tip={keyPath || undefined}>
-                  {keyPath || tr('ключ не выбран')}
+                  {keyPath || tr('no-key-selected')}
                 </span>
                 <Button onClick={pickKey} className="shrink-0 py-1 text-[12px]">
-                  {tj('{0} Файл…', [<FolderOpen size={12} />])}</Button>
+                  {tj('file-4', [<FolderOpen size={12} />])}</Button>
                 {keyEntry?.hasPub && (
-                  <Button onClick={copyPublic} className="shrink-0 py-1 text-[12px]" data-tip={tr('Скопировать публичную часть (.pub) — для добавления на сервер')}>
+                  <Button onClick={copyPublic} className="shrink-0 py-1 text-[12px]" data-tip={tr('copy-public-part-pub-to')}>
                     <Copy size={12} /> .pub
                   </Button>
                 )}
               </div>
-              <Field label={tr('Пароль ключа (Passphrase)')} hint={tr('если ключ защищён паролем')}>
+              <Field label={tr('key-passphrase')} hint={tr('if-key-is-protected-by')}>
                 <div className="relative">
                   <input
                     type={show.passphrase ? 'text' : 'password'}
                     value={passphrase}
                     onChange={(e) => setPassphrase(e.target.value)}
                     onKeyDown={(e) => e.key === 'Enter' && submit()}
-                    placeholder={saved?.method === 'ssh' && saved.hasPassphrase && saved.keyPath === keyPath ? tr('•••••• сохранён') : ''}
-                    aria-label={tr('Пароль ключа')}
+                    placeholder={saved?.method === 'ssh' && saved.hasPassphrase && saved.keyPath === keyPath ? tr('saved') : ''}
+                    aria-label={tr('key-passphrase-2')}
                     className={`${INPUT} pr-9`}
                   />
                   {eye('passphrase')}
@@ -729,15 +729,15 @@ const tabInfo = TABS.find((t) => t.id === tab);
       {CI_KINDS.includes(kind) && (kind === 'gitlab' ? tab !== 'token' : tab === 'ssh') && (
         <div data-testid="auth-api-token" className="space-y-1.5 rounded-lg border border-gk-border bg-gk-fg/[0.02] px-3 py-2.5">
           <div className="flex items-center gap-1.5 text-[12px] font-medium text-gk-text">
-            {tj('{0} Пайплайны CI/CD<1>— необязательно</1>', [<Workflow size={13} className="text-gk-muted" />, <span className="font-normal text-gk-dim" />])}
+            {tj('ci-cd-pipelines-optional', [<Workflow size={13} className="text-gk-muted" />, <span className="font-normal text-gk-dim" />])}
           </div>
           <p className="text-[11.5px] leading-relaxed text-gk-dim">
-            {tj('{0} {1} принимает для Pull/Push, но не для API. Чтобы эта же авторизация открывала и пайплайны, добавьте токен — он сохранится вместе с ней. {2}{3}', [tab === 'ssh' ? tr('SSH-ключ') : tr('Пароль'), KIND_NAME[kind!], CI_SCOPE_HINT[kind!], base && tokenPage(kind, base, parsed.hostname) && (
+            {tj('accepts-it-for-pull-push', [tab === 'ssh' ? tr('ssh-key') : tr('password-2'), KIND_NAME[kind!], CI_SCOPE_HINT[kind!], base && tokenPage(kind, base, parsed.hostname) && (
               <button
                 onClick={() => api?.openExternal(tokenPage(kind, base, parsed.hostname)!)}
                 className="ml-1 inline-flex items-center gap-0.5 text-gk-blue hover:underline"
               >
-                {tj('Создать токен {0}', [<ExternalLink size={10} />])}
+                {tj('create-token', [<ExternalLink size={10} />])}
               </button>
             )])}
           </p>
@@ -747,8 +747,8 @@ const tabInfo = TABS.find((t) => t.id === tab);
               value={apiToken}
               onChange={(e) => setApiToken(e.target.value)}
               onKeyDown={(e) => e.key === 'Enter' && submit()}
-              placeholder={saved?.hasApiToken && saved.method === tab ? tr('•••••• сохранён — введите, чтобы заменить') : tokenPlaceholder(kind)}
-              aria-label={tr('Токен для пайплайнов')}
+              placeholder={saved?.hasApiToken && saved.method === tab ? tr('saved-type-to-replace') : tokenPlaceholder(kind)}
+              aria-label={tr('token-for-pipelines')}
               spellCheck={false}
               className={`${INPUT} pr-9 font-mono`}
             />
@@ -770,28 +770,28 @@ const tabInfo = TABS.find((t) => t.id === tab);
       )}
 
       <p className="text-[11px] leading-relaxed text-gk-dim">
-        {tj('{0} Они привязаны к репозиторию <1>{2}</1> на {3} — другие репозитории этого сервера их не получат. Git получает их напрямую, без окон входа.{4}{5}', [secretStorageText(undefined, tr('Данные')), <span className="font-mono text-gk-muted" />, parsed.path || '…', parsed.hostname ?? tr('сервере'), saved && !saved.shared && (
+        {tj('theyre-tied-to-repository-on', [secretStorageText(undefined, tr('credentials')), <span className="font-mono text-gk-muted" />, parsed.path || '…', parsed.hostname ?? tr('server-2'), saved && !saved.shared && (
           <span className="block" data-testid="auth-saved">
-            {tj('Сейчас сохранено: {0}{1}{2}.', [METHOD_NAMES[saved.method], saved.username ? ` (${saved.username})` : '', saved.keyPath ? ` — ${saved.keyPath.split(/[\\/]/).pop()}` : ''])}</span>
+            {tj('currently-saved', [METHOD_NAMES[saved.method], saved.username ? ` (${saved.username})` : '', saved.keyPath ? ` — ${saved.keyPath.split(/[\\/]/).pop()}` : ''])}</span>
         ), saved?.shared && (
           <span className="block text-gk-yellow" data-testid="auth-saved-shared">
-            {tj('Сейчас действует общий вход для всего {0} ({1}{2}), сохранённый раньше. После сохранения у этого репозитория будет свой.', [parsed.hostname, METHOD_NAMES[saved.method], saved.username ? `, ${saved.username}` : ''])}</span>
+            {tj('shared-sign-in-for-all', [parsed.hostname, METHOD_NAMES[saved.method], saved.username ? `, ${saved.username}` : ''])}</span>
         )])}
       </p>
     </Modal>
   );
 }
 
-const METHOD_NAMES: Record<string, string> = { password: tr('логин и пароль'), token: tr('токен'), ssh: tr('SSH-ключ') };
+const METHOD_NAMES: Record<string, string> = { password: tr('username-and-password-2'), token: tr('token-2'), ssh: tr('ssh-key') };
 
 /** Работают ли пайплайны от сохранённой авторизации (последняя проверка) */
 const CI_KINDS: (string | null)[] = ['gitlab', 'github', 'gitea', 'bitbucket'];
 const KIND_NAME: Record<string, string> = { gitlab: 'GitLab', github: 'GitHub', gitea: 'Gitea', bitbucket: 'Bitbucket' };
 const CI_SCOPE_HINT: Record<string, string> = {
-  gitlab: tr('Права api хватает на всё.'),
-  github: tr('Токену нужны права repo и workflow (для раннеров и секретов — администратор репозитория).'),
-  gitea: tr('Токену нужны права write:repository.'),
-  bitbucket: tr('Паролю приложения нужны права Pipelines и Repositories.'),
+  gitlab: tr('api-scope-covers-everything'),
+  github: tr('token-needs-repo-and-workflow-scopes'),
+  gitea: tr('token-needs-write-repository-scope'),
+  bitbucket: tr('app-password-needs-pipelines-and'),
 };
 
 function ApiLine({ api: a }: { api: ApiView | null }) {
@@ -799,14 +799,14 @@ function ApiLine({ api: a }: { api: ApiView | null }) {
   if (a.state === 'ok') {
     return (
       <p data-testid="auth-api-state" data-state="ok" className="flex items-center gap-1.5 text-[11.5px] text-gk-green">
-        {tj('{0} Пайплайны CI/CD работают от этой авторизации{1}.', [<CircleCheck size={12} />, a.user?.username ? ` (@${a.user.username})` : ''])}</p>
+        {tj('ci-cd-pipelines-work-with', [<CircleCheck size={12} />, a.user?.username ? ` (@${a.user.username})` : ''])}</p>
     );
   }
   if (a.state === 'bad' || a.state === 'none') {
     return (
       <p data-testid="auth-api-state" data-state={a.state} className="flex items-start gap-1.5 text-[11.5px] leading-relaxed text-gk-yellow">
         <AlertTriangle size={12} className="mt-0.5 shrink-0" />
-        <span>{a.reason ?? tr('Пайплайны CI/CD от этой авторизации не открываются — нужен токен.')}</span>
+        <span>{a.reason ?? tr('ci-cd-pipelines-dont-open')}</span>
       </p>
     );
   }
@@ -839,11 +839,11 @@ function ServerPicker({ choice, onChoice, locked, domain, onDomain, kindRow }: S
   }, [locked]);
   const options = [
     ...CLOUD_SERVERS.map((c) => ({ id: c.id, title: c.label, sub: c.host, icon: Cloud, color: kindInfo(c.kind)?.color })),
-    { id: 'self', title: tr('Свой сервер'), sub: 'Self-Managed', icon: Server, color: null },
+    { id: 'self', title: tr('own-server'), sub: 'Self-Managed', icon: Server, color: null },
   ];
   return (
     <div className="space-y-2" data-testid="server-picker">
-      <div className="text-[11.5px] font-medium text-gk-muted">{tr('Где хранится репозиторий')}</div>
+      <div className="text-[11.5px] font-medium text-gk-muted">{tr('where-repository-is-hosted')}</div>
       <div role="radiogroup" className="grid grid-cols-3 gap-1.5">
         {options.map((o) => {
           const off = locked && choice !== o.id;
@@ -855,7 +855,7 @@ function ServerPicker({ choice, onChoice, locked, domain, onDomain, kindRow }: S
               disabled={off}
               onClick={() => onChoice(o.id)}
               data-testid={`server-${o.id}`}
-              data-tip={off ? tr('Адрес задан в окне клонирования') : undefined}
+              data-tip={off ? tr('address-is-set-in-clone') : undefined}
               className={`flex items-center gap-2 rounded-md border px-2.5 py-2 text-left transition-colors disabled:opacity-40 ${
                 choice === o.id ? 'border-gk-blue/70 bg-gk-blue/10' : 'border-gk-border enabled:hover:bg-gk-hover'
               }`}
@@ -872,13 +872,13 @@ function ServerPicker({ choice, onChoice, locked, domain, onDomain, kindRow }: S
 
       {choice === 'self' && (
         <div className="space-y-2 rounded-lg border border-gk-border bg-gk-fg/[0.02] p-3">
-          <Field label={tr('Адрес сервера')} hint={locked ? tr('из ссылки на репозиторий') : tr('домен, можно с портом')}>
+          <Field label={tr('server-address')} hint={locked ? tr('from-repository-link') : tr('domain-optionally-with-port')}>
             <input
               value={domain}
               onChange={(e) => onDomain(e.target.value)}
               readOnly={locked}
               placeholder="gitlab.company.ru"
-              aria-label={tr('Адрес сервера')}
+              aria-label={tr('server-address')}
               spellCheck={false}
               data-testid="server-domain"
               className={`${INPUT} font-mono ${locked ? 'opacity-70' : ''}`}
@@ -886,7 +886,7 @@ function ServerPicker({ choice, onChoice, locked, domain, onDomain, kindRow }: S
           </Field>
           {!locked && known.length > 0 && (
             <div className="flex flex-wrap items-center gap-1 text-[11px] text-gk-dim">
-              {tj('Ранее:{0}', [known.slice(0, 6).map((k) => (
+              {tj('previously', [known.slice(0, 6).map((k) => (
                 <button
                   key={k.hostname}
                   onClick={() => onDomain(k.base.startsWith('http://') ? k.base : k.base.replace(/^https:\/\//, ''))}
@@ -915,31 +915,31 @@ interface KindRowProps {
 
 function KindRow({ kind, touched, detect, saved, onChange }: KindRowProps) {
   let note: ReactNode = null;
-  if (touched) note = <span className="text-gk-dim">{tr('выбран вами')}</span>;
+  if (touched) note = <span className="text-gk-dim">{tr('chosen-by-you')}</span>;
   else if (detect?.status === 'loading')
     note = (
       <span className="flex items-center gap-1 text-gk-dim">
-        {tj('{0} определяем по ответу сервера…', [<Loader2 size={11} className="animate-spin" />])}</span>
+        {tj('detecting-from-server-response', [<Loader2 size={11} className="animate-spin" />])}</span>
     );
   else if (detect?.status === 'ok' && detect.kind === kind)
     note = (
       <span className="flex items-center gap-1 text-gk-green" data-testid="kind-detected">
-        {tj('{0} определён по ответу сервера{1}', [<Check size={11} />, detect.version ? ` · ${detect.version}` : ''])}
+        {tj('detected-from-server-response', [<Check size={11} />, detect.version ? ` · ${detect.version}` : ''])}
       </span>
     );
-  else if (detect?.status === 'fail') note = <span className="text-gk-yellow">{tj('{0} — выберите тип вручную', [detect.error ?? tr('Сервер не ответил')])}</span>;
-  else if (saved) note = <span className="text-gk-dim">{tr('запомнен для этого сервера')}</span>;
-  else if (kind) note = <span className="text-gk-dim">{tr('по адресу сервера')}</span>;
+  else if (detect?.status === 'fail') note = <span className="text-gk-yellow">{tj('choose-type-manually', [detect.error ?? tr('server-didnt-respond-2')])}</span>;
+  else if (saved) note = <span className="text-gk-dim">{tr('remembered-for-this-server')}</span>;
+  else if (kind) note = <span className="text-gk-dim">{tr('by-server-address')}</span>;
   return (
     <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[11.5px]" data-testid="kind-row">
-      {tj('<0>Тип сервера</0>{1}{2}', [<span className="text-gk-muted" />, <select
+      {tj('server-type', [<span className="text-gk-muted" />, <select
         value={kind ?? ''}
         onChange={(e) => onChange(e.target.value || null)}
-        aria-label={tr('Тип сервера')}
+        aria-label={tr('server-type-2')}
         data-testid="server-kind"
         className="rounded-md border border-gk-border bg-gk-bg px-2 py-1 text-[12px] text-gk-text outline-none focus:border-gk-blue/70"
       >
-        {!kind && <option value="">{tr('не выбран')}</option>}
+        {!kind && <option value="">{tr('not-selected')}</option>}
         {SERVER_KINDS.map((k) => (
           <option key={k.id} value={k.id}>
             {k.self}
@@ -965,8 +965,8 @@ function Field({ label, hint, children }: { label: ReactNode; hint?: ReactNode; 
 }
 
 const KEY_TYPES = [
-  { id: 'ed25519', label: 'Ed25519', hint: tr('рекомендуется') },
-  { id: 'rsa', label: 'RSA 4096', hint: tr('для старых серверов') },
+  { id: 'ed25519', label: 'Ed25519', hint: tr('recommended') },
+  { id: 'rsa', label: 'RSA 4096', hint: tr('for-old-servers') },
 ];
 
 /** Форма нового SSH-ключа: тип, имя файла, комментарий, пароль ключа с повтором */
@@ -1034,7 +1034,7 @@ function KeyGenerator({ host, onDefaults, onCreated }: KeyGeneratorProps) {
           </button>
         ))}
       </div>
-      <Field label={tr('Имя файла')}>
+      <Field label={tr('file-name')}>
         <div className={`flex items-center rounded-md border bg-gk-bg ${badName ? 'border-gk-red/60' : 'border-gk-border focus-within:border-gk-blue/70'}`}>
           <span className="pl-2.5 font-mono text-[12px] text-gk-dim">~/.ssh/</span>
           <input
@@ -1043,53 +1043,53 @@ function KeyGenerator({ host, onDefaults, onCreated }: KeyGeneratorProps) {
               setName(e.target.value);
               setNameTouched(true);
             }}
-            aria-label={tr('Имя файла ключа')}
+            aria-label={tr('key-file-name')}
             spellCheck={false}
             className="min-w-0 flex-1 bg-transparent px-1 py-1.5 font-mono text-[12.5px] text-gk-text outline-none"
           />
         </div>
       </Field>
-      <Field label={tr('Комментарий')} hint={tr('обычно email — чтобы узнать ключ в списке на сервере')}>
+      <Field label={tr('comment')} hint={tr('usually-email-to-recognize-key')}>
         <input
           value={comment}
           onChange={(e) => {
             setComment(e.target.value);
             setCommentTouched(true);
           }}
-          aria-label={tr('Комментарий ключа')}
+          aria-label={tr('key-comment')}
           spellCheck={false}
           className={INPUT}
         />
       </Field>
       <div className="grid grid-cols-2 gap-2">
-        <Field label={tr('Пароль ключа')} hint={tr('необязательно')}>
+        <Field label={tr('key-passphrase-2')} hint={tr('optional')}>
           <div className="relative">
             <input
               type={showPass ? 'text' : 'password'}
               value={pass}
               onChange={(e) => setPass(e.target.value)}
-              aria-label={tr('Пароль нового ключа')}
+              aria-label={tr('new-key-passphrase')}
               className={`${INPUT} pr-9`}
             />
             <button
               type="button"
               tabIndex={-1}
               onClick={() => setShowPass((v) => !v)}
-              aria-label={showPass ? tr('Скрыть') : tr('Показать')}
+              aria-label={showPass ? tr('hide-2') : tr('show')}
               className="absolute right-1.5 top-1/2 flex h-6 w-6 -translate-y-1/2 items-center justify-center rounded text-gk-dim hover:bg-gk-hover hover:text-gk-text"
             >
               {showPass ? <EyeOff size={13} /> : <Eye size={13} />}
             </button>
           </div>
         </Field>
-        <Field label={tr('Повтор пароля')}>
+        <Field label={tr('repeat-passphrase')}>
           <input
             type={showPass ? 'text' : 'password'}
             value={pass2}
             onChange={(e) => setPass2(e.target.value)}
             onKeyDown={(e) => e.key === 'Enter' && create()}
             disabled={!pass}
-            aria-label={tr('Повтор пароля ключа')}
+            aria-label={tr('repeat-key-passphrase')}
             className={`${INPUT} ${mismatch && pass2 ? 'border-gk-red/60' : ''} disabled:opacity-40`}
           />
         </Field>
@@ -1097,17 +1097,17 @@ function KeyGenerator({ host, onDefaults, onCreated }: KeyGeneratorProps) {
       <div className="flex items-center gap-2">
         <span className="flex-1 text-[11px] leading-relaxed text-gk-dim">
           {mismatch ? (
-            <span className="text-gk-red">{tr('Пароли не совпадают')}</span>
+            <span className="text-gk-red">{tr('passphrases-dont-match')}</span>
           ) : badName ? (
-            <span className="text-gk-red">{tr('Только имя файла — без папок и .pub')}</span>
+            <span className="text-gk-red">{tr('file-name-only-no-folders')}</span>
           ) : pass ? (
-            tr('Пароль ключа сохранится зашифрованным — вводить его при каждой операции не придётся.')
+            tr('key-passphrase-will-be-saved')
           ) : (
-            tr('Без пароля ключ защищён только правами на файл. Существующие ключи не перезаписываются.')
+            tr('without-passphrase-key-is-protected')
           )}
         </span>
         <Button variant="blue" onClick={create} disabled={!canCreate} className="shrink-0 whitespace-nowrap py-1 text-[12px]" data-testid="key-create">
-          {tj('{0} Создать ключ', [busy ? <Loader2 size={12} className="animate-spin" /> : <KeyRound size={12} />])}</Button>
+          {tj('create-key', [busy ? <Loader2 size={12} className="animate-spin" /> : <KeyRound size={12} />])}</Button>
       </div>
       {err && (
         <div className="rounded-md bg-gk-red/10 px-3 py-2 text-[11.5px] text-gk-text">
@@ -1138,32 +1138,32 @@ function CreatedKey({ keyInfo, page, host, onAnother, submitLabel }: CreatedKeyP
   return (
     <div className="space-y-2 rounded-lg border border-gk-green/30 bg-gk-green/[0.06] p-3" data-testid="key-created">
       <div className="flex items-center gap-2 text-[12.5px] text-gk-text">
-        {tj('{0}<1>Ключ <2>{3}</2> создан<4> · {5}</4></1>{6}', [<Check size={14} className="shrink-0 text-gk-green" />, <span className="min-w-0 flex-1 truncate" />, <b className="font-mono" />, keyInfo.name, <span className="text-gk-dim" />, keyInfo.type === 'rsa' ? 'RSA 4096' : 'Ed25519', <button onClick={onAnother} className="shrink-0 text-[11px] text-gk-dim hover:text-gk-text">
-          {tr('ещё один')}</button>])}
+        {tj('key-created', [<Check size={14} className="shrink-0 text-gk-green" />, <span className="min-w-0 flex-1 truncate" />, <b className="font-mono" />, keyInfo.name, <span className="text-gk-dim" />, keyInfo.type === 'rsa' ? 'RSA 4096' : 'Ed25519', <button onClick={onAnother} className="shrink-0 text-[11px] text-gk-dim hover:text-gk-text">
+          {tr('another-one')}</button>])}
       </div>
       <textarea
         readOnly
         value={keyInfo.publicKey}
         onFocus={(e) => e.target.select()}
         rows={3}
-        aria-label={tr('Публичный ключ')}
+        aria-label={tr('public-key')}
         className="w-full resize-none rounded-md border border-gk-border bg-gk-bg px-2.5 py-1.5 font-mono text-[11px] leading-snug text-gk-muted outline-none [overflow-wrap:anywhere]"
       />
       {keyInfo.fingerprint && <div className="font-mono text-[10.5px] text-gk-dim">{keyInfo.fingerprint}</div>}
       <div className="flex flex-wrap items-center gap-2">
         <Button onClick={copy} className="py-1 text-[12px]">
-          {copied ? <Check size={12} className="text-gk-green" /> : <Copy size={12} />} {copied ? tr('Скопирован в буфер') : tr('Скопировать')}
+          {copied ? <Check size={12} className="text-gk-green" /> : <Copy size={12} />} {copied ? tr('copied-to-clipboard') : tr('copy-3')}
         </Button>
         {page && (
           <Button onClick={() => api?.openExternal(page)} className="py-1 text-[12px]" data-testid="open-ssh-keys">
-            {tj('{0} Открыть SSH Keys на {1}', [<ExternalLink size={12} />, host])}
+            {tj('open-ssh-keys-on', [<ExternalLink size={12} />, host])}
           </Button>
         )}
       </div>
       <ol className="list-decimal space-y-0.5 pl-4 text-[11.5px] leading-relaxed text-gk-muted">
-        <li>{tj('Добавьте публичный ключ на сервере: {0} → вставьте из буфера → Add key.', [page ? tr('кнопка выше') : tr('настройки профиля → SSH Keys')])}</li>
+        <li>{tj('add-public-key-on-server', [page ? tr('button-above') : tr('profile-settings-ssh-keys')])}</li>
         <li>
-          {tj('Нажмите <0>«{1}»</0> — программа запомнит ключ для {2}.', [<b className="text-gk-text" />, submitLabel, host ?? tr('этого сервера')])}</li>
+          {tj('click-app-will-remember-key', [<b className="text-gk-text" />, submitLabel, host ?? tr('this-server')])}</li>
       </ol>
     </div>
   );

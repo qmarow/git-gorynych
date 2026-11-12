@@ -209,7 +209,7 @@ pub(crate) fn check_scripts(jobs: &[ScriptJob], cx: &mut CheckContext<'_>, syste
     let mut once: HashSet<String> = HashSet::new();
 
     for job in jobs {
-        let where_text = job.where_text.clone().unwrap_or_else(|| tr!("задание {0}", q(&job.name)));
+        let where_text = job.where_text.clone().unwrap_or_else(|| tr!("job-2", q(&job.name)));
         let mut cwd = job.cwd.clone().unwrap_or_default();
         let mut created: Vec<String> = Vec::new();
         let img = image_info(job.image.as_deref());
@@ -217,7 +217,7 @@ pub(crate) fn check_scripts(jobs: &[ScriptJob], cx: &mut CheckContext<'_>, syste
         let mut installed = false;
         let mut docker_warned = false;
         let mut missing_tool: HashSet<&'static str> = HashSet::new();
-        let when = tr!("При выполнении {0} {1}", job.kind.clone().unwrap_or_else(|| tr!("задания")), q(&job.name));
+        let when = tr!("when-runs", job.kind.clone().unwrap_or_else(|| tr!("jobs")), q(&job.name));
 
         for ln in &job.lines {
             if ln.reset {
@@ -236,10 +236,10 @@ pub(crate) fn check_scripts(jobs: &[ScriptJob], cx: &mut CheckContext<'_>, syste
                     line_add!(
                         "secret-in-script",
                         Error,
-                        title = tr!("В скрипте {0} открытым текстом {1}", where_text, tr!(what)),
-                        how = tr!("Значение попадёт в историю Git и в логи заданий — его увидит любой, у кого есть доступ к репозиторию или к логам."),
-                        why = tr!("Секреты в файле CI не скрываются: маскируются только переменные из настроек проекта."),
-                        fix = tr!("Отзовите этот ключ/токен и создайте новый; храните его в защищённой переменной (Settings → CI/CD → Variables, masked) и используйте как $ИМЯ."),
+                        title = tr!("script-of-has-in-plain", where_text, tr!(what)),
+                        how = tr!("value-will-end-up-in"),
+                        why = tr!("secrets-in-ci-file-arent"),
+                        fix = tr!("revoke-this-key-token-and"),
                     );
                     break;
                 }
@@ -269,10 +269,10 @@ pub(crate) fn check_scripts(jobs: &[ScriptJob], cx: &mut CheckContext<'_>, syste
                             line_add!(
                                 "cd-missing",
                                 Error,
-                                title = tr!("cd {0}: такой папки в репозитории нет", dir),
-                                how = tr!("Задание упадёт на этой строке: «{0}: cd: {1}: No such file or directory».", shell, dir),
-                                why = tr!("Папки {0} нет среди файлов репозитория, и раньше в задании её никто не создаёт.", q(join_path(&cwd, dir))),
-                                fix = tr!("Проверьте путь (регистр букв важен на Linux) или создайте папку раньше (mkdir -p) / получите её артефактом из предыдущего задания."),
+                                title = tr!("cd-no-such-folder-in", dir),
+                                how = tr!("job-will-fail-on-this", shell, dir),
+                                why = tr!("folder-isnt-among-repository-files", q(join_path(&cwd, dir))),
+                                fix = tr!("check-path-letter-case-matters"),
                             );
                         }
                         cwd = join_path(&cwd, dir);
@@ -321,30 +321,30 @@ pub(crate) fn check_scripts(jobs: &[ScriptJob], cx: &mut CheckContext<'_>, syste
                         line_add!(
                             "pkg-alpine",
                             Error,
-                            title = tr!("{0} в образе {1}", cmd, image.name),
-                            how = tr!("Задание упадёт: «{0}: {1}: not found».", shell, cmd),
-                            why = tr!("{0} — образ на Alpine Linux, там пакетный менеджер apk, а {1} нет.", q(&image.name), cmd),
-                            fix = tr!("Используйте apk add --no-cache … или образ на Debian/Ubuntu (без «-alpine» в теге)."),
+                            title = tr!("in-image", cmd, image.name),
+                            how = tr!("job-will-fail-not-found", shell, cmd),
+                            why = tr!("is-alpine-linux-image-it", q(&image.name), cmd),
+                            fix = tr!("use-apk-add-no-cache"),
                         );
                     }
                     if image.debian_like && cmd == "apk" {
                         line_add!(
                             "pkg-debian",
                             Error,
-                            title = tr!("apk в образе {0}", image.name),
-                            how = tr!("Задание упадёт: «{0}: apk: not found».", shell),
-                            why = tr!("{0} основан на Debian/Ubuntu — там apt-get, а apk есть только в Alpine.", q(&image.name)),
-                            fix = tr!("Замените на apt-get update && apt-get install -y … или возьмите вариант образа с «-alpine»."),
+                            title = tr!("apk-in-image", image.name),
+                            how = tr!("job-will-fail-apk-not", shell),
+                            why = tr!("is-based-on-debian-ubuntu", q(&image.name)),
+                            fix = tr!("replace-it-with-apt-get"),
                         );
                     }
                     if image.alpine && cmd == "bash" && !installed {
                         line_add!(
                             "bash-alpine",
                             Warning,
-                            title = tr!("bash в образе {0}", image.name),
-                            how = tr!("«sh: bash: not found» — в Alpine по умолчанию только sh (ash)."),
-                            why = tr!("Образы Alpine минимальные: bash в них не установлен."),
-                            fix = tr!("Запускайте через sh или добавьте apk add --no-cache bash перед этим."),
+                            title = tr!("bash-in-image", image.name),
+                            how = tr!("sh-bash-not-found-alpine"),
+                            why = tr!("alpine-images-are-minimal-bash"),
+                            fix = tr!("run-it-via-sh-or"),
                         );
                     }
                     if let Some(family) = tool_family(cmd)
@@ -358,14 +358,14 @@ pub(crate) fn check_scripts(jobs: &[ScriptJob], cx: &mut CheckContext<'_>, syste
                         line_add!(
                             "tool-missing",
                             Warning,
-                            title = tr!("{0}: в образе {1} нет {2}", cmd, image.name, family),
-                            how = tr!("Скорее всего задание упадёт: «{0}: {1}: not found» (код 127).", shell, cmd),
+                            title = tr!("image-has-no", cmd, image.name, family),
+                            how = tr!("job-will-most-likely-fail", shell, cmd),
                             why = if pnpm_in_node {
-                                tr!("В образах node есть npm и yarn, а pnpm нужно включить отдельно.")
+                                tr!("node-images-have-npm-and")
                             } else {
-                                tr!("Официальный образ {0} не содержит {1}, и раньше в задании он не устанавливается.", q(&image.name), family)
+                                tr!("official-image-doesnt-contain-and", q(&image.name), family)
                             },
-                            fix = if pnpm_in_node { tr!("Добавьте перед этим corepack enable (или npm i -g pnpm).") } else { tr!("Возьмите образ с {0} или установите его раньше в скрипте.", family) },
+                            fix = if pnpm_in_node { tr!("add-corepack-enable-or-npm") } else { tr!("take-image-with-or-install", family) },
                         );
                     }
                 }
@@ -381,10 +381,10 @@ pub(crate) fn check_scripts(jobs: &[ScriptJob], cx: &mut CheckContext<'_>, syste
                         line_add!(
                             "docker-no-daemon",
                             Warning,
-                            title = tr!("docker {0} без Docker-демона", arg0.unwrap_or_default()),
-                            how = tr!("На раннере с Docker executor задание упадёт: «Cannot connect to the Docker daemon at unix:///var/run/docker.sock. Is the docker daemon running?»"),
-                            why = tr!("В контейнере задания есть только клиент docker (если он вообще есть), а сам демон не запущен: нет services: docker:dind и не задан DOCKER_HOST."),
-                            fix = tr!("Добавьте services: [docker:dind] и variables: DOCKER_TLS_CERTDIR: \"/certs\" (образ docker:…), либо используйте раннер с shell executor / сокетом docker, либо kaniko/buildah."),
+                            title = tr!("docker-without-docker-daemon", arg0.unwrap_or_default()),
+                            how = tr!("on-runner-with-docker-executor"),
+                            why = tr!("job-container-has-only-docker"),
+                            fix = tr!("add-services-docker-dind-and"),
                         );
                     }
                 }
@@ -396,19 +396,19 @@ pub(crate) fn check_scripts(jobs: &[ScriptJob], cx: &mut CheckContext<'_>, syste
                         line_add!(
                             "exec-missing",
                             Error,
-                            title = tr!("{0}: файла нет в репозитории", cmd),
-                            how = tr!("Задание упадёт: «{0}: {1}: not found» (или No such file or directory).", shell, cmd),
-                            why = tr!("Файла {0} нет среди файлов репозитория и его не создаёт ни это задание, ни артефакты предыдущих.", q(&path)),
-                            fix = tr!("Проверьте путь и регистр букв; если файл генерируется — передайте его артефактом (artifacts + needs/dependencies)."),
+                            title = tr!("file-isnt-in-repository-3", cmd),
+                            how = tr!("job-will-fail-not-found-or", shell, cmd),
+                            why = tr!("file-isnt-among-repository-files", q(&path)),
+                            fix = tr!("check-path-and-letter-case"),
                         );
                     } else if cx.repo.mode(&path) == Some("100644") {
                         line_add!(
                             "exec-not-executable",
                             Error,
-                            title = tr!("{0}: у файла нет права на запуск", cmd),
-                            how = tr!("Задание упадёт: «{0}: {1}: Permission denied» (код 126).", shell, cmd),
-                            why = tr!("В Git файл {0} сохранён без флага исполняемости (режим 100644) — так бывает, если его добавили в Windows.", q(&path)),
-                            fix = tr!("Выполните git update-index --chmod=+x {0} и закоммитьте; или запускайте через интерпретатор: sh {1}.", path, cmd),
+                            title = tr!("file-isnt-executable", cmd),
+                            how = tr!("job-will-fail-permission-denied", shell, cmd),
+                            why = tr!("in-git-file-is-saved", q(&path)),
+                            fix = tr!("run-git-update-index-chmod", path, cmd),
                         );
                     }
                 }
@@ -423,32 +423,32 @@ pub(crate) fn check_scripts(jobs: &[ScriptJob], cx: &mut CheckContext<'_>, syste
                         line_add!(
                             "script-missing",
                             Error,
-                            title = tr!("{0} {1}: файла нет в репозитории", cmd, script),
+                            title = tr!("file-isnt-in-repository-4", cmd, script),
                             how = if cmd == "node" {
-                                tr!("Задание упадёт: «Error: Cannot find module '…/{0}'».", script)
+                                tr!("job-will-fail-error-cannot", script)
                             } else if cmd.starts_with("python") {
-                                tr!("Задание упадёт: «can't open file '{0}': [Errno 2] No such file or directory».", script)
+                                tr!("job-will-fail-cant-open", script)
                             } else {
-                                tr!("Задание упадёт: «{0}: No such file or directory».", script)
+                                tr!("job-will-fail-no-such", script)
                             },
-                            why = tr!("Файла {0} нет в репозитории (с учётом предыдущих cd).", q(join_path(&cwd, script))),
-                            fix = tr!("Проверьте путь и регистр букв или передайте файл артефактом из задания, которое его создаёт."),
+                            why = tr!("file-isnt-in-repository-taking", q(join_path(&cwd, script))),
+                            fix = tr!("check-path-and-letter-case-or"),
                         );
                     }
                 }
 
                 let is_npm = cmd == "npm";
-                let place = || if cwd.is_empty() { tr!("корне") } else { cwd.clone() };
+                let place = || if cwd.is_empty() { tr!("root") } else { cwd.clone() };
                 let place_q = || q(place());
                 if (is_npm || cmd == "yarn" || cmd == "pnpm") && !exists!("package.json", false) {
                     if once.insert(format!("pkg|{cwd}")) {
                         line_add!(
                             "pkg-json-missing",
                             Error,
-                            title = tr!("{0}: нет package.json в {1}", cmd, place()),
-                            how = if is_npm { "«npm ERR! enoent Could not read package.json: ENOENT: no such file or directory».".to_owned() } else { tr!("{0} завершится ошибкой: не найден package.json.", cmd) },
-                            why = tr!("Команда выполняется в папке {0}, а package.json там нет.", q(if cwd.is_empty() { "." } else { &cwd })),
-                            fix = tr!("Перейдите в папку проекта (cd …) или поправьте путь."),
+                            title = tr!("no-package-json-in", cmd, place()),
+                            how = if is_npm { "«npm ERR! enoent Could not read package.json: ENOENT: no such file or directory».".to_owned() } else { tr!("will-fail-package-json-not", cmd) },
+                            why = tr!("command-runs-in-folder-and", q(if cwd.is_empty() { "." } else { &cwd })),
+                            fix = tr!("go-to-project-folder-cd"),
                         );
                     }
                     continue;
@@ -457,10 +457,10 @@ pub(crate) fn check_scripts(jobs: &[ScriptJob], cx: &mut CheckContext<'_>, syste
                     line_add!(
                         "npm-ci-no-lock",
                         Error,
-                        title = tr!("npm ci без package-lock.json"),
+                        title = tr!("npm-ci-without-package-lock"),
                         how = "«npm ERR! The `npm ci` command can only install with an existing package-lock.json or npm-shrinkwrap.json».",
-                        why = tr!("В {0} нет package-lock.json — его не закоммитили (или он в .gitignore).", place_q()),
-                        fix = tr!("Закоммитьте package-lock.json (npm install локально создаст его) или замените npm ci на npm install."),
+                        why = tr!("has-no-package-lock-json", place_q()),
+                        fix = tr!("commit-package-lock-json-npm"),
                     );
                 }
                 let run_name: Option<String> = match cmd {
@@ -502,10 +502,10 @@ pub(crate) fn check_scripts(jobs: &[ScriptJob], cx: &mut CheckContext<'_>, syste
                         line_add!(
                             "npm-script-missing",
                             Error,
-                            title = tr!("{0} {1}{2}: такого скрипта нет в package.json", cmd, if arg0 == Some("run") { "run " } else { "" }, run_name),
+                            title = tr!("no-such-script-in-package", cmd, if arg0 == Some("run") { "run " } else { "" }, run_name),
                             how = if is_npm { format!("«npm ERR! Missing script: \"{run_name}\"».") } else { format!("«error Command \"{run_name}\" not found.»") },
-                            why = tr!("В {0} в разделе scripts есть: {1}.", key, if keys.is_empty() { tr!("ничего") } else { keys.join(", ") }),
-                            fix = tr!("Добавьте \"{0}\" в scripts или поправьте имя.{1}", run_name, if keys.is_empty() { String::new() } else { tr!(" Похожие: {0}.", keys.iter().take(5).cloned().collect::<Vec<_>>().join(", ")) }),
+                            why = tr!("scripts-section-of-has", key, if keys.is_empty() { tr!("nothing") } else { keys.join(", ") }),
+                            fix = tr!("add-to-scripts-or-fix", run_name, if keys.is_empty() { String::new() } else { tr!("similar", keys.iter().take(5).cloned().collect::<Vec<_>>().join(", ")) }),
                         );
                     }
                 }
@@ -514,20 +514,20 @@ pub(crate) fn check_scripts(jobs: &[ScriptJob], cx: &mut CheckContext<'_>, syste
                     line_add!(
                         "yarn-no-lock",
                         Error,
-                        title = tr!("yarn с --frozen-lockfile без yarn.lock"),
+                        title = tr!("yarn-with-frozen-lockfile-without"),
                         how = "«error Your lockfile needs to be updated, but yarn was run with `--frozen-lockfile`».",
-                        why = tr!("В {0} нет yarn.lock.", place_q()),
-                        fix = tr!("Закоммитьте yarn.lock или уберите флаг."),
+                        why = tr!("has-no-yarn-lock", place_q()),
+                        fix = tr!("commit-yarn-lock-or-remove"),
                     );
                 }
                 if cmd == "pnpm" && matches!(arg0, Some("install" | "i")) && !has_arg("--no-frozen-lockfile") && !exists!("pnpm-lock.yaml", false) {
                     line_add!(
                         "pnpm-no-lock",
                         Error,
-                        title = tr!("pnpm install без pnpm-lock.yaml"),
-                        how = tr!("В CI pnpm по умолчанию работает с --frozen-lockfile: «ERR_PNPM_NO_LOCKFILE Cannot install with \"frozen-lockfile\" because pnpm-lock.yaml is absent»."),
-                        why = tr!("В {0} нет pnpm-lock.yaml.", place_q()),
-                        fix = tr!("Закоммитьте pnpm-lock.yaml или добавьте --no-frozen-lockfile."),
+                        title = tr!("pnpm-install-without-pnpm-lock"),
+                        how = tr!("in-ci-pnpm-uses-frozen"),
+                        why = tr!("has-no-pnpm-lock-yaml", place_q()),
+                        fix = tr!("commit-pnpm-lock-yaml-or"),
                     );
                 }
 
@@ -539,20 +539,20 @@ pub(crate) fn check_scripts(jobs: &[ScriptJob], cx: &mut CheckContext<'_>, syste
                     line_add!(
                         "pip-req-missing",
                         Error,
-                        title = tr!("pip install -r {0}: файла нет", requirements),
+                        title = tr!("pip-install-r-no-such", requirements),
                         how = format!("«ERROR: Could not open requirements file: [Errno 2] No such file or directory: '{requirements}'»."),
-                        why = tr!("Файла {0} нет в репозитории.", q(join_path(&cwd, requirements))),
-                        fix = tr!("Проверьте имя (requirements.txt / requirements-dev.txt) и папку."),
+                        why = tr!("file-isnt-in-repository-2", q(join_path(&cwd, requirements))),
+                        fix = tr!("check-name-requirements-txt-requirements"),
                     );
                 }
                 if cmd == "poetry" && arg0 == Some("install") && !exists!("pyproject.toml", false) {
                     line_add!(
                         "poetry-no-project",
                         Error,
-                        title = tr!("poetry install без pyproject.toml"),
+                        title = tr!("poetry-install-without-pyproject-toml"),
                         how = "«Poetry could not find a pyproject.toml file in … or its parents».",
-                        why = tr!("В {0} нет pyproject.toml.", place_q()),
-                        fix = tr!("Перейдите в папку проекта или добавьте pyproject.toml."),
+                        why = tr!("has-no-pyproject-toml", place_q()),
+                        fix = tr!("go-to-project-folder-or"),
                     );
                 }
 
@@ -575,24 +575,24 @@ pub(crate) fn check_scripts(jobs: &[ScriptJob], cx: &mut CheckContext<'_>, syste
                                 line_add!(
                                     "make-no-makefile",
                                     Error,
-                                    title = tr!("make: нет Makefile в {0}", place()),
+                                    title = tr!("make-no-makefile-in", place()),
                                     how = "«make: *** No targets specified and no makefile found.  Stop.»",
-                                    why = tr!("В {0} нет Makefile.", q(if cwd.is_empty() { "." } else { &cwd })),
-                                    fix = tr!("Добавьте Makefile или перейдите в нужную папку (make -C папка …)."),
+                                    why = tr!("has-no-makefile", q(if cwd.is_empty() { "." } else { &cwd })),
+                                    fix = tr!("add-makefile-or-go-to"),
                                 );
                             }
                         }
                         Some(info) if !info.dynamic => {
                             for target in pos.iter().filter(|item| literal(item) && !item.contains('=')) {
                                 if !info.targets.iter().any(|item| item == target) {
-                                    let known = if info.targets.is_empty() { tr!("нет") } else { info.targets.iter().take(12).cloned().collect::<Vec<_>>().join(", ") };
+                                    let known = if info.targets.is_empty() { tr!("no") } else { info.targets.iter().take(12).cloned().collect::<Vec<_>>().join(", ") };
                                     line_add!(
                                         "make-no-target",
                                         Error,
-                                        title = tr!("make {0}: такой цели нет в {1}", target, info.file),
+                                        title = tr!("make-no-such-target-in", target, info.file),
                                         how = format!("«make: *** No rule to make target '{target}'.  Stop.»"),
-                                        why = tr!("В {0} есть цели: {1}.", info.file, known),
-                                        fix = tr!("Поправьте имя цели или добавьте её в Makefile."),
+                                        why = tr!("has-targets", info.file, known),
+                                        fix = tr!("fix-target-name-or-add"),
                                     );
                                 }
                             }
@@ -602,13 +602,13 @@ pub(crate) fn check_scripts(jobs: &[ScriptJob], cx: &mut CheckContext<'_>, syste
                 }
 
                 let build: Option<(&[&str], String, String)> = match cmd {
-                    "mvn" => Some((&["pom.xml"], tr!("mvn: нет pom.xml"), "«[ERROR] The goal you specified requires a project to execute but there is no POM in this directory».".to_owned())),
-                    "gradle" => Some((&["build.gradle", "build.gradle.kts", "settings.gradle", "settings.gradle.kts"], tr!("gradle: нет build.gradle"), tr!("Gradle не найдёт сборку: «Directory … does not contain a Gradle build»."))),
-                    "go" if matches!(arg0, Some("build" | "test" | "vet" | "run" | "mod")) => Some((&["go.mod"], tr!("go: нет go.mod"), "«go: go.mod file not found in current directory or any parent directory».".to_owned())),
-                    "cargo" if matches!(arg0, Some("build" | "test" | "run" | "check" | "clippy")) => Some((&["Cargo.toml"], tr!("cargo: нет Cargo.toml"), "«error: could not find `Cargo.toml` in … or any parent directory».".to_owned())),
-                    "composer" if matches!(arg0, Some("install" | "update")) => Some((&["composer.json"], tr!("composer: нет composer.json"), "«Composer could not find a composer.json file».".to_owned())),
-                    "bundle" if matches!(arg0, Some("install" | "exec")) => Some((&["Gemfile"], tr!("bundle: нет Gemfile"), "«Could not locate Gemfile».".to_owned())),
-                    "dotnet" if matches!(arg0, Some("build" | "test" | "restore" | "publish")) && pos.get(1).is_none_or(|item| item.is_empty()) => Some((&["*.sln", "*.csproj", "*.fsproj"], tr!("dotnet: нет проекта (.sln / .csproj)"), "«MSBUILD : error MSB1003: Specify a project or solution file».".to_owned())),
+                    "mvn" => Some((&["pom.xml"], tr!("mvn-no-pom-xml"), "«[ERROR] The goal you specified requires a project to execute but there is no POM in this directory».".to_owned())),
+                    "gradle" => Some((&["build.gradle", "build.gradle.kts", "settings.gradle", "settings.gradle.kts"], tr!("gradle-no-build-gradle"), tr!("gradle-wont-find-build-directory"))),
+                    "go" if matches!(arg0, Some("build" | "test" | "vet" | "run" | "mod")) => Some((&["go.mod"], tr!("go-no-go-mod"), "«go: go.mod file not found in current directory or any parent directory».".to_owned())),
+                    "cargo" if matches!(arg0, Some("build" | "test" | "run" | "check" | "clippy")) => Some((&["Cargo.toml"], tr!("cargo-no-cargo-toml"), "«error: could not find `Cargo.toml` in … or any parent directory».".to_owned())),
+                    "composer" if matches!(arg0, Some("install" | "update")) => Some((&["composer.json"], tr!("composer-no-composer-json"), "«Composer could not find a composer.json file».".to_owned())),
+                    "bundle" if matches!(arg0, Some("install" | "exec")) => Some((&["Gemfile"], tr!("bundle-no-gemfile"), "«Could not locate Gemfile».".to_owned())),
+                    "dotnet" if matches!(arg0, Some("build" | "test" | "restore" | "publish")) && pos.get(1).is_none_or(|item| item.is_empty()) => Some((&["*.sln", "*.csproj", "*.fsproj"], tr!("dotnet-no-project-sln-csproj"), "«MSBUILD : error MSB1003: Specify a project or solution file».".to_owned())),
                     _ => None,
                 };
                 if let Some((files, title, how)) = build {
@@ -625,8 +625,8 @@ pub(crate) fn check_scripts(jobs: &[ScriptJob], cx: &mut CheckContext<'_>, syste
                             Error,
                             title = title,
                             how = how,
-                            why = tr!("В {0} нет {1}.", place_q(), files.join(" / ")),
-                            fix = tr!("Перейдите в папку проекта (cd …) или проверьте путь."),
+                            why = tr!("has-no", place_q(), files.join(" / ")),
+                            fix = tr!("go-to-project-folder-cd-or"),
                         );
                     }
                 }
@@ -645,10 +645,10 @@ pub(crate) fn check_scripts(jobs: &[ScriptJob], cx: &mut CheckContext<'_>, syste
                         line_add!(
                             "dockerfile-missing",
                             Error,
-                            title = tr!("docker build: нет {0}", dockerfile),
+                            title = tr!("docker-build-no", dockerfile),
                             how = "«failed to solve: failed to read dockerfile: open Dockerfile: no such file or directory».",
-                            why = tr!("Файла {0} нет в репозитории.", q(join_path(&cwd, &dockerfile))),
-                            fix = tr!("Укажите правильный путь через -f или поправьте контекст сборки."),
+                            why = tr!("file-isnt-in-repository-2", q(join_path(&cwd, &dockerfile))),
+                            fix = tr!("specify-right-path-with-f"),
                         );
                     }
                 }
@@ -659,10 +659,10 @@ pub(crate) fn check_scripts(jobs: &[ScriptJob], cx: &mut CheckContext<'_>, syste
                     line_add!(
                         "compose-missing",
                         Error,
-                        title = tr!("docker compose -f {0}: файла нет", compose),
+                        title = tr!("docker-compose-f-no-such", compose),
                         how = "«open …: no such file or directory».",
-                        why = tr!("Файла {0} нет в репозитории.", q(join_path(&cwd, compose))),
-                        fix = tr!("Проверьте путь."),
+                        why = tr!("file-isnt-in-repository-2", q(join_path(&cwd, compose))),
+                        fix = tr!("check-path"),
                     );
                 }
                 if cmd == "kubectl"
@@ -673,10 +673,10 @@ pub(crate) fn check_scripts(jobs: &[ScriptJob], cx: &mut CheckContext<'_>, syste
                     line_add!(
                         "kubectl-missing",
                         Error,
-                        title = tr!("kubectl {0} -f {1}: файла нет", arg0.unwrap_or_default(), manifest),
+                        title = tr!("kubectl-f-no-such-file", arg0.unwrap_or_default(), manifest),
                         how = format!("«error: the path \"{manifest}\" does not exist»."),
-                        why = tr!("Файла {0} нет в репозитории.", q(join_path(&cwd, manifest))),
-                        fix = tr!("Проверьте путь."),
+                        why = tr!("file-isnt-in-repository-2", q(join_path(&cwd, manifest))),
+                        fix = tr!("check-path"),
                     );
                 }
             }
