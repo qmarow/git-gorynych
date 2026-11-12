@@ -55,7 +55,7 @@ import ContextMenu from './components/ContextMenu.tsx';
 import TitleBar from './components/TitleBar.tsx';
 import Toolbar from './components/Toolbar.tsx';
 import Sidebar from './components/Sidebar.tsx';
-import CommitGraph from './components/CommitGraph.jsx';
+import CommitGraph from './components/CommitGraph.tsx';
 import CommitDetails from './components/CommitDetails.tsx';
 import Toasts from './components/Toasts.tsx';
 import TooltipLayer from './components/TooltipLayer.tsx';

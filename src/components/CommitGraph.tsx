@@ -1,19 +1,75 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type DragEvent, type HTMLAttributes, type KeyboardEvent, type MouseEvent } from 'react';
 import { flushSync } from 'react-dom';
 import { Archive, Check, Copy, FileSearch, Pencil, SlidersHorizontal } from 'lucide-react';
-import { RefKindIcon, RefsPopover, refKindLabel, useHoverPopover } from './RefBadge.tsx';
-import { edgePath, fitMetrics, graphWidth, laneColor, laneX, layoutGraph, metricsFor, rowY } from '../lib/graphLayout.ts';
+import { RefKindIcon, RefsPopover, refKindLabel, useHoverPopover, type RefActions, type RefGroup, type RefItem } from './RefBadge.tsx';
+import { edgePath, fitMetrics, graphWidth, laneColor, laneX, layoutGraph, metricsFor, rowY, type GraphNode, type LayoutCommit, type Metrics } from '../lib/graphLayout.ts';
 import { StatusIcon, statusInfo } from './PipelineStatus.tsx';
 import { fullDate, initials, relativeTime, shortDate } from '../lib/format.ts';
 import { ResizeHandle, useStoredWidth } from './Resizer.tsx';
 import { avatarUrl, isFailed, markFailed } from '../lib/avatars.ts';
-import { hasRefDrag, readRefDrag, startRefDrag } from '../lib/dnd.ts';
+import { hasRefDrag, readRefDrag, startRefDrag, type RefDragPayload } from '../lib/dnd.ts';
 import { isMod, kb } from '../lib/platform.ts';
 import { CC_TYPES, parseSummary } from '../lib/commitMsg.ts';
-import { DEFAULT_VIEW, columnById, moveColumn, useGraphView } from '../lib/graphView.ts';
+import { DEFAULT_VIEW, columnById, moveColumn, useGraphView, type ColumnId, type GraphView } from '../lib/graphView.ts';
 import GraphViewMenu from './GraphViewMenu.tsx';
 import { isLight, readable } from '../lib/scheme.ts';
 import { t as tr, tj, locale } from '../i18n/index.ts';
+
+/** Ссылка на коммите (`CommitRef`): ветка, серверная ветка или тег */
+type GraphRef = RefItem & { head?: boolean | null };
+
+/**
+ * Строка графа (готовит App): коммит, WIP или stash (`graphStash.ts`). У WIP нет автора и даты — эти поля
+ * читаются только под проверкой `!node.wip`.
+ */
+export interface GraphRow extends LayoutCommit {
+  hash: string;
+  parents: string[];
+  message: string;
+  description?: string;
+  refs: GraphRef[];
+  author: { name: string; email: string };
+  date: string;
+  isHead?: boolean;
+  wip?: boolean;
+  stash?: { id: string } | null;
+}
+type GraphItem = GraphNode<GraphRow>;
+
+/** Пайплайн коммита (`pipelineMap.bySha`) и сводка по его заданиям */
+export type PipelineMark = { id: string | number; status: string };
+type PipelineTip = { status: string; text: string };
+/** Текст поиска найден в изменениях этих файлов */
+type FileHit = { files: { path: string; count: number }[]; moreFiles?: number };
+/** Ширина колонки: значение, «потянуть» (возвращает итог) и сохранить */
+type WidthApi = [number | null, (value: number | null) => number, (value: number | null) => void];
+type DragPayload = RefDragPayload & { message?: string };
+
+interface CommitGraphProps {
+  commits: GraphRow[];
+  introKey: string;
+  focus?: { hash: string; n: number } | null;
+  selectedHash: string | null;
+  onSelect: (hash: string) => void;
+  onActivate?: (node: GraphItem) => void;
+  onContextMenu?: (node: GraphItem, x: number, y: number) => void;
+  wipCount: number;
+  truncated: boolean;
+  matchSet?: Set<string> | null;
+  fileHits?: Map<string, FileHit> | null;
+  pipelines?: Record<string, PipelineMark> | null;
+  pipelineTips?: Record<string, PipelineTip> | null;
+  onPipelineHover?: (pipeline: PipelineMark) => void;
+  onPipelineClick?: (pipeline: PipelineMark) => void;
+  onCompare?: (hash: string) => void;
+  compareMark?: string | null;
+  dragSource?: RefDragPayload | null;
+  onDragSource?: (payload: RefDragPayload | null) => void;
+  onDropOnBranch?: (branches: { name: string; hash: string }[], x: number, y: number, payload: RefDragPayload) => void;
+  currentBranch?: string | null;
+  refActions?: RefActions | null;
+  onCopySha?: (hash: string) => void;
+}
 
 const HEADER_HEIGHT = 30;
 const OVERSCAN = 15; // запас строк выше и ниже видимой области
@@ -25,11 +81,11 @@ const COLUMN_DRAG_TYPE = 'application/x-gitidea-column';
 const FIT_SAMPLE = 3000; // сколько строк смотреть при подгонке ширины под содержимое
 
 // Цвета бейджей Conventional Commits: те же, что у чипсов в форме коммита
-const CC_COLORS = { ...Object.fromEntries(CC_TYPES.map((t) => [t.id, t.color])), build: '#9aa3b2', ci: '#15a0bf', revert: '#f25d2e' };
+const CC_COLORS: Record<string, string> = { ...Object.fromEntries(CC_TYPES.map((t) => [t.id, t.color])), build: '#9aa3b2', ci: '#15a0bf', revert: '#f25d2e' };
 
 /* Ширина текста — для подгонки колонки под содержимое по двойному клику */
-let measureCtx = null;
-function textWidth(text, font) {
+let measureCtx: CanvasRenderingContext2D | null = null;
+function textWidth(text: string, font: string) {
   if (!measureCtx) measureCtx = document.createElement('canvas').getContext('2d');
   if (!measureCtx) return text.length * 7;
   measureCtx.font = font;
@@ -39,7 +95,7 @@ const sansFont = () => getComputedStyle(document.body).fontFamily || 'sans-serif
 const monoFont = () => getComputedStyle(document.documentElement).getPropertyValue('--font-mono').trim() || 'monospace';
 
 /** Ширина колонки по содержимому (px) или null, если мерить нечего */
-function measureColumn(id, sample, gv) {
+function measureColumn(id: string, sample: GraphItem[], gv: GraphView): number | null {
   const sans = sansFont();
   const mono = monoFont();
   const real = sample.filter((n) => !n.wip && !n.stash);
@@ -72,7 +128,7 @@ function measureColumn(id, sample, gv) {
   return null; // граф — авто по числу дорожек
 }
 
-const clampW = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
+const clampW = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v));
 
 export default function CommitGraph({
   commits,
@@ -98,8 +154,8 @@ export default function CommitGraph({
   currentBranch = null,
   refActions = null, // { checkout(ref), deleteRemote(fullName), menu(ref, x, y) } — для поповера «+N»
   onCopySha, // клик по хэшу в колонке SHA
-}) {
-  const [dropHash, setDropHash] = useState(null);
+}: CommitGraphProps) {
+  const [dropHash, setDropHash] = useState<string | null>(null);
   useEffect(() => {
     if (!dragSource) setDropHash(null);
   }, [dragSource]);
@@ -110,12 +166,12 @@ export default function CommitGraph({
   const [gv, setGv] = useGraphView();
   const m = metricsFor(gv.density);
   const dots = gv.nodeStyle === 'dots';
-  const [menu, setMenu] = useState(null); // { x, y }
+  const [menu, setMenu] = useState<{ x: number; y: number } | null>(null); // { x, y }
   const closeMenu = useCallback(() => setMenu(null), []);
 
   // Ширины колонок: тянутся мышью за разделители в заголовке и запоминаются
   const [refsStoredW, setRefsW, saveRefsW, refsStored] = useStoredWidth('graph.refs', 190, 60, 480);
-  const [graphW, setGraphW, saveGraphW] = useStoredWidth('graph.graph', null, 40, 1400); // null = авто
+  const [graphW, setGraphW, saveGraphW] = useStoredWidth('graph.graph', null!, 40, 1400); // null = авто
   const [authorStoredW, setAuthorW, saveAuthorW, authorStored] = useStoredWidth('graph.author', 160, 60, 420);
   // Дата не уже DATE_MIN_WIDTH: «26.10.26 22:58» должна помещаться целиком
   const [dateW, setDateW, saveDateW] = useStoredWidth('graph.date.v3', 150, DATE_MIN_WIDTH, 260);
@@ -126,7 +182,7 @@ export default function CommitGraph({
   const autoAuthor = useMemo(() => clampW(measureColumn('author', head, gv) ?? 160, 110, 220), [nodes]); // eslint-disable-line react-hooks/exhaustive-deps
   const refsW = refsStored ? refsStoredW : autoRefs;
   const authorW = authorStored ? authorStoredW : autoAuthor;
-  const widthApi = {
+  const widthApi: Partial<Record<string, WidthApi>> = {
     refs: [refsW, setRefsW, saveRefsW],
     graph: [graphW, setGraphW, saveGraphW],
     author: [authorW, setAuthorW, saveAuthorW],
@@ -136,8 +192,8 @@ export default function CommitGraph({
 
   // Видимые колонки в выбранном порядке; «Сообщение» видно всегда
   const columns = gv.order.filter((id) => id === 'message' || !gv.hidden.includes(id));
-  const has = (id) => columns.includes(id);
-  const fixed = { refs: refsW, author: authorW, date: dateW, sha: shaW };
+  const has = (id: ColumnId) => columns.includes(id);
+  const fixed: Record<string, number> = { refs: refsW, author: authorW, date: dateW, sha: shaW };
   const fixedSum = columns.reduce((sum, id) => sum + (fixed[id] ?? 0), 0);
   // Авто-ширина графа: по числу дорожек, но не больше, чем позволяет место,
   // чтобы остальные колонки оставались видны без горизонтальной прокрутки
@@ -147,8 +203,8 @@ export default function CommitGraph({
   const width = has('graph') ? Math.max(40, Math.min(graphW ?? autoGraphWidth, roomForGraph)) : 0;
   // Сообщение забирает всё оставшееся место — в том числе от скрытых колонок
   const messageW = Math.max(MESSAGE_MIN_WIDTH, view.width - fixedSum - width);
-  const cols = { ...fixed, graph: width, message: messageW };
-  const offsets = {};
+  const cols: Record<string, number> = { ...fixed, graph: width, message: messageW };
+  const offsets: Record<string, number> = {};
   columns.reduce((left, id) => {
     offsets[id] = left;
     return left + cols[id];
@@ -169,11 +225,11 @@ export default function CommitGraph({
   const gm = useMemo(() => fitMetrics(m, laneCount, graphW_, dots ? m.dotR : m.nodeR), [m, laneCount, graphW_, dots]);
   const dotsEff = dots;
 
-  const scrollRef = useRef(null);
-  const [hoverHash, setHoverHash] = useState(null);
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const [hoverHash, setHoverHash] = useState<string | null>(null);
   const [intro, setIntro] = useState(true);
-  const [copied, setCopied] = useState(null);
-  const [colDrag, setColDrag] = useState(null); // { id, over, after }
+  const [copied, setCopied] = useState<string | null>(null);
+  const [colDrag, setColDrag] = useState<{ id: string; over: string | null; after: boolean } | null>(null); // { id, over, after }
 
   // Анимация появления — при открытии репозитория
   useEffect(() => {
@@ -206,7 +262,7 @@ export default function CommitGraph({
   }, [nodes.length === 0]);
 
   // Переход к коммиту (после checkout — к новому HEAD): плавно, по центру видимой области
-  const focusDone = useRef(null);
+  const focusDone = useRef<number | null>(null);
   useEffect(() => {
     const el = scrollRef.current;
     if (!el || !focus?.hash || focusDone.current === focus.n) return;
@@ -245,7 +301,7 @@ export default function CommitGraph({
   const visibleNodes = nodes.slice(first, last + 1);
   const visibleEdges = edges.filter((e) => e.minRow <= last && e.maxRow >= first);
 
-  const onKeyDown = (e) => {
+  const onKeyDown = (e: KeyboardEvent<HTMLDivElement>) => {
     if (e.key !== 'ArrowDown' && e.key !== 'ArrowUp') return;
     e.preventDefault();
     const index = nodes.findIndex((n) => n.hash === selectedHash);
@@ -254,17 +310,17 @@ export default function CommitGraph({
   };
 
   // Двойной клик по разделителю: ширина под содержимое колонки (граф — снова авто)
-  const fitWidth = (id) => measureColumn(id, nodes.length > FIT_SAMPLE ? nodes.slice(0, FIT_SAMPLE) : nodes, gv);
+  const fitWidth = (id: string) => measureColumn(id, nodes.length > FIT_SAMPLE ? nodes.slice(0, FIT_SAMPLE) : nodes, gv);
 
   const resetLayout = () => {
-    for (const [, set, save] of Object.values(widthApi)) {
+    for (const [, set, save] of Object.values(widthApi) as WidthApi[]) {
       set(null);
       save(null);
     }
     setGv({ order: DEFAULT_VIEW.order, hidden: DEFAULT_VIEW.hidden });
   };
 
-  const copySha = (hash) => {
+  const copySha = (hash: string) => {
     onCopySha?.(hash);
     setCopied(hash);
     setTimeout(() => setCopied((h) => (h === hash ? null : h)), 1200);
@@ -277,18 +333,18 @@ export default function CommitGraph({
     );
   }
 
-  const introDelay = (row) => `${Math.min(Math.max(row - first, 0), 30) * 20}ms`;
+  const introDelay = (row: number) => `${Math.min(Math.max(row - first, 0), 30) * 20}ms`;
   const nodeR = dotsEff ? gm.dotR : gm.nodeR;
 
   /* Перестановка колонок: перетаскиваем заголовок */
-  const headerDrag = (id) => ({
+  const headerDrag = (id: string) => ({
     draggable: true,
-    onDragStart: (e) => {
+    onDragStart: (e: DragEvent<HTMLDivElement>) => {
       e.dataTransfer.setData(COLUMN_DRAG_TYPE, id);
       e.dataTransfer.effectAllowed = 'move';
       setColDrag({ id, over: null, after: false });
     },
-    onDragOver: (e) => {
+    onDragOver: (e: DragEvent<HTMLDivElement>) => {
       if (!e.dataTransfer.types.includes(COLUMN_DRAG_TYPE)) return;
       e.preventDefault();
       e.dataTransfer.dropEffect = 'move';
@@ -296,19 +352,19 @@ export default function CommitGraph({
       const after = e.clientX > r.left + r.width / 2;
       setColDrag((d) => (d && (d.over !== id || d.after !== after) ? { ...d, over: id, after } : d));
     },
-    onDrop: (e) => {
+    onDrop: (e: DragEvent<HTMLDivElement>) => {
       const from = e.dataTransfer.getData(COLUMN_DRAG_TYPE);
       if (!from) return;
       e.preventDefault();
       const r = e.currentTarget.getBoundingClientRect();
       const after = e.clientX > r.left + r.width / 2;
       setColDrag(null);
-      if (from !== id) setGv((v) => ({ order: moveColumn(v.order, from, id, after) }));
+      if (from !== id) setGv((v) => ({ order: moveColumn(v.order, from as ColumnId, id as ColumnId, after) as ColumnId[] }));
     },
     onDragEnd: () => setColDrag(null),
   });
 
-  const openMenuAt = (x, y) => setMenu({ x, y });
+  const openMenuAt = (x: number, y: number) => setMenu({ x, y });
 
   return (
     <div
@@ -336,7 +392,7 @@ export default function CommitGraph({
           const before = i < msgAt; // колонки левее сообщения тянутся за правый край, правее — за левый
           const api = widthApi[id];
           const fit = () => {
-            const [, set, save] = api;
+            const [, set, save] = api!;
             const w = fitWidth(id);
             save(w === null ? null : set(w));
             if (w === null) set(null);
@@ -352,7 +408,7 @@ export default function CommitGraph({
               dragging={colDrag?.id === id}
               {...headerDrag(id)}
             >
-              <span className={`truncate ${id === 'date' ? 'tabular-nums' : ''}`}>{columnById(id).label}</span>
+              <span className={`truncate ${id === 'date' ? 'tabular-nums' : ''}`}>{columnById(id)!.label}</span>
               {api && (
                 <ResizeHandle
                   width={cols[id]}
@@ -405,7 +461,7 @@ export default function CommitGraph({
             onPipelineClick={onPipelineClick}
             selected={node.hash === selectedHash}
             hovered={node.hash === hoverHash}
-            dim={Boolean(matchSet) && !matchSet.has(node.hash)}
+            dim={Boolean(matchSet) && !matchSet!.has(node.hash)}
             intro={intro}
             delay={introDelay(node.row)}
             wipCount={wipCount}
@@ -515,7 +571,7 @@ export default function CommitGraph({
                     <stop offset="1" stopColor="var(--gk-base)" stopOpacity="0.85" />
                   </linearGradient>
                 </defs>
-                <rect data-testid="graph-edge-fade" x={gm.maxX - gm.laneW} y={0} width={graphW_ - gm.maxX + gm.laneW} height={height} fill="url(#graph-edge-fade)" />
+                <rect data-testid="graph-edge-fade" x={gm.maxX! - gm.laneW} y={0} width={graphW_ - gm.maxX! + gm.laneW} height={height} fill="url(#graph-edge-fade)" />
               </>
             )}
 
@@ -525,7 +581,7 @@ export default function CommitGraph({
                 node={node}
                 m={gm}
                 dots={dotsEff}
-                dim={Boolean(matchSet) && !matchSet.has(node.hash)}
+                dim={Boolean(matchSet) && !matchSet!.has(node.hash)}
                 selected={node.hash === selectedHash}
                 hovered={node.hash === hoverHash}
                 intro={intro}
@@ -554,14 +610,14 @@ export default function CommitGraph({
  * Ширина элемента по ResizeObserver: [ширина, callback-ref]. Новое значение применяется синхронно (flushSync),
  * в том же кадре, что и изменение раскладки, — граф не отстаёт от колонки, пока её тянут.
  */
-function useElementWidth() {
+function useElementWidth(): [number, (el: HTMLDivElement | null) => void] {
   const [w, setW] = useState(0);
-  const ro = useRef(null);
-  const ref = useCallback((el) => {
+  const ro = useRef<ResizeObserver | null>(null);
+  const ref = useCallback((el: HTMLDivElement | null) => {
     ro.current?.disconnect();
     ro.current = null;
     if (!el || typeof ResizeObserver === 'undefined') return;
-    const read = (entry) => entry?.borderBoxSize?.[0]?.inlineSize ?? el.getBoundingClientRect().width;
+    const read = (entry: ResizeObserverEntry | undefined) => entry?.borderBoxSize?.[0]?.inlineSize ?? el.getBoundingClientRect().width;
     ro.current = new ResizeObserver((entries) => {
       const next = Math.round(read(entries[entries.length - 1]) * 100) / 100;
       flushSync(() => setW((prev) => (Math.abs(prev - next) < 0.5 ? prev : next)));
@@ -573,7 +629,16 @@ function useElementWidth() {
   return [w, ref];
 }
 
-function HeaderCell({ id, width, last, dropSide, dragging, cellRef, children, ...drag }) {
+type HeaderCellProps = HTMLAttributes<HTMLDivElement> & {
+  id: string;
+  width: number;
+  last: boolean;
+  dropSide: 'before' | 'after' | null;
+  dragging: boolean;
+  cellRef?: (el: HTMLDivElement | null) => void;
+};
+
+function HeaderCell({ id, width, last, dropSide, dragging, cellRef, children, ...drag }: HeaderCellProps) {
   return (
     <div
       {...drag}
@@ -593,7 +658,7 @@ function HeaderCell({ id, width, last, dropSide, dragging, cellRef, children, ..
 }
 
 /** Сообщение коммита: префикс Conventional Commits — отдельным бейджем */
-function MessageText({ node, strong }) {
+function MessageText({ node, strong }: { node: GraphItem; strong: boolean | undefined }) {
   const cc = useMemo(() => parseSummary(node.message), [node.message]);
   // Подсказка: заголовок и описание (пустые строки сжаты, длинное описание укорочено)
   const desc = (node.description ?? '').replace(/\n{3,}/g, '\n\n').trim();
@@ -606,7 +671,7 @@ function MessageText({ node, strong }) {
       {cc.type && (
         <span
           data-testid="cc-badge"
-          style={{ color, backgroundColor: `${color}1c`, boxShadow: `inset 0 0 0 1px ${color}55` }}
+          style={{ color: color!, backgroundColor: `${color}1c`, boxShadow: `inset 0 0 0 1px ${color}55` }}
           className="mr-2 max-w-[45%] shrink-0 truncate rounded px-1.5 font-mono text-[10.5px] font-medium leading-[17px]"
         >
           {cc.type}
@@ -660,13 +725,47 @@ function Row({
   onDropRow,
   currentBranch,
   refActions,
+}: {
+  node: GraphItem;
+  m: Metrics;
+  columns: ColumnId[];
+  cols: Record<string, number>;
+  offsets: Record<string, number>;
+  refsSide: 'left' | 'right' | null;
+  dateFormat: string;
+  selected: boolean;
+  hovered: boolean;
+  dim: boolean;
+  intro: boolean;
+  delay: string;
+  wipCount: number;
+  pipeline: PipelineMark | null;
+  pipelineTip: PipelineTip | null;
+  fileHit: FileHit | null;
+  onPipelineHover?: (pipeline: PipelineMark) => void;
+  onPipelineClick?: (pipeline: PipelineMark) => void;
+  onHover: () => void;
+  onSelect: (e: MouseEvent<HTMLDivElement>) => void;
+  onDoubleClick: () => void;
+  onContextMenu: (e: MouseEvent<HTMLDivElement>) => void;
+  marked: boolean;
+  dropTarget: boolean;
+  copied: boolean;
+  onCopySha: (hash: string) => void;
+  onDragStartRef: (e: DragEvent<HTMLElement>, payload: DragPayload) => void;
+  onDragEndRef: () => void;
+  onDragOverRow: (e: DragEvent<HTMLDivElement>) => void;
+  onDragLeaveRow: () => void;
+  onDropRow: (e: DragEvent<HTMLDivElement>) => void;
+  currentBranch: string | null | undefined;
+  refActions: RefActions | null | undefined;
 }) {
   const color = laneColor(node.lane);
   const bandAlpha = isLight() ? (selected ? '30' : hovered ? '1e' : '0c') : selected ? '42' : hovered ? '2a' : '14';
   const compact = m.id === 'compact';
   const bandLeft = columns.includes('graph') ? offsets.graph + Math.min(laneX(node.lane, m), cols.graph) : offsets.message;
 
-  const cell = (id) => {
+  const cell = (id: string) => {
     switch (id) {
       case 'refs':
         return (
@@ -845,11 +944,11 @@ function Row({
 /* ---------------- Метки веток ---------------- */
 
 // Локальная и удалённая ветка с одним именем показываются одной меткой с двумя иконками
-function groupRefs(refs) {
-  const groups = [];
-  const used = new Set();
+function groupRefs(refs: GraphRef[]): RefGroup[] {
+  const groups: RefGroup[] = [];
+  const used = new Set<GraphRef>();
   // Сначала локальные ветки: иначе origin/x, стоящий в списке раньше x, не склеится с ней («x +1»)
-  const order = (r) => (r.type === 'local' ? 0 : r.type === 'remote' ? 1 : 2);
+  const order = (r: GraphRef) => (r.type === 'local' ? 0 : r.type === 'remote' ? 1 : 2);
   const sorted = refs.filter((r) => !(r.type === 'remote' && r.name.endsWith('/HEAD'))).sort((a, b) => order(a) - order(b) || (b.head ? 1 : 0) - (a.head ? 1 : 0));
   for (const ref of sorted) {
     if (used.has(ref)) continue;
@@ -857,7 +956,7 @@ function groupRefs(refs) {
       // Серверная ветка с тем же именем на этом же коммите — значит, синхронизированы
       const remote = refs.find((r) => r.type === 'remote' && !used.has(r) && r.name.slice(r.name.indexOf('/') + 1) === ref.name);
       if (remote) used.add(remote);
-      groups.push({ name: ref.name, head: ref.head, local: true, remote: Boolean(remote), remoteName: remote?.name ?? null, tag: false, all: [ref, remote].filter(Boolean) });
+      groups.push({ name: ref.name, head: ref.head as boolean, local: true, remote: Boolean(remote), remoteName: (remote?.name ?? null) as string, tag: false, all: [ref, remote].filter(Boolean) as GraphRef[] });
     } else if (ref.type === 'remote') {
       groups.push({ name: ref.name, local: false, remote: true, remoteName: ref.name, tag: false, all: [ref] });
     } else {
@@ -868,10 +967,20 @@ function groupRefs(refs) {
   return groups;
 }
 
-function RefLabels({ refs, color, onDragStart, currentBranch, actions, compact = false, connector = true }) {
+interface RefLabelsProps {
+  refs: GraphRef[];
+  color: string;
+  onDragStart: (e: DragEvent<HTMLSpanElement>, group: RefGroup) => void;
+  currentBranch: string | null | undefined;
+  actions: RefActions | null | undefined;
+  compact?: boolean;
+  connector?: boolean;
+}
+
+function RefLabels({ refs, color, onDragStart, currentBranch, actions, compact = false, connector = true }: RefLabelsProps) {
   const pop = useHoverPopover();
   const [expanded, setExpanded] = useState(false);
-  const badgeRef = useRef(null);
+  const badgeRef = useRef<HTMLSpanElement>(null);
   const groups = groupRefs(refs);
   if (!groups.length) return null;
   const [first, ...rest] = groups;
@@ -893,7 +1002,7 @@ function RefLabels({ refs, color, onDragStart, currentBranch, actions, compact =
           if (!actions?.menu) return;
           e.preventDefault();
           e.stopPropagation();
-          actions.menu(first.tag ? { type: 'tag', name: first.name } : first.local ? { type: 'local', name: first.name } : { type: 'remote', name: first.remoteName }, e.clientX, e.clientY);
+          actions.menu(first.tag ? { type: 'tag', name: first.name } : first.local ? { type: 'local', name: first.name } : { type: 'remote', name: first.remoteName! }, e.clientX, e.clientY);
         }}
         onMouseEnter={(e) => {
           const label = e.currentTarget.querySelector('[data-ref-name]');
@@ -904,7 +1013,7 @@ function RefLabels({ refs, color, onDragStart, currentBranch, actions, compact =
           // Двойной клик по метке — checkout именно этой ветки (remote — создать локальную и следить)
           if (first.tag || !actions?.checkout) return;
           e.stopPropagation();
-          actions.checkout(first.local ? { type: 'local', name: first.name } : { type: 'remote', name: first.remoteName });
+          actions.checkout(first.local ? { type: 'local', name: first.name } : { type: 'remote', name: first.remoteName! });
         }}
         data-tip={`${first.remoteName && !first.local ? first.remoteName : first.name} — ${refKindLabel(first)}${rest.length ? tr('\nЕщё {0}: наведите на «+{1}»', rest.length, rest.length) : ''}${draggable ? tr('\nДвойной клик — {0}\nПеретащите на другую ветку: слить, перемотать, rebase', first.local ? tr('переключиться на ветку') : tr('создать локальную ветку и переключиться')) : ''}`}
         style={style}
@@ -962,22 +1071,22 @@ function RefLabels({ refs, color, onDragStart, currentBranch, actions, compact =
             anchor={badgeRef.current}
             groups={groups}
             color={color}
-            currentBranch={currentBranch}
+            currentBranch={currentBranch as string | null}
             actions={
-              actions && {
+              (actions && {
                 checkout: (r) => {
                   pop.close();
-                  actions.checkout(r);
+                  actions.checkout!(r);
                 },
                 deleteRemote: (n) => {
                   pop.close();
-                  actions.deleteRemote(n);
+                  actions.deleteRemote!(n);
                 },
                 menu: (r, x, y) => {
                   pop.close();
-                  actions.menu(r, x, y);
+                  actions.menu!(r, x, y);
                 },
-              }
+              }) as RefActions | undefined
             }
             onEnter={pop.keep}
             onLeave={() => pop.hide()}
@@ -991,8 +1100,8 @@ function RefLabels({ refs, color, onDragStart, currentBranch, actions, compact =
 
 /* ---------------- Узел ---------------- */
 
-function useAvatar(email) {
-  const [url, setUrl] = useState(null);
+function useAvatar(email: string): [string | null, () => void] {
+  const [url, setUrl] = useState<string | null>(null);
   useEffect(() => {
     let alive = true;
     avatarUrl(email).then((u) => alive && setUrl(u && !isFailed(u) ? u : null));
@@ -1007,11 +1116,11 @@ function useAvatar(email) {
 }
 
 // Текущий коммит (HEAD): спокойное статичное зелёное кольцо
-function HeadRing({ x, y, r }) {
+function HeadRing({ x, y, r }: { x: number; y: number; r: number }) {
   return <circle cx={x} cy={y} r={r - 1} fill="none" style={{ stroke: 'var(--color-gk-green)' }} strokeOpacity={0.85} strokeWidth={1.5} />;
 }
 
-function HeadPill({ detached = false, compact = false }) {
+function HeadPill({ detached = false, compact = false }: { detached?: boolean; compact?: boolean }) {
   return (
     <span
       data-tip={detached ? tr('HEAD (detached) — текущий коммит без ветки') : tr('HEAD — текущий коммит')}
@@ -1024,7 +1133,7 @@ function HeadPill({ detached = false, compact = false }) {
   );
 }
 
-function Node({ node, m, dots, selected, hovered, dim, intro, delay }) {
+function Node({ node, m, dots, selected, hovered, dim, intro, delay }: { node: GraphItem; m: Metrics; dots: boolean; selected: boolean; hovered: boolean; dim: boolean; intro: boolean; delay: string }) {
   const x = laneX(node.lane, m);
   const y = rowY(node.row, m);
   const color = laneColor(node.lane);
@@ -1074,7 +1183,7 @@ function Node({ node, m, dots, selected, hovered, dim, intro, delay }) {
   return <AvatarNode node={node} x={x} y={y} r={m.nodeR} color={color} selected={selected} cls={cls} style={style} />;
 }
 
-function AvatarNode({ node, x, y, r, color, selected, cls, style }) {
+function AvatarNode({ node, x, y, r, color, selected, cls, style }: { node: GraphItem; x: number; y: number; r: number; color: string; selected: boolean; cls: string; style: CSSProperties }) {
   const [url, onError] = useAvatar(node.author.email);
   // В компактной плотности влезает одна буква
   const letters = initials(node.author.name).slice(0, r < 11 ? 1 : 2);
