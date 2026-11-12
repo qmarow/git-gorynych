@@ -71,7 +71,7 @@ import { RunDialog, RunnerCard } from './components/ActionRunner.tsx';
 import { GuardDialog } from './components/Guard.tsx';
 import { activeRules, guardOnFor, readGuard, writeGuard } from './lib/guardRules.ts';
 import { STEP_TYPES, defaultBranchOf, expandParams, hotkeyFromEvent, inputsOf, readActions, validateAction, writeActions } from './lib/actions.ts';
-import SettingsDialog from './components/SettingsDialog.jsx';
+import SettingsDialog from './components/SettingsDialog.tsx';
 import {
   DEFAULT_APPEARANCE,
   AUTO_THEME,

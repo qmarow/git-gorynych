@@ -1,15 +1,73 @@
-import { useEffect, useState } from 'react';
-import { Archive, Check, Cloud, FileKey, FolderGit2, GitBranch, GitCommitHorizontal, KeyRound, LogIn, RefreshCw, Image as ImageIcon, Loader2, Palette, Pencil, Plug, RotateCcw, Server, ShieldCheck, Sparkles, Trash2, UserRound, Workflow, X } from 'lucide-react';
-import { AUTO_THEME, BACKGROUNDS, THEMES, resolveThemeId, themeById } from '../lib/appearance.ts';
+import { useEffect, useState, type ButtonHTMLAttributes, type CSSProperties, type ReactNode } from 'react';
+import { Archive, Check, Cloud, FileKey, FolderGit2, GitBranch, GitCommitHorizontal, KeyRound, LogIn, RefreshCw, Image as ImageIcon, Loader2, Palette, Pencil, Plug, RotateCcw, Server, ShieldCheck, Sparkles, Trash2, UserRound, Workflow, X, type LucideIcon } from 'lucide-react';
+import { AUTO_THEME, BACKGROUNDS, THEMES, resolveThemeId, themeById, type Appearance, type Material, type Theme } from '../lib/appearance.ts';
 import { GuardSettings, Switch } from './Guard.tsx';
 import { CommitSettings } from './CommitForm.tsx';
 import { BACKGROUND_SEC, BACKOFF_SEC, SYNC_MODES, useSyncStatus } from '../lib/syncStatus.ts';
 import { kindInfo, kindLabel } from '../lib/servers.ts';
 import { t as tr, tj, locale, LANGUAGES, getLanguage, setLanguage } from '../i18n/index.ts';
+import type { GuardConfig } from '../lib/guardRules.ts';
+import type { ApiResult } from '../platform/tauri.ts';
+import type { RepoData } from '../state/repoStore.ts';
+import type { LoginInfo_Serialize, RepoCi_Serialize, RepoWithCi_Serialize, ServerWithCi_Serialize } from '../../crates/gorynych-tauri/bindings/commands.ts';
 
-const api = typeof window !== 'undefined' ? window.api : null;
+/** Строка репозитория у сервера; у строки «только CI/CD» (`ciOnly`) полей входа нет, и они не читаются */
+type RepoRow = RepoWithCi_Serialize & { ciOnly?: boolean };
+type ServerRow = Omit<ServerWithCi_Serialize, 'repos'> & { repos: RepoRow[] };
 
-const TABS = [
+type SettingsApi = { creds?: { servers?: () => Promise<ApiResult<ServerRow[]> | undefined> } };
+
+const api = (typeof window !== 'undefined' ? window.api : null) as SettingsApi | null | undefined;
+
+/** Настройки работы с ветками (App: `workflow`) */
+export interface Workflow {
+  checkoutWip: string;
+  syncIndex: boolean;
+  [extra: string]: unknown;
+}
+
+/** Автообновление (App) */
+export interface SyncSettings {
+  enabled: boolean;
+  mode: string;
+  onMode: (mode: string) => void;
+  onToggle: (enabled: boolean) => void;
+}
+
+/** Действия раздела «Подключения» (App) */
+export interface ServersProps {
+  tick: number;
+  repoOpen: boolean;
+  onAuthCurrent: () => void;
+  onEdit: (url: string) => void;
+  onForgetLogin: (key: string, label: string) => void;
+  onForgetServer: (hostname: string) => void;
+}
+
+type PickResult = { ok: boolean; canceled?: boolean; error?: { message?: string } } | null | undefined;
+
+interface SettingsDialogProps {
+  initialTab?: string;
+  appearance: Appearance;
+  meta: { supportsMaterial: boolean; hasImage: boolean };
+  imageUrl: string | null;
+  onChange: (patch: Partial<Appearance>) => void;
+  onReset: () => void;
+  onPickImage: () => Promise<PickResult>;
+  repo: RepoData | null;
+  onForgeChanged?: () => void;
+  workflow: Workflow;
+  onWorkflowChange: (workflow: Workflow) => void;
+  sync: SyncSettings;
+  guard: GuardConfig;
+  onGuardChange: (cfg: GuardConfig) => void;
+  repoPath?: string | null;
+  servers: ServersProps | null;
+  paused?: boolean;
+  onClose: () => void;
+}
+
+const TABS: { id: string; label: string; icon: LucideIcon }[] = [
   { id: 'appearance', label: tr('Оформление'), icon: Palette },
   { id: 'branches', label: tr('Ветки'), icon: GitBranch },
   { id: 'sync', label: tr('Синхронизация'), icon: RefreshCw },
@@ -31,7 +89,6 @@ export default function SettingsDialog({
   onReset,
   onPickImage,
   repo,
-  onForgeChanged,
   workflow,
   onWorkflowChange,
   sync,
@@ -41,12 +98,12 @@ export default function SettingsDialog({
   servers,
   paused = false,
   onClose,
-}) {
+}: SettingsDialogProps) {
   const [tab, setTab] = useState(initialTab);
 
   // Поверх настроек открыто окно входа — Esc закрывает только его
   useEffect(() => {
-    const onKey = (e) => e.key === 'Escape' && !paused && onClose();
+    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && !paused && onClose();
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, [onClose, paused]);
@@ -113,10 +170,10 @@ export default function SettingsDialog({
 
 /* =================== Оформление =================== */
 
-function AppearanceTab({ appearance: a, meta, imageUrl, onChange, onPickImage }) {
+function AppearanceTab({ appearance: a, meta, imageUrl, onChange, onPickImage }: Pick<SettingsDialogProps, 'meta' | 'imageUrl' | 'onChange' | 'onPickImage'> & { appearance: Appearance }) {
   const theme = themeById(resolveThemeId(a.theme));
   const [picking, setPicking] = useState(false);
-  const [pickError, setPickError] = useState(null);
+  const [pickError, setPickError] = useState<string | null>(null);
 
   const pick = async () => {
     setPicking(true);
@@ -165,7 +222,7 @@ function AppearanceTab({ appearance: a, meta, imageUrl, onChange, onPickImage })
               key={t.id}
               data-theme-id={t.id}
               onClick={() => onChange({ theme: t.id })}
-              title={t.id === AUTO_THEME.id ? tr('Светлая или тёмная — как в настройках Windows/macOS, переключается сама') : t.hint}
+              title={t.id === AUTO_THEME.id ? tr('Светлая или тёмная — как в настройках Windows/macOS, переключается сама') : (t as { hint?: string }).hint}
               className={`group rounded-lg p-1.5 text-left transition-all duration-200 ${
                 a.theme === t.id ? 'bg-gk-fg/[0.06] ring-2 ring-gk-green' : 'ring-1 ring-gk-border hover:-translate-y-0.5 hover:ring-gk-fg/20'
               }`}
@@ -178,7 +235,7 @@ function AppearanceTab({ appearance: a, meta, imageUrl, onChange, onPickImage })
                   </div>
                 </div>
               ) : (
-                <ThemePreview theme={t} />
+                <ThemePreview theme={t as Theme} />
               )}
               <div className="mt-1.5 flex items-center gap-1.5 px-0.5">
                 <span className="flex-1 truncate text-[12.5px] text-gk-text">{t.name}</span>
@@ -244,7 +301,7 @@ function AppearanceTab({ appearance: a, meta, imageUrl, onChange, onPickImage })
               ].map((m) => (
                 <button
                   key={m.id}
-                  onClick={() => onChange({ material: m.id })}
+                  onClick={() => onChange({ material: m.id as Material })}
                   title={m.hint}
                   className={`flex-1 rounded-md px-3 py-2 text-left text-[12.5px] transition-colors ${
                     a.material === m.id ? 'bg-gk-green/15 text-gk-green ring-1 ring-gk-green/40' : 'bg-gk-hover text-gk-text hover:bg-gk-fg/10'
@@ -282,7 +339,7 @@ function AppearanceTab({ appearance: a, meta, imageUrl, onChange, onPickImage })
   );
 }
 
-function BranchesTab({ workflow, onChange }) {
+function BranchesTab({ workflow, onChange }: { workflow: Workflow; onChange: (workflow: Workflow) => void }) {
   return (
     <div className="space-y-4 text-[12.5px]">
       <div>
@@ -327,10 +384,10 @@ function BranchesTab({ workflow, onChange }) {
   );
 }
 
-function SyncTab({ sync, hasRemotes, workflow, onWorkflowChange }) {
+function SyncTab({ sync, hasRemotes, workflow, onWorkflowChange }: { sync: SyncSettings; hasRemotes: boolean; workflow: Workflow; onWorkflowChange: (workflow: Workflow) => void }) {
   const st = useSyncStatus();
   if (!sync) return null;
-  const via = { api: tr('GitLab API с ETag — ответ «не изменилось» почти ничего не стоит серверу'), 'ls-remote': tr('git ls-remote — без токена, работает с любым сервером') };
+  const via: Record<string, string> = { api: tr('GitLab API с ETag — ответ «не изменилось» почти ничего не стоит серверу'), 'ls-remote': tr('git ls-remote — без токена, работает с любым сервером') };
   return (
     <div className="space-y-5 text-[12.5px]">
       <label className="flex cursor-pointer items-start gap-3">
@@ -381,7 +438,7 @@ function SyncTab({ sync, hasRemotes, workflow, onWorkflowChange }) {
               {tj('Сервер недоступен: {0}. Ошибок подряд: {1}.', [st.error, st.failures])}</div>
           ) : st.at ? (
             <div className="text-gk-muted">
-              {tj('Последняя проверка в {0}{1}. Способ: {2}.', [new Date(st.at).toLocaleTimeString(locale()), st.ms != null ? tr(' ({0} мс)', st.ms) : '', via[st.via] ?? st.via ?? '—'])}</div>
+              {tj('Последняя проверка в {0}{1}. Способ: {2}.', [new Date(st.at).toLocaleTimeString(locale()), st.ms != null ? tr(' ({0} мс)', st.ms) : '', via[st.via as string] ?? st.via ?? '—'])}</div>
           ) : (
             <div className="text-gk-dim">{tr('Ещё не проверяли — первая проверка через пару секунд после открытия репозитория.')}</div>
           )}
@@ -391,11 +448,11 @@ function SyncTab({ sync, hasRemotes, workflow, onWorkflowChange }) {
   );
 }
 
-function SectionTitle({ children }) {
+function SectionTitle({ children }: { children?: ReactNode }) {
   return <h3 className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-gk-dim">{children}</h3>;
 }
 
-function Slider({ label, value, min, max, unit, hint, onChange }) {
+function Slider({ label, value, min, max, unit, hint, onChange }: { label: string; value: number; min: number; max: number; unit: string; hint?: string | null; onChange: (value: number) => void }) {
   const pct = ((value - min) / (max - min)) * 100;
   return (
     <div>
@@ -414,13 +471,13 @@ function Slider({ label, value, min, max, unit, hint, onChange }) {
         value={value}
         onChange={(e) => onChange(Number(e.target.value))}
         className="gk-range w-full"
-        style={{ '--pct': `${pct}%` }}
+        style={{ '--pct': `${pct}%` } as CSSProperties}
       />
     </div>
   );
 }
 
-function Toggle({ checked, onChange }) {
+function Toggle({ checked, onChange }: { checked: boolean; onChange: (checked: boolean) => void }) {
   // Кнопка центрирует содержимое, поэтому бегунок позиционируем явно от левого края
   return (
     <button
@@ -444,8 +501,8 @@ function Toggle({ checked, onChange }) {
 }
 
 /* Мини-превью темы: заголовок, боковая панель, граф с тремя коммитами */
-function ThemePreview({ theme: t }) {
-  const rgb = (c, a = 1) => `rgb(${c[0]} ${c[1]} ${c[2]} / ${a})`;
+function ThemePreview({ theme: t }: { theme: Theme }) {
+  const rgb = (c: readonly number[], a = 1) => `rgb(${c[0]} ${c[1]} ${c[2]} / ${a})`;
   return (
     <div className="relative h-[72px] overflow-hidden rounded-md" style={{ background: t.base }}>
       <div
@@ -473,14 +530,14 @@ function ThemePreview({ theme: t }) {
   );
 }
 
-function BackgroundPreview({ id, theme: t, imageUrl }) {
+function BackgroundPreview({ id, theme: t, imageUrl }: { id: string; theme: Theme; imageUrl: string | null }) {
   const base = { backgroundColor: t.base };
   const glowA = `${t.glow[0]}88`;
   const glowB = `${t.glow[1]}88`;
   const glowC = `${t.glow[2]}66`;
   const line = t.scheme === 'light' ? 'rgb(16 24 40 / 0.09)' : 'rgb(255 255 255 / 0.07)';
-  let style = base;
-  let inner = null;
+  let style: CSSProperties = base;
+  let inner: ReactNode = null;
   if (id === 'glow') {
     inner = (
       <>
@@ -530,19 +587,19 @@ function BackgroundPreview({ id, theme: t, imageUrl }) {
 
 /* =================== Подключения =================== */
 
-function IntegrationsTab({ servers }) {
+function IntegrationsTab({ servers }: { servers: ServersProps | null }) {
   // Одна авторизация на репозиторий — для Pull, Push и пайплайнов CI/CD; отдельного входа для CI/CD нет
   return <div className="space-y-6">{servers ? <ServersSection {...servers} /> : <p className="text-[12px] text-gk-dim">{tr('Авторизация недоступна.')}</p>}</div>;
 }
 
-const SCOPE_SHORT = { api: tr('просмотр и действия'), read_api: tr('только просмотр') };
+const SCOPE_SHORT: Record<string, string> = { api: tr('просмотр и действия'), read_api: tr('только просмотр') };
 
 /** Работают ли пайплайны CI/CD от авторизации репозитория (GitLab) */
-function CiText({ ci, method }) {
+function CiText({ ci, method }: { ci: RepoCi_Serialize | null; method?: string }) {
   if (!ci) return null;
   const who = ci.user?.username ? ` · @${ci.user.username}` : '';
   const scope = ci.scopes ? ci.scopes.map((x) => SCOPE_SHORT[x]).filter(Boolean)[0] : null;
-  let text;
+  let text: string;
   let tone = 'text-gk-muted';
   let state = 'ok';
   if (ci.source === 'legacy') {
@@ -570,10 +627,10 @@ function CiText({ ci, method }) {
   );
 }
 
-const LOGIN_ICONS = { password: UserRound, token: KeyRound, ssh: FileKey };
-const LOGIN_NAMES = { password: tr('логин и пароль'), token: tr('токен'), ssh: tr('SSH-ключ') };
+const LOGIN_ICONS: Record<string, LucideIcon> = { password: UserRound, token: KeyRound, ssh: FileKey };
+const LOGIN_NAMES: Record<string, string> = { password: tr('логин и пароль'), token: tr('токен'), ssh: tr('SSH-ключ') };
 
-function LoginText({ login }) {
+function LoginText({ login }: { login: Pick<LoginInfo_Serialize, 'method' | 'username' | 'keyPath' | 'readable'> }) {
   const Icon = LOGIN_ICONS[login.method] ?? KeyRound;
   return (
     <span className="flex min-w-0 items-center gap-1 text-[11px] text-gk-muted">
@@ -592,9 +649,9 @@ function LoginText({ login }) {
  * Git-серверы и привязанные к ним репозитории: у каждого репозитория свой вход (логин, токен или SSH-ключ).
  * «Общий вход» — сохранённый раньше на весь сервер; действует для репозиториев без своего.
  */
-function ServersSection({ tick, repoOpen, onAuthCurrent, onEdit, onForgetLogin, onForgetServer }) {
-  const [list, setList] = useState(null);
-  const [confirm, setConfirm] = useState(null); // ключ записи или «server:<host>», который подтверждаем удалить
+function ServersSection({ tick, repoOpen, onAuthCurrent, onEdit, onForgetLogin, onForgetServer }: ServersProps) {
+  const [list, setList] = useState<ServerRow[] | null>(null);
+  const [confirm, setConfirm] = useState<string | null>(null); // ключ записи или «server:<host>», который подтверждаем удалить
 
   useEffect(() => {
     let alive = true;
@@ -604,7 +661,7 @@ function ServersSection({ tick, repoOpen, onAuthCurrent, onEdit, onForgetLogin, 
     };
   }, [tick]);
 
-  const confirmBox = (id, onYes) => (
+  const confirmBox = (_id: string, onYes: () => void) => (
     <span className="flex shrink-0 items-center gap-1.5 text-[11.5px]">
       {tj('<0>Забыть?</0>{1}{2}', [<span className="text-gk-muted" />, <button
         onClick={() => {
@@ -618,7 +675,7 @@ function ServersSection({ tick, repoOpen, onAuthCurrent, onEdit, onForgetLogin, 
         {tr('Нет')}</button>])}
     </span>
   );
-  const iconBtn = (props, Icon, hover = 'hover:text-gk-text') => (
+  const iconBtn = (props: ButtonHTMLAttributes<HTMLButtonElement> & { [data: `data-${string}`]: string }, Icon: LucideIcon, hover = 'hover:text-gk-text') => (
     <button {...props} className={`rounded p-1 text-gk-dim hover:bg-gk-hover ${hover}`}>
       <Icon size={13} />
     </button>
@@ -687,7 +744,7 @@ function ServersSection({ tick, repoOpen, onAuthCurrent, onEdit, onForgetLogin, 
                       <span className="flex shrink-0 items-center gap-0.5 opacity-70 group-hover:opacity-100">
                         {r.url &&
                           iconBtn(
-                            { onClick: () => onEdit(r.url), 'data-tip': r.ciOnly ? tr('Авторизовать репозиторий') : tr('Изменить авторизацию (Pull/Push и пайплайны)'), 'aria-label': tr('Изменить {0}', r.path), 'data-testid': 'repo-edit' },
+                            { onClick: () => onEdit(r.url!), 'data-tip': r.ciOnly ? tr('Авторизовать репозиторий') : tr('Изменить авторизацию (Pull/Push и пайплайны)'), 'aria-label': tr('Изменить {0}', r.path), 'data-testid': 'repo-edit' },
                             Pencil,
                           )}
                         {iconBtn({ onClick: () => setConfirm(r.key), 'data-tip': tr('Забыть авторизацию этого репозитория'), 'aria-label': tr('Забыть {0}', r.path), 'data-testid': 'repo-forget' }, Trash2, 'hover:text-gk-red')}
