@@ -346,7 +346,7 @@ pre-commit-check-enabled-for = Pre-commit check enabled for this repository
 pre-commit-check-disabled-for = Pre-commit check disabled for this repository
 turn-it-back-on-in = Turn it back on in the line above the Commit button or in the settings.
 git-gorynych = git-Горыныч
-version-0-1-0-electron = Version 0.1.0 · Electron + React + Tailwind CSS
+about-version = Version 2.0.0-alpha.0 · Rust + Tauri + React + Tailwind CSS
 commit-graph-branches-stash-conflicts = Commit graph, branches, stash, conflicts, CI/CD and GitLab pipelines — in one window.
 ci-cd-token-for-removed = CI/CD token for { $a0 } removed
 all-sign-ins-for-removed = All sign-ins for { $a0 } removed
@@ -2844,7 +2844,7 @@ every-5-minutes = every 5 minutes
 
 ## src/state/repoStore.ts
 
-window-api-is-unavailable-start = window.api is unavailable — start the app via Electron (npm run electron:dev).
+window-api-is-unavailable = window.api is unavailable — the interface is open outside the app (run gorynych-tauri).
 
 ## src/state/syncStore.ts
 

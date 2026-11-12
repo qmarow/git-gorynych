@@ -5,7 +5,8 @@
 
 ## Исходная точка (1.x)
 
-- `electron/` — главный процесс на Node.js (CommonJS), 15 856 строк. **Эталонная спецификация поведения.**
+- `electron/` — главный процесс на Node.js (CommonJS), 15 856 строк. **Эталонная спецификация поведения.** Удалён из дерева
+  2026-11-12 (решение пользователя); последний коммит с ним — `b63610b`: `git show b63610b:electron/<файл>`.
 - `src/` — React 19 JSX (26,2 тыс. строк), монолит `App.jsx`.
 - Данные пользователя: `%APPDATA%\git-Gorynych\` (`settings.json`, `remote-credentials.json`,
   `gitlab-tokens.json`, `cicd-settings.json`, `language.json`, `backgrounds/`) + `localStorage` renderer'а.
@@ -13,10 +14,12 @@
 
 ## Правила работы (обязательны)
 
-1. **1:1 Feature Parity.** Перед переписыванием модуля прочитать исходный `.cjs` в `electron/`, выписать
+1. **1:1 Feature Parity.** Перед переписыванием модуля прочитать исходный `.cjs` (из истории git, коммит `b63610b`), выписать
    все функции, граничные случаи, регулярные выражения и коды ошибок — и только потом писать Rust.
    Конспект каждого перенесённого модуля — в doc-комментарии вверху соответствующего `.rs`.
-2. **`electron/` не удалять до завершения Фазы 4** — это эталон.
+2. **`electron/` удалён** (Фаза 4, 2026-11-12). Эталоны (`crates/*/tests/fixtures/gen-*.cjs`) запускают настоящие модули 1.x и
+   работают только в рабочей копии старого коммита: `git worktree add ..\gorynych-1x b63610b`, прогнать генератор там и
+   перенести JSON сюда. Случаи `t` в `gorynych-core/tests/fixtures/parity.json` после этого заново перевести на ключи Fluent.
 3. **Сквозная типизация.** Всё, что пересекает IPC, — `#[derive(serde::Serialize, serde::Deserialize, specta::Type)]`.
    Никаких `serde_json::Value` там, где можно описать структуру.
 4. **Компиляция на каждом шаге:** после каждого модуля — `cargo check --workspace` и `cargo test --workspace`.
@@ -59,7 +62,7 @@
 | Исходник (1.x) | Цель (2.0) | Фаза | Статус |
 |---|---|---|---|
 | `errors.cjs` | `gorynych-core::error` | 1 | ✅ |
-| `i18n.cjs` + `i18n/en.json` | `gorynych-core::i18n` (хранение языка — в `storage`, `en.json` пока подключён из `electron/`: перед Фазой 4 перенести в крейт) | 1 | ✅ |
+| `i18n.cjs` + `i18n/en.json` | `gorynych-core::i18n` (хранение языка — в `storage`; словарь — Fluent `gorynych-core/i18n/{ru,en}/*.ftl`, сессия 13) | 1 / 4 | ✅ |
 | `lineDiff.cjs` | `gorynych-core::line_diff` | 1 | ✅ |
 | `credentials.cjs` | `gorynych-storage::{credentials, secrets, ssh_keys, askpass}` ✅; `detectServer` (HTTP) — `gorynych-cicd`, Фаза 2 | 1 | ✅ |
 | Хранилища из `main.cjs`, `cicd/settings.cjs`, стек undo из `actions.cjs`, `actions.v1` | `gorynych-storage::{db, preferences, workspaces, repo_providers, undo, custom_actions}` | 1 | ✅ |
@@ -74,7 +77,7 @@
 | `git.cjs`, `conflicts.cjs`, `fileHistory.cjs`, `compare.cjs` | `gorynych-git::{run, read, diff, write, conflicts, history, compare}` | 3 | ✅ |
 | `actions.cjs`, `rebase.cjs`, `restore.cjs`, `init.cjs`, `clone.cjs` | `gorynych-git::{actions, network, rebase, restore, init, clone}` | 3 | ✅ |
 | `watch.cjs`, `indexSync.cjs`, `remoteWatch.cjs` | `gorynych-watcher::{watch, index_sync, remote_watch}` | 3 | ✅ |
-| `main.cjs`, `preload.cjs`, `system.cjs` | `gorynych-tauri` (`repo:*` и `clone:*` — `commands/repo.rs`; `creds:*` — `commands/creds.rs`; `cicd:*` и `gitlab:*` — `commands/cicd.rs`; диалоги, открытие, терминал, картинка фона — `commands/desktop.rs`; мосты — `bridge.rs`) | 1 (каркас ✅) / 4 | 🔶 |
+| `main.cjs`, `preload.cjs`, `system.cjs` | `gorynych-tauri` (`repo:*` и `clone:*` — `commands/repo.rs`; `creds:*` — `commands/creds.rs`; `cicd:*` и `gitlab:*` — `commands/cicd.rs`; диалоги, открытие, терминал, картинка фона — `commands/desktop.rs`; мосты — `bridge.rs`) | 1 (каркас ✅) / 4 | ✅ |
 
 ## Хранилище 2.0
 
@@ -485,3 +488,7 @@
   Как устроено: сообщение раскрывается Fluent один раз с аргументами «{0}», «{1}»… и кэшируется; дальше прежняя подстановка `{N}`. Поэтому поведение 1.x сохранено по построению. Интерфейс — `@fluent/bundle` 0.19.1 (тексты через `?raw`, разбирается только язык окна), тип ключей `MessageId` — `src/i18n/messages.ts` (`npm run i18n:types`, `typecheck` проверяет актуальность). Rust — `fluent-bundle` + `fluent-syntax` (перечень ключей). `translateKnown` (не использовался) удалён.
   Проверка: круговой прогон каталога (каждое сообщение, разобранное настоящими `@fluent/bundle` и `fluent-bundle`, даёт исходный русский и английский текст до символа, 8256 сообщений); старый `t`/`tj` из git против нового на каждом ключе интерфейса, двух языках и 0–8 аргументах (25 350 проверок, в scratchpad); все тесты Rust, включая эталоны 1.x на двух языках, прошли с временной строгой проверкой «русский текст дошёл до `translate`» — срабатываний 0. Эталон `cicd_parity` поймал ошибку замены (`git-Горыныч` в описании раннера — данные, а не ключ), исправлено. Постоянные тесты: `gorynych-core/tests/catalog.rs` (разбор, ключи и аргументы перевода, общие ключи), `t_matches_electron` (случаи `t` эталона, ключ заменён ключом Fluent), `tests/ui-parity/i18n-t.mjs` (те же случаи для `ui.ftl`, 345); `every_translation_key_exists` (3 крейта) сверяют ключи с каталогом. `app_smoke` (6) прошёл.
   Не сделано: формы множественного числа по-прежнему выбирает код (`plural`), а не селекторы Fluent; описания cron (`lib/cron.ts`) и пара строк слоя совместимости не переводились и в 1.x.
+- 2026-11-12 — Сессия 13, продолжение. **`electron/` удалён** (решение пользователя). Последний коммит с ним — `b63610b`. Из `package.json` убраны `main`, скрипты `electron:*`, настройки electron-builder и пакеты `electron`, `electron-builder`, `concurrently`, `cross-env`, `wait-on`; версия пакета — `2.0.0-alpha.0`, как у крейтов. Сборка — `npm run app:build`, разработка — README.
+  Что осталось от 1.x: эталоны JSON в `crates/*/tests/fixtures` (Rust их воспроизводит по-прежнему), генераторы `gen-*.cjs` (запускать в рабочей копии `b63610b`, правило 2), `electron_migration.rs` (ignored; нужен `npm install --no-save electron@37`), `hooks.mjs` сверок интерфейса берёт `en.json` из истории git. В интерфейсе две строки упоминали Electron: «О программе» теперь `about-version` (`Версия 2.0.0-alpha.0 · Rust + Tauri + React + Tailwind CSS`, версия записана в `ui.ftl`), подсказка без `window.api` — `window-api-is-unavailable`. Ветки кода «под Electron» (`window.api` от preload в `main.ts` и `platform/tauri.ts`) остались: они безвредны.
+  Проверка: `cargo test --workspace` (41 набор, 337 тестов, включая `app_smoke` с настоящим интерфейсом), `typecheck`, `vite build`, сверки `i18n-t`, `repo-store`, `sync-store`, `ci-store`. Миграция 96,7%.
+  Следующий шаг: инсталляторы (`bundle.active`, NSIS/MSI через `tauri-bundler`, подпись — решение пользователя) — последний пункт Фазы 4.

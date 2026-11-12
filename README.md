@@ -1,40 +1,49 @@
 # git-Горыныч
 
-Десктопный Git-клиент в стиле GitKraken: Electron + React (Vite) + Tailwind CSS v4 + Lucide Icons.
+Десктопный Git-клиент в стиле GitKraken. Версия 2.0: ядро на Rust (`crates/`, Cargo Workspace), окно — Tauri v2,
+интерфейс — React 19 + TypeScript (Vite) + Tailwind CSS v4 + Lucide Icons, переводы — Fluent. Версия 1.x на Electron
+удалена из дерева; её код — в истории git (коммит `b63610b`).
 
 ## Требования (Windows)
 
-- Node.js 20 LTS или 22 LTS
-- Git (понадобится на следующих этапах)
+- Rust (stable) и Node.js 20 LTS или 22 LTS
+- Git for Windows
+- WebView2 (в Windows 11 уже есть)
 
-## Запуск
+## Сборка
 
 ```powershell
 npm install
-npm run electron:dev
+npm run app:build    # vite build + cargo build --release -p gorynych-tauri --features custom-protocol
 ```
 
-`electron:dev` поднимает Vite на http://127.0.0.1:5173, ждёт его и открывает окно Electron с горячей перезагрузкой. DevTools открываются в отдельном окне.
+Результат — `target\release\gorynych-tauri.exe` (один файл, без инсталлятора). Он работает с настоящим профилем
+пользователя и Keyring.
 
-## Сборка .exe
+## Разработка
 
 ```powershell
-npm run electron:build            # установщик NSIS -> release/git-Gorynych-Setup-0.1.0.exe
-npm run electron:build:portable   # один portable .exe без установки
-npm run electron:preview          # собрать фронт и открыть как в проде, без упаковки
+npm run build                     # интерфейс в dist/ (встраивается в бинарь при компиляции)
+npm run typecheck                 # типы интерфейса и актуальность ключей переводов
+$env:GORYNYCH_DEV_ROOT = "$env:TEMP\gorynych-dev"; cargo run -p gorynych-tauri   # отладка на отдельном профиле
+cargo test --workspace            # из PowerShell и после npm run build
 ```
 
-Если сборка падает на распаковке `winCodeSign` с ошибкой про симлинки, включите «Режим разработчика» в Параметры → Система → Для разработчиков, или запустите терминал от администратора.
+Отладочная сборка без `GORYNYCH_DEV_ROOT` работает с настоящим профилем. Переводы — `crates/gorynych-core/i18n/{ru,en}/`
+(`ui.ftl` — интерфейс, `main.ftl` — сообщения Rust); после правки `ui.ftl` — `npm run i18n:types`.
 
-Иконка приложения — `build/icon.ico` (исходник `build/icon.svg`), electron-builder подхватывает её автоматически.
+Иконка приложения — `build/icon.ico` и `build/icon.png` (исходник `build/icon.svg`), их берёт `tauri.conf.json`.
 
-Настройки хранятся в `%APPDATA%\git-Gorynych`. При первом запуске после переименования они один раз копируются из папки `GitIdea` (или ещё более старой `GitKraken Clone`).
+Настройки 2.0 — `%APPDATA%\com.ironxenot.gitgorynych\state.db` (SQLite) и системный Keyring. При первом запуске данные 1.x
+из `%APPDATA%\git-Gorynych` переносятся один раз; старые файлы не удаляются.
 
 ## Структура
 
 ```
-electron/main.cjs        главный процесс: frameless-окно 1200×800, IPC
-electron/preload.cjs     безопасный мост window.api
+crates/                  Rust: core, storage, git, watcher, ci-linter, cicd, tauri (команды и окно)
+crates/gorynych-tauri/bindings/commands.ts  типы команд для интерфейса (tauri-specta)
+src/platform/tauri.ts    window.api поверх команд Tauri
+src/state/               хранилища Zustand: репозиторий, автообновление, CI/CD
 src/App.tsx              трёхпанельный layout
 src/components/          TitleBar, Toolbar, Sidebar, CommitGraph, CommitDetails
 src/lib/graphLayout.ts   раскладка коммитов по дорожкам и пути рёбер

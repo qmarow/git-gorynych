@@ -3495,7 +3495,7 @@ export default function App() {
         <Modal title={tr('about-2')} icon={Info} onClose={() => setDialog(null)} width={400}>
           <div className="space-y-2 text-[13px]">
             <div className="text-[15px] font-semibold text-gk-strong">{tr('git-gorynych')}</div>
-            <div className="text-gk-muted">{tr('version-0-1-0-electron')}</div>
+            <div className="text-gk-muted">{tr('about-version')}</div>
             <div className="text-[12px] leading-relaxed text-gk-dim">
               {tr('commit-graph-branches-stash-conflicts')}</div>
           </div>

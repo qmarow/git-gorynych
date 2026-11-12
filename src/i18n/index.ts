@@ -5,7 +5,7 @@
 // Язык меняется в Настройках → Оформление: окно перезагружается, и весь интерфейс строится на новом языке.
 //
 // Подстановка — как в 1.x: сообщение раскрывается Fluent один раз с аргументами «{0}», «{1}»… и кэшируется, дальше
-// /{(d+)}/g заменяет их значениями (однопроходно; без аргументов и при нехватке аргументов «{N}» остаётся как есть).
+// /\{(\d+)\}/g заменяет их значениями (однопроходно; без аргументов и при нехватке аргументов «{N}» остаётся как есть).
 import { Fragment, cloneElement, createElement, isValidElement, type ReactElement, type ReactNode } from 'react';
 import { FluentBundle, FluentResource } from '@fluent/bundle';
 import ruFtl from '../../crates/gorynych-core/i18n/ru/ui.ftl?raw';

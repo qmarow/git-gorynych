@@ -38,7 +38,7 @@ impl SecretStore for Memory {
 fn create_profile(profile: &Path) {
     let manifest = Path::new(env!("CARGO_MANIFEST_DIR"));
     let electron = manifest.join("../../node_modules/electron/dist/electron.exe");
-    assert!(electron.exists(), "нет Electron: выполните npm install");
+    assert!(electron.exists(), "нет Electron (в зависимостях его больше нет): npm install --no-save electron@37");
     fs::create_dir_all(profile).unwrap();
     let output = Command::new(electron)
         .arg(manifest.join("tests/fixtures/electron-profile"))

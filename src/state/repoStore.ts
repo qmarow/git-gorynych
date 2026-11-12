@@ -135,7 +135,7 @@ export function createRepoStore(getApi: () => RepoApi | undefined): RepoStore {
     load: async (dir, { silent = false } = {}) => {
       const api = getApi();
       if (!api) {
-        set({ loadError: { message: t('window-api-is-unavailable-start') } });
+        set({ loadError: { message: t('window-api-is-unavailable') } });
         return null;
       }
       const mine = ++seq;
