@@ -61,7 +61,7 @@ import Toasts from './components/Toasts.tsx';
 import TooltipLayer from './components/TooltipLayer.tsx';
 import DiffView from './components/DiffView.tsx';
 import ConflictView from './components/ConflictView.tsx';
-import CiView from './components/CiView.jsx';
+import CiView from './components/CiView.tsx';
 import RebaseView from './components/RebaseView.tsx';
 import CompareView from './components/CompareView.tsx';
 import FileView from './components/FileView.tsx';

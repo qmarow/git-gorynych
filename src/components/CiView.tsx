@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
+import { Fragment, useEffect, useMemo, useRef, useState, type ButtonHTMLAttributes, type ComponentProps, type ReactNode } from 'react';
 import {
   AlertTriangle,
   ArrowRight,
@@ -27,6 +27,7 @@ import {
   Workflow,
   X,
   Zap,
+  type LucideIcon,
 } from 'lucide-react';
 import { relativeTime } from '../lib/format.ts';
 import { highlight } from '../lib/syntax.tsx';
@@ -35,16 +36,170 @@ import DagView from './ci/DagView.tsx';
 import { describeCron } from '../lib/cron.ts';
 import { TAG_KEYS, snippetsFor } from '../lib/ciSnippets.ts';
 import CiEditor from './ci/CiEditor.tsx';
-import JobForm from './ci/JobForm.tsx';
-import { ChoiceDialog, DraftBar, DraftDiff, LintPanel } from './ci/DraftTools.tsx';
+import JobForm, { type EditOp, type FormJob } from './ci/JobForm.tsx';
+import { ChoiceDialog, DraftBar, DraftDiff, LintPanel, type Choice } from './ci/DraftTools.tsx';
 import CheckView, { CheckBanner, SEVERITY, issueKey } from './ci/CheckView.tsx';
 import { kb } from '../lib/platform.ts';
 import { readable } from '../lib/scheme.ts';
 import { t as tr, tj } from '../i18n/index.ts';
+import type { ApiError, ApiResult } from '../platform/tauri.ts';
+import type {
+  CiCheck_Serialize,
+  CiCommit,
+  CiDirtyFile,
+  CiEditResult,
+  CiFileError_Serialize,
+  CiFile_Serialize,
+  CiIssue_Serialize,
+  CiSystem,
+  CiTemplate_Serialize,
+  GlLintResult_Serialize,
+  RunnerTagReport_Serialize,
+} from '../../crates/gorynych-tauri/bindings/commands.ts';
 
-const api = window.api;
+/*
+ * Данные `repo:ci` так, как их читает интерфейс 1.x: значения из YAML (`YamlValue` в bindings) — имена этапов,
+ * when, image, trigger, timeout… — показываются как строки, поэтому здесь они строками и описаны.
+ */
+type Issue = CiIssue_Serialize;
+type ViewScript = { lines: string[]; inherited?: string };
+type ViewVariable = { name: string; value: string; description?: string };
+type ViewRule = { text: string; when?: string };
 
-const SYSTEM_COLORS = {
+/** Задание из загрузчика CI (`gorynych-ci-linter::load`) */
+interface ViewJob {
+  id: string;
+  name: string;
+  jobId?: string;
+  stage?: string;
+  source: string;
+  line?: number;
+  kind: string;
+  manual: boolean;
+  rules?: ViewRule[];
+  variables?: ViewVariable[];
+  extends?: string[];
+  raw: string;
+  needs?: { job: string; optional?: boolean }[] | null;
+  image?: string;
+  imageInherited?: string;
+  runsOn?: string;
+  trigger?: string;
+  when?: string;
+  script?: ViewScript;
+  beforeScript?: ViewScript;
+  afterScript?: ViewScript;
+  environment?: { name?: string; action?: string; url?: string };
+  services?: string[];
+  artifacts?: { paths?: string[]; expire?: string; reports?: string[] };
+  cache?: string;
+  parallel?: string;
+  timeout?: string | number;
+  allowFailure?: boolean;
+  condition?: string;
+  steps?: { name: string; uses?: string; run?: string; condition?: string; with?: string[] }[];
+  startIn?: string;
+  tags?: string[];
+  only?: string;
+  except?: string;
+  dependencies?: string[];
+  retry?: string;
+  interruptible?: unknown;
+  resourceGroup?: string;
+  coverage?: string;
+  outputs?: string[];
+  permissions?: string;
+}
+interface ViewStage {
+  name: string;
+  jobs: ViewJob[];
+  undeclared?: boolean;
+}
+interface ViewPipeline {
+  id: string;
+  title: string;
+  stages: ViewStage[];
+  implicitStages?: boolean;
+}
+interface ViewInclude {
+  type: string;
+  value: string;
+  resolved: boolean;
+  files?: string[];
+  error?: string;
+}
+/** `current` из `repo:ci` */
+interface ViewCurrent {
+  system: string;
+  title: string;
+  file: string;
+  jobCount: number;
+  history: CiCommit[];
+  dirty: CiDirtyFile[];
+  check: CiCheck_Serialize;
+  files: CiFile_Serialize[];
+  errors: CiFileError_Serialize[];
+  warnings: string[];
+  includes: ViewInclude[];
+  info: { label: string; value: string }[];
+  triggers: ViewRule[];
+  triggersTitle?: string;
+  variables: ViewVariable[];
+  pipelines: ViewPipeline[];
+  templates: CiTemplate_Serialize[];
+  schemeUnsupported?: boolean;
+}
+interface ViewLoad {
+  systems: CiSystem[];
+  current?: ViewCurrent;
+}
+
+type Opts = { remote: string | null | undefined };
+type Jump = { path: string; line: number | null | undefined; n: number };
+type Notify = NonNullable<ComponentProps<typeof CiPanel>['notify']>;
+type StageOp = EditOp;
+type Runner = { labels: string[]; isShared?: boolean; virtual?: boolean };
+
+interface CiViewApi {
+  repo: {
+    ci: (dir: string, file: string | null) => Promise<ApiResult<ViewLoad>>;
+    ciPreview: (dir: string, file: string | null, drafts: Record<string, string>) => Promise<ApiResult<ViewLoad>>;
+    ciSave: (dir: string, draft: { path: string; content: string; baseHash: string | null | undefined }) => Promise<ApiResult<unknown>>;
+    ciEdit: (content: string, op: EditOp) => Promise<ApiResult<CiEditResult>>;
+    ciCreate: (dir: string, opts: { system: string }) => Promise<ApiResult<{ path: string }>>;
+    openPath: (dir: string, rel: string) => void;
+  };
+  cicd: {
+    runnerTags: (dir: string, data: { file: string; drafts: Record<string, string> | null }, opts: Opts) => Promise<ApiResult<RunnerTagReport_Serialize>>;
+  };
+  gitlab: {
+    lint: (dir: string, draft: { content: string; ref?: string }, opts: Opts) => Promise<ApiResult<GlLintResult_Serialize>>;
+  };
+}
+
+const api = window.api as unknown as CiViewApi;
+
+type CiPanelProps = ComponentProps<typeof CiPanel>;
+interface CiViewProps {
+  repoPath: string;
+  initialFile?: string | null;
+  initialMode?: string | null;
+  initialPipelineId?: CiPanelProps['initialPipelineId'];
+  version: number;
+  forge: CiPanelProps['forge'];
+  remoteName?: string | null;
+  currentBranch?: string | null;
+  commitsBySha?: CiPanelProps['commitsBySha'];
+  branches?: CiPanelProps['branches'];
+  onClose: () => void;
+  onLocate: (sha: string) => void;
+  onForgeChanged?: () => void;
+  onEditLogin?: () => void;
+  notify?: Notify;
+  focusFailed?: boolean;
+}
+
+const SYSTEM_COLORS: Record<string, string> = {
   gitlab: '#fc6d26',
   github: '#8b9cff',
   gitea: '#609926',
@@ -58,7 +213,7 @@ const SYSTEM_COLORS = {
   woodpecker: '#4caf50',
 };
 
-const WHEN_LABELS = {
+const WHEN_LABELS: Record<string, string> = {
   on_success: tr('если предыдущие этапы успешны'),
   on_failure: tr('только если что-то упало'),
   always: tr('всегда'),
@@ -67,7 +222,7 @@ const WHEN_LABELS = {
   never: tr('не запускать'),
 };
 
-const MODES = [
+const MODES: { id: string; label: string; icon: LucideIcon; remote?: boolean }[] = [
   { id: 'scheme', label: tr('Схема'), icon: Workflow },
   { id: 'check', label: tr('Проверка'), icon: ListChecks },
   { id: 'file', label: tr('Файл'), icon: FileCode },
@@ -95,9 +250,9 @@ export default function CiView({
   onEditLogin,
   notify,
   focusFailed,
-}) {
+}: CiViewProps) {
   const [file, setFile] = useState(initialFile ?? null);
-  const [state, setState] = useState({ loading: true, data: null, error: null });
+  const [state, setState] = useState<{ loading: boolean; data: ViewLoad | null; error: ApiError | null }>({ loading: true, data: null, error: null });
   const [reloadKey, setReloadKey] = useState(0);
   const [mode, setMode] = useState(initialMode ?? 'scheme');
   const isGitlab = forge?.provider === 'gitlab';
@@ -105,22 +260,22 @@ export default function CiView({
   useEffect(() => {
     if (initialMode) setMode(initialMode);
   }, [initialMode, initialPipelineId]);
-  const [pipelineId, setPipelineId] = useState(null);
-  const [jobId, setJobId] = useState(null);
-  const [fileTab, setFileTab] = useState(null);
-  const [jump, setJump] = useState(null); // { path, line, n } — подсветить строку в файле
-  const [focusIssue, setFocusIssue] = useState(null); // { key, n } — раскрыть проблему на вкладке «Проверка»
+  const [pipelineId, setPipelineId] = useState<string | null>(null);
+  const [jobId, setJobId] = useState<string | null>(null);
+  const [fileTab, setFileTab] = useState<string | null>(null);
+  const [jump, setJump] = useState<Jump | null>(null); // { path, line, n } — подсветить строку в файле
+  const [focusIssue, setFocusIssue] = useState<{ key: string; n: number } | null>(null); // { key, n } — раскрыть проблему на вкладке «Проверка»
   const requested = useRef(0);
 
   // Редактирование: черновики (путь → текст), отпечатки файлов на момент начала правки
-  const [drafts, setDrafts] = useState({});
-  const [bases, setBases] = useState({});
-  const [preview, setPreview] = useState(null);
+  const [drafts, setDrafts] = useState<Record<string, string>>({});
+  const [bases, setBases] = useState<Record<string, string | null>>({});
+  const [preview, setPreview] = useState<ViewLoad | null>(null);
   const [saving, setSaving] = useState(false);
   const [showDiff, setShowDiff] = useState(false);
-  const [lint, setLint] = useState(null); // { loading } | { result } | { error }
-  const [choice, setChoice] = useState(null); // диалог выбора
-  const [jobForm, setJobForm] = useState(null); // { mode: 'create' | 'edit', stage }
+  const [lint, setLint] = useState<{ loading?: boolean; result?: GlLintResult_Serialize; error?: ApiError } | null>(null); // { loading } | { result } | { error }
+  const [choice, setChoice] = useState<{ title: ReactNode; text: ReactNode; choices: Choice[] } | null>(null); // диалог выбора
+  const [jobForm, setJobForm] = useState<{ mode: 'create' | 'edit'; stage?: string } | null>(null); // { mode: 'create' | 'edit', stage }
   const [editBusy, setEditBusy] = useState(false);
   const draftPaths = Object.keys(drafts);
   const hasDrafts = draftPaths.length > 0;
@@ -179,7 +334,7 @@ export default function CiView({
   const baseCheck = current?.check ?? null;
 
   // Сверка tags / runs-on с живыми раннерами провайдера (по черновику тоже); метки живых раннеров — для автодополнения
-  const [runnerCheck, setRunnerCheck] = useState(null);
+  const [runnerCheck, setRunnerCheck] = useState<RunnerTagReport_Serialize | null>(null);
   const tagSystems = ['gitlab', 'github', 'gitea', 'forgejo', 'bitbucket'];
   const canCheckRunners = Boolean(forge?.token?.configured && forge?.capabilities?.canListRunners && current && tagSystems.includes(current.system));
   useEffect(() => {
@@ -189,7 +344,7 @@ export default function CiView({
     }
     let alive = true;
     const t = setTimeout(async () => {
-      const res = await api.cicd.runnerTags(repoPath, { file: current.file, drafts: hasDrafts ? drafts : null }, { remote: remoteName });
+      const res = await api.cicd.runnerTags(repoPath, { file: current!.file, drafts: hasDrafts ? drafts : null }, { remote: remoteName });
       if (alive) setRunnerCheck(res.ok ? res.data : null);
     }, hasDrafts ? 600 : 0);
     return () => {
@@ -200,7 +355,7 @@ export default function CiView({
   }, [canCheckRunners, repoPath, current?.file, drafts, remoteName, forge?.provider, mode === 'pipelines']); // после вкладки «Раннеры» — заново
   const check = useMemo(() => {
     if (!baseCheck || !runnerCheck?.issues?.length) return baseCheck;
-    const issues = [...baseCheck.issues.filter((i) => i.id !== 'tags-runner'), ...runnerCheck.issues];
+    const issues = [...baseCheck.issues.filter((i) => i.id !== 'tags-runner'), ...(runnerCheck.issues as unknown as Issue[])];
     const stats = { error: 0, warning: 0, info: 0 };
     for (const i of issues) stats[i.severity] += 1;
     return { ...baseCheck, issues, stats };
@@ -208,17 +363,17 @@ export default function CiView({
   const runnerLabels = runnerCheck?.labels ?? [];
   // Проблемы по заданиям — для значков на схеме и в карточке задания
   const issuesByJob = useMemo(() => {
-    const m = new Map();
+    const m = new Map<string, Issue[]>();
     for (const i of check?.issues ?? []) if (i.job) m.set(i.job, [...(m.get(i.job) ?? []), i]);
     return m;
   }, [check]);
-  const jobIssues = (j) => (j ? [...new Set([...(issuesByJob.get(j.id) ?? []), ...(issuesByJob.get(j.name) ?? []), ...(j.jobId ? issuesByJob.get(j.jobId) ?? [] : [])])] : []);
-  const openCheck = (issue) => {
+  const jobIssues = (j: ViewJob | null | undefined) => (j ? [...new Set([...(issuesByJob.get(j.id) ?? []), ...(issuesByJob.get(j.name) ?? []), ...(j.jobId ? issuesByJob.get(j.jobId) ?? [] : [])])] : []);
+  const openCheck = (issue?: Issue) => {
     setMode('check');
     setFocusIssue(issue ? { key: issueKey(issue), n: Date.now() } : null);
   };
   // Задание по имени/id из проблемы
-  const selectJobByRef = (ref) => {
+  const selectJobByRef = (ref: string) => {
     const j = allJobs.find((x) => x.id === ref || x.name === ref || x.jobId === ref);
     setMode('scheme');
     setJobForm(null);
@@ -227,11 +382,11 @@ export default function CiView({
 
   /* ---------- Черновики ---------- */
 
-  const diskFile = (path) => baseCurrent?.files.find((x) => x.path === path) ?? null;
-  const diskText = (path) => (diskFile(path)?.text ?? '').replace(/^﻿/, '').replace(/\r\n/g, '\n');
-  const textOf = (path) => drafts[path] ?? diskText(path);
+  const diskFile = (path: string) => baseCurrent?.files.find((x) => x.path === path) ?? null;
+  const diskText = (path: string) => (diskFile(path)?.text ?? '').replace(/^﻿/, '').replace(/\r\n/g, '\n');
+  const textOf = (path: string) => drafts[path] ?? diskText(path);
 
-  const setDraft = (path, text) => {
+  const setDraft = (path: string, text: string) => {
     const same = text === diskText(path);
     setDrafts((d) => {
       const next = { ...d };
@@ -256,7 +411,7 @@ export default function CiView({
   };
 
   // Сохранить все черновики. force — записать поверх изменений на диске
-  const saveAll = async ({ force = false } = {}) => {
+  const saveAll = async ({ force = false }: { force?: boolean } = {}) => {
     if (!hasDrafts || saving) return true;
     setSaving(true);
     for (const path of Object.keys(drafts)) {
@@ -357,10 +512,10 @@ export default function CiView({
     current?.system === 'gitlab' && !current.errors.some((e) => e.severity === 'error' && e.file === current.file);
 
   // Правки применяются по очереди к тексту файла; результат — новый черновик
-  const applyOps = async (ops) => {
-    const path = current.file;
+  const applyOps = async (ops: EditOp[]) => {
+    const path = current!.file;
     let text = textOf(path);
-    const notes = [];
+    const notes: string[] = [];
     setEditBusy(true);
     for (const op of ops) {
       const res = await api.repo.ciEdit(text, op);
@@ -385,8 +540,8 @@ export default function CiView({
   /* ---------- Вставка в файл: теги раннера, шаблоны шагов ---------- */
 
   // Где стоял курсор в редакторе (путь → позиция) — туда и вставляем
-  const caret = useRef({});
-  const insertText = (snippet, { path: target } = {}) => {
+  const caret = useRef<Record<string, number>>({});
+  const insertText = (snippet: string, { path: target }: { path?: string } = {}) => {
     const path = target ?? fileTab ?? current?.file;
     if (!path) return false;
     const text = textOf(path);
@@ -395,10 +550,10 @@ export default function CiView({
     const lineEndRaw = text.indexOf('\n', pos);
     const lineEnd = lineEndRaw === -1 ? text.length : lineEndRaw;
     const line = text.slice(lineStart, lineEnd);
-    const indent = /^\s*/.exec(line)[0];
+    const indent = /^\s*/.exec(line)![0];
     const body = snippet.split('\n').map((l) => (l ? indent + l : l)).join('\n');
-    let next;
-    let at;
+    let next: string;
+    let at: number;
     if (!line.trim()) {
       next = text.slice(0, lineStart) + body + text.slice(lineEnd);
       at = lineStart;
@@ -414,14 +569,14 @@ export default function CiView({
     setJump({ path, line: lineNo, n: Date.now() });
     return true;
   };
-  const tagsSnippet = (runner) => {
+  const tagsSnippet = (runner: Runner) => {
     const sys = current?.system;
     if (sys === 'gitlab') return `tags: [${runner.labels.join(', ')}]`;
     if (sys === 'bitbucket') return `runs-on:\n${runner.labels.map((l) => `  - ${l}`).join('\n')}`;
     const labels = runner.isShared || runner.virtual ? runner.labels : runner.labels.includes('self-hosted') ? runner.labels : ['self-hosted', ...runner.labels];
     return labels.length === 1 ? `runs-on: ${labels[0]}` : `runs-on: [${labels.join(', ')}]`;
   };
-  const insertRunnerTags = (runner) => {
+  const insertRunnerTags = (runner: Runner) => {
     const snippet = tagsSnippet(runner);
     navigator.clipboard?.writeText(snippet).catch(() => {});
     if (insertText(snippet)) notify?.({ type: 'success', title: tr('Теги раннера вставлены в конфиг'), hint: snippet });
@@ -433,7 +588,7 @@ export default function CiView({
     setLint(res.ok ? { result: res.data } : { error: res.error });
   };
 
-  const showInFile = (path, line) => {
+  const showInFile = (path: string, line: number | null | undefined) => {
     setMode('file');
     setFileTab(path);
     setJump({ path, line, n: Date.now() });
@@ -441,7 +596,7 @@ export default function CiView({
 
   // Esc — закрыть форму/детали задания, затем сам просмотр. Ctrl+S — сохранить
   useEffect(() => {
-    const onKey = (e) => {
+    const onKey = (e: KeyboardEvent) => {
       if ((e.ctrlKey || e.metaKey) && e.code === 'KeyS' && !e.defaultPrevented) {
         if (mode === 'pipelines' || !hasDrafts) return;
         e.preventDefault();
@@ -461,7 +616,7 @@ export default function CiView({
   const currentDirty = baseCurrent?.files.some((f) => dirtyPaths.has(f.path));
   const declaredStages = pipeline ? pipeline.stages.filter((s) => !s.name.startsWith('.')).map((s) => s.name) : [];
 
-  const createFromTemplate = async (system) => {
+  const createFromTemplate = async (system: string) => {
     const res = await api.repo.ciCreate(repoPath, { system });
     if (!res.ok) {
       notify?.({ type: 'error', title: res.error.message, hint: res.error.hint });
@@ -477,7 +632,7 @@ export default function CiView({
     <div className="flex min-h-0 flex-1 animate-fade-in flex-col bg-gk-bg">
       {/* Верхняя панель */}
       <div className="glass flex shrink-0 items-center gap-2 border-b border-gk-border bg-gk-panel px-3 py-2">
-        <Workflow size={16} className="shrink-0" style={{ color: readable(SYSTEM_COLORS[current?.system] ?? '#3cf0a0') }} />
+        <Workflow size={16} className="shrink-0" style={{ color: readable(SYSTEM_COLORS[current?.system as string] ?? '#3cf0a0') }} />
         <div className="shrink-0 text-[13px] font-semibold text-gk-strong">CI/CD</div>
         {current && <div className="shrink-0 text-[12px] text-gk-muted">{current.title}</div>}
         {currentDirty && !hasDrafts && (
@@ -515,13 +670,13 @@ export default function CiView({
               {m.label}
               {m.id === 'file' && hasDrafts && <span className="h-1.5 w-1.5 rounded-full bg-gk-yellow" />}
               {m.id === 'check' && check && <CheckBadge stats={check.stats} />}
-              {m.id === 'history' && baseCurrent?.history.length > 0 && (
-                <span className="text-[10px] text-gk-dim">{baseCurrent.history.length}</span>
+              {m.id === 'history' && baseCurrent?.history.length! > 0 && (
+                <span className="text-[10px] text-gk-dim">{baseCurrent!.history.length}</span>
               )}
             </button>
           ))}
         </div>
-        <IconBtn title={tr('Открыть файл во внешнем редакторе')} disabled={!current || mode === 'pipelines'} onClick={() => api.repo.openPath(repoPath, fileTab ?? current.file)}>
+        <IconBtn title={tr('Открыть файл во внешнем редакторе')} disabled={!current || mode === 'pipelines'} onClick={() => api.repo.openPath(repoPath, fileTab ?? current!.file)}>
           <ExternalLink size={14} />
         </IconBtn>
         <IconBtn title={tr('Перечитать с диска')} onClick={() => setReloadKey((k) => k + 1)}>
@@ -656,7 +811,7 @@ export default function CiView({
                 <JobForm
                   key={`${jobForm.mode}:${job?.id ?? jobForm.stage}`}
                   mode={jobForm.mode}
-                  job={jobForm.mode === 'edit' ? job : null}
+                  job={(jobForm.mode === 'edit' ? job : null) as FormJob | null}
                   presetStage={jobForm.stage}
                   stages={declaredStages}
                   allJobs={allJobs}
@@ -669,11 +824,11 @@ export default function CiView({
                     }
                     if (await applyOps(ops)) {
                       setJobForm(null);
-                      setJobId(newName ?? ops[0].name ?? null);
+                      setJobId(newName ?? (ops[0].name as string | undefined) ?? null);
                     }
                   }}
                   onDelete={async () => {
-                    if (await applyOps([{ type: 'deleteJob', name: job.name }])) {
+                    if (await applyOps([{ type: 'deleteJob', name: job!.name }])) {
                       setJobForm(null);
                       setJobId(null);
                     }
@@ -730,7 +885,23 @@ export default function CiView({
 
 /* =================== Схема =================== */
 
-function Scheme({ data, pipeline, onPipeline, selectedJob, onSelectJob, onShowLine, check, jobIssues, onOpenCheck, editable, busy, onAddJob, onStageOp }) {
+interface SchemeProps {
+  data: ViewCurrent;
+  pipeline: ViewPipeline | null;
+  onPipeline: (id: string) => void;
+  selectedJob: string | null;
+  onSelectJob: (id: string) => void;
+  onShowLine: (path: string, line: number | null | undefined) => void;
+  check: CiCheck_Serialize | null;
+  jobIssues: (job: ViewJob) => Issue[];
+  onOpenCheck: (issue?: Issue) => void;
+  editable: boolean;
+  busy: boolean;
+  onAddJob: (stage: string) => void;
+  onStageOp: (op: StageOp) => void;
+}
+
+function Scheme({ data, pipeline, onPipeline, selectedJob, onSelectJob, onShowLine, check, jobIssues, onOpenCheck, editable, busy, onAddJob, onStageOp }: SchemeProps) {
   const [showVars, setShowVars] = useState(false);
   const [showTemplates, setShowTemplates] = useState(false);
   const [view, setView] = useState(() => {
@@ -740,7 +911,7 @@ function Scheme({ data, pipeline, onPipeline, selectedJob, onSelectJob, onShowLi
       return 'stages';
     }
   });
-  const pickView = (v) => {
+  const pickView = (v: string) => {
     setView(v);
     try {
       localStorage.setItem('ciSchemeView', v);
@@ -836,7 +1007,7 @@ function Scheme({ data, pipeline, onPipeline, selectedJob, onSelectJob, onShowLi
                         className={`ml-auto shrink-0 text-[10px] ${inc.resolved ? 'text-gk-green' : inc.error ? 'text-gk-red' : 'text-gk-dim'}`}
                         title={inc.resolved ? inc.files?.join('\n') : undefined}
                       >
-                        {inc.resolved ? tr('прочитан{0}', inc.files?.length > 1 ? ` (${inc.files.length})` : '') : inc.error ?? tr('внешний — не загружается')}
+                        {inc.resolved ? tr('прочитан{0}', inc.files?.length! > 1 ? ` (${inc.files!.length})` : '') : inc.error ?? tr('внешний — не загружается')}
                       </span>
                     </div>
                     <div className="mt-0.5 break-all font-mono text-[11.5px] text-gk-text/90">{inc.value}</div>
@@ -888,7 +1059,7 @@ function Scheme({ data, pipeline, onPipeline, selectedJob, onSelectJob, onShowLi
             {view === 'dag' && <span className="text-[11.5px] text-gk-dim">{tr('Наведите на задание — подсветится цепочка зависимостей')}</span>}
           </div>
           {view === 'dag' ? (
-            <DagView pipeline={pipeline} selectedJob={selectedJob} onSelectJob={onSelectJob} jobIssues={jobIssues} />
+            <DagView pipeline={pipeline} selectedJob={selectedJob} onSelectJob={onSelectJob} jobIssues={jobIssues as unknown as ComponentProps<typeof DagView>['jobIssues']} />
           ) : (
           <StagesBoard
             pipeline={pipeline}
@@ -949,7 +1120,7 @@ function Scheme({ data, pipeline, onPipeline, selectedJob, onSelectJob, onShowLi
   );
 }
 
-function StagesBoard({ pipeline, jobIssues, selectedJob, onSelectJob, editable, busy, onAddJob, onStageOp }) {
+function StagesBoard({ pipeline, jobIssues, selectedJob, onSelectJob, editable, busy, onAddJob, onStageOp }: Pick<SchemeProps, 'jobIssues' | 'selectedJob' | 'onSelectJob' | 'editable' | 'busy' | 'onAddJob' | 'onStageOp'> & { pipeline: ViewPipeline }) {
   const [adding, setAdding] = useState(false);
   const realStages = pipeline.stages.filter((s) => !s.name.startsWith('.'));
   return (
@@ -1020,7 +1191,7 @@ function StagesBoard({ pipeline, jobIssues, selectedJob, onSelectJob, editable, 
   );
 }
 
-function StageHeader({ stage, editable, busy, canLeft, canRight, onOp }) {
+function StageHeader({ stage, editable, busy, canLeft, canRight, onOp }: { stage: ViewStage; editable: boolean; busy: boolean; canLeft: boolean; canRight: boolean; onOp: (op: StageOp) => void }) {
   const [renaming, setRenaming] = useState(false);
   const [armDelete, setArmDelete] = useState(false);
   if (renaming) {
@@ -1087,7 +1258,7 @@ function StageHeader({ stage, editable, busy, canLeft, canRight, onOp }) {
   );
 }
 
-function MiniBtn({ children, danger, ...props }) {
+function MiniBtn({ children, danger, ...props }: ButtonHTMLAttributes<HTMLButtonElement> & { danger?: boolean }) {
   return (
     <button
       {...props}
@@ -1100,7 +1271,7 @@ function MiniBtn({ children, danger, ...props }) {
   );
 }
 
-function InlineInput({ initial = '', placeholder, onSubmit, onCancel }) {
+function InlineInput({ initial = '', placeholder, onSubmit, onCancel }: { initial?: string; placeholder?: string; onSubmit: (value: string) => void; onCancel: () => void }) {
   const [v, setV] = useState(initial);
   return (
     <form
@@ -1132,10 +1303,10 @@ function InlineInput({ initial = '', placeholder, onSubmit, onCancel }) {
   );
 }
 
-function JobCard({ job, issues = [], selected, onClick }) {
+function JobCard({ job, issues = [], selected, onClick }: { job: ViewJob; issues?: Issue[]; selected: boolean; onClick: () => void }) {
   const errCount = issues.filter((i) => i.severity === 'error').length;
   const warnCount = issues.filter((i) => i.severity === 'warning').length;
-  const badges = [];
+  const badges: { icon: LucideIcon | null; text: string; cls: string; title?: string }[] = [];
   if (job.manual) badges.push({ icon: Hand, text: tr('вручную'), cls: 'text-gk-yellow' });
   if (job.kind === 'trigger') badges.push({ icon: Zap, text: job.trigger ? tr('запускает другой пайплайн') : tr('внешнее'), cls: 'text-gk-purple' });
   if (job.environment?.name) badges.push({ icon: Rocket, text: job.environment.name, cls: 'text-gk-green' });
@@ -1179,9 +1350,9 @@ function JobCard({ job, issues = [], selected, onClick }) {
           <span className="truncate font-mono">{where}</span>
         </div>
       )}
-      {job.needs?.length > 0 && (
-        <div className="mt-1 truncate text-[11px] text-gk-dim" title={job.needs.map((n) => n.job).join(', ')}>
-          {tj('после: {0}', [job.needs.map((n) => n.job).join(', ')])}
+      {job.needs?.length! > 0 && (
+        <div className="mt-1 truncate text-[11px] text-gk-dim" title={job.needs!.map((n) => n.job).join(', ')}>
+          {tj('после: {0}', [job.needs!.map((n) => n.job).join(', ')])}
         </div>
       )}
       {badges.length > 0 && (
@@ -1200,13 +1371,25 @@ function JobCard({ job, issues = [], selected, onClick }) {
 
 /* =================== Детали задания =================== */
 
-function JobDetails({ job, allJobs, onSelectJob, onClose, onShowLine, issues = [], onOpenIssue, editState, onEdit }) {
+interface JobDetailsProps {
+  job: ViewJob;
+  allJobs: ViewJob[];
+  onSelectJob: (id: string) => void;
+  onClose: () => void;
+  onShowLine: (path: string, line: number | null | undefined) => void;
+  issues?: Issue[];
+  onOpenIssue?: (issue: Issue) => void;
+  editState: 'own' | 'include' | null;
+  onEdit: () => void;
+}
+
+function JobDetails({ job, allJobs, onSelectJob, onClose, onShowLine, issues = [], onOpenIssue, editState, onEdit }: JobDetailsProps) {
   const [showRaw, setShowRaw] = useState(false);
-  const scripts = [
+  const scripts = ([
     ['before_script', job.beforeScript],
     ['script', job.script],
     ['after_script', job.afterScript],
-  ].filter(([, s]) => s && s.lines.length);
+  ] as [string, ViewScript | undefined][]).filter(([, s]) => s && s.lines.length) as [string, ViewScript][];
 
   return (
     <aside className="flex w-[440px] shrink-0 animate-slide-in-right flex-col border-l border-gk-border bg-gk-panel/80 backdrop-blur-xl">
@@ -1263,7 +1446,7 @@ function JobDetails({ job, allJobs, onSelectJob, onClose, onShowLine, issues = [
         )}
         <Section title={tr('Когда запускается')}>
           <div className="flex flex-wrap items-center gap-1.5">
-            {job.rules?.length > 0 ? (
+            {job.rules?.length! > 0 ? (
               <span className="rounded bg-gk-fg/5 px-1.5 py-0.5 text-[11px] text-gk-muted">{tr('по правилам ниже')}</span>
             ) : job.when ? (
               <WhenChip when={job.when} big />
@@ -1277,9 +1460,9 @@ function JobDetails({ job, allJobs, onSelectJob, onClose, onShowLine, issues = [
             {job.allowFailure && <span className="text-gk-muted">{tr('· ошибка не остановит пайплайн')}</span>}
           </div>
           {job.condition && <Code className="mt-2">if: {job.condition}</Code>}
-          {job.rules?.length > 0 && (
+          {job.rules?.length! > 0 && (
             <ol className="mt-2 space-y-1">
-              {job.rules.map((r, i) => (
+              {job.rules!.map((r, i) => (
                 <li key={i} className="flex items-start gap-2 rounded bg-gk-fg/[0.03] px-2 py-1.5">
                   <span className="shrink-0 text-gk-dim">{i + 1}.</span>
                   <span className="min-w-0 flex-1 break-words font-mono text-[11.5px] text-gk-text/90">{r.text}</span>
@@ -1293,7 +1476,7 @@ function JobDetails({ job, allJobs, onSelectJob, onClose, onShowLine, issues = [
           {job.except && <KV k="except" v={job.except} />}
         </Section>
 
-        {(job.image || job.runsOn || job.services?.length > 0 || job.tags?.length > 0) && (
+        {(job.image || job.runsOn || job.services?.length! > 0 || job.tags?.length! > 0) && (
           <Section title={tr('Где выполняется')}>
             {job.image && (
               <KV
@@ -1303,16 +1486,16 @@ function JobDetails({ job, allJobs, onSelectJob, onClose, onShowLine, issues = [
               />
             )}
             {job.runsOn && <KV k="runs-on" v={job.runsOn} />}
-            {job.services?.length > 0 && <KV k={tr('сервисы')} v={job.services.join(', ')} />}
-            {job.tags?.length > 0 && <KV k={tr('теги раннера')} v={job.tags.join(', ')} />}
+            {job.services?.length! > 0 && <KV k={tr('сервисы')} v={job.services!.join(', ')} />}
+            {job.tags?.length! > 0 && <KV k={tr('теги раннера')} v={job.tags!.join(', ')} />}
           </Section>
         )}
 
-        {(job.needs?.length > 0 || job.dependencies || job.extends?.length > 0 || job.trigger) && (
+        {(job.needs?.length! > 0 || job.dependencies || job.extends?.length! > 0 || job.trigger) && (
           <Section title={tr('Связи')}>
-            {job.needs?.length > 0 && (
+            {job.needs?.length! > 0 && (
               <div className="flex flex-wrap items-center gap-1.5">
-                {tj('<0>после</0>{1}', [<span className="w-24 shrink-0 text-gk-dim" />, job.needs.map((n) => {
+                {tj('<0>после</0>{1}', [<span className="w-24 shrink-0 text-gk-dim" />, job.needs!.map((n) => {
                   const target = allJobs.find((j) => j.name === n.job);
                   return (
                     <button
@@ -1331,7 +1514,7 @@ function JobDetails({ job, allJobs, onSelectJob, onClose, onShowLine, issues = [
             )}
             {job.needs && job.needs.length === 0 && <KV k="needs" v={tr('[] — стартует сразу, не дожидаясь этапов')} />}
             {job.dependencies && <KV k={tr('артефакты из')} v={job.dependencies.join(', ') || tr('— (не скачивать)')} />}
-            {job.extends?.length > 0 && <KV k={tr('наследует')} v={job.extends.join(' → ')} />}
+            {job.extends?.length! > 0 && <KV k={tr('наследует')} v={job.extends!.join(' → ')} />}
             {job.trigger && <KV k={tr('запускает')} v={job.trigger} />}
           </Section>
         )}
@@ -1360,10 +1543,10 @@ function JobDetails({ job, allJobs, onSelectJob, onClose, onShowLine, issues = [
           </Section>
         )}
 
-        {job.steps?.length > 0 && (
-          <Section title={tr('Шаги · {0}', job.steps.length)}>
+        {job.steps?.length! > 0 && (
+          <Section title={tr('Шаги · {0}', job.steps!.length)}>
             <ol className="space-y-1.5">
-              {job.steps.map((st, i) => (
+              {job.steps!.map((st, i) => (
                 <li key={i} className="rounded border border-gk-border bg-gk-fg/[0.02] px-2.5 py-1.5">
                   <div className="flex items-center gap-2">
                     <span className="w-4 shrink-0 text-right text-[10px] text-gk-dim">{i + 1}</span>
@@ -1377,7 +1560,7 @@ function JobDetails({ job, allJobs, onSelectJob, onClose, onShowLine, issues = [
                     )}
                   </div>
                   {st.condition && <div className="ml-6 mt-1 font-mono text-[10.5px] text-gk-dim">if: {st.condition}</div>}
-                  {st.with?.length > 0 && <div className="ml-6 mt-1 font-mono text-[10.5px] text-gk-muted">{st.with.join(' · ')}</div>}
+                  {st.with?.length! > 0 && <div className="ml-6 mt-1 font-mono text-[10.5px] text-gk-muted">{st.with!.join(' · ')}</div>}
                   {st.run && st.run !== st.name && <Code className="ml-6 mt-1">{st.run}</Code>}
                 </li>
               ))}
@@ -1385,9 +1568,9 @@ function JobDetails({ job, allJobs, onSelectJob, onClose, onShowLine, issues = [
           </Section>
         )}
 
-        {job.variables?.length > 0 && (
+        {job.variables?.length! > 0 && (
           <Section title={tr('Переменные')}>
-            <VariablesTable variables={job.variables} />
+            <VariablesTable variables={job.variables!} />
           </Section>
         )}
 
@@ -1398,23 +1581,23 @@ function JobDetails({ job, allJobs, onSelectJob, onClose, onShowLine, issues = [
             )}
             {job.artifacts && (
               <>
-                {job.artifacts.paths?.length > 0 && <KV k={tr('артефакты')} v={job.artifacts.paths.join(', ')} />}
+                {job.artifacts.paths?.length! > 0 && <KV k={tr('артефакты')} v={job.artifacts.paths!.join(', ')} />}
                 {job.artifacts.expire && <KV k={tr('хранятся')} v={job.artifacts.expire} />}
-                {job.artifacts.reports?.length > 0 && <KV k={tr('отчёты')} v={job.artifacts.reports.join(', ')} />}
+                {job.artifacts.reports?.length! > 0 && <KV k={tr('отчёты')} v={job.artifacts.reports!.join(', ')} />}
               </>
             )}
             {job.cache && <KV k={tr('кэш')} v={job.cache} />}
           </Section>
         )}
 
-        {(job.timeout || job.retry || job.resourceGroup || job.coverage || job.interruptible != null || job.permissions || job.outputs?.length > 0) && (
+        {(job.timeout || job.retry || job.resourceGroup || job.coverage || job.interruptible != null || job.permissions || job.outputs?.length! > 0) && (
           <Section title={tr('Прочее')}>
             {job.timeout && <KV k={tr('таймаут')} v={String(job.timeout)} />}
             {job.retry && <KV k={tr('повторы')} v={job.retry} />}
             {job.interruptible != null && <KV k="interruptible" v={String(job.interruptible)} />}
             {job.resourceGroup && <KV k="resource_group" v={job.resourceGroup} />}
             {job.coverage && <KV k="coverage" v={job.coverage} />}
-            {job.outputs?.length > 0 && <KV k="outputs" v={job.outputs.join(', ')} />}
+            {job.outputs?.length! > 0 && <KV k="outputs" v={job.outputs!.join(', ')} />}
             {job.permissions && <KV k="permissions" v={job.permissions} />}
           </Section>
         )}
@@ -1440,14 +1623,35 @@ function JobDetails({ job, allJobs, onSelectJob, onClose, onShowLine, issues = [
 
 /* =================== Файл =================== */
 
-function FileEditor({ files, active, onActive, jump, errors, issues = [], gitDirty, drafts, textOf, onChange, onSave, system, runnerLabels = [], onCaret, onInsert }) {
+interface FileEditorProps {
+  files: CiFile_Serialize[];
+  active: string;
+  onActive: (path: string) => void;
+  jump: Jump | null;
+  errors: CiFileError_Serialize[];
+  issues?: Issue[];
+  gitDirty: Set<string>;
+  drafts: Record<string, string>;
+  textOf: (path: string) => string;
+  onChange: (path: string, text: string) => void;
+  onSave: () => void;
+  system: string;
+  runnerLabels?: string[];
+  onCaret?: (path: string, pos: number) => void;
+  onInsert?: (snippet: string, path: string) => void;
+}
+
+/** Строка панели проблем файла */
+type FileProblem = { file: string | null; line: number | null | undefined; message: string; severity: string };
+
+function FileEditor({ files, active, onActive, jump, errors, issues = [], gitDirty, drafts, textOf, onChange, onSave, system, runnerLabels = [], onCaret, onInsert }: FileEditorProps) {
   const [snipOpen, setSnipOpen] = useState(false);
   const snippets = snippetsFor(system);
   const file = files.find((f) => f.path === active) ?? files[0];
   const lang = /\.ya?ml$/i.test(file?.path ?? '') ? 'yaml' : 'groovy';
   // Ошибки YAML и найденные проверкой проблемы этого файла (кроме советов)
   const problems = useMemo(() => {
-    const list = errors.map((e) => ({ file: e.file, line: e.line, message: e.message, severity: e.severity === 'error' ? 'error' : 'warning' }));
+    const list: FileProblem[] = errors.map((e) => ({ file: e.file, line: e.line, message: e.message, severity: e.severity === 'error' ? 'error' : 'warning' }));
     for (const i of issues) {
       if (i.severity === 'info' || i.id === 'yaml-syntax' || i.id === 'yaml-warning') continue;
       list.push({ file: i.file, line: i.line, message: i.title, severity: i.severity });
@@ -1455,7 +1659,7 @@ function FileEditor({ files, active, onActive, jump, errors, issues = [], gitDir
     return list;
   }, [errors, issues]);
   const errorLines = useMemo(() => {
-    const m = new Map();
+    const m = new Map<number, { text: string; tone: 'red' | 'yellow' }>();
     for (const e of problems) {
       if (e.file !== file?.path || !e.line) continue;
       const prev = m.get(e.line);
@@ -1464,12 +1668,12 @@ function FileEditor({ files, active, onActive, jump, errors, issues = [], gitDir
     }
     return m;
   }, [problems, file]);
-  const [localJump, setLocalJump] = useState(null);
+  const [localJump, setLocalJump] = useState<Jump | null>(null);
   if (!file) return <Center>{tr('Нет файла')}</Center>;
   const value = textOf(file.path);
   const fileErrors = problems.filter((e) => e.file === file.path || (!e.file && file === files[0]));
   const anyError = fileErrors.some((e) => e.severity === 'error');
-  const effJump = [jump, localJump].filter((j) => j && j.path === file.path).sort((a, b) => b.n - a.n)[0] ?? null;
+  const effJump = [jump, localJump].filter((j) => j && j.path === file.path).sort((a, b) => b!.n - a!.n)[0] ?? null;
 
   return (
     <div className="flex min-w-0 flex-1 flex-col">
@@ -1531,10 +1735,10 @@ function FileEditor({ files, active, onActive, jump, errors, issues = [], gitDir
         value={value}
         lang={lang}
         errors={errorLines}
-        jump={effJump}
+        jump={effJump as { line: number; n: number } | null}
         onChange={(text) => onChange(file.path, text)}
         onSave={onSave}
-        completions={runnerLabels.length ? { keys: TAG_KEYS[system] ?? [], labels: runnerLabels } : null}
+        completions={runnerLabels.length ? { keys: (TAG_KEYS[system] ?? []) as string[], labels: runnerLabels } : null}
         onCaret={(pos) => onCaret?.(file.path, pos)}
       />
       {fileErrors.length > 0 && (
@@ -1561,7 +1765,7 @@ function FileEditor({ files, active, onActive, jump, errors, issues = [], gitDir
 
 /* =================== История =================== */
 
-function HistoryView({ history, onLocate }) {
+function HistoryView({ history, onLocate }: { history: CiCommit[]; onLocate: (sha: string) => void }) {
   if (!history.length) return <Center>{tr('Файлы CI/CD ещё ни разу не коммитились')}</Center>;
   return (
     <div className="min-w-0 flex-1 overflow-y-auto p-4">
@@ -1591,7 +1795,7 @@ function HistoryView({ history, onLocate }) {
 
 /* =================== Мелочи =================== */
 
-function NoCi({ gitlab, providerLabel, onPipelines, onCreate }) {
+function NoCi({ gitlab, providerLabel, onPipelines, onCreate }: { gitlab: boolean; providerLabel: string | null | undefined; onPipelines: () => void; onCreate: (system: string) => void }) {
   return (
     <Center>
       <div className="max-w-md text-center">
@@ -1615,7 +1819,7 @@ function NoCi({ gitlab, providerLabel, onPipelines, onCreate }) {
   );
 }
 
-function ProblemLine({ problem, onShowLine }) {
+function ProblemLine({ problem, onShowLine }: { problem: CiFileError_Serialize; onShowLine: (path: string, line: number | null | undefined) => void }) {
   return (
     <div className="flex items-start gap-2">
       <span className="min-w-0 flex-1 break-words">{problem.message}</span>
@@ -1628,13 +1832,13 @@ function ProblemLine({ problem, onShowLine }) {
   );
 }
 
-function CheckBadge({ stats }) {
+function CheckBadge({ stats }: { stats: CiCheck_Serialize['stats'] }) {
   if (stats.error) return <span data-testid="check-badge" className="rounded-full bg-gk-red/20 px-1.5 text-[10px] font-semibold text-gk-red">{stats.error}</span>;
   if (stats.warning) return <span data-testid="check-badge" className="rounded-full bg-gk-yellow/20 px-1.5 text-[10px] font-semibold text-gk-yellow">{stats.warning}</span>;
   return <Check data-testid="check-badge" size={11} className="text-gk-green" />;
 }
 
-function Notice({ tone, icon: Icon, title, children }) {
+function Notice({ tone, icon: Icon, title, children }: { tone: 'red' | 'yellow'; icon: LucideIcon; title: ReactNode; children?: ReactNode }) {
   const cls = tone === 'red' ? 'border-gk-red/30 bg-gk-red/10 text-gk-red' : 'border-gk-yellow/30 bg-gk-yellow/[0.07] text-gk-yellow';
   return (
     <div className={`animate-fade-in rounded-lg border px-3 py-2.5 text-[12px] ${cls}`}>
@@ -1646,7 +1850,7 @@ function Notice({ tone, icon: Icon, title, children }) {
   );
 }
 
-function Card({ title, icon: Icon, children }) {
+function Card({ title, icon: Icon, children }: { title: ReactNode; icon: LucideIcon; children?: ReactNode }) {
   return (
     <div className="animate-fade-in rounded-lg border border-gk-border bg-gk-fg/[0.02] px-3 py-2.5 text-[12px]">
       <div className="mb-2 flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wider text-gk-dim">
@@ -1657,7 +1861,7 @@ function Card({ title, icon: Icon, children }) {
   );
 }
 
-function Section({ title, children }) {
+function Section({ title, children }: { title: ReactNode; children?: ReactNode }) {
   return (
     <section>
       <div className="mb-1.5 text-[10.5px] font-semibold uppercase tracking-wider text-gk-dim">{title}</div>
@@ -1666,7 +1870,7 @@ function Section({ title, children }) {
   );
 }
 
-function KV({ k, v, note }) {
+function KV({ k, v, note }: { k: ReactNode; v: ReactNode; note?: ReactNode }) {
   return (
     <div className="flex gap-2">
       <span className="w-24 shrink-0 text-gk-dim">{k}</span>
@@ -1680,10 +1884,10 @@ function KV({ k, v, note }) {
 
 // Мягкие переносы после / _ - . : = , — длинные пути и URL переносятся по смысловым границам,
 // а не посреди слова («htm|l»). Совсем длинный кусок без разделителей — overflow-wrap: anywhere
-function softBreaks(text) {
+function softBreaks(text: unknown): ReactNode {
   const str = String(text ?? '');
   if (str.length < 24) return str;
-  const out = [];
+  const out: ReactNode[] = [];
   let buf = '';
   for (const ch of str) {
     buf += ch;
@@ -1696,7 +1900,7 @@ function softBreaks(text) {
   return out;
 }
 
-function VariablesTable({ variables }) {
+function VariablesTable({ variables }: { variables: ViewVariable[] }) {
   return (
     <div className="mt-1.5 overflow-hidden rounded-md border border-gk-border">
       {variables.map((v) => (
@@ -1713,7 +1917,7 @@ function VariablesTable({ variables }) {
   );
 }
 
-function WhenChip({ when, big }) {
+function WhenChip({ when, big }: { when: string; big?: boolean }) {
   const cls =
     when === 'manual'
       ? 'bg-gk-yellow/15 text-gk-yellow'
@@ -1729,7 +1933,7 @@ function WhenChip({ when, big }) {
   );
 }
 
-function Code({ children, className = '' }) {
+function Code({ children, className = '' }: { children?: ReactNode; className?: string }) {
   return (
     <div className={`overflow-x-auto rounded-md bg-gk-sink/30 px-2.5 py-1.5 font-mono text-[11.5px] leading-[1.6] text-gk-text/90 ${className}`}>
       {typeof children === 'string' ? <span className="block w-max min-w-full whitespace-pre">{children}</span> : children}
@@ -1737,11 +1941,11 @@ function Code({ children, className = '' }) {
   );
 }
 
-function Center({ children, className = '' }) {
+function Center({ children, className = '' }: { children?: ReactNode; className?: string }) {
   return <div className={`flex flex-1 items-center justify-center gap-2 p-6 text-[13px] text-gk-muted ${className}`}>{children}</div>;
 }
 
-function IconBtn({ children, disabled, ...props }) {
+function IconBtn({ children, disabled, ...props }: ButtonHTMLAttributes<HTMLButtonElement>) {
   return (
     <button
       {...props}
