@@ -10,7 +10,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const FINAL = { removeElectron: true, installers: false, fluent: true };
+const FINAL = { removeElectron: true, installers: true, fluent: true };
 
 function lines(dir, test) {
   let n = 0;

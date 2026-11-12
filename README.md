@@ -20,6 +20,16 @@ npm run app:build    # vite build + cargo build --release -p gorynych-tauri --fe
 Результат — `target\release\gorynych-tauri.exe` (один файл, без инсталлятора). Он работает с настоящим профилем
 пользователя и Keyring.
 
+Инсталлятор NSIS (без подписи):
+
+```powershell
+npm run app:installer   # tauri build: vite build + release-сборка + NSIS
+```
+
+Результат — `target\release\bundle\nsis\git-Горыныч_<версия>_x64-setup.exe`. Установка — в профиль пользователя, без прав
+администратора (`%LOCALAPPDATA%\git-Горыныч`), язык установщика — русский или английский. NSIS при первой сборке
+скачивается сам. Без подписи Windows SmartScreen предупреждает при запуске установщика («Подробнее» → «Выполнить в любом случае»).
+
 ## Разработка
 
 ```powershell

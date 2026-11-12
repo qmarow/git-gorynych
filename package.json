@@ -12,12 +12,14 @@
     "ui:watch": "vite build --watch",
     "typecheck": "node scripts/i18n-types.mjs --check && tsc -p tsconfig.json",
     "i18n:types": "node scripts/i18n-types.mjs",
-    "app:build": "vite build && cargo build --release -p gorynych-tauri --features custom-protocol"
+    "app:build": "vite build && cargo build --release -p gorynych-tauri --features custom-protocol",
+    "app:installer": "tauri build"
   },
   "devDependencies": {
     "@fluent/bundle": "^0.19.1",
     "@tailwindcss/vite": "^4.1.11",
     "@tauri-apps/api": "^2.12.4",
+    "@tauri-apps/cli": "2.12.4",
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.3.0",
     "@vitejs/plugin-react": "^4.7.0",

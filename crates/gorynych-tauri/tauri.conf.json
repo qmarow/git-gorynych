@@ -3,7 +3,14 @@
   "productName": "git-Горыныч",
   "identifier": "com.ironxenot.gitgorynych",
   "build": {
-    "frontendDist": "../../dist"
+    "frontendDist": "../../dist",
+    "beforeBuildCommand": {
+      "script": "npm run build",
+      "cwd": "../.."
+    },
+    "features": [
+      "custom-protocol"
+    ]
   },
   "app": {
     "withGlobalTauri": true,
@@ -13,7 +20,28 @@
     }
   },
   "bundle": {
-    "active": false,
-    "icon": ["../../build/icon.png", "../../build/icon.ico"]
-  }
+    "active": true,
+    "targets": [
+      "nsis"
+    ],
+    "icon": [
+      "../../build/icon.png",
+      "../../build/icon.ico"
+    ],
+    "publisher": "ironxenot",
+    "shortDescription": "git-Горыныч — Git-клиент",
+    "longDescription": "Десктопный Git-клиент: граф коммитов, ветки, stash, конфликты, CI/CD.",
+    "windows": {
+      "nsis": {
+        "installMode": "currentUser",
+        "languages": [
+          "Russian",
+          "English"
+        ],
+        "displayLanguageSelector": true,
+        "installerIcon": "../../build/icon.ico"
+      }
+    }
+  },
+  "mainBinaryName": "git-gorynych"
 }
