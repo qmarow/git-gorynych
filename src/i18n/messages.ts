@@ -498,6 +498,7 @@ export type MessageId =
   | 'commits-in-graph-have-pipeline'
   | 'commits-that-changed-ci-cd'
   | 'commits-whose-changes-contain-text'
+  | 'committed-at'
   | 'compact'
   | 'compact-dots'
   | 'compare'

@@ -1872,11 +1872,17 @@ export type Commit_Deserialize = {
 	hash: string,
 	parents: string[],
 	author: CommitAuthor,
+	/**  Дата автора (`%aI`) — её показывает колонка «Дата». */
 	date: string,
 	message: string,
 	description: string,
 	refs: CommitRef_Deserialize[],
 	isHead: boolean,
+	/**
+	 *  Новое в 2.0: дата коммита (`%cI`). По ней упорядочен `--date-order`, и по ней stash встаёт в граф; после rebase и
+	 *  cherry-pick она расходится с датой автора. Пустая — та же, что `date`.
+	 */
+	commitDate: string,
 };
 
 /**  Коммит. */
@@ -1884,11 +1890,17 @@ export type Commit_Serialize = {
 	hash: string,
 	parents: string[],
 	author: CommitAuthor,
+	/**  Дата автора (`%aI`) — её показывает колонка «Дата». */
 	date: string,
 	message: string,
 	description: string,
 	refs: CommitRef_Serialize[],
 	isHead: boolean,
+	/**
+	 *  Новое в 2.0: дата коммита (`%cI`). По ней упорядочен `--date-order`, и по ней stash встаёт в граф; после rebase и
+	 *  cherry-pick она расходится с датой автора. Пустая — та же, что `date`.
+	 */
+	commitDate: string,
 };
 
 /**  Параметры `repo:compare`. Поле не строкой считается отсутствующим, как `a ?? ''` в 1.x. */

@@ -1278,6 +1278,7 @@ reset-settings-templates-stay = { $a0 } Reset settings (templates stay)
 
 ## src/components/CommitGraph.tsx
 
+committed-at = Committed: { $a0 }
 repository-has-no-commits-yet = The repository has no commits yet
 drag-to-change-graph-width = Drag to change the graph width. Double-click — auto
 drag-to-change-width-double = Drag to change the width. Double-click — fit content

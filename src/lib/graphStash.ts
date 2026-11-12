@@ -3,8 +3,9 @@
  *
  * Каждый stash — отдельная строка графа: узел в своей дорожке и пунктирная линия к коммиту, на котором его сделали
  * (`base` — первый родитель коммита stash). Строка встаёт по времени создания среди коммитов, но всегда выше своего
- * коммита: так линия идёт вниз, как у ветки. Stash, чей коммит не загружен (за пределом истории), в граф не попадает —
- * он по-прежнему есть в боковой панели.
+ * коммита: так линия идёт вниз, как у ветки. Время коммита — дата коммита (`commitDate`): по ней упорядочен
+ * `--date-order`, а дата автора после rebase и cherry-pick бывает намного старше. Нет `commitDate` — дата автора.
+ * Stash, чей коммит не загружен (за пределом истории), в граф не попадает — он по-прежнему есть в боковой панели.
  *
  * Хэш строки — `stash:<хэш stash>`: тот же ключ выбора, что у боковой панели, поэтому выделение, детали и диффы stash
  * работают без отдельной ветки кода.
@@ -12,7 +13,7 @@
 import type { Commit_Serialize, Stash_Serialize } from '../../crates/gorynych-tauri/bindings/commands.ts';
 
 export type StashData = Pick<Stash_Serialize, 'id' | 'hash' | 'message' | 'date' | 'base'>;
-export type GraphCommit = Pick<Commit_Serialize, 'hash' | 'parents' | 'date'> & Record<string, unknown>;
+export type GraphCommit = Pick<Commit_Serialize, 'hash' | 'parents' | 'date'> & Partial<Pick<Commit_Serialize, 'commitDate'>> & Record<string, unknown>;
 
 /** Строка графа для stash: поля коммита, которые читает граф, плюс сам stash. */
 export interface StashRow {
@@ -38,13 +39,15 @@ const time = (iso: string | null | undefined): number => {
 export function withStashes<C extends GraphCommit>(commits: readonly C[], stashes: readonly StashData[] | null | undefined, title: (st: StashData) => string): (C | StashRow)[] | readonly C[] {
   if (!stashes?.length || !commits.length) return commits;
   const index = new Map(commits.map((c, i) => [c.hash, i]));
+  // Время каждого коммита — один раз, а не на каждый stash
+  const times = commits.map((c) => time(c.commitDate ?? c.date));
   // Место строки: перед первым коммитом старше stash, но не ниже его коммита
   const at = new Map<number, { row: StashRow; t: number; order: number }[]>();
   stashes.forEach((st, order) => {
     const base = st.base ? index.get(st.base) : undefined;
     if (base === undefined) return;
     const t = time(st.date);
-    let pos = commits.findIndex((c) => time(c.date) < t);
+    let pos = times.findIndex((ct) => ct < t);
     if (pos === -1 || pos > base) pos = base;
     const row: StashRow = {
       hash: stashKey(st),

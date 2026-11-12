@@ -135,6 +135,23 @@ fn canon(value: &Value) -> Value {
     }
 }
 
+/// Новое в 2.0: у коммита есть `commitDate` (дата коммита, `%cI`), в 1.x его не было. В эталоне дата автора и дата коммита
+/// одинаковые (`GIT_AUTHOR_DATE` = `GIT_COMMITTER_DATE`), поэтому поле обязано совпасть с `date`; затем оно снимается.
+/// Только ответ `load`: `commits` есть и в других ответах (история, сравнение), там это другие структуры.
+fn without_commit_date(step: &Value, mut value: Value) -> Value {
+    if step["call"] != json!("load") {
+        return value;
+    }
+    if let Some(commits) = value.pointer_mut("/ok/commits").and_then(Value::as_array_mut) {
+        for commit in commits {
+            let object = commit.as_object_mut().unwrap();
+            let commit_date = object.remove("commitDate").expect("у коммита есть commitDate");
+            assert_eq!(Some(&commit_date), object.get("date"), "commitDate в эталоне совпадает с date");
+        }
+    }
+    value
+}
+
 fn expand_revs(step: &Value, root: &Path) -> Value {
     let pattern = regex::Regex::new(r#"\{\{rev:([^"]*?)\}\}"#).unwrap();
     let text = step.to_string();
@@ -152,7 +169,7 @@ async fn run_case(case: Value) -> Vec<String> {
     let mut failures = Vec::new();
     for (index, (step, want)) in case["steps"].as_array().unwrap().iter().zip(case["expected"].as_array().unwrap()).enumerate() {
         let args = expand_revs(step, &root);
-        let got = call(&args, &root).await;
+        let got = without_commit_date(&args, call(&args, &root).await);
         let text = got.to_string().replace(&tmp.display().to_string().replace('\\', "\\\\"), "{{TMP}}").replace(&tmp.display().to_string().replace('\\', "/"), "{{TMP}}");
         let (mut a, mut b) = (canon(&serde_json::from_str(&text).unwrap()), canon(want));
         if step.get("looseError") == Some(&json!(true)) {

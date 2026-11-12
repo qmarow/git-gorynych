@@ -38,6 +38,16 @@ eq('два на одном месте — новый выше', order(withStashe
 eq('равное время — порядок списка', order(withStashes(linear, [st(0, 'a', 'c5', 6), st(1, 'b', 'c5', 6)], title)), ['stash:a', 'stash:b', 'c5', 'c4', 'c3', 'c2', 'c1']);
 eq('без даты — над своим коммитом', order(withStashes(linear, [{ ...st(0, 's0', 'c3', 1), date: '' }], title)), ['c5', 'c4', 'stash:s0', 'c3', 'c2', 'c1']);
 
+// После rebase: дата автора верхнего коммита месячной давности, дата коммита свежая (по ней упорядочен граф). Stash недельной
+// давности на старом коммите встаёт ниже верхнего коммита, а не над ним, как было бы по дате автора
+const rebased = [
+  { hash: 'top', parents: ['c2'], date: '2026-10-12T12:00:00Z', commitDate: '2026-11-12T12:00:00Z', refs: [] },
+  { hash: 'c2', parents: ['c1'], date: '2026-10-23T12:00:00Z', commitDate: '2026-10-23T12:00:00Z', refs: [] },
+  { hash: 'c1', parents: [], date: '2026-10-18T12:00:00Z', commitDate: '2026-10-18T12:00:00Z', refs: [] },
+];
+const weekOld = { id: 'stash@{0}', hash: 's0', message: 'On main: s0', date: '2026-11-05T12:00:00Z', base: 'c1' };
+eq('после rebase — по дате коммита, ниже верхнего', order(withStashes(rebased, [weekOld], title)), ['top', 'stash:s0', 'c2', 'c1']);
+
 const row = withStashes(linear, [st(2, 's0', 'c3', 3.5)], () => 'Заголовок')[2];
 eq('строка stash', { hash: row.hash, parents: row.parents, message: row.message, description: row.description, refs: row.refs, isHead: row.isHead, id: row.stash.id }, { hash: 'stash:s0', parents: ['c3'], message: 'Заголовок', description: 'On main: s0', refs: [], isHead: false, id: 'stash@{2}' });
 

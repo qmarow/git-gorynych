@@ -29,7 +29,10 @@ export interface GraphRow extends LayoutCommit {
   description?: string;
   refs: GraphRef[];
   author: { name: string; email: string };
+  /** Дата автора — её показывает колонка «Дата» */
   date: string;
+  /** Дата коммита (новое в 2.0): в подсказке даты, если отличается от даты автора */
+  commitDate?: string;
   isHead?: boolean;
   wip?: boolean;
   stash?: { id: string } | null;
@@ -130,6 +133,16 @@ function measureColumn(id: string, sample: GraphItem[], gv: GraphView): number |
 }
 
 const clampW = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v));
+
+/**
+ * Вторая строка подсказки даты: колонка показывает дату автора, а после rebase и cherry-pick дата коммита (по ней
+ * упорядочен граф) бывает другой. Показывается, только когда они расходятся больше чем на минуту.
+ */
+function committedLine(node: GraphItem): string {
+  if (!node.commitDate || node.stash) return '';
+  const diff = Math.abs(Date.parse(node.commitDate) - Date.parse(node.date));
+  return diff > 60_000 ? `\n${tr('committed-at', fullDate(node.commitDate))}` : '';
+}
 
 /** Окно отрисовки для прокрутки `top`: первая и последняя строка с запасом OVERSCAN, округлённые наружу до VIEW_STEP */
 function windowFor(top: number, height: number, width: number, rowH: number) {
@@ -964,7 +977,7 @@ const Row = memo(function Row({
             key={id}
             data-col="date"
             style={{ width: cols.date }}
-            data-tip={node.wip ? undefined : dateFormat === 'relative' ? fullDate(node.date) : `${fullDate(node.date)} · ${relativeTime(node.date)}`}
+            data-tip={node.wip ? undefined : `${dateFormat === 'relative' ? fullDate(node.date) : `${fullDate(node.date)} · ${relativeTime(node.date)}`}${committedLine(node)}`}
             className="relative shrink-0 overflow-hidden whitespace-nowrap px-2.5 text-right font-mono text-[12.5px] tabular-nums text-gk-muted [font-variant-numeric:tabular-nums]"
           >
             {!node.wip && (dateFormat === 'relative' ? relativeTime(node.date) : shortDate(node.date))}

@@ -308,11 +308,15 @@ pub struct Commit {
     pub hash: String,
     pub parents: Vec<String>,
     pub author: CommitAuthor,
+    /// Дата автора (`%aI`) — её показывает колонка «Дата».
     pub date: String,
     pub message: String,
     pub description: String,
     pub refs: Vec<CommitRef>,
     pub is_head: bool,
+    /// Новое в 2.0: дата коммита (`%cI`). По ней упорядочен `--date-order`, и по ней stash встаёт в граф; после rebase и
+    /// cherry-pick она расходится с датой автора. Пустая — та же, что `date`.
+    pub commit_date: String,
 }
 
 /// `parseDecorations`.
@@ -365,7 +369,7 @@ pub async fn read_commits(cwd: &Path, refs: &RefsInfo, limit: u32) -> Result<Vec
 /// Вывод `git log` для графа: он не зависит от веток, поэтому `load_repository` запускает его одновременно с [`read_refs`].
 async fn log_commits(cwd: &Path, limit: u32) -> Result<String> {
     let max_count = format!("--max-count={limit}");
-    let format = format!("--format={}%x1e", ["%H", "%P", "%an", "%ae", "%aI", "%s", "%b", "%D"].join("%x1f"));
+    let format = format!("--format={}%x1e", ["%H", "%P", "%an", "%ae", "%aI", "%s", "%b", "%D", "%cI"].join("%x1f"));
     let args = ["log", "--branches", "--remotes", "--tags", "HEAD", "--date-order", &max_count, &format, "--decorate=full", "--decorate-refs-exclude=refs/stash"];
     git(cwd, &args).await
 }
@@ -405,6 +409,7 @@ async fn parse_commits(cwd: &Path, refs: &RefsInfo, log: Result<String>) -> Resu
             description: gorynych_core::js::trim(field(6)).to_owned(),
             refs,
             is_head,
+            commit_date: if field(8).is_empty() { field(4) } else { field(8) }.to_owned(),
         });
     }
     Ok(commits)

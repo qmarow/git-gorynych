@@ -1278,6 +1278,7 @@ reset-settings-templates-stay = { $a0 } Сбросить настройки (ш�
 
 ## src/components/CommitGraph.tsx
 
+committed-at = Закоммичено: { $a0 }
 repository-has-no-commits-yet = В репозитории ещё нет коммитов
 drag-to-change-graph-width = Потяните, чтобы изменить ширину графа. Двойной клик — авто
 drag-to-change-width-double = Потяните, чтобы изменить ширину. Двойной клик — по содержимому
