@@ -8,6 +8,10 @@
  * - `loadPipelineTip` — сводка по заданиям для подсказки значка, один запрос на пару «номер, статус».
  * - `refreshForge`, `setForge`, `pollForge` — состояние провайдера в `repo.forge` (`repoStore`).
  *
+ * Отличие от 1.x (решение пользователя): `onForgeChanged()` без аргумента (так его вызывает `CiSettings` после сохранения)
+ * ставил `repo.forge = undefined`, и статусы пайплайнов в графе пропадали до следующей загрузки репозитория. Теперь вызов
+ * без аргумента перечитывает состояние провайдера (`refreshForge`), а прежнее остаётся на экране до ответа.
+ *
  * Поведение то же, что было в `App.tsx` (сверка — `tests/ui-parity/ci-store.mjs`, эталон — прежний код из git).
  * TanStack Query здесь не подходит: у опроса свои правила (задержка первого запроса, пропуск в скрытом окне без сдвига
  * отсчёта, прежние статусы при смене ключа), а его кэш, повторы и обновление при фокусе их бы изменили.
@@ -63,7 +67,7 @@ export interface CiState {
   loadPipelineTip: (p: PipelineMark) => Promise<void>;
   /** Авторизация CI/CD привязана к репозиторию и может браться из его входа — после смены входа перечитываем. */
   refreshForge: () => Promise<void>;
-  /** Бывший `onForgeChanged`. `CiSettings` вызывает его без аргумента: `forge` становится `undefined` до следующей загрузки (как в 1.x). */
+  /** Бывший `onForgeChanged`: новое состояние провайдера; без аргумента (настройки CI/CD сохранены) — перечитать его. */
   setForge: (next?: ForgeStatus_Serialize | null) => void;
   /** Токен входа проверяется в фоне: 8 раз через 1,5 с перечитать `forge`; возвращает остановку. */
   pollForge: () => () => void;
@@ -156,7 +160,11 @@ export function createCiStore(getApi: () => CiApi | undefined, repo: CiRepo): Ci
     },
 
     setForge: (next) => {
-      repo.patch((r) => (r ? { ...r, forge: next as ForgeStatus_Serialize | null } : r));
+      if (next === undefined) {
+        void get().refreshForge();
+        return;
+      }
+      repo.patch((r) => (r ? { ...r, forge: next } : r));
     },
 
     pollForge: () => {

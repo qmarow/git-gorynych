@@ -138,6 +138,8 @@ function legacyApp({ api, repoRef, patchRepo, notifyFinished }) {
   const onForgeChanged = useCallback((next) => {
     repoStore.getState().patchRepo((r) => (r ? { ...r, forge: next } : r));
   }, []);
+  // --- исправление 2.0 (2026-11-12): без аргумента 1.x ставил forge = undefined, теперь — перечитать состояние ---
+  const onForgeChangedFixed = (next) => (next === undefined ? void refreshForge() : onForgeChanged(next));
 
   const forgePendingEffect = (forgePending) => {
     if (!forgePending) return undefined;
@@ -183,7 +185,7 @@ function legacyApp({ api, repoRef, patchRepo, notifyFinished }) {
     pipelines: pipelinesEffect,
     forgePending: forgePendingEffect,
     refreshForge,
-    setForge: onForgeChanged,
+    setForge: onForgeChangedFixed,
     tip: loadPipelineTip,
   };
 }
