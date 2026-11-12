@@ -16,41 +16,93 @@ import {
   ShieldCheck,
   Trash2,
   X,
+  type LucideIcon,
 } from 'lucide-react';
-import { FILE_STATUS, plural, relativeTime } from '../lib/format.ts';
+import type { ReactNode } from 'react';
+import { FILE_STATUS, plural, relativeTime, type FileStatusLetter } from '../lib/format.ts';
 import { isMod, kb } from '../lib/platform.ts';
 import { readable } from '../lib/scheme.ts';
 import { t as tr, tj } from '../i18n/index.ts';
+import type { ApiError, ApiResult } from '../platform/tauri.ts';
+import type { CommitFile_Serialize, RebasePreview_Serialize } from '../../crates/gorynych-tauri/bindings/commands.ts';
 
-const api = window.api;
+/** Шаг плана: `pick`, `reword`, `squash`, `fixup`, `drop` (от старых к новым) */
+export interface PlanEntry {
+  hash: string;
+  action: string;
+  message?: string;
+}
 
-export const REBASE_ACTIONS = [
+interface RebaseApi {
+  repo: {
+    rebasePreview: (
+      dir: string,
+      params: { upstream: string; onto?: string | null; plan?: PlanEntry[] },
+    ) => Promise<ApiResult<RebasePreview_Serialize>>;
+  };
+}
+
+const api = window.api as unknown as RebaseApi;
+
+interface RebaseActionDef {
+  id: string;
+  key: string;
+  label: string;
+  hint: string;
+  icon: LucideIcon;
+  cls: string;
+  active: string;
+}
+
+export const REBASE_ACTIONS: RebaseActionDef[] = [
   { id: 'pick', key: 'P', label: tr('Оставить'), hint: tr('Коммит остаётся как есть'), icon: Check, cls: 'text-gk-text', active: 'bg-gk-fg/15 text-gk-strong' },
   { id: 'reword', key: 'R', label: tr('Изменить сообщение'), hint: tr('Коммит остаётся, меняется только текст'), icon: Pencil, cls: 'text-gk-yellow', active: 'bg-gk-yellow/20 text-gk-yellow' },
   { id: 'squash', key: 'S', label: tr('Объединить с коммитом ниже'), hint: tr('Изменения и текст присоединяются к коммиту ниже'), icon: Combine, cls: 'text-gk-purple', active: 'bg-gk-purple/20 text-gk-purple' },
   { id: 'fixup', key: 'F', label: tr('Влить в коммит ниже без текста'), hint: tr('Изменения присоединяются к коммиту ниже, его текст не меняется'), icon: ArrowDownToLine, cls: 'text-gk-purple', active: 'bg-gk-purple/20 text-gk-purple' },
   { id: 'drop', key: 'D', label: tr('Удалить'), hint: tr('Коммит и его изменения пропадут из истории'), icon: Trash2, cls: 'text-gk-red', active: 'bg-gk-red/20 text-gk-red' },
 ];
-const ACTION = Object.fromEntries(REBASE_ACTIONS.map((a) => [a.id, a]));
+
+type Preview = RebasePreview_Serialize;
+type CommitMeta = Preview['before'][number];
+
+/** Запрос окна rebase (готовит App) */
+export interface RebaseSession {
+  upstream: string;
+  onto?: string | null;
+  title?: ReactNode;
+  nonce?: number;
+}
+
+interface RebaseViewProps {
+  repoPath: string;
+  session: RebaseSession;
+  hidden?: boolean;
+  busy?: boolean;
+  onClose: () => void;
+  onApply: (data: Preview) => void;
+  onStart: (plan: PlanEntry[]) => void;
+  onOpenDiff: (file: CommitFile_Serialize, list: CommitFile_Serialize[], oldHead: string, newHead: string | null) => void;
+  onLocate: (hash: string) => void;
+}
 
 /**
  * Интерактивный rebase с предпросмотром.
  * session: { upstream, onto?, title } — коммиты после upstream переносятся на onto (по умолчанию на upstream).
  */
-export default function RebaseView({ repoPath, session, hidden, busy, onClose, onApply, onStart, onOpenDiff, onLocate }) {
-  const [plan, setPlan] = useState(null); // от старых к новым: [{ hash, action, message? }]
-  const [preview, setPreview] = useState({ loading: true, data: null, error: null });
+export default function RebaseView({ repoPath, session, hidden, busy, onClose, onApply, onStart, onOpenDiff, onLocate }: RebaseViewProps) {
+  const [plan, setPlan] = useState<PlanEntry[] | null>(null); // от старых к новым: [{ hash, action, message? }]
+  const [preview, setPreview] = useState<{ loading: boolean; data: Preview | null; error: ApiError | null }>({ loading: true, data: null, error: null });
   const [selected, setSelected] = useState(0); // индекс в отображаемом списке (новые сверху)
-  const [editing, setEditing] = useState(null); // hash коммита, чьё сообщение правим
-  const [hoverAfter, setHoverAfter] = useState(null);
+  const [editing, setEditing] = useState<string | null>(null); // hash коммита, чьё сообщение правим
+  const [hoverAfter, setHoverAfter] = useState<string[] | null>(null);
   const [confirmStart, setConfirmStart] = useState(false);
-  const meta = useRef(new Map()); // hash → { subject, message, author }
+  const meta = useRef(new Map<string, CommitMeta>()); // hash → { subject, message, author }
   const reqId = useRef(0);
   const firstPlan = useRef(true);
 
   // Первый запрос — без плана: backend вернёт список коммитов и план «всё pick»
   const load = useCallback(
-    (p) => {
+    (p: PlanEntry[] | null) => {
       const id = ++reqId.current;
       setPreview((s) => ({ ...s, loading: true }));
       api.repo.rebasePreview(repoPath, { upstream: session.upstream, onto: session.onto, plan: p ?? undefined }).then((res) => {
@@ -60,7 +112,7 @@ export default function RebaseView({ repoPath, session, hidden, busy, onClose, o
           return;
         }
         for (const c of res.data.before) meta.current.set(c.hash, c);
-        if (!p) setPlan(res.data.plan);
+        if (!p) setPlan(res.data.plan as PlanEntry[]);
         setPreview({ loading: false, data: res.data, error: null });
       });
     },
@@ -86,18 +138,18 @@ export default function RebaseView({ repoPath, session, hidden, busy, onClose, o
 
   const rows = useMemo(() => (plan ? [...plan].reverse() : []), [plan]); // новые сверху, как в графе
   const n = rows.length;
-  const toPlanIndex = (rowIndex) => n - 1 - rowIndex;
+  const toPlanIndex = (rowIndex: number) => n - 1 - rowIndex;
 
-  const update = (rowIndex, patch) =>
+  const update = (rowIndex: number, patch: Partial<PlanEntry>) =>
     setPlan((p) => {
-      const next = [...p];
-      const i = p.length - 1 - rowIndex;
+      const next = [...p!];
+      const i = p!.length - 1 - rowIndex;
       next[i] = { ...next[i], ...patch };
       if (patch.action && patch.action !== 'reword' && !('message' in patch) && next[i].action !== 'pick') delete next[i].message;
       return next;
     });
 
-  const setAction = (rowIndex, action) => {
+  const setAction = (rowIndex: number, action: string) => {
     const item = rows[rowIndex];
     if (!item) return;
     if (action === 'reword') {
@@ -109,11 +161,11 @@ export default function RebaseView({ repoPath, session, hidden, busy, onClose, o
     }
   };
 
-  const move = (rowIndex, dir) => {
+  const move = (rowIndex: number, dir: number) => {
     const to = rowIndex + dir;
     if (to < 0 || to >= n) return;
     setPlan((p) => {
-      const next = [...p];
+      const next = [...p!];
       const a = toPlanIndex(rowIndex);
       const b = toPlanIndex(to);
       [next[a], next[b]] = [next[b], next[a]];
@@ -122,10 +174,10 @@ export default function RebaseView({ repoPath, session, hidden, busy, onClose, o
     setSelected(to);
   };
 
-  const moveTo = (from, to) => {
+  const moveTo = (from: number, to: number) => {
     if (from === to) return;
     setPlan((p) => {
-      const r = [...p].reverse();
+      const r = [...p!].reverse();
       const [item] = r.splice(from, 1);
       r.splice(to, 0, item);
       return r.reverse();
@@ -142,16 +194,16 @@ export default function RebaseView({ repoPath, session, hidden, busy, onClose, o
 
   // Группы для отображения: коммит + присоединённые к нему squash/fixup (они выше него в списке)
   const groupInfo = useMemo(() => {
-    const info = new Map(); // hash → { target: hash }  для squash/fixup
-    const heads = new Map(); // hash головы → [hash участников]
+    const info = new Map<string, { target: string }>(); // hash → { target: hash }  для squash/fixup
+    const heads = new Map<string, string[]>(); // hash головы → [hash участников]
     if (!plan) return { info, heads };
-    let head = null;
+    let head: string | null = null;
     for (const item of plan) {
       if (item.action === 'drop') continue;
       if (item.action === 'squash' || item.action === 'fixup') {
         if (head) {
           info.set(item.hash, { target: head });
-          heads.get(head).push(item.hash);
+          heads.get(head)!.push(item.hash);
         }
       } else {
         head = item.hash;
@@ -162,10 +214,10 @@ export default function RebaseView({ repoPath, session, hidden, busy, onClose, o
   }, [plan]);
 
   // Сообщение группы со squash: если пользователь не правил — как сделает git
-  const defaultGroupMessage = (headHash) => {
+  const defaultGroupMessage = (headHash: string) => {
     const parts = [meta.current.get(headHash)?.message ?? ''];
     for (const h of groupInfo.heads.get(headHash) ?? []) {
-      const item = plan.find((p) => p.hash === h);
+      const item = plan!.find((p) => p.hash === h);
       if (item?.action === 'squash') parts.push(meta.current.get(h)?.message ?? '');
     }
     return parts.join('\n\n');
@@ -179,9 +231,9 @@ export default function RebaseView({ repoPath, session, hidden, busy, onClose, o
   // Клавиатура: ↑/↓ — выбор, Alt+↑/↓ — переместить, P R S F D — действие, Esc — закрыть
   useEffect(() => {
     if (hidden) return undefined;
-    const onKey = (e) => {
+    const onKey = (e: KeyboardEvent) => {
       if (document.querySelector('.fixed.inset-0')) return;
-      const t = e.target;
+      const t = e.target as HTMLElement | null;
       if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT')) {
         if (e.key === 'Escape') t.blur();
         return;
@@ -351,7 +403,7 @@ export default function RebaseView({ repoPath, session, hidden, busy, onClose, o
           ) : (
             <button
               disabled={!canApply}
-              onClick={() => onApply(d)}
+              onClick={() => onApply(d!)}
               className="flex items-center gap-1.5 rounded-md bg-gk-green px-3.5 py-1.5 text-[12.5px] font-semibold text-gk-ink shadow-lg shadow-gk-green/20 transition hover:brightness-110 disabled:opacity-40 disabled:shadow-none"
             >
               {tj('{0} Применить rebase', [busy || (preview.loading && d) ? <Loader2 size={13} className="animate-spin" /> : <Check size={13} />])}</button>
@@ -383,9 +435,27 @@ function PlanRow({
   onEdit,
   onMessage,
   onDoneEditing,
+}: {
+  item: PlanEntry;
+  index: number;
+  meta: CommitMeta | undefined;
+  selected: boolean;
+  editing: boolean;
+  joinedInto: string | undefined;
+  groupMembers: string[];
+  isLast: boolean;
+  conflict: boolean;
+  highlighted: boolean | undefined;
+  groupMessage: string | null;
+  onSelect: () => void;
+  onAction: (action: string) => void;
+  onMove: (dir: number) => void;
+  onDrop: (from: number) => void;
+  onEdit: () => void;
+  onMessage: (message: string) => void;
+  onDoneEditing: () => void;
 }) {
   const [dragOver, setDragOver] = useState(false);
-  const a = ACTION[item.action];
   const dropped = item.action === 'drop';
   const joined = item.action === 'squash' || item.action === 'fixup';
   const subject = (item.message ?? meta?.message ?? '').split('\n')[0];
@@ -502,7 +572,18 @@ function PlanRow({
 
 /* ---------------- Предпросмотр ---------------- */
 
-function PreviewPanel({ data: d, error, loading, invalid, hoverAfter, onHoverAfter, onOpenDiff, onLocate }) {
+interface PreviewPanelProps {
+  data: Preview | null;
+  error: ApiError | null;
+  loading: boolean;
+  invalid: unknown;
+  hoverAfter: string[] | null;
+  onHoverAfter: (hashes: string[] | null) => void;
+  onOpenDiff: RebaseViewProps['onOpenDiff'];
+  onLocate: (hash: string) => void;
+}
+
+function PreviewPanel({ data: d, error, loading, invalid, hoverAfter, onHoverAfter, onOpenDiff, onLocate }: PreviewPanelProps) {
   return (
     <div className="relative flex w-[46%] min-w-[380px] max-w-[640px] shrink-0 flex-col bg-gk-panel/30">
       <div className="flex h-9 shrink-0 items-center gap-2 border-b border-gk-border px-3 text-[12px] font-medium text-gk-text">
@@ -533,19 +614,19 @@ function PreviewPanel({ data: d, error, loading, invalid, hoverAfter, onHoverAft
                 {tr('Выберите действия для коммитов слева: изменить порядок, сообщение, объединить или удалить.')}</Banner>
             ) : (
               <Banner tone="green" icon={ShieldCheck} title={tr('Пройдёт без конфликтов')}>
-                {d.identicalFiles ? tr('Итоговые файлы не изменятся — меняется только история.') : tr('Итоговые файлы изменятся: {0} {1} (список ниже).', d.diff.length, plural(d.diff.length, tr('файл'), tr('файла'), tr('файлов')))}
+                {d.identicalFiles ? tr('Итоговые файлы не изменятся — меняется только история.') : tr('Итоговые файлы изменятся: {0} {1} (список ниже).', d.diff!.length, plural(d.diff!.length, tr('файл'), tr('файла'), tr('файлов')))}
               </Banner>
             )}
 
-            {d.pushed > 0 && !d.unchanged && (
-              <Banner tone="yellow" icon={AlertTriangle} title={tr('{0} {1} уже на сервере', d.pushed, plural(d.pushed, tr('коммит'), tr('коммита'), tr('коммитов')))}>
+            {d.pushed! > 0 && !d.unchanged && (
+              <Banner tone="yellow" icon={AlertTriangle} title={tr('{0} {1} уже на сервере', d.pushed, plural(d.pushed!, tr('коммит'), tr('коммита'), tr('коммитов')))}>
                 {tr('После rebase ветку придётся отправить через Force Push — это перепишет её и у коллег.')}</Banner>
             )}
-            {d.merges > 0 && (
+            {d.merges! > 0 && (
               <Banner tone="blue" icon={Info} title={tr('Merge-коммиты ({0}) будут выпрямлены', d.merges)}>
                 {tr('Как и обычный git rebase, он переносит только обычные коммиты — история станет линейной.')}</Banner>
             )}
-            {d.dirty > 0 && !d.unchanged && (
+            {d.dirty! > 0 && !d.unchanged && (
               <Banner tone="blue" icon={Info} title={tr('Незакоммиченные изменения: {0}', d.dirty)}>
                 {tr('Они сохранятся. Если rebase меняет те же файлы, приложение попросит сначала сделать Commit или Stash.')}</Banner>
             )}
@@ -556,10 +637,10 @@ function PreviewPanel({ data: d, error, loading, invalid, hoverAfter, onHoverAft
               <div>
                 <div className="mb-1.5 text-[11px] font-semibold uppercase tracking-wider text-gk-muted">{tr('Как изменятся файлы ветки')}</div>
                 <div className="overflow-hidden rounded-lg border border-gk-border">
-                  {d.diff.map((f) => (
+                  {d.diff!.map((f) => (
                     <button
                       key={f.path}
-                      onClick={() => onOpenDiff(f, d.diff, d.oldHead, d.newHead)}
+                      onClick={() => onOpenDiff(f, d.diff!, d.oldHead, d.newHead)}
                       className="flex w-full items-center gap-2 border-b border-gk-border/60 px-2.5 py-1.5 text-left text-[12.5px] last:border-0 hover:bg-gk-hover"
                     >
                       <StatusBadge status={f.status} />
@@ -583,7 +664,7 @@ function PreviewPanel({ data: d, error, loading, invalid, hoverAfter, onHoverAft
   );
 }
 
-const NODE = {
+const NODE: Record<string, { dot: string; ring: string; label: string }> = {
   reused: { dot: 'bg-gk-dim', ring: 'ring-gk-dim/40', label: tr('без изменений') },
   pick: { dot: 'bg-gk-blue', ring: 'ring-gk-blue/40', label: tr('перенесён') },
   reword: { dot: 'bg-gk-yellow', ring: 'ring-gk-yellow/40', label: tr('новое сообщение') },
@@ -592,13 +673,20 @@ const NODE = {
 };
 
 // Граф «сейчас → после»: два столбика коммитов над общей основой
-function MiniGraph({ data: d, hoverAfter, onHoverAfter, onLocate }) {
+interface MiniGraphProps {
+  data: Preview;
+  hoverAfter: string[] | null;
+  onHoverAfter: (hashes: string[] | null) => void;
+  onLocate: (hash: string) => void;
+}
+
+function MiniGraph({ data: d, hoverAfter, onHoverAfter, onLocate }: MiniGraphProps) {
   const before = [...d.before].reverse();
   const after = d.ok ? [...d.after].reverse() : null;
   const dropped = new Set(d.skipped.filter((s) => s.reason === 'drop').map((s) => s.hash));
   const empty = new Set(d.skipped.filter((s) => s.reason === 'empty').map((s) => s.hash));
   // Что станет с каждым исходным коммитом
-  const fate = new Map();
+  const fate = new Map<string, string>();
   for (const c of d.after) {
     c.origs.forEach((h, i) => {
       if (i > 0) fate.set(h, tr('вливается в {0}', c.origs[0].slice(0, 7)));
@@ -654,7 +742,7 @@ function MiniGraph({ data: d, hoverAfter, onHoverAfter, onLocate }) {
   );
 }
 
-function Column({ title, branch, accent, children }) {
+function Column({ title, branch, accent, children }: { title: ReactNode; branch: string; accent?: boolean; children?: ReactNode }) {
   return (
     <div className={`rounded-lg border p-2 ${accent ? 'border-gk-blue/30 bg-gk-blue/[0.03]' : 'border-gk-border bg-gk-fg/[0.015]'}`}>
       <div className="mb-1.5 flex items-center gap-1.5 px-1 text-[11px] font-semibold uppercase tracking-wider text-gk-muted">
@@ -669,7 +757,21 @@ function Column({ title, branch, accent, children }) {
   );
 }
 
-function Node({ hash, subject, dot, note, badge, strike, highlighted, conflict, onClick, onEnter, onLeave }) {
+interface NodeProps {
+  hash: string;
+  subject: string;
+  dot: string;
+  note?: string | null;
+  badge?: string | null;
+  strike?: boolean;
+  highlighted?: boolean;
+  conflict?: boolean;
+  onClick?: () => void;
+  onEnter?: () => void;
+  onLeave?: () => void;
+}
+
+function Node({ hash, subject, dot, note, badge, strike, highlighted, conflict, onClick, onEnter, onLeave }: NodeProps) {
   return (
     <div
       onClick={onClick}
@@ -692,7 +794,7 @@ function Node({ hash, subject, dot, note, badge, strike, highlighted, conflict, 
   );
 }
 
-function Base({ hash, subject }) {
+function Base({ hash, subject }: { hash?: string; subject: string }) {
   return (
     <div className="relative flex items-center gap-2 px-1 py-1 text-[11px] text-gk-dim">
       <span className="relative z-10 h-3 w-3 shrink-0 rounded-full border-2 border-gk-dim bg-gk-bg" style={{ marginLeft: 4 }} />
@@ -702,7 +804,7 @@ function Base({ hash, subject }) {
   );
 }
 
-function Banner({ tone, icon: Icon, title, children }) {
+function Banner({ tone, icon: Icon, title, children }: { tone: 'green' | 'red' | 'yellow' | 'blue'; icon: LucideIcon; title: ReactNode; children?: ReactNode }) {
   const tones = {
     green: 'border-gk-green/30 bg-gk-green/[0.07] text-gk-green',
     red: 'border-gk-red/30 bg-gk-red/[0.07] text-gk-red',
@@ -719,8 +821,8 @@ function Banner({ tone, icon: Icon, title, children }) {
   );
 }
 
-export function StatusBadge({ status }) {
-  const { color: raw, label } = FILE_STATUS[status] ?? FILE_STATUS.M;
+export function StatusBadge({ status }: { status: string }) {
+  const { color: raw, label } = FILE_STATUS[status as FileStatusLetter] ?? FILE_STATUS.M;
   const color = readable(raw);
   return (
     <span

@@ -1,28 +1,96 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState, type ButtonHTMLAttributes, type ReactNode } from 'react';
 import { ArrowLeftRight, CaseSensitive, ChevronDown, ChevronRight, Folder, GitCompareArrows, Loader2, Regex, Search, X } from 'lucide-react';
 import { plural, relativeTime } from '../lib/format.ts';
 import { detectLanguage, highlightLines, layerLine } from '../lib/highlight.ts';
 import { isMod, kb } from '../lib/platform.ts';
-import { StatusBadge } from './RebaseView.jsx';
+import { StatusBadge } from './RebaseView.tsx';
 import { t, tj } from '../i18n/index.ts';
+import type { ApiError, ApiResult } from '../platform/tauri.ts';
+import type {
+  ChangeSearch_Serialize,
+  CommitFile_Serialize,
+  Comparison_Serialize,
+  MatchFile_Serialize,
+  MatchLine,
+} from '../../crates/gorynych-tauri/bindings/commands.ts';
 
-const api = window.api;
+/** Поля, которые 1.x всегда заполняет (в bindings они `| null`) */
+type Present<T> = { [K in keyof T]-?: NonNullable<T[K]> };
+type Comparison = Present<Comparison_Serialize>;
+type MatchFile = Present<MatchFile_Serialize>;
+type ChangeSearch = Omit<ChangeSearch_Serialize, 'files'> & { files: MatchFile[] };
+
+/** Файл сравнения; у найденного поиском, но не попавшего в список, есть только эти поля */
+export type CompareFile = Pick<CommitFile_Serialize, 'path' | 'oldPath' | 'status' | 'additions' | 'deletions'>;
+
+/** Куда открыть файл после поиска по содержимому (DiffView) */
+export interface CompareSearchJump {
+  query: string;
+  caseSensitive: boolean;
+  regex: boolean;
+  changedOnly: boolean;
+  line: { t: string; n: number | null; o: number | null } | null;
+}
+
+interface ContentQuery {
+  query: string;
+  caseSensitive: boolean;
+  regex: boolean;
+}
+
+interface Found {
+  loading: boolean;
+  data: ChangeSearch | null;
+  error: ApiError | null;
+  key: string | null;
+}
+
+type ContentResult = MatchFile & { file: CompareFile };
+
+interface DirGroup {
+  dir: string;
+  files: number;
+  additions: number;
+  deletions: number;
+}
+
+interface CompareApi {
+  repo: {
+    compare: (dir: string, params: { a: string; b: string }) => Promise<ApiResult<Comparison>>;
+    compareSearch: (dir: string, params: { a: string; b: string } & ContentQuery) => Promise<ApiResult<ChangeSearch>>;
+  };
+}
+
+const api = window.api as unknown as CompareApi;
+
+interface CompareViewProps {
+  repoPath: string;
+  a: string;
+  b: string;
+  hidden?: boolean;
+  activePath?: string | null;
+  onSwap: () => void;
+  onClose: () => void;
+  onOpenFile: (file: CompareFile, list: CompareFile[], search?: CompareSearchJump) => void;
+  onLocate: (hash: string) => void;
+  onFileMenu?: (file: CompareFile, list: CompareFile[], x: number, y: number) => void;
+}
 
 /**
  * Сравнение двух коммитов: a — «было», b — «стало».
  * Таблица файлов с полосками объёма изменений, сводка по папкам, коммиты между ними.
  */
-export default function CompareView({ repoPath, a, b, hidden, activePath, onSwap, onClose, onOpenFile, onLocate, onFileMenu }) {
-  const [state, setState] = useState({ loading: true, data: null, error: null });
+export default function CompareView({ repoPath, a, b, hidden, activePath, onSwap, onClose, onOpenFile, onLocate, onFileMenu }: CompareViewProps) {
+  const [state, setState] = useState<{ loading: boolean; data: Comparison | null; error: ApiError | null }>({ loading: true, data: null, error: null });
   const [query, setQuery] = useState('');
   const [sort, setSort] = useState('path'); // path | size
-  const [dirFilter, setDirFilter] = useState(null);
+  const [dirFilter, setDirFilter] = useState<string | null>(null);
   const [showCommits, setShowCommits] = useState(false);
   // Поиск: по пути файла или по содержимому изменённых строк
   const [mode, setMode] = useState('path'); // path | content
-  const [content, setContent] = useState({ query: '', caseSensitive: false, regex: false });
-  const [found, setFound] = useState({ loading: false, data: null, error: null, key: null });
-  const searchRef = useRef(null);
+  const [content, setContent] = useState<ContentQuery>({ query: '', caseSensitive: false, regex: false });
+  const [found, setFound] = useState<Found>({ loading: false, data: null, error: null, key: null });
+  const searchRef = useRef<HTMLInputElement>(null);
   const seq = useRef(0);
 
   useEffect(() => {
@@ -59,7 +127,7 @@ export default function CompareView({ repoPath, a, b, hidden, activePath, onSwap
   // Ctrl+F в сравнении — поиск по содержимому изменений
   useEffect(() => {
     if (hidden) return undefined;
-    const onKey = (e) => {
+    const onKey = (e: KeyboardEvent) => {
       if (document.querySelector('.fixed.inset-0')) return;
       const key = e.key.toLowerCase();
       if (isMod(e) && !e.altKey && !e.shiftKey && (key === 'f' || key === 'а')) {
@@ -78,10 +146,10 @@ export default function CompareView({ repoPath, a, b, hidden, activePath, onSwap
 
   useEffect(() => {
     if (hidden) return undefined;
-    const onKey = (e) => {
+    const onKey = (e: KeyboardEvent) => {
       if (document.querySelector('.fixed.inset-0')) return;
-      if (e.target?.tagName === 'INPUT') {
-        if (e.key === 'Escape') e.target.blur();
+      if ((e.target as HTMLElement | null)?.tagName === 'INPUT') {
+        if (e.key === 'Escape') (e.target as HTMLElement).blur();
         return;
       }
       if (e.key === 'Escape' && !e.defaultPrevented) onClose();
@@ -92,17 +160,17 @@ export default function CompareView({ repoPath, a, b, hidden, activePath, onSwap
 
   const d = state.data;
   const files = d?.files ?? [];
-  const size = (f) => (f.additions ?? 0) + (f.deletions ?? 0);
+  const size = (f: CompareFile) => (f.additions ?? 0) + (f.deletions ?? 0);
   const maxSize = Math.max(1, ...files.map(size));
 
   // Папки верхнего уровня (или второго, если всё в одной) — для «графика»
   const dirs = useMemo(() => {
-    const top = (p, depth) => {
+    const top = (p: string, depth: number) => {
       const parts = p.split('/');
       return parts.length > depth ? parts.slice(0, depth).join('/') : t('(корень)');
     };
-    const group = (depth) => {
-      const m = new Map();
+    const group = (depth: number) => {
+      const m = new Map<string, DirGroup>();
       for (const f of files) {
         const k = top(f.path, depth);
         const g = m.get(k) ?? { dir: k, files: 0, additions: 0, deletions: 0 };
@@ -119,13 +187,13 @@ export default function CompareView({ repoPath, a, b, hidden, activePath, onSwap
   }, [files]);
   const maxDir = Math.max(1, ...dirs.map((x) => x.additions + x.deletions));
 
-  const inDir = (path) => !dirFilter || (dirFilter === t('(корень)') ? !path.includes('/') : path === dirFilter || path.startsWith(`${dirFilter}/`));
+  const inDir = (path: string) => !dirFilter || (dirFilter === t('(корень)') ? !path.includes('/') : path === dirFilter || path.startsWith(`${dirFilter}/`));
 
   // Результаты поиска по содержимому: файлы из сравнения (статус, объём) + найденные строки
   const contentResults = useMemo(() => {
     if (mode !== 'content' || !found.data) return null;
     const byPath = new Map(files.map((f) => [f.path, f]));
-    let list = found.data.files
+    let list: ContentResult[] = found.data.files
       .filter((r) => inDir(r.path))
       .map((r) => ({ ...r, file: byPath.get(r.path) ?? { path: r.path, oldPath: r.oldPath, status: 'M', additions: null, deletions: null } }));
     if (sort === 'size') list = [...list].sort((x, y) => y.count - x.count);
@@ -133,8 +201,8 @@ export default function CompareView({ repoPath, a, b, hidden, activePath, onSwap
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mode, found.data, files, sort, dirFilter]);
 
-  const openMatch = (r, line) => {
-    const list = contentResults.map((x) => x.file);
+  const openMatch = (r: ContentResult, line: MatchLine | undefined) => {
+    const list = contentResults!.map((x) => x.file);
     onOpenFile(r.file, list, {
       query: content.query,
       caseSensitive: content.caseSensitive,
@@ -171,24 +239,24 @@ export default function CompareView({ repoPath, a, b, hidden, activePath, onSwap
           {/* Сводка */}
           <div className="grid grid-cols-[repeat(auto-fit,minmax(150px,1fr))] gap-2 p-3">
             <Stat value={files.length} label={plural(files.length, t('файл изменён'), t('файла изменено'), t('файлов изменено'))} />
-            <Stat value={`+${d.additions}`} label={plural(d.additions, t('строка добавлена'), t('строки добавлено'), t('строк добавлено'))} cls="text-gk-green" />
-            <Stat value={`−${d.deletions}`} label={plural(d.deletions, t('строка удалена'), t('строки удалено'), t('строк удалено'))} cls="text-gk-red" />
+            <Stat value={`+${d!.additions}`} label={plural(d!.additions, t('строка добавлена'), t('строки добавлено'), t('строк добавлено'))} cls="text-gk-green" />
+            <Stat value={`−${d!.deletions}`} label={plural(d!.deletions, t('строка удалена'), t('строки удалено'), t('строк удалено'))} cls="text-gk-red" />
             <button
               onClick={() => setShowCommits((v) => !v)}
               className="rounded-lg border border-gk-border bg-gk-fg/[0.02] px-3 py-2 text-left transition-colors hover:bg-gk-fg/[0.05]"
             >
               <div className="flex items-center gap-1 text-[18px] font-semibold text-gk-strong">
-                {d.onlyA + d.onlyB}
+                {d!.onlyA + d!.onlyB}
                 {showCommits ? <ChevronDown size={14} className="text-gk-dim" /> : <ChevronRight size={14} className="text-gk-dim" />}
               </div>
-              <div className="text-[11.5px] text-gk-muted">{relationText(d)}</div>
+              <div className="text-[11.5px] text-gk-muted">{relationText(d!)}</div>
             </button>
           </div>
 
           {showCommits && (
             <div className="mx-3 mb-3 grid animate-fade-in gap-3 md:grid-cols-2">
-              {d.onlyB > 0 && <CommitList title={t('Есть только в «стало» ({0})', d.onlyB)} commits={d.commitsB} total={d.onlyB} onLocate={onLocate} />}
-              {d.onlyA > 0 && <CommitList title={t('Есть только в «было» ({0})', d.onlyA)} commits={d.commitsA} total={d.onlyA} onLocate={onLocate} />}
+              {d!.onlyB > 0 && <CommitList title={t('Есть только в «стало» ({0})', d!.onlyB)} commits={d!.commitsB} total={d!.onlyB} onLocate={onLocate} />}
+              {d!.onlyA > 0 && <CommitList title={t('Есть только в «было» ({0})', d!.onlyA)} commits={d!.commitsA} total={d!.onlyA} onLocate={onLocate} />}
             </div>
           )}
 
@@ -329,7 +397,7 @@ export default function CompareView({ repoPath, a, b, hidden, activePath, onSwap
                       {parts.length > 0 && <span className="text-gk-muted">{parts.join('/')}/</span>}
                       <span className="text-gk-text">{name}</span>
                     </span>
-                    {f.additions !== null ? <Bar additions={f.additions} deletions={f.deletions} max={maxSize} /> : <span className="text-[11px] text-gk-dim">{t('бинарный')}</span>}
+                    {f.additions !== null ? <Bar additions={f.additions} deletions={f.deletions!} max={maxSize} /> : <span className="text-[11px] text-gk-dim">{t('бинарный')}</span>}
                     <span className="text-right font-mono text-[11px]">
                       {f.additions !== null && (
                         <>
@@ -348,13 +416,13 @@ export default function CompareView({ repoPath, a, b, hidden, activePath, onSwap
   );
 }
 
-function relationText(d) {
+function relationText(d: Comparison) {
   if (d.relation === 'a-before-b') return t('{0} от «было» до «стало»', plural(d.onlyB, t('коммит'), t('коммита'), t('коммитов')));
   if (d.relation === 'b-before-a') return t('«стало» старше на {0} {1}', d.onlyA, plural(d.onlyA, t('коммит'), t('коммита'), t('коммитов')));
   return t('разошлись: {0} и {1} {2}', d.onlyA, d.onlyB, plural(d.onlyB, t('коммит'), t('коммита'), t('коммитов')));
 }
 
-function CommitChip({ label, info, hash, onClick }) {
+function CommitChip({ label, info, hash, onClick }: { label: string; info: Comparison['a'] | undefined; hash: string; onClick: () => void }) {
   return (
     <button
       onClick={onClick}
@@ -368,7 +436,7 @@ function CommitChip({ label, info, hash, onClick }) {
   );
 }
 
-function Stat({ value, label, cls = 'text-gk-strong' }) {
+function Stat({ value, label, cls = 'text-gk-strong' }: { value: ReactNode; label: string; cls?: string }) {
   return (
     <div className="rounded-lg border border-gk-border bg-gk-fg/[0.02] px-3 py-2">
       <div className={`text-[18px] font-semibold ${cls}`}>{value}</div>
@@ -378,7 +446,7 @@ function Stat({ value, label, cls = 'text-gk-strong' }) {
 }
 
 // Полоска объёма: зелёная часть — добавлено, красная — удалено; длина — относительно самого большого
-function Bar({ additions, deletions, max, tall }) {
+function Bar({ additions, deletions, max, tall }: { additions: number; deletions: number; max: number; tall?: boolean }) {
   const total = additions + deletions;
   const width = total ? Math.max(3, (total / max) * 100) : 0;
   return (
@@ -391,7 +459,7 @@ function Bar({ additions, deletions, max, tall }) {
   );
 }
 
-function CommitList({ title, commits, total, onLocate }) {
+function CommitList({ title, commits, total, onLocate }: { title: string; commits: Comparison['commitsA']; total: number; onLocate: (hash: string) => void }) {
   return (
     <div className="overflow-hidden rounded-lg border border-gk-border">
       <div className="border-b border-gk-border bg-gk-fg/[0.03] px-3 py-1.5 text-[11.5px] font-medium text-gk-muted">{title}</div>
@@ -409,7 +477,7 @@ function CommitList({ title, commits, total, onLocate }) {
   );
 }
 
-function SortBtn({ active, children, ...props }) {
+function SortBtn({ active, children, ...props }: ButtonHTMLAttributes<HTMLButtonElement> & { active: boolean }) {
   return (
     <button {...props} className={`px-2 py-0.5 ${active ? 'bg-gk-blue/20 text-gk-blue' : 'text-gk-muted hover:text-gk-text'}`}>
       {children}
@@ -417,7 +485,7 @@ function SortBtn({ active, children, ...props }) {
   );
 }
 
-function OptBtn({ on, children, title, testid, ...props }) {
+function OptBtn({ on, children, title, testid, ...props }: ButtonHTMLAttributes<HTMLButtonElement> & { on: boolean; title: string; testid: string }) {
   return (
     <button
       {...props}
@@ -436,8 +504,16 @@ function OptBtn({ on, children, title, testid, ...props }) {
 
 const PREVIEW_LINES = 4;
 
-function ContentResults({ query, found, results, activePath, onOpen }) {
-  const [expanded, setExpanded] = useState(() => new Set());
+interface ContentResultsProps {
+  query: string;
+  found: Found;
+  results: ContentResult[] | null;
+  activePath: string | null | undefined;
+  onOpen: (r: ContentResult, line: MatchLine | undefined) => void;
+}
+
+function ContentResults({ query, found, results, activePath, onOpen }: ContentResultsProps) {
+  const [expanded, setExpanded] = useState(() => new Set<string>());
   if (!query.trim()) {
     return (
       <div className="px-3 py-6 text-center text-[12.5px] leading-relaxed text-gk-dim">
@@ -502,12 +578,12 @@ function ContentResults({ query, found, results, activePath, onOpen }) {
 }
 
 // Найденные строки с подсветкой синтаксиса и совпадений
-function MatchLines({ path, lines, onOpen }) {
+function MatchLines({ path, lines, onOpen }: { path: string; lines: MatchLine[]; onOpen: (line: MatchLine) => void }) {
   const tokens = useMemo(() => highlightLines(lines.map((l) => l.text), detectLanguage(path)), [path, lines]);
   return (
     <div className="pb-1 font-mono text-[11.5px] leading-[18px]">
       {lines.map((l, i) => {
-        const pieces = layerLine(l.text, { tokens: tokens?.[i] ?? null, hits: l.ranges.map(([start, end], idx) => ({ start, end, idx, current: false })) });
+        const pieces = layerLine(l.text, { tokens: tokens?.[i] ?? null, hits: (l.ranges as [number, number][]).map(([start, end], idx) => ({ start, end, idx, current: false })) });
         return (
           <button
             key={`${l.t}${l.line}:${i}`}

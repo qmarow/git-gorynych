@@ -94,6 +94,11 @@ node tests/ui-parity/components-compiled.mjs $old $PWD Toasts CodeText Resizer A
 | `ci/Runners`, `ci/CiPanel` | `d44b29a` |
 | `InitRepoDialog`, `Toolbar` | `b2e41f5` |
 | `Sidebar` | см. `git log -- src/components/Sidebar.tsx` |
+| `RebaseView`, `CompareView` | см. `git log -- src/components/RebaseView.tsx` |
+
+В `RebaseView` при переводе удалён мёртвый код: `const ACTION = …` и `const a = ACTION[item.action]` в `PlanRow`
+(чистый поиск, результат не используется; `noUnusedLocals` его не пропускает). Для сверки эти две строки
+вырезаются и из старой копии: `git show <коммит>~:src/components/RebaseView.jsx | grep -v "^const ACTION = " | grep -v "^  const a = ACTION"`.
 
 Обе копии компилируются как TypeScript (`loader: 'tsx'`): он убирает неиспользуемые импорты (`COLUMNS` в `GraphViewMenu`),
 и это не считается отличием. Импорт, у которого не используется ни одно имя, пропал бы целиком — у компонентов таких
