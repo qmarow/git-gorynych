@@ -55,7 +55,7 @@ import ContextMenu, { type MenuEntry, type MenuItem } from './components/Context
 import TitleBar, { type TabInfo } from './components/TitleBar.tsx';
 import Toolbar from './components/Toolbar.tsx';
 import Sidebar from './components/Sidebar.tsx';
-import CommitGraph, { type GraphRow, type PipelineMark } from './components/CommitGraph.tsx';
+import CommitGraph, { type GraphRow } from './components/CommitGraph.tsx';
 import CommitDetails, { type CommitHits, type HitFile, type RowFile, type SelectedRow } from './components/CommitDetails.tsx';
 import Toasts, { type ToastData } from './components/Toasts.tsx';
 import TooltipLayer from './components/TooltipLayer.tsx';
@@ -84,7 +84,6 @@ import {
   syncScheme,
   type Appearance,
 } from './lib/appearance.ts';
-import { ACTIVE_STATUSES } from './components/PipelineStatus.tsx';
 import StatusBar from './components/StatusBar.tsx';
 import { IS_MAC, isMod, kb, openFolderLabel, openTerminalLabel } from './lib/platform.ts';
 import InitRepoDialog, { plural } from './components/InitRepoDialog.tsx';
@@ -119,6 +118,7 @@ import {
 import { t as tr, tj } from './i18n/index.ts';
 import { repoStore, useRepoStore, type LoadError, type RepoData, type RepoStatus } from './state/repoStore.ts';
 import { gitBusy, syncStore, useSyncStore } from './state/syncStore.ts';
+import { ciStore, useCiStore } from './state/ciStore.ts';
 import { withStashes, type StashData } from './lib/graphStash.ts';
 import type { RefDragPayload } from './lib/dnd.ts';
 import type { ActionOutput, ActionPayload, RepoActionName } from './state/repoActions.ts';
@@ -342,12 +342,6 @@ interface CiViewState {
 interface CompareViewState {
   a: string;
   b: string;
-}
-/** Статусы пайплайнов для графа */
-interface PipelineMap {
-  bySha: Record<string, PipelineMark>;
-  pipelines: PipelineRun_Serialize[];
-  error: ApiError | null;
 }
 /** Поиск по изменённым строкам коммитов */
 interface ContentSearch {
@@ -577,7 +571,6 @@ export default function App() {
       setDiffTarget(null);
     }
   };
-  const [pipelineMap, setPipelineMap] = useState<PipelineMap | null>(null);
   // Оформление: тема, фон, прозрачность. Кэш в localStorage — чтобы не мигало при запуске
   const [appearance, setAppearance] = useState<Appearance>(readCachedAppearance);
   const [appearanceMeta, setAppearanceMeta] = useState({ supportsMaterial: false, hasImage: false });
@@ -950,14 +943,8 @@ export default function App() {
   // Список серверов и репозиториев в настройках перечитывается после входа
   const [serversTick, setServersTick] = useState(0);
 
-  // Авторизация CI/CD привязана к репозиторию и может браться из его входа — после смены входа перечитываем
-  const refreshForge = useCallback(async () => {
-    const r = repoRef.current;
-    if (!r || !api?.cicd) return;
-    const cur = r.localBranches?.find((b) => b.name === r.currentBranch);
-    const st = await api.cicd.status(r.path, { remote: cur?.upstreamRemote });
-    if (st?.ok) repoStore.getState().patchRepo((x) => (x && x.path === r.path ? { ...x, forge: st.data } : x));
-  }, []);
+  // Авторизация CI/CD привязана к репозиторию и может браться из его входа — после смены входа перечитываем (`state/ciStore.ts`)
+  const refreshForge = ciStore.getState().refreshForge;
 
   /**
    * Открыть окно входа — вход привязан к репозиторию.
@@ -2401,62 +2388,21 @@ export default function App() {
   const pipelineKey = ciReady
     ? `${repo!.path}|${forge!.provider}|${forge!.apiBase}|${forge!.token!.savedAt ?? forge!.token!.user?.username ?? ''}|${repo!.headHash}|${currentBranchInfo?.ahead}|${currentBranchInfo?.upstream}`
     : null;
-  // Статусы, которые уже видели: пайплайн, который шёл и закончился, — системное уведомление
-  const seenStatuses = useRef(new Map<string, Map<unknown, string | null>>());
+  const pipelineMap = useCiStore((s) => s.pipelineMap);
+  const pipelineTips = useCiStore((s) => s.pipelineTips);
 
-  useEffect(() => {
-    if (!pipelineKey || !api?.cicd) {
-      setPipelineMap(null);
-      return undefined;
-    }
-    let alive = true;
-    let timer: ReturnType<typeof setTimeout> | null = null;
-    const path = repoRef.current?.path;
-    const remote = currentBranchInfo?.upstreamRemote;
-    const tick = async () => {
-      let active = false;
-      if (document.visibilityState === 'visible') {
-        const res = await api.cicd!.pipelines(path!, { remote });
-        if (!alive) return;
-        if (res.ok) {
-          active = res.data.pipelines.some((p) => ACTIVE_STATUSES.has(p.status!));
-          announceFinished(path!, res.data.pipelines, res.data.label);
-          setPipelineMap({ bySha: res.data.bySha as Record<string, PipelineMark>, pipelines: res.data.pipelines, error: null });
-        } else {
-          setPipelineMap((m) => ({ bySha: m?.bySha ?? {}, pipelines: m?.pipelines ?? [], error: res.error }));
-          // Вход репозитория оказался не годен для API — показать, почему, и предложить токен
-          if (res.error?.code === 'NO_TOKEN') refreshForge();
-        }
-      }
-      // Пока что-то выполняется — обновляем чаще
-      if (alive) timer = setTimeout(tick, active ? 10000 : 60000);
-    };
-    // Сразу после push пайплайн появляется не мгновенно — небольшая задержка
-    timer = setTimeout(tick, 400);
-    return () => {
-      alive = false;
-      clearTimeout(timer!);
-    };
+  // Опрос пайплайнов (`ciStore.startPipelines`): ключ меняется с репозиторием, провайдером, входом, HEAD и веткой на сервере
+  useEffect(
+    () => ciStore.getState().startPipelines(pipelineKey, currentBranchInfo?.upstreamRemote, announceFinished),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [pipelineKey]);
+    [pipelineKey],
+  );
 
-  const onForgeChanged = useCallback((next?: ForgeStatus_Serialize | null) => {
-    // `CiSettings` вызывает это без аргумента: `forge` становится `undefined` до следующей загрузки (как в 1.x)
-    repoStore.getState().patchRepo((r) => (r ? { ...r, forge: next as ForgeStatus_Serialize | null } : r));
-  }, []);
+  const onForgeChanged = ciStore.getState().setForge;
 
   // Токен входа репозитория проверяется в фоне — пока идёт проверка, перечитываем состояние
   const forgePending = Boolean(forge?.token?.pending);
-  useEffect(() => {
-    if (!forgePending) return undefined;
-    let n = 0;
-    const t = setInterval(() => {
-      n += 1;
-      refreshForge();
-      if (n >= 8) clearInterval(t);
-    }, 1500);
-    return () => clearInterval(t);
-  }, [forgePending, refreshForge]);
+  useEffect(() => (forgePending ? ciStore.getState().pollForge() : undefined), [forgePending]);
 
   // focusFailed — открыть сразу лог упавшего задания (клик по красному значку в графе)
   const openPipelines = (pipelineId: string | number | null = null, focusFailed = false) => {
@@ -2466,15 +2412,7 @@ export default function App() {
 
   /** Пайплайн, который шёл и закончился успехом или ошибкой, — уведомление ОС и в приложении */
   function announceFinished(path: string, list: PipelineRun_Serialize[], label: string) {
-    const seen = seenStatuses.current;
-    const first = !seen.has(path);
-    if (first) seen.set(path, new Map());
-    const map = seen.get(path)!;
-    for (const p of list) {
-      const prev = map.get(p.id);
-      map.set(p.id, p.status);
-      if (first || !prev || !ACTIVE_STATUSES.has(prev) || ACTIVE_STATUSES.has(p.status!)) continue;
-      if (!['success', 'failed', 'canceled'].includes(p.status!)) continue;
+    for (const p of ciStore.getState().finishedPipelines(path, list)) {
       const ok = p.status === 'success';
       const title = tr('{0} Пайплайн #{1} {2}', ok ? '✓' : p.status === 'failed' ? '✕' : '⊘', p.number ?? p.id, ok ? tr('прошёл') : p.status === 'failed' ? tr('упал') : tr('отменён'));
       const body = [p.branch, p.name].filter(Boolean).join(' · ');
@@ -2500,23 +2438,8 @@ export default function App() {
     [pipelineMap, repo?.currentBranch],
   );
 
-  // Подсказка значка пайплайна в графе: сводка по заданиям (загружается при наведении)
-  const [pipelineTips, setPipelineTips] = useState<Record<string, { status: string; text: string }>>({});
-  const pipelineTipRequested = useRef(new Set<string>());
-  const loadPipelineTip = useCallback(
-    async (p: PipelineMark) => {
-      const r = repoRef.current;
-      const key = `${p.id}:${p.status}`;
-      if (!r || pipelineTipRequested.current.has(key)) return;
-      pipelineTipRequested.current.add(key);
-      const res = await api.cicd!.pipeline(r.path, p.id, { remote: r.localBranches?.find((b) => b.name === r.currentBranch)?.upstreamRemote });
-      if (!res.ok) return;
-      const icon = (st: string | null, allow?: boolean | null) => (st === 'success' ? '✓' : st === 'failed' ? (allow ? '⚠' : '✕') : ACTIVE_STATUSES.has(st!) ? '⟳' : st === 'manual' ? '⏸' : st === 'canceled' ? '⊘' : st === 'skipped' ? '»' : '•');
-      const parts = res.data.stages.flatMap((s) => (s.jobs.length > 4 ? [`${s.name}: ${icon(s.status)} (${s.jobs.length})`] : s.jobs.map((j) => `${j.name}: ${icon(j.status, j.allowFailure)}`)));
-      setPipelineTips((m) => ({ ...m, [p.id]: { status: p.status, text: parts.join(', ') } }));
-    },
-    [],
-  );
+  // Подсказка значка пайплайна в графе: сводка по заданиям (загружается при наведении, `ciStore.loadPipelineTip`)
+  const loadPipelineTip = ciStore.getState().loadPipelineTip;
 
   // Граф: WIP сверху, stash — строками над коммитами, на которых их сделали (как в GitKraken)
   const allCommits = useMemo((): GraphEntry[] => {
