@@ -96,6 +96,19 @@ async function lanesScenario(waitFor) {
   const scroller = svg().closest('.overflow-auto');
   // Короткая история целиком в окне и без хвостов — не ждём их зря
   if (scroller.scrollHeight < scroller.clientHeight * 3) return { ...out, tails: document.querySelectorAll('[data-tail]').length };
+  // Догрузка истории (этап 5): ответ порции задерживается, пока зонд не посмотрит на хвост и индикатор загрузки
+  const repoApi = window.api.repo;
+  const realLoadMore = repoApi.loadMore;
+  let release;
+  const gate = new Promise((r) => (release = r));
+  const pages = [];
+  repoApi.loadMore = async (dir, opts) => {
+    pages.push(opts);
+    await gate;
+    return realLoadMore(dir, opts);
+  };
+  const rows = () => Math.round(Number(svg().getAttribute('height')) / 34); // стандартная плотность
+  out.rowsBefore = rows();
   scroller.scrollTop = scroller.scrollHeight;
   const tails = await waitFor(() => {
     const list = [...document.querySelectorAll('[data-tail]')];
@@ -103,8 +116,24 @@ async function lanesScenario(waitFor) {
   }, 5000);
   out.tails = tails?.length ?? 0;
   out.masked = Boolean(document.querySelector('[data-testid="graph-tails"][mask]'));
+  out.loadingShown = Boolean(await waitFor(() => document.querySelector('[data-testid="graph-load-more"]')?.textContent.includes('Загрузка истории'), 5000));
+  const top = scroller.scrollTop;
+  release();
+  out.rowsAfter = (await waitFor(() => rows() > out.rowsBefore && rows(), 10000)) || rows();
+  out.scrollKept = scroller.scrollTop === top;
+  out.tailsAfter = document.querySelectorAll('[data-tail]').length;
+  out.footerAfter = Boolean(document.querySelector('[data-testid="graph-load-more"]'));
+  out.pages = pages;
+  repoApi.loadMore = realLoadMore;
   scroller.scrollTop = 0;
-  await waitFor(() => !document.querySelector('[data-tail]') || scroller.scrollTop === 0, 2000);
+  // Новая ветка (ссылки изменились — граф перечитывается целиком): список не сжимается обратно до 2000
+  const { invoke } = window.__TAURI__.core;
+  const dir = await invoke('repo_get_last');
+  await invoke('repo_action', { dir, action: { name: 'createBranch', payload: { name: 'после-догрузки', checkout: true } } });
+  // Колонку меток выше скрыли ради «+N» — ветку ищем в боковой панели
+  out.branchShown = Boolean(await waitFor(() => (document.body.innerText || '').includes('после-догрузки'), 10000));
+  await new Promise((r) => setTimeout(r, 300));
+  out.rowsAfterReload = rows();
   return out;
 }
 

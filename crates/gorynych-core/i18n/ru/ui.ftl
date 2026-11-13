@@ -2866,3 +2866,8 @@ main-branch-unloaded = Вершина ветки за пределами заг�
 no-main-branches = Главных веток нет — дорожки раскладываются как обычно
 find-branch = Найти ветку…
 lanes-hidden-stretch-column = Скрыто дорожек: { $a0 }. Растяните колонку или дважды щёлкните по границе
+
+## Догрузка истории графа (repoStore.loadMore)
+
+loading-history = Загрузка истории…
+load-more-history = Загрузить ещё

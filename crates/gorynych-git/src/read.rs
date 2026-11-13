@@ -368,10 +368,51 @@ pub async fn read_commits(cwd: &Path, refs: &RefsInfo, limit: u32) -> Result<Vec
 
 /// Вывод `git log` для графа: он не зависит от веток, поэтому `load_repository` запускает его одновременно с [`read_refs`].
 async fn log_commits(cwd: &Path, limit: u32) -> Result<String> {
-    let max_count = format!("--max-count={limit}");
+    log_window(cwd, 0, limit).await
+}
+
+/// Аргументы `git log` графа — общие для первой загрузки и порций ([`read_commits_page`]), чтобы порядок и формат совпадали
+/// дословно. `--skip` только при `skip > 0`: первая загрузка запускает git теми же аргументами, что и раньше.
+fn log_args(skip: u32, count: u32) -> Vec<String> {
     let format = format!("--format={}%x1e", ["%H", "%P", "%an", "%ae", "%aI", "%s", "%b", "%D", "%cI"].join("%x1f"));
-    let args = ["log", "--branches", "--remotes", "--tags", "HEAD", "--date-order", &max_count, &format, "--decorate=full", "--decorate-refs-exclude=refs/stash"];
+    let mut args: Vec<String> = ["log", "--branches", "--remotes", "--tags", "HEAD", "--date-order"].map(str::to_owned).to_vec();
+    if skip > 0 {
+        args.push(format!("--skip={skip}"));
+    }
+    args.extend([format!("--max-count={count}"), format, "--decorate=full".to_owned(), "--decorate-refs-exclude=refs/stash".to_owned()]);
+    args
+}
+
+async fn log_window(cwd: &Path, skip: u32, count: u32) -> Result<String> {
+    let args = log_args(skip, count);
+    let args: Vec<&str> = args.iter().map(String::as_str).collect();
     git(cwd, &args).await
+}
+
+/// Порция истории для догрузки (новое в 2.0): тот же `git log`, что у первой загрузки, с `--skip`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, specta::Type)]
+#[serde(rename_all = "camelCase")]
+pub struct CommitsPage {
+    pub commits: Vec<Commit>,
+    /// [`refs_fingerprint`], снятый до `git log`: интерфейс применяет порцию, только если он совпал с отпечатком его графа.
+    pub fingerprint: Option<String>,
+    /// Отпечаток ответа загрузки с пределом `skip + count` ([`graph_fingerprint`]): прежние коммиты и эта порция — ровно такой
+    /// ответ, поэтому следующий `repo:load` с этим пределом пропустит `git log`, если ссылки не менялись.
+    pub graph_fingerprint: Option<String>,
+    /// Порция полная — за ней, возможно, есть ещё.
+    pub truncated: bool,
+}
+
+/// Коммиты графа с `skip` по `skip + count` (в порядке `--date-order`, как у [`load_repository`]).
+pub async fn read_commits_page(dir: &Path, skip: u32, count: u32) -> Result<CommitsPage> {
+    let location = locate_repo(dir).await?;
+    let root = location.root.clone();
+    let fingerprint = refs_fingerprint(&location.git_dir);
+    // Ветки нужны, чтобы разделить украшения коммитов на локальные и серверные
+    let (refs, log) = tokio::join!(read_refs(&root), log_window(&root, skip, count));
+    let commits = parse_commits(&root, &refs?, log).await?;
+    let graph_fingerprint = fingerprint.as_deref().map(|refs| with_limit(refs, skip.saturating_add(count)));
+    Ok(CommitsPage { truncated: commits.len() as u64 >= u64::from(count), commits, fingerprint, graph_fingerprint })
 }
 
 async fn parse_commits(cwd: &Path, refs: &RefsInfo, log: Result<String>) -> Result<Vec<Commit>> {
@@ -699,17 +740,29 @@ pub struct RepositoryUpdate {
     pub repository: Repository,
     /// [`graph_fingerprint`] на момент чтения; `None`, если файлы ссылок не прочитались.
     pub fingerprint: Option<String>,
+    /// [`refs_fingerprint`] на тот же момент: с ним сверяются порции [`read_commits_page`].
+    pub refs_fingerprint: Option<String>,
     /// Отпечаток совпал с `known`: `git log` не запускался, `commits` пуст и `truncated` — `false`, их надо взять из прежнего ответа.
     pub commits_unchanged: bool,
 }
 
-/// Отпечаток всего, от чего зависит вывод `git log` в [`load_repository`]: HEAD, все ссылки (кроме `refs/stash`: её `log` не
-/// показывает), `packed-refs`, reftable, `shallow`, `info/grafts`, `config` и предел. Процесс git не нужен: на ripgrep это чтение
+/// Отпечаток ответа [`load_repository`]: [`refs_fingerprint`] и предел.
+pub fn graph_fingerprint(git_dir: &Path, limit: u32) -> Option<String> {
+    Some(with_limit(&refs_fingerprint(git_dir)?, limit))
+}
+
+fn with_limit(refs: &str, limit: u32) -> String {
+    use sha1::{Digest, Sha1};
+    Sha1::digest(format!("limit {limit}\0{refs}")).iter().map(|byte| format!("{byte:02x}")).collect()
+}
+
+/// Отпечаток всего, от чего зависит вывод `git log` графа, кроме предела: HEAD, все ссылки (кроме `refs/stash`: её `log` не
+/// показывает), `packed-refs`, reftable, `shallow`, `info/grafts` и `config`. Процесс git не нужен: на ripgrep это чтение
 /// около десятка файлов против `git log` на 2000 коммитов (≈ 900 КБ ответа).
 ///
 /// Хэш коммита определяет его содержимое, поэтому при тех же вершинах и том же HEAD список и украшения коммитов те же.
 /// Отпечаток снимается **до** `git log`: если ссылки сдвинутся во время чтения, следующий запрос увидит новый отпечаток и перечитает граф.
-pub fn graph_fingerprint(git_dir: &Path, limit: u32) -> Option<String> {
+pub fn refs_fingerprint(git_dir: &Path) -> Option<String> {
     use sha1::{Digest, Sha1};
     // У дополнительного worktree свои HEAD и config.worktree, а ссылки — в общей папке
     let common = match std::fs::read_to_string(git_dir.join("commondir")) {
@@ -717,7 +770,6 @@ pub fn graph_fingerprint(git_dir: &Path, limit: u32) -> Option<String> {
         Err(_) => git_dir.to_path_buf(),
     };
     let mut hash = Sha1::new();
-    hash.update(format!("limit {limit}\0"));
     let mut add = |label: &str, path: &Path, required: bool| -> Option<()> {
         match std::fs::read(path) {
             Ok(bytes) => {
@@ -771,7 +823,8 @@ pub async fn load_repository_since(dir: &Path, limit: Option<u32>, known: Option
     let limit = limit.unwrap_or(DEFAULT_LIMIT);
     let location = locate_repo(dir).await?;
     let root = location.root.clone();
-    let fingerprint = graph_fingerprint(&location.git_dir, limit);
+    let refs_fingerprint = refs_fingerprint(&location.git_dir);
+    let fingerprint = refs_fingerprint.as_deref().map(|refs| with_limit(refs, limit));
     let commits_unchanged = known.is_some() && fingerprint.as_deref() == known;
     let read_log = async {
         if commits_unchanged { None } else { Some(log_commits(&root, limit).await) }
@@ -803,7 +856,7 @@ pub async fn load_repository_since(dir: &Path, limit: Option<u32>, known: Option
         commits,
         wip_files,
     };
-    Ok(RepositoryUpdate { repository, fingerprint, commits_unchanged })
+    Ok(RepositoryUpdate { repository, fingerprint, refs_fingerprint, commits_unchanged })
 }
 
 /* ---------- Файлы коммита и stash ---------- */

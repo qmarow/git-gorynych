@@ -328,6 +328,7 @@ pub fn specta_builder() -> Builder<tauri::Wry> {
             commands::appearance_get,
             commands::appearance_set,
             commands::repo::repo_load,
+            commands::repo::repo_load_more,
             commands::repo::repo_inspect,
             commands::repo::repo_status,
             commands::repo::repo_stash_details,

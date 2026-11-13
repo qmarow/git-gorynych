@@ -7,7 +7,7 @@
 use std::path::PathBuf;
 use std::time::Instant;
 
-use gorynych_git::read::{load_repository, load_repository_since, quick_status, resolve_repo_root};
+use gorynych_git::read::{load_repository, load_repository_since, quick_status, read_commits_page, resolve_repo_root};
 use gorynych_git::run::spawned;
 
 async fn measure<F, Fut, T>(name: &str, rounds: usize, mut work: F)
@@ -25,7 +25,7 @@ where
     }
     times.sort_by(f64::total_cmp);
     let per_call = (spawned() - before) as f64 / rounds as f64;
-    println!("{name:<18} {:>8.1} мс (медиана), {:>8.1} мс (макс.), процессов git: {per_call:.1}", times[rounds / 2], times[rounds - 1]);
+    println!("{name:<36} {:>8.1} мс (медиана), {:>8.1} мс (макс.), процессов git: {per_call:.1}", times[rounds / 2], times[rounds - 1]);
 }
 
 #[tokio::main]
@@ -46,4 +46,13 @@ async fn main() {
     assert!(same.commits_unchanged, "граф изменился во время замера");
     let json = serde_json::to_vec(&same.repository).expect("сериализация");
     println!("load_repository_since: JSON для интерфейса {} КБ", json.len() / 1024);
+    // Догрузка истории (`repo:load-more`): порция в 2000 коммитов с разной глубины. Без файла commit-graph `git log --date-order`
+    // обходит всю историю, прежде чем выдать первые строки, — это и проверяет замер (запустить до и после
+    // `git commit-graph write --reachable` в копии репозитория)
+    let graph = dir.join(".git").join("objects").join("info").join("commit-graph");
+    let chain = dir.join(".git").join("objects").join("info").join("commit-graphs");
+    println!("commit-graph: {}", if graph.exists() || chain.exists() { "есть" } else { "нет" });
+    for skip in [0, 2000, 20_000] {
+        measure(&format!("read_commits_page (skip {skip})"), rounds, || read_commits_page(&dir, skip, 2000)).await;
+    }
 }

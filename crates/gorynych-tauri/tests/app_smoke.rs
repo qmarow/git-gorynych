@@ -1,4 +1,4 @@
-﻿//! Запуск настоящего приложения: окно, WebView2, CSP, команды, база. Все данные — во временной папке: настоящий профиль и
+//! Запуск настоящего приложения: окно, WebView2, CSP, команды, база. Все данные — во временной папке: настоящий профиль и
 //! папка данных пользователя не затрагиваются (см. `GORYNYCH_DEV_ROOT` в `lib.rs`). Окно при этом не показывается.
 
 use std::fs;
@@ -258,6 +258,18 @@ fn long_history_shows_tails_and_squeezes_lanes() {
     // У 2000-го загруженного коммита main родитель не загружен: один хвост, с затуханием
     assert_eq!(lanes["tails"], json!(1), "{report}");
     assert_eq!(lanes["masked"], json!(true), "{report}");
+    // Догрузка (этап 5): прокрутка к концу — порция с 2000, пока она идёт — «Загрузка истории…»; потом история целиком
+    // (2160 коммитов), хвост соединился с новыми узлами, прокрутка на месте, надписи внизу нет
+    assert_eq!(lanes["rowsBefore"], json!(2000), "{report}");
+    assert_eq!(lanes["loadingShown"], json!(true), "{report}");
+    assert_eq!(lanes["pages"], json!([{ "skip": 2000, "count": 2000 }]), "{report}");
+    assert_eq!(lanes["rowsAfter"], json!(2160), "{report}");
+    assert_eq!(lanes["scrollKept"], json!(true), "{report}");
+    assert_eq!(lanes["tailsAfter"], json!(0), "{report}");
+    assert_eq!(lanes["footerAfter"], json!(false), "{report}");
+    // Новая ветка перечитывает граф с пределом 4000: список не сжался до 2000
+    assert_eq!(lanes["branchShown"], json!(true), "{report}");
+    assert_eq!(lanes["rowsAfterReload"], json!(2160), "{report}");
 }
 
 #[test]

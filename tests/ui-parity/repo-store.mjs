@@ -356,6 +356,165 @@ for (let seed = 1; seed <= Number(process.env.SEEDS ?? 400); seed++) {
   }
 }
 
+/* ---------- Догрузка истории (новое в 2.0, прежнего кода нет): ожидаемое поведение ---------- */
+
+// Сервер с длинной историей: ответы отдаются по команде, отпечатки — как в Rust (ссылки; ссылки + предел)
+function historyServer() {
+  const disk = new Map([
+    ['C:/a', { version: 1, total: 5000 }],
+    ['C:/b', { version: 1, total: 300 }],
+  ]);
+  const commitsOf = (dir, from, to) => {
+    const d = disk.get(dir);
+    return Array.from({ length: Math.max(0, Math.min(to, d.total) - from) }, (_, i) => ({ hash: `${dir}-${d.version}-${from + i}` }));
+  };
+  const pending = [];
+  const calls = [];
+  const later = (call, make) => {
+    calls.push(call);
+    return new Promise((done) => pending.push({ call, done, make }));
+  };
+  const api = {
+    repo: {
+      load: (dir, opts) =>
+        later(['load', dir, opts ?? null], () => {
+          const d = disk.get(dir);
+          const limit = opts?.limit ?? 2000;
+          const refs = `${dir}#${d.version}`;
+          const fp = `${refs}@${limit}`;
+          const unchanged = opts?.known === fp;
+          const commits = unchanged ? [] : commitsOf(dir, 0, limit);
+          return {
+            ok: true,
+            data: { path: dir, name: dir, headHash: `${dir}-${d.version}-0`, commits, truncated: !unchanged && commits.length >= limit, wipFiles: [], stashes: [], operation: null, ci: [], graphFingerprint: fp, refsFingerprint: refs, commitsUnchanged: unchanged },
+          };
+        }),
+      loadMore: (dir, { skip, count }) =>
+        later(['more', dir, skip, count], () => {
+          const d = disk.get(dir);
+          if (d.broken) return { ok: false, error: { code: 'GIT', message: 'сбой', hint: null, details: '' } };
+          const refs = `${dir}#${d.version}`;
+          const commits = commitsOf(dir, skip, skip + count);
+          return { ok: true, data: { commits, fingerprint: refs, graphFingerprint: `${refs}@${skip + count}`, truncated: commits.length >= count } };
+        }),
+    },
+  };
+  // Отпустить самый старый ожидающий ответ (или с номером i); ответ считается в момент отпускания
+  const answer = async (i = 0) => {
+    const [p] = pending.splice(i, 1);
+    p.done(p.make());
+    await flush();
+    await flush();
+  };
+  return { api, disk, pending, calls, answer };
+}
+
+{
+  const { createRepoStore, historyLimit } = await import(pathToFileURL(path.join(repoRoot, 'src', 'state', 'repoStore.ts')).href);
+  const check = (what, a, b) => {
+    steps++;
+    const ja = JSON.stringify(a);
+    const jb = JSON.stringify(b);
+    if (ja !== jb) {
+      console.error('РАСХОЖДЕНИЕ догрузка:', what, '\nполучено: ', ja, '\nожидалось:', jb);
+      process.exit(1);
+    }
+  };
+  const lastHash = (s) => s.repo?.commits.at(-1)?.hash ?? null;
+
+  check('historyLimit', [0, 1, 2000, 2001, 4000, 49_999, 60_000].map(historyLimit), [2000, 2000, 2000, 4000, 4000, 50_000, 50_000]);
+
+  const srv = historyServer();
+  const store = createRepoStore(() => srv.api);
+  const s = () => store.getState();
+  s().setActivePath('C:/a');
+  void s().load('C:/a');
+  await srv.answer();
+  check('первая загрузка', [s().repo.commits.length, s().repo.truncated], [2000, true]);
+  s().setSelectedHash('C:/a-1-5');
+  const before = s().repo.commits;
+
+  // Порция дописывается к прежним; повторный вызов во время загрузки не уходит на сервер
+  void s().loadMore();
+  void s().loadMore();
+  check('один запрос порции', srv.calls.filter((c) => c[0] === 'more'), [['more', 'C:/a', 2000, 2000]]);
+  check('идёт догрузка', s().loadingMore, true);
+  await srv.answer();
+  check('порция применена', [s().repo.commits.length, lastHash(s()), s().repo.truncated, s().loadingMore, s().selectedHash], [4000, 'C:/a-1-3999', true, false, 'C:/a-1-5']);
+  check('прежние коммиты на месте', s().repo.commits.slice(0, 2000).every((c, i) => c === before[i]), true);
+  check('отпечаток для предела 4000', s().repo.graphFingerprint, 'C:/a#1@4000');
+
+  // Полное перечитывание просит 4000 и с тем же отпечатком получает commitsUnchanged — список тот же
+  const glued = s().repo.commits;
+  void s().load('C:/a', { silent: true });
+  check('load с пределом', srv.calls.at(-1), ['load', 'C:/a', { known: 'C:/a#1@4000', limit: 4000 }]);
+  await srv.answer();
+  check('граф не изменился', [s().repo.commits === glued, s().repo.commits.length], [true, 4000]);
+
+  // Новый коммит (или fetch): список не сжимается до 2000
+  srv.disk.get('C:/a').version = 2;
+  void s().load('C:/a', { silent: true });
+  await srv.answer();
+  check('после нового коммита — 4000', [s().repo.commits.length, lastHash(s())], [4000, 'C:/a-2-3999']);
+
+  // Устаревший ответ: пока шла порция, ветки сдвинулись и граф перечитан — порция отбрасывается, идёт тихая load
+  void s().loadMore(); // skip 4000
+  srv.disk.get('C:/a').version = 3;
+  void s().load('C:/a', { silent: true });
+  await srv.answer(1); // сначала load: 4000 коммитов версии 3
+  srv.disk.get('C:/a').version = 2; // ответ порции посчитан по версии 2 (как до сдвига)
+  const callsBefore = srv.calls.length;
+  await srv.answer(0);
+  srv.disk.get('C:/a').version = 3;
+  check('устаревшая порция отброшена', [s().repo.commits.length, lastHash(s()), s().loadingMore], [4000, 'C:/a-3-3999', false]);
+  check('и запущена тихая load', srv.calls.slice(callsBefore), [['load', 'C:/a', { known: 'C:/a#3@4000', limit: 4000 }]]);
+  await srv.answer();
+
+  // Другая вкладка во время порции: её коммиты не подмешиваются
+  void s().loadMore();
+  s().rememberActive();
+  s().showCached('C:/b'); // кэша b нет — обычная загрузка
+  check('переход на вкладку сбросил догрузку', s().loadingMore, false);
+  await srv.answer(1); // load b
+  await srv.answer(0); // порция a — ничья
+  check('вкладка b без чужих коммитов', [s().repo.path, s().repo.commits.length, s().repo.commits.every((c) => c.hash.startsWith('C:/b'))], ['C:/b', 300, true]);
+  check('b короткая — догрузки нет', (void s().loadMore(), srv.pending.length), 0);
+  // Назад на a: в кэше вкладки 4000 коммитов (порция до перехода не пришла — она отброшена)
+  s().rememberActive();
+  s().showCached('C:/a');
+  check('кэш вкладки a', s().repo.commits.length, 4000);
+  await srv.answer();
+
+  // Ошибка порции: состояние для «Загрузить ещё», повтор проходит
+  srv.disk.get('C:/a').broken = true;
+  void s().loadMore();
+  await srv.answer();
+  check('ошибка', [s().loadingMore, s().loadMoreError?.code, s().repo.commits.length], [false, 'GIT', 4000]);
+  srv.disk.get('C:/a').broken = false;
+  void s().loadMore();
+  check('ошибка сброшена при повторе', s().loadMoreError, null);
+  await srv.answer();
+  check('повтор применён', [s().repo.commits.length, s().repo.truncated], [5000, false]);
+  // Порция дошла до кэша вкладки
+  s().showCached('C:/b');
+  await srv.answer();
+  s().showCached('C:/a');
+  check('кэш вкладки обновлён порцией', s().repo.commits.length, 5000);
+  await srv.answer();
+  // Конец истории: дальше не просим
+  const n = srv.calls.length;
+  void s().loadMore();
+  check('история кончилась', srv.calls.length, n);
+
+  // Под Electron (без loadMore) — ничего
+  const electron = createRepoStore(() => ({ repo: { load: srv.api.repo.load } }));
+  electron.getState().setActivePath('C:/a');
+  void electron.getState().load('C:/a');
+  await srv.answer();
+  await electron.getState().loadMore();
+  check('без loadMore в api', [srv.pending.length, electron.getState().loadingMore], [0, false]);
+}
+
 // Чистые функции: граничные случаи
 const { nextSelection, mergeStatus } = await import(pathToFileURL(path.join(repoRoot, 'src', 'state', 'repoStore.ts')).href);
 const data = { path: 'p', wipFiles: [], stashes: [{ hash: 's' }], commits: [{ hash: 'c' }], headHash: 'c' };

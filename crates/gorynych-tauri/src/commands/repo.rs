@@ -53,7 +53,7 @@ use gorynych_git::gitflow::{GitflowConfig, gitflow_config};
 use gorynych_git::worktree_file::{WorktreeSave, WorktreeSaved, WorktreeText, read_worktree_file, save_worktree_file};
 use gorynych_git::history::{Blame, BlameRequest, CommitInfo, CommitInfoRequest, FileHistory, FileHistoryRequest, blame, commit_info, file_history};
 use gorynych_git::init::{ConnectOptions, ConnectResult, FolderInfo, InitOptions, InitResult, ProbeRemote, RemoteProbe, connect_repository, init_repository, inspect_folder, probe_remote};
-use gorynych_git::read::{CommitFile, QuickStatus, Repository, RepositoryUpdate, StashDetails, get_commit_files, get_stash_details, load_repository_since, quick_status, resolve_repo_root};
+use gorynych_git::read::{CommitFile, CommitsPage, QuickStatus, Repository, RepositoryUpdate, StashDetails, get_commit_files, get_stash_details, load_repository_since, quick_status, read_commits_page, resolve_repo_root};
 use gorynych_git::rebase::{RebasePreview, RebaseRequest, simulate};
 use gorynych_git::write::{BranchLog, BranchLogRequest, CommitTemplate, branch_log, read_commit_template};
 use gorynych_storage::undo::HistorySummary;
@@ -82,6 +82,9 @@ pub struct LoadedRepository {
     /// Отпечаток графа (`read::graph_fingerprint`); интерфейс возвращает его в `known` следующего `repo:load`.
     #[serde(rename = "graphFingerprint")]
     pub graph_fingerprint: Option<String>,
+    /// Отпечаток ссылок без предела (`read::refs_fingerprint`): с ним сверяются порции `repo:load-more`.
+    #[serde(rename = "refsFingerprint")]
+    pub refs_fingerprint: Option<String>,
     /// `known` совпал: `commits` пуст, `truncated` — `false`, их надо взять из ответа с этим отпечатком.
     #[serde(rename = "commitsUnchanged")]
     pub commits_unchanged: bool,
@@ -160,9 +163,11 @@ async fn detect(path: String) -> Result<Vec<CiSystem>> {
 
 #[tauri::command]
 #[specta::specta]
-pub async fn repo_load(state: State<'_, AppState>, dir: String, known: Option<String>) -> Result<LoadedRepository> {
+pub async fn repo_load(state: State<'_, AppState>, dir: String, known: Option<String>, limit: Option<u32>) -> Result<LoadedRepository> {
     let services = state.services()?;
-    let RepositoryUpdate { repository, fingerprint: graph_fingerprint, commits_unchanged } = load_repository_since(Path::new(&dir), None, known.as_deref()).await?;
+    // `limit` — сколько коммитов уже показано после догрузки (новое в 2.0); без него — 2000, как в 1.x
+    let limit = limit.map(|limit| limit.clamp(1, MAX_HISTORY));
+    let RepositoryUpdate { repository, fingerprint: graph_fingerprint, refs_fingerprint, commits_unchanged } = load_repository_since(Path::new(&dir), limit, known.as_deref()).await?;
     let root = PathBuf::from(&repository.path);
     let history = services.engine.history_summary(&root)?;
     let ci = detect(repository.path.clone()).await?;
@@ -171,7 +176,18 @@ pub async fn repo_load(state: State<'_, AppState>, dir: String, known: Option<St
     // Как `writeSettings` в 1.x: сбой записи только в журнал, ответ не меняется
     let _ = services.db.set_last_repo(&repository.path);
     let _ = services.db.remember_recent(&repository.path, Some(&repository.name));
-    Ok(LoadedRepository { repository, history, ci, forge, graph_fingerprint, commits_unchanged })
+    Ok(LoadedRepository { repository, history, ci, forge, graph_fingerprint, refs_fingerprint, commits_unchanged })
+}
+
+/// Предел истории в графе: дальше догрузка не идёт (то же число в `repoStore.ts`).
+const MAX_HISTORY: u32 = 50_000;
+
+/// `repo:load-more` (новое в 2.0): следующая порция истории графа при прокрутке к концу.
+#[tauri::command]
+#[specta::specta]
+pub async fn repo_load_more(dir: String, skip: u32, count: u32) -> Result<CommitsPage> {
+    let count = count.clamp(1, MAX_HISTORY);
+    read_commits_page(Path::new(&dir), skip.min(MAX_HISTORY), count).await
 }
 
 #[tauri::command]

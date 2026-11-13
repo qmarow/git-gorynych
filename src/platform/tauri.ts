@@ -296,7 +296,10 @@ function buildApi() {
       getLast: () => raw('repo_get_last', undefined, null),
       // `known` — `graphFingerprint` прежнего ответа: если граф не изменился, приходит `commitsUnchanged` без коммитов.
       // Под Electron второго аргумента нет, ответ всегда полный
-      load: (dir: Json, opts?: { known?: string | null }) => safe('repo_load', { dir, known: opts?.known ?? null }),
+      // `limit` — сколько коммитов показано после догрузки (новое в 2.0); без него — 2000
+      load: (dir: Json, opts?: { known?: string | null; limit?: number | null }) => safe('repo_load', { dir, known: opts?.known ?? null, limit: opts?.limit ?? null }),
+      // Нового в 2.0: следующая порция истории графа (`repo:load-more`). В preload 1.x её нет — догрузки там нет
+      loadMore: (dir: Json, opts: { skip: number; count: number }) => safe('repo_load_more', { dir, skip: opts.skip, count: opts.count }),
       commitFiles: (dir: Json, hash: Json, parent: Json) => safe('repo_commit_files', { dir, hash, parent: parent ?? null }),
       fileDiff: (dir: Json, params: Json) => safe('repo_file_diff', { dir, params }),
       // Нового в 2.0: редактор файла рабочей копии в окне изменений. В preload 1.x их нет — интерфейс проверяет наличие

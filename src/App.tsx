@@ -117,7 +117,7 @@ import {
   type WipConflict,
 } from './components/Dialogs.tsx';
 import { t as tr, tj } from './i18n/index.ts';
-import { repoStore, useRepoStore, type LoadError, type RepoData, type RepoStatus } from './state/repoStore.ts';
+import { MAX_HISTORY, repoStore, useRepoStore, type LoadError, type RepoData, type RepoStatus } from './state/repoStore.ts';
 import { gitBusy, syncStore, useSyncStore } from './state/syncStore.ts';
 import { ciStore, useCiStore } from './state/ciStore.ts';
 import { withStashes, type StashData } from './lib/graphStash.ts';
@@ -209,6 +209,8 @@ interface AppApi {
     createMergeRequest: (dir: string, mr: { source: string; target: unknown; title: unknown; draft: boolean }, opts: { remote?: string | null }) => Promise<ApiResult<GlMergeRequest_Serialize>>;
   };
   repo: {
+    /** Догрузка истории (новое в 2.0); под Electron её нет */
+    loadMore?: unknown;
     openDialog: (title?: string) => Promise<string | null>;
     inspect: (dir: string) => Promise<ApiResult<FolderInfo_Serialize>>;
     init: (dir: string, options: InitOptions_Deserialize) => Promise<ApiResult<InitResult_Serialize>>;
@@ -488,6 +490,8 @@ export default function App() {
   const selectedHash = useRepoStore((s) => s.selectedHash);
   const filesByHash = useRepoStore((s) => s.filesByHash);
   const activePath = useRepoStore((s) => s.activePath);
+  const loadingMore = useRepoStore((s) => s.loadingMore);
+  const loadMoreError = useRepoStore((s) => s.loadMoreError);
   const [booting, setBooting] = useState(true);
   const [sidebarW, setSidebarW, saveSidebarW] = useStoredWidth('panel.sidebar', 256, 170, 480);
   const [detailsW, setDetailsW, saveDetailsW] = useStoredWidth('panel.details', 300, 250, 680);
@@ -3395,6 +3399,9 @@ export default function App() {
                   onContextMenu={openMenu as (node: GraphRow, x: number, y: number) => void}
                   wipCount={repo!.wipFiles.length}
                   truncated={repo!.truncated}
+                  onLoadMore={api.repo.loadMore && repo!.commits.length < MAX_HISTORY ? repoStore.getState().loadMore : undefined}
+                  loadingMore={loadingMore}
+                  loadMoreError={loadMoreError?.message ?? null}
                   matchSet={searchOpen && filterActive ? matchSet : null}
                   fileHits={(searchOpen && filterActive ? fileHits : null) as PropsOf<typeof CommitGraph, 'fileHits'>}
                   pipelines={pipelineMap?.bySha ?? null}

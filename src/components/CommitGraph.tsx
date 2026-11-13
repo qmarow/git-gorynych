@@ -63,6 +63,11 @@ interface CommitGraphProps {
   onContextMenu?: (node: GraphItem, x: number, y: number) => void;
   wipCount: number;
   truncated: boolean;
+  /** Догрузить следующую порцию истории (новое в 2.0); нет — догрузка недоступна, внизу прежняя надпись */
+  onLoadMore?: () => void;
+  loadingMore?: boolean;
+  /** Ошибка последней догрузки: внизу кнопка «Загрузить ещё» */
+  loadMoreError?: string | null;
   matchSet?: Set<string> | null;
   fileHits?: Map<string, FileHit> | null;
   pipelines?: Record<string, PipelineMark> | null;
@@ -170,6 +175,9 @@ export default function CommitGraph({
   onContextMenu,
   wipCount,
   truncated,
+  onLoadMore,
+  loadingMore = false,
+  loadMoreError = null,
   matchSet = null, // Set хэшей, подходящих под поиск; остальные приглушаются
   fileHits = null, // Map хэш → { files, count } — текст поиска найден в изменениях этих файлов
   pipelines = null, // { [sha]: { id, status } } — статусы пайплайнов CI/CD
@@ -370,6 +378,17 @@ export default function CommitGraph({
   const last = Math.min(nodes.length - 1, view.last);
   const visibleNodes = useMemo(() => nodes.slice(first, last + 1), [nodes, first, last]);
   const visibleEdges = useMemo(() => edges.filter((e) => e.minRow <= last && e.maxRow >= first), [edges, first, last]);
+  // Догрузка истории: последняя видимая строка ближе 100 строк к концу — следующая порция, один раз на каждую длину списка
+  // (после ошибки — только кнопкой). Новые строки дописываются снизу: прокрутка и выделение не меняются
+  const askedAt = useRef(-1);
+  useEffect(() => {
+    if (!onLoadMore || !truncated || loadingMore || askedAt.current === nodes.length) return;
+    if (last >= nodes.length - 100) {
+      askedAt.current = nodes.length;
+      onLoadMore();
+    }
+  }, [onLoadMore, truncated, loadingMore, last, nodes.length]);
+
   // Хвост к незагруженному родителю идёт до нижнего края графа: виден, если его узел не ниже окна
   const visibleTails = useMemo(() => tails.filter((t) => t.from.row <= last), [tails, last]);
 
@@ -745,9 +764,30 @@ export default function CommitGraph({
         )}
       </div>
 
-      {truncated && (
+      {truncated && !onLoadMore && (
         <div className="py-3 text-center text-xs text-gk-dim">
           {tj('showing-last-commits', [commits.length.toLocaleString(locale())])}</div>
+      )}
+      {truncated && onLoadMore && (
+        <div data-testid="graph-load-more" className="flex items-center justify-center gap-2 py-3 text-xs text-gk-dim">
+          {loadingMore ? (
+            <>
+              <span className="h-3 w-3 animate-spin rounded-full border-2 border-gk-dim border-t-transparent" />
+              {tr('loading-history')}
+            </>
+          ) : (
+            <>
+              {loadMoreError && <span className="text-gk-red">{loadMoreError}</span>}
+              <button
+                data-testid="graph-load-more-button"
+                onClick={onLoadMore}
+                className="rounded border border-gk-border px-2 py-0.5 text-gk-text hover:bg-gk-hover"
+              >
+                {tr('load-more-history')}
+              </button>
+            </>
+          )}
+        </div>
       )}
 
       {menu && (

@@ -24,7 +24,9 @@ export const commands = {
 	appearanceGet: () => typedError<AppearanceInfo_Serialize, GorynychError_Serialize>(__TAURI_INVOKE("appearance_get")),
 	/**  Сохраняет оформление и применяет к окну. Возвращает, включён ли системный материал. */
 	appearanceSet: (value: Appearance_Deserialize) => typedError<boolean, GorynychError_Serialize>(__TAURI_INVOKE("appearance_set", { value })),
-	repoLoad: (dir: string, known: string | null) => typedError<LoadedRepository_Serialize, GorynychError_Serialize>(__TAURI_INVOKE("repo_load", { dir, known })),
+	repoLoad: (dir: string, known: string | null, limit: number | null) => typedError<LoadedRepository_Serialize, GorynychError_Serialize>(__TAURI_INVOKE("repo_load", { dir, known, limit })),
+	/**  `repo:load-more` (новое в 2.0): следующая порция истории графа при прокрутке к концу. */
+	repoLoadMore: (dir: string, skip: number, count: number) => typedError<CommitsPage_Serialize, GorynychError_Serialize>(__TAURI_INVOKE("repo_load_more", { dir, skip, count })),
 	repoInspect: (dir: string | null) => typedError<FolderInfo_Serialize, GorynychError_Serialize>(__TAURI_INVOKE("repo_inspect", { dir })),
 	repoStatus: (dir: string) => typedError<StatusWithCi_Serialize, GorynychError_Serialize>(__TAURI_INVOKE("repo_status", { dir })),
 	repoStashDetails: (dir: string, hash: string) => typedError<StashDetails_Serialize, GorynychError_Serialize>(__TAURI_INVOKE("repo_stash_details", { dir, hash })),
@@ -1901,6 +1903,37 @@ export type Commit_Serialize = {
 	 *  cherry-pick она расходится с датой автора. Пустая — та же, что `date`.
 	 */
 	commitDate: string,
+};
+
+/**  Порция истории для догрузки (новое в 2.0): тот же `git log`, что у первой загрузки, с `--skip`. */
+export type CommitsPage = CommitsPage_Serialize | CommitsPage_Deserialize;
+
+/**  Порция истории для догрузки (новое в 2.0): тот же `git log`, что у первой загрузки, с `--skip`. */
+export type CommitsPage_Deserialize = {
+	commits: Commit_Deserialize[],
+	/**  [`refs_fingerprint`], снятый до `git log`: интерфейс применяет порцию, только если он совпал с отпечатком его графа. */
+	fingerprint?: string | null,
+	/**
+	 *  Отпечаток ответа загрузки с пределом `skip + count` ([`graph_fingerprint`]): прежние коммиты и эта порция — ровно такой
+	 *  ответ, поэтому следующий `repo:load` с этим пределом пропустит `git log`, если ссылки не менялись.
+	 */
+	graphFingerprint?: string | null,
+	/**  Порция полная — за ней, возможно, есть ещё. */
+	truncated: boolean,
+};
+
+/**  Порция истории для догрузки (новое в 2.0): тот же `git log`, что у первой загрузки, с `--skip`. */
+export type CommitsPage_Serialize = {
+	commits: Commit_Serialize[],
+	/**  [`refs_fingerprint`], снятый до `git log`: интерфейс применяет порцию, только если он совпал с отпечатком его графа. */
+	fingerprint: string | null,
+	/**
+	 *  Отпечаток ответа загрузки с пределом `skip + count` ([`graph_fingerprint`]): прежние коммиты и эта порция — ровно такой
+	 *  ответ, поэтому следующий `repo:load` с этим пределом пропустит `git log`, если ссылки не менялись.
+	 */
+	graphFingerprint: string | null,
+	/**  Порция полная — за ней, возможно, есть ещё. */
+	truncated: boolean,
 };
 
 /**  Параметры `repo:compare`. Поле не строкой считается отсутствующим, как `a ?? ''` в 1.x. */
@@ -4150,6 +4183,8 @@ export type LoadedRepository_Deserialize = {
 	forge?: ForgeStatus_Deserialize | null,
 	/**  Отпечаток графа (`read::graph_fingerprint`); интерфейс возвращает его в `known` следующего `repo:load`. */
 	graphFingerprint?: string | null,
+	/**  Отпечаток ссылок без предела (`read::refs_fingerprint`): с ним сверяются порции `repo:load-more`. */
+	refsFingerprint?: string | null,
 	/**  `known` совпал: `commits` пуст, `truncated` — `false`, их надо взять из ответа с этим отпечатком. */
 	commitsUnchanged: boolean,
 } & Repository_Deserialize;
@@ -4161,6 +4196,8 @@ export type LoadedRepository_Serialize = {
 	forge: ForgeStatus_Serialize | null,
 	/**  Отпечаток графа (`read::graph_fingerprint`); интерфейс возвращает его в `known` следующего `repo:load`. */
 	graphFingerprint: string | null,
+	/**  Отпечаток ссылок без предела (`read::refs_fingerprint`): с ним сверяются порции `repo:load-more`. */
+	refsFingerprint: string | null,
 	/**  `known` совпал: `commits` пуст, `truncated` — `false`, их надо взять из ответа с этим отпечатком. */
 	commitsUnchanged: boolean,
 } & Repository_Serialize;

@@ -11,20 +11,35 @@
  * - выделение сохраняется, если тот же репозиторий и выделенное ещё есть (WIP с файлами, stash, коммит), иначе WIP или HEAD;
  * - ответ `repo:status` меняет `repo`, только если поменялись файлы, операция или найденные CI.
  *
+ * Новое в 2.0 — догрузка истории (`loadMore`): порция `repo:load-more` дописывается к коммитам, только если репозиторий,
+ * отпечаток ссылок и число коммитов не изменились за время запроса; иначе — тихая `load`. `load` после догрузки просит
+ * столько коммитов, сколько уже показано (кратно порции, не больше `MAX_HISTORY`), и список не сжимается обратно до 2000.
+ *
  * Отличие от прежнего кода: `repoRef`/`activeRef` в `App.jsx` раньше обновлялись при отрисовке (и вручную в `showBlank`/
  * `showTab`), теперь это само хранилище, без задержки до отрисовки.
  */
 import { createStore, type StoreApi } from 'zustand/vanilla';
 import { useStore } from 'zustand';
-import type { LoadedRepository_Serialize, StatusWithCi_Serialize } from '../../crates/gorynych-tauri/bindings/commands.ts';
+import type { CommitsPage_Serialize, LoadedRepository_Serialize, StatusWithCi_Serialize } from '../../crates/gorynych-tauri/bindings/commands.ts';
 import type { ApiError, ApiResult } from '../platform/tauri.ts';
 import { t } from '../i18n/index.ts';
 
 /** Ответ `repo:load`. Под Electron (1.x) отпечатка графа и `commitsUnchanged` нет. */
-export type RepoData = Omit<LoadedRepository_Serialize, 'graphFingerprint' | 'commitsUnchanged'> & {
+export type RepoData = Omit<LoadedRepository_Serialize, 'graphFingerprint' | 'refsFingerprint' | 'commitsUnchanged'> & {
   graphFingerprint?: string | null;
+  refsFingerprint?: string | null;
   commitsUnchanged?: boolean;
 };
+
+/** Порция догрузки истории: столько коммитов за раз. */
+export const HISTORY_PAGE = 2000;
+/** Дальше догрузка не идёт (то же число — `MAX_HISTORY` в `commands/repo.rs`). */
+export const MAX_HISTORY = 50_000;
+
+/** Сколько коммитов просить у `repo:load`, когда показано `shown`: кратно порции, не меньше 2000 и не больше предела. */
+export function historyLimit(shown: number): number {
+  return Math.min(MAX_HISTORY, Math.max(HISTORY_PAGE, Math.ceil(shown / HISTORY_PAGE) * HISTORY_PAGE));
+}
 
 export type RepoStatus = StatusWithCi_Serialize;
 
@@ -50,7 +65,9 @@ interface TabSnapshot {
 /** Та часть `window.api`, которая нужна хранилищу. */
 export interface RepoApi {
   repo: {
-    load: (dir: string, opts?: { known: string }) => Promise<ApiResult<RepoData>>;
+    load: (dir: string, opts?: { known?: string; limit?: number }) => Promise<ApiResult<RepoData>>;
+    /** Нет под Electron (1.x): там догрузки нет. */
+    loadMore?: (dir: string, opts: { skip: number; count: number }) => Promise<ApiResult<CommitsPage_Serialize>>;
   };
 }
 
@@ -63,6 +80,10 @@ export interface RepoState {
   filesByHash: FilesByHash;
   /** Путь активной вкладки (репозиторий или «Новая вкладка»). */
   activePath: string | null;
+  /** Идёт догрузка истории (`loadMore`). */
+  loadingMore: boolean;
+  /** Ошибка последней догрузки: интерфейс показывает «Загрузить ещё». */
+  loadMoreError: ApiError | null;
 
   setSelectedHash: (next: Updater<string | null>) => void;
   setFilesByHash: (next: Updater<FilesByHash>) => void;
@@ -73,6 +94,8 @@ export interface RepoState {
 
   /** Бывший `loadRepo`. */
   load: (dir: string, opts?: { silent?: boolean }) => Promise<RepoData | null>;
+  /** Следующая порция истории графа; повторный вызов во время загрузки ничего не делает. */
+  loadMore: () => Promise<void>;
   /** Пустая вкладка или ни одной: отменяет идущие загрузки, репозитория нет. */
   showBlank: (path: string | null) => void;
   /** Переход на вкладку репозитория: сохранённое состояние сразу, затем тихая загрузка; без кэша — обычная. */
@@ -114,6 +137,8 @@ export type RepoStore = StoreApi<RepoState>;
 
 export function createRepoStore(getApi: () => RepoApi | undefined): RepoStore {
   let seq = 0;
+  // Номер догрузки: переход на другую вкладку делает идущую догрузку устаревшей
+  let moreSeq = 0;
   const tabCache = new Map<string, TabSnapshot>();
   const switchListeners = new Set<() => void>();
 
@@ -125,6 +150,8 @@ export function createRepoStore(getApi: () => RepoApi | undefined): RepoStore {
     selectedHash: null,
     filesByHash: {},
     activePath: null,
+    loadingMore: false,
+    loadMoreError: null,
 
     setSelectedHash: (next) => set((s) => ({ selectedHash: resolve(next, s.selectedHash) })),
     setFilesByHash: (next) => set((s) => ({ filesByHash: resolve(next, s.filesByHash) })),
@@ -144,7 +171,10 @@ export function createRepoStore(getApi: () => RepoApi | undefined): RepoStore {
       const current = get().repo;
       const base = current?.path === dir ? current : tabCache.get(dir)?.repo;
       const known = base?.path === dir ? base.graphFingerprint : undefined;
-      const res = await api.repo.load(dir, known ? { known } : undefined);
+      // После догрузки — столько, сколько уже показано: новый коммит или fetch не сжимают список до 2000
+      const limit = base?.path === dir ? historyLimit(base.commits.length) : HISTORY_PAGE;
+      const opts = { ...(known ? { known } : null), ...(limit > HISTORY_PAGE ? { limit } : null) };
+      const res = await api.repo.load(dir, Object.keys(opts).length ? opts : undefined);
       const stale = mine !== seq;
       if (!stale) set({ loading: false });
 
@@ -169,13 +199,43 @@ export function createRepoStore(getApi: () => RepoApi | undefined): RepoStore {
       return data;
     },
 
+    loadMore: async () => {
+      const api = getApi();
+      const { repo, loadingMore } = get();
+      if (loadingMore || !repo || !repo.truncated || !api?.repo.loadMore) return;
+      const skip = repo.commits.length;
+      if (skip >= MAX_HISTORY) return;
+      const mine = ++moreSeq;
+      set({ loadingMore: true, loadMoreError: null });
+      const res = await api.repo.loadMore(repo.path, { skip, count: Math.min(HISTORY_PAGE, MAX_HISTORY - skip) });
+      if (mine !== moreSeq) return; // вкладку сменили — ответ ничей
+      set({ loadingMore: false });
+      if (!res.ok) {
+        set({ loadMoreError: res.error as ApiError });
+        return;
+      }
+      const cur = get().repo;
+      const page = res.data;
+      if (!cur || cur.path !== repo.path) return;
+      // Ветки сдвинулись или граф уже перечитан: порция не стыкуется — перечитываем целиком
+      if (!page.fingerprint || cur.refsFingerprint !== page.fingerprint || cur.commits.length !== skip) {
+        void get().load(cur.path, { silent: true });
+        return;
+      }
+      const next: RepoData = { ...cur, commits: [...cur.commits, ...page.commits], truncated: page.truncated, graphFingerprint: page.graphFingerprint };
+      set({ repo: next });
+      tabCache.set(next.path, { ...(tabCache.get(next.path) ?? {}), repo: next });
+    },
+
     showBlank: (path) => {
       seq++; // отменяем ответы на ещё идущие загрузки
-      set({ activePath: path, repo: null, selectedHash: null, loading: false });
+      moreSeq++;
+      set({ activePath: path, repo: null, selectedHash: null, loading: false, loadingMore: false, loadMoreError: null });
     },
 
     showCached: (path) => {
-      set({ activePath: path });
+      moreSeq++;
+      set({ activePath: path, loadingMore: false, loadMoreError: null });
       const cached = tabCache.get(path);
       if (cached?.repo) {
         const repo = cached.repo;
