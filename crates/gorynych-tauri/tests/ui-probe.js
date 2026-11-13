@@ -30,12 +30,13 @@ window.__GORYNYCH_PROBE__ = async (initial) => {
   const keyboard = lanes?.rowsAfter ? await keyboardScenario(waitFor).catch((e) => ({ probeError: String(e?.stack ?? e) })) : null;
   const search = lanes?.rowsAfter ? await searchScenario(waitFor).catch((e) => ({ probeError: String(e?.stack ?? e) })) : null;
   const main = graph && fullFilePref === null ? await mainBranchScenario(invoke, waitFor).catch((e) => ({ probeError: String(e?.stack ?? e) })) : null;
+  const highlight = graph && fullFilePref === null && !lanes?.rowsAfter ? await highlightScenario(waitFor).catch((e) => ({ probeError: String(e?.stack ?? e) })) : null;
   const editor = graph && fullFilePref === null ? await editorScenario(invoke, waitFor, sleep).catch((e) => ({ probeError: String(e?.stack ?? e) })) : null;
   // Выбор главных веток из прошлого запуска (второй запуск — из SQLite)
   const mainPref = localStorage.getItem(`graph.mainBranches.v1:${await invoke('repo_get_last')}`);
   // Запись уходит в базу пачкой через 400 мс
   await sleep(1000);
-  const report = { ...initial, graph, seeded, fullFilePref, editor, stash, main, mainPref, lanes, keyboard, search, errors: [...(window.__gorynychErrors || [])], text: graph ? '' : text().slice(0, 3000) };
+  const report = { ...initial, graph, seeded, fullFilePref, editor, stash, main, mainPref, lanes, keyboard, search, highlight, errors: [...(window.__gorynychErrors || [])], text: graph ? '' : text().slice(0, 3000) };
   await invoke('frontend_ready', { report: JSON.stringify(report) });
 };
 
@@ -277,6 +278,33 @@ async function searchScenario(waitFor) {
   window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }));
   out.closed = Boolean(await waitFor(() => !document.querySelector('[data-testid="graph-match-ruler"]'), 3000));
   return out;
+}
+
+// Подсветка ветки (этап 6): наведение на метку main дольше 300 мс подсвечивает её историю (цепочку первых родителей),
+// остальные узлы — 0.35; уход мыши снимает подсветку. React ловит наведение по mouseover/mouseout
+async function highlightScenario(waitFor) {
+  const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+  const svg = () => document.querySelector('[data-testid="graph-svg"]');
+  const label = [...document.querySelectorAll('[data-ref-name]')].find((el) => el.textContent === 'main')?.parentElement;
+  if (!label) return { skipped: 'метки main нет' };
+  const opacity = (hash) => svg().querySelector(`g[data-hash="${hash}"]`)?.style.opacity ?? null;
+  const renders = () => window.__rowRenders ?? null;
+  // Для сравнения: столько же времени без наведения (фоновые обновления окна тоже перерисовывают строки)
+  const idleStart = renders();
+  await sleep(650);
+  const idle = idleStart === null ? null : renders() - idleStart;
+  const before = renders();
+  label.dispatchEvent(new MouseEvent('mouseover', { bubbles: true, relatedTarget: document.body }));
+  await sleep(150);
+  const early = svg().dataset.highlight ?? null;
+  const tip = await waitFor(() => svg().dataset.highlight, 2000);
+  await sleep(200);
+  const lit = { wip: opacity('WIP'), tip: opacity(tip) };
+  const during = renders();
+  label.dispatchEvent(new MouseEvent('mouseout', { bubbles: true, relatedTarget: document.body }));
+  const cleared = Boolean(await waitFor(() => !svg().dataset.highlight, 2000));
+  await sleep(200);
+  return { early, highlighted: Boolean(tip), lit, cleared, after: opacity('WIP'), rowRenders: before === null ? null : during - before, idleRenders: idle };
 }
 
 // Главные ветки: в режиме «авто» у main звезда; меню ветки (правый клик по метке) убирает её из главных и возвращает

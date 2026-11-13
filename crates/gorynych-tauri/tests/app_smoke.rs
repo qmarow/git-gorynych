@@ -175,6 +175,15 @@ fn real_interface_opens_repository_on_the_compatibility_layer() {
         json!([["auto", true, null], ["Убрать из главных веток", true, true, "[]"], ["Сделать главной веткой", true, true, "[\"main\"]"]]),
         "главные ветки: {report}"
     );
+    // Подсветка ветки main (этап 6): не раньше 300 мс; WIP и stash вне её истории — 0.35, сама история — 1; уход мыши — снято.
+    // Отрисовок строк при этом нет: проверено временным счётчиком в `Row` (в рабочей сборке его нет — `rowRenders` пуст)
+    let highlight = &report["highlight"];
+    assert_eq!(highlight["early"], Value::Null, "{report}");
+    assert_eq!(highlight["highlighted"], json!(true), "{report}");
+    assert_eq!(highlight["lit"], json!({ "wip": "0.35", "tip": "1" }), "{report}");
+    assert_eq!(highlight["cleared"], json!(true), "{report}");
+    assert_eq!(highlight["after"], json!("1"), "{report}");
+    assert_eq!(highlight["rowRenders"], Value::Null, "{report}");
     // Две дорожки помещаются: шаг прежний, хвостов нет
     assert_eq!(report["lanes"], json!({ "before": { "laneW": 28, "forceDots": false, "hidden": 0 }, "badge": null, "tails": 0 }), "дорожки: {report}");
 

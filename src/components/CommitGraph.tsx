@@ -1,8 +1,8 @@
-import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type DragEvent, type HTMLAttributes, type KeyboardEvent, type MouseEvent } from 'react';
+import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type DragEvent, type HTMLAttributes, type KeyboardEvent, type MouseEvent, type RefObject } from 'react';
 import { flushSync } from 'react-dom';
 import { Archive, Check, Copy, FileSearch, Pencil, SlidersHorizontal, Star } from 'lucide-react';
 import { RefKindIcon, RefsPopover, refKindLabel, useHoverPopover, type RefActions, type RefGroup, type RefItem } from './RefBadge.tsx';
-import { edgePath, fitMetrics, graphWidth, laneColor, laneX, layoutGraph, metricsFor, rowY, type GraphNode, type LayoutCommit, type Metrics } from '../lib/graphLayout.ts';
+import { edgePath, fitMetrics, graphWidth, laneColor, laneX, layoutGraph, metricsFor, rowY, type GraphEdge, type GraphNode, type GraphTail, type LayoutCommit, type Metrics } from '../lib/graphLayout.ts';
 import { StatusIcon, statusInfo } from './PipelineStatus.tsx';
 import { fullDate, initials, relativeTime, shortDate } from '../lib/format.ts';
 import { ResizeHandle, useStoredWidth } from './Resizer.tsx';
@@ -318,6 +318,9 @@ export default function CommitGraph({
   // Наведение не хранится в состоянии React: узел увеличивается классом is-hover прямо в SVG (`hoverNode`),
   // полоса строки подсвечивается через CSS (:hover), поэтому граф при движении мыши не перерисовывается
   const svgRef = useRef<SVGSVGElement>(null);
+  // Подсветка истории ветки при наведении на метку: слой SVG кладёт сюда свой сеттер (`GraphLayer`)
+  const highlightApi = useRef<((tip: string | null) => void) | null>(null);
+  const highlightBranch = useCallback((tip: string | null) => highlightApi.current?.(tip), []);
   const [intro, setIntro] = useState(true);
   const [copied, setCopied] = useState<string | null>(null);
   const [colDrag, setColDrag] = useState<{ id: string; over: string | null; after: boolean } | null>(null); // { id, over, after }
@@ -574,7 +577,6 @@ export default function CommitGraph({
   }
 
   const introDelay = (row: number) => `${Math.min(Math.max(row - first, 0), 30) * 20}ms`;
-  const nodeR = dotsEff ? gm.dotR : gm.nodeR;
 
   /* Перестановка колонок: перетаскиваем заголовок */
   const headerDrag = (id: string) => ({
@@ -748,6 +750,7 @@ export default function CommitGraph({
             currentBranch={currentBranch}
             mainOrder={mainOrder}
             marks={marks}
+            onHighlight={highlightBranch}
             refActions={stableRefActions}
             onDropRow={dropRow}
             onSelect={rowSelect}
@@ -757,120 +760,27 @@ export default function CommitGraph({
         ))}
 
         {has('graph') && (
-          <svg
-            ref={svgRef}
-            className="pointer-events-none absolute top-0 overflow-hidden"
-            style={{ left: offsets.graph, width, height }}
+          <GraphLayer
+            svgRef={svgRef}
+            highlightApi={highlightApi}
+            left={offsets.graph}
             width={width}
             height={height}
-            viewBox={`0 0 ${width} ${height}`}
-            preserveAspectRatio="xMinYMin meet"
-            data-testid="graph-svg"
-            aria-hidden="true"
-            data-width={Math.round(graphW_)}
-            data-hidden-lanes={gm.hiddenLanes ?? 0}
-            data-lane-w={Math.round(gm.laneW * 10) / 10}
-            data-force-dots={gm.forceDots ? '1' : undefined}
-            data-density={gv.density}
-            data-nodes={gv.nodeStyle}
-          >
-            <defs>
-              <clipPath id="avatar-clip" clipPathUnits="objectBoundingBox">
-                <circle cx="0.5" cy="0.5" r="0.5" />
-              </clipPath>
-              {/* Хвосты затухают на последних двух строках: история продолжается за пределами загруженной */}
-              <linearGradient id="graph-tail-fade" gradientUnits="userSpaceOnUse" x1="0" x2="0" y1={height - 2 * gm.rowH} y2={height}>
-                <stop offset="0" stopColor="#fff" stopOpacity="1" />
-                <stop offset="1" stopColor="#fff" stopOpacity="0" />
-              </linearGradient>
-              <mask id="graph-tail-mask" maskUnits="userSpaceOnUse" x="0" y="0" width={width} height={height}>
-                <rect x="0" y="0" width={width} height={height} fill="url(#graph-tail-fade)" />
-              </mask>
-            </defs>
-
-            {/* Линии от меток веток к узлам */}
-            {refsSide &&
-              visibleNodes
-                .filter((n) => n.refs.length > 0)
-                .map((n) => (
-                  <line
-                    key={`ref-${n.hash}`}
-                    x1={refsSide === 'left' ? 0 : laneX(n.lane, gm) + nodeR}
-                    x2={refsSide === 'left' ? laneX(n.lane, gm) - nodeR : graphW_}
-                    y1={rowY(n.row, gm)}
-                    y2={rowY(n.row, gm)}
-                    stroke={laneColor(n.lane)}
-                    strokeWidth={2}
-                    strokeOpacity={0.85}
-                  />
-                ))}
-
-            {visibleEdges.map((edge) => (
-              <path
-                key={edge.id}
-                d={edgePath(edge, gm)}
-                pathLength={edge.dashed ? undefined : 1}
-                className={`graph-edge ${intro && !edge.dashed ? 'is-intro' : ''}`}
-                style={intro ? { animationDelay: introDelay(edge.from.row) } : undefined}
-                fill="none"
-                stroke={laneColor(edge.travel)}
-                strokeOpacity={matchSet && !(matchSet.has(edge.from.hash) && matchSet.has(edge.to.hash)) ? 0.3 : 1}
-                strokeWidth={gv.density === 'compact' ? 2 : 2.5}
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeDasharray={edge.dashed ? '4 4' : undefined}
-              />
-            ))}
-
-            {visibleTails.length > 0 && (
-              <g mask="url(#graph-tail-mask)" data-testid="graph-tails">
-                {visibleTails.map((tail) => (
-                  <path
-                    key={tail.id}
-                    data-tail={tail.id}
-                    // Ребро до точки на нижнем крае, на дорожке хвоста: rowY(nodes.length - 0.5) = height
-                    d={edgePath({ from: tail.from, to: { lane: tail.travel, row: nodes.length - 0.5 }, travel: tail.travel }, gm)}
-                    pathLength={tail.dashed ? undefined : 1}
-                    className={`graph-edge ${intro && !tail.dashed ? 'is-intro' : ''}`}
-                    style={intro ? { animationDelay: introDelay(tail.from.row) } : undefined}
-                    fill="none"
-                    stroke={laneColor(tail.travel)}
-                    strokeOpacity={matchSet ? 0.3 : 1}
-                    strokeWidth={gv.density === 'compact' ? 2 : 2.5}
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeDasharray={tail.dashed ? '4 4' : undefined}
-                  />
-                ))}
-              </g>
-            )}
-
-            {/* Справа есть прижатые дорожки — край колонки чуть затенён, узлы поверх */}
-            {gm.fitted && (
-              <>
-                <defs>
-                  <linearGradient id="graph-edge-fade" x1="0" x2="1" y1="0" y2="0">
-                    <stop offset="0" stopColor="var(--gk-base)" stopOpacity="0" />
-                    <stop offset="1" stopColor="var(--gk-base)" stopOpacity="0.85" />
-                  </linearGradient>
-                </defs>
-                <rect data-testid="graph-edge-fade" x={gm.maxX! - gm.laneW} y={0} width={graphW_ - gm.maxX! + gm.laneW} height={height} fill="url(#graph-edge-fade)" />
-              </>
-            )}
-
-            {visibleNodes.map((node) => (
-              <Node
-                key={node.hash}
-                node={node}
-                m={gm}
-                dots={dotsEff}
-                dim={Boolean(matchSet) && !matchSet!.has(node.hash)}
-                selected={node.hash === selectedHash}
-                intro={intro}
-                delay={intro ? introDelay(node.row) : ''}
-              />
-            ))}
-          </svg>
+            graphW={graphW_}
+            gm={gm}
+            density={gv.density}
+            nodeStyle={gv.nodeStyle}
+            refsSide={refsSide}
+            nodes={nodes}
+            visibleNodes={visibleNodes}
+            visibleEdges={visibleEdges}
+            visibleTails={visibleTails}
+            first={first}
+            intro={intro}
+            matchSet={matchSet}
+            dots={dotsEff}
+            selectedHash={selectedHash}
+          />
         )}
       </div>
 
@@ -949,6 +859,176 @@ function MatchRuler({ rows, total, top, height, right, onPick }: { rows: number[
     </div>
   );
 }
+
+/* ---------------- Слой графа (SVG) ---------------- */
+
+interface GraphLayerProps {
+  svgRef: RefObject<SVGSVGElement | null>;
+  /** Сюда слой кладёт функцию подсветки ветки: вызов меняет только его состояние, строки таблицы не перерисовываются */
+  highlightApi: { current: ((tip: string | null) => void) | null };
+  left: number;
+  width: number;
+  height: number;
+  graphW: number;
+  gm: Metrics;
+  density: string;
+  nodeStyle: string;
+  refsSide: 'left' | 'right' | null;
+  nodes: GraphItem[];
+  visibleNodes: GraphItem[];
+  visibleEdges: GraphEdge<GraphRow>[];
+  visibleTails: GraphTail<GraphRow>[];
+  first: number;
+  intro: boolean;
+  matchSet: Set<string> | null;
+  dots: boolean;
+  selectedHash: string | null;
+}
+
+/**
+ * Узлы, рёбра и хвосты графа. Подсветка истории ветки (наведение на метку, `highlightApi`) — состояние только этого слоя:
+ * цепочка первых родителей от вершины видна как есть, остальные узлы и рёбра приглушены до 0.35.
+ */
+const GraphLayer = memo(function GraphLayer({ svgRef, highlightApi, left, width, height, graphW, gm, density, nodeStyle, refsSide, nodes, visibleNodes, visibleEdges, visibleTails, first, intro, matchSet, dots, selectedHash }: GraphLayerProps) {
+  const [tip, setTip] = useState<string | null>(null);
+  useEffect(() => {
+    highlightApi.current = setTip;
+    return () => {
+      highlightApi.current = null;
+    };
+  }, [highlightApi]);
+  const byHash = useMemo(() => new Map(nodes.map((n) => [n.hash, n])), [nodes]);
+  // История ветки: от вершины по первым родителям, пока коммиты загружены
+  const chain = useMemo(() => {
+    if (tip === null || !byHash.has(tip)) return null;
+    const out = new Set<string>();
+    for (let n = byHash.get(tip); n && !out.has(n.hash); n = byHash.get(n.parents[0])) out.add(n.hash);
+    return out;
+  }, [tip, byHash]);
+  // Ребро (или хвост) в истории ветки — это ребро к первому родителю коммита цепочки
+  const edgeOpacity = (from: GraphItem, to: string, dimmed: boolean | null) =>
+    chain ? (chain.has(from.hash) && from.parents[0] === to ? 1 : 0.35) : dimmed ? 0.3 : 1;
+  const introDelay = (row: number) => `${Math.min(Math.max(row - first, 0), 30) * 20}ms`;
+  const nodeR = dots ? gm.dotR : gm.nodeR;
+  return (
+    <svg
+      ref={svgRef}
+      className="pointer-events-none absolute top-0 overflow-hidden"
+      style={{ left, width, height }}
+      width={width}
+      height={height}
+      viewBox={`0 0 ${width} ${height}`}
+      preserveAspectRatio="xMinYMin meet"
+      data-testid="graph-svg"
+      aria-hidden="true"
+      data-width={Math.round(graphW)}
+      data-highlight={tip ?? undefined}
+      data-hidden-lanes={gm.hiddenLanes ?? 0}
+      data-lane-w={Math.round(gm.laneW * 10) / 10}
+      data-force-dots={gm.forceDots ? '1' : undefined}
+      data-density={density}
+      data-nodes={nodeStyle}
+    >
+      <defs>
+        <clipPath id="avatar-clip" clipPathUnits="objectBoundingBox">
+          <circle cx="0.5" cy="0.5" r="0.5" />
+        </clipPath>
+        {/* Хвосты затухают на последних двух строках: история продолжается за пределами загруженной */}
+        <linearGradient id="graph-tail-fade" gradientUnits="userSpaceOnUse" x1="0" x2="0" y1={height - 2 * gm.rowH} y2={height}>
+          <stop offset="0" stopColor="#fff" stopOpacity="1" />
+          <stop offset="1" stopColor="#fff" stopOpacity="0" />
+        </linearGradient>
+        <mask id="graph-tail-mask" maskUnits="userSpaceOnUse" x="0" y="0" width={width} height={height}>
+          <rect x="0" y="0" width={width} height={height} fill="url(#graph-tail-fade)" />
+        </mask>
+      </defs>
+
+      {/* Линии от меток веток к узлам */}
+      {refsSide &&
+        visibleNodes
+          .filter((n) => n.refs.length > 0)
+          .map((n) => (
+            <line
+              key={`ref-${n.hash}`}
+              x1={refsSide === 'left' ? 0 : laneX(n.lane, gm) + nodeR}
+              x2={refsSide === 'left' ? laneX(n.lane, gm) - nodeR : graphW}
+              y1={rowY(n.row, gm)}
+              y2={rowY(n.row, gm)}
+              stroke={laneColor(n.lane)}
+              strokeWidth={2}
+              strokeOpacity={0.85}
+            />
+          ))}
+
+      {visibleEdges.map((edge) => (
+        <path
+          key={edge.id}
+          d={edgePath(edge, gm)}
+          pathLength={edge.dashed ? undefined : 1}
+          className={`graph-edge ${intro && !edge.dashed ? 'is-intro' : ''}`}
+          style={intro ? { animationDelay: introDelay(edge.from.row) } : undefined}
+          fill="none"
+          stroke={laneColor(edge.travel)}
+          strokeOpacity={edgeOpacity(edge.from, edge.to.hash, matchSet && !(matchSet.has(edge.from.hash) && matchSet.has(edge.to.hash)))}
+          strokeWidth={density === 'compact' ? 2 : 2.5}
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          strokeDasharray={edge.dashed ? '4 4' : undefined}
+        />
+      ))}
+
+      {visibleTails.length > 0 && (
+        <g mask="url(#graph-tail-mask)" data-testid="graph-tails">
+          {visibleTails.map((tail) => (
+            <path
+              key={tail.id}
+              data-tail={tail.id}
+              // Ребро до точки на нижнем крае, на дорожке хвоста: rowY(nodes.length - 0.5) = height
+              d={edgePath({ from: tail.from, to: { lane: tail.travel, row: nodes.length - 0.5 }, travel: tail.travel }, gm)}
+              pathLength={tail.dashed ? undefined : 1}
+              className={`graph-edge ${intro && !tail.dashed ? 'is-intro' : ''}`}
+              style={intro ? { animationDelay: introDelay(tail.from.row) } : undefined}
+              fill="none"
+              stroke={laneColor(tail.travel)}
+              strokeOpacity={edgeOpacity(tail.from, tail.id.slice(tail.id.indexOf('->') + 2), Boolean(matchSet))}
+              strokeWidth={density === 'compact' ? 2 : 2.5}
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeDasharray={tail.dashed ? '4 4' : undefined}
+            />
+          ))}
+        </g>
+      )}
+
+      {/* Справа есть прижатые дорожки — край колонки чуть затенён, узлы поверх */}
+      {gm.fitted && (
+        <>
+          <defs>
+            <linearGradient id="graph-edge-fade" x1="0" x2="1" y1="0" y2="0">
+              <stop offset="0" stopColor="var(--gk-base)" stopOpacity="0" />
+              <stop offset="1" stopColor="var(--gk-base)" stopOpacity="0.85" />
+            </linearGradient>
+          </defs>
+          <rect data-testid="graph-edge-fade" x={gm.maxX! - gm.laneW} y={0} width={graphW - gm.maxX! + gm.laneW} height={height} fill="url(#graph-edge-fade)" />
+        </>
+      )}
+
+      {visibleNodes.map((node) => (
+        <Node
+          key={node.hash}
+          node={node}
+          m={gm}
+          dots={dots}
+          dim={Boolean(matchSet) && !matchSet!.has(node.hash)}
+          faded={chain !== null && !chain.has(node.hash)}
+          selected={node.hash === selectedHash}
+          intro={intro}
+          delay={intro ? introDelay(node.row) : ''}
+        />
+      ))}
+    </svg>
+  );
+});
 
 /* ---------------- Строка ---------------- */
 
@@ -1086,6 +1166,7 @@ const Row = memo(function Row({
   currentBranch,
   mainOrder,
   marks,
+  onHighlight,
   refActions,
 }: {
   node: GraphItem;
@@ -1121,6 +1202,7 @@ const Row = memo(function Row({
   currentBranch: string | null | undefined;
   mainOrder: MainOrder;
   marks: readonly string[];
+  onHighlight: (tip: string | null) => void;
   refActions: RefActions | null | undefined;
 }) {
   const color = laneColor(node.lane);
@@ -1161,6 +1243,7 @@ const Row = memo(function Row({
               connector={refsSide === 'left'}
               currentBranch={currentBranch}
               main={mainOrder}
+              onHighlight={(on) => onHighlight(on ? node.hash : null)}
               actions={refActions}
               onDragStart={(e, g) => {
                 e.stopPropagation();
@@ -1387,10 +1470,21 @@ interface RefLabelsProps {
   compact?: boolean;
   connector?: boolean;
   main?: MainOrder;
+  /** Наведение на метку дольше 300 мс — подсветить историю ветки; уход — снять */
+  onHighlight?: (on: boolean) => void;
 }
 
-function RefLabels({ refs, color, onDragStart, currentBranch, actions, compact = false, connector = true, main = NO_MAIN }: RefLabelsProps) {
+function RefLabels({ refs, color, onDragStart, currentBranch, actions, compact = false, connector = true, main = NO_MAIN, onHighlight }: RefLabelsProps) {
   const pop = useHoverPopover();
+  const highlightTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const highlightOn = useRef(false);
+  const stopHighlight = () => {
+    if (highlightTimer.current) clearTimeout(highlightTimer.current);
+    highlightTimer.current = null;
+    if (highlightOn.current) onHighlight?.(false);
+    highlightOn.current = false;
+  };
+  useEffect(() => stopHighlight, []); // eslint-disable-line react-hooks/exhaustive-deps
   const [expanded, setExpanded] = useState(false);
   const badgeRef = useRef<HTMLSpanElement>(null);
   const groups = groupRefs(refs, main);
@@ -1427,8 +1521,18 @@ function RefLabels({ refs, color, onDragStart, currentBranch, actions, compact =
         onMouseEnter={(e) => {
           const label = e.currentTarget.querySelector('[data-ref-name]');
           setExpanded(Boolean(label && label.scrollWidth > label.clientWidth + 1));
+          if (onHighlight && !first.tag) {
+            stopHighlight();
+            highlightTimer.current = setTimeout(() => {
+              highlightOn.current = true;
+              onHighlight(true);
+            }, 300);
+          }
         }}
-        onMouseLeave={() => setExpanded(false)}
+        onMouseLeave={() => {
+          setExpanded(false);
+          stopHighlight();
+        }}
         onDoubleClick={(e) => {
           // Двойной клик по метке — checkout именно этой ветки (remote — создать локальную и следить)
           if (first.tag || !actions?.checkout) return;
@@ -1567,12 +1671,12 @@ function HeadPill({ detached = false, compact = false }: { detached?: boolean; c
 }
 
 // Увеличение при наведении (класс is-hover) ставит строка через DOM по data-hash — см. `hoverNode` в CommitGraph
-const Node = memo(function Node({ node, m, dots, selected, dim, intro, delay }: { node: GraphItem; m: Metrics; dots: boolean; selected: boolean; dim: boolean; intro: boolean; delay: string }) {
+const Node = memo(function Node({ node, m, dots, selected, dim, faded = false, intro, delay }: { node: GraphItem; m: Metrics; dots: boolean; selected: boolean; dim: boolean; faded?: boolean; intro: boolean; delay: string }) {
   const x = laneX(node.lane, m);
   const y = rowY(node.row, m);
   const color = laneColor(node.lane);
   const cls = `graph-node ${intro ? 'is-intro' : ''}`;
-  const style = useMemo(() => ({ ...(intro ? { animationDelay: delay } : null), opacity: dim && !selected ? 0.3 : 1, transition: 'opacity 150ms' }), [intro, delay, dim, selected]);
+  const style = useMemo(() => ({ ...(intro ? { animationDelay: delay } : null), opacity: faded ? 0.35 : dim && !selected ? 0.3 : 1, transition: 'opacity 150ms' }), [intro, delay, dim, faded, selected]);
 
   // Stash — пунктирный квадрат с «коробкой» внутри (как в GitKraken)
   if (node.stash) {
