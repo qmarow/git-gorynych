@@ -2871,3 +2871,7 @@ lanes-hidden-stretch-column = Hidden lanes: { $a0 }. Widen the column or double-
 
 loading-history = Loading history…
 load-more-history = Load more
+
+## Граф: клавиатура и доступность (этап 6)
+
+commit-graph-table = Commit graph

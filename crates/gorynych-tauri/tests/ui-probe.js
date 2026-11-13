@@ -26,13 +26,15 @@ window.__GORYNYCH_PROBE__ = async (initial) => {
   // Stash — пока в центре граф, а не окно изменений; потом выбор возвращается на WIP
   const stash = graph && fullFilePref === null ? await stashScenario(waitFor).catch((e) => ({ probeError: String(e?.stack ?? e) })) : null;
   const lanes = graph && fullFilePref === null ? await lanesScenario(waitFor).catch((e) => ({ probeError: String(e?.stack ?? e) })) : null;
+  // Клавиатура — на длинной истории (там, где была догрузка)
+  const keyboard = lanes?.rowsAfter ? await keyboardScenario(waitFor).catch((e) => ({ probeError: String(e?.stack ?? e) })) : null;
   const main = graph && fullFilePref === null ? await mainBranchScenario(invoke, waitFor).catch((e) => ({ probeError: String(e?.stack ?? e) })) : null;
   const editor = graph && fullFilePref === null ? await editorScenario(invoke, waitFor, sleep).catch((e) => ({ probeError: String(e?.stack ?? e) })) : null;
   // Выбор главных веток из прошлого запуска (второй запуск — из SQLite)
   const mainPref = localStorage.getItem(`graph.mainBranches.v1:${await invoke('repo_get_last')}`);
   // Запись уходит в базу пачкой через 400 мс
   await sleep(1000);
-  const report = { ...initial, graph, seeded, fullFilePref, editor, stash, main, mainPref, lanes, errors: [...(window.__gorynychErrors || [])], text: graph ? '' : text().slice(0, 3000) };
+  const report = { ...initial, graph, seeded, fullFilePref, editor, stash, main, mainPref, lanes, keyboard, errors: [...(window.__gorynychErrors || [])], text: graph ? '' : text().slice(0, 3000) };
   await invoke('frontend_ready', { report: JSON.stringify(report) });
 };
 
@@ -134,6 +136,98 @@ async function lanesScenario(waitFor) {
   out.branchShown = Boolean(await waitFor(() => (document.body.innerText || '').includes('после-догрузки'), 10000));
   await new Promise((r) => setTimeout(r, 300));
   out.rowsAfterReload = rows();
+  return out;
+}
+
+// Клавиатура графа (этап 6): зажатая стрелка — строка всегда видна сразу (без плавной прокрутки), файлы коммита грузятся
+// только после остановки; Home/End/PageDown, ← к родителю, → к потомку, Enter, Shift+F10; в поле ввода клавиши не перехватываются
+async function keyboardScenario(waitFor) {
+  const frame = () => new Promise((r) => requestAnimationFrame(() => r()));
+  const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+  const grid = document.querySelector('[role="grid"]');
+  const key = (k, extra = {}, target = grid) => target.dispatchEvent(new KeyboardEvent('keydown', { key: k, bubbles: true, cancelable: true, ...extra }));
+  const selectedId = () => grid.getAttribute('aria-activedescendant');
+  const rowOf = () => Number(selectedId()?.replace('graph-row-', '') ?? -1);
+  const messageOf = () => document.getElementById(selectedId())?.querySelector('[data-col="message"]')?.textContent ?? null;
+  const fullyVisible = () => {
+    const row = document.getElementById(selectedId());
+    if (!row) return false;
+    const r = row.getBoundingClientRect();
+    const g = grid.getBoundingClientRect();
+    return r.top >= g.top + 30 - 0.5 && r.bottom <= g.bottom + 0.5;
+  };
+  const out = {};
+  grid.focus();
+  key('Home');
+  await waitFor(() => rowOf() === 0, 3000);
+  out.home = rowOf();
+  await sleep(300);
+  // Зажатая стрелка: 40 строк по 15 мс, после каждой — кадр; файлы коммитов считаем
+  const repoApi = window.api.repo;
+  const realFiles = repoApi.commitFiles;
+  let fileCalls = 0;
+  repoApi.commitFiles = (...args) => {
+    fileCalls++;
+    return realFiles(...args);
+  };
+  let hidden = 0;
+  for (let i = 0; i < 40; i++) {
+    key('ArrowDown');
+    await frame();
+    if (!fullyVisible()) hidden++;
+    await sleep(15);
+  }
+  out.afterArrows = rowOf();
+  out.hiddenDuringArrows = hidden;
+  out.filesDuringArrows = fileCalls;
+  await sleep(400);
+  out.filesAfterStop = fileCalls;
+  repoApi.commitFiles = realFiles;
+  // PageDown — на видимую высоту без одной строки
+  const before = rowOf();
+  const page = Math.floor((grid.clientHeight - 30) / 34) - 1;
+  key('PageDown');
+  await waitFor(() => rowOf() !== before, 3000);
+  out.pageDown = rowOf() - before === page;
+  key('End');
+  await waitFor(() => rowOf() === Number(grid.getAttribute('aria-rowcount')) - 2, 3000);
+  out.end = [rowOf(), Number(grid.getAttribute('aria-rowcount')) - 2, fullyVisible()];
+  // Верхняя строка — «ветка 59»: её родитель — «main 2036», ближайший потомок того — «main 2037»
+  key('Home');
+  await waitFor(() => rowOf() === 0, 3000);
+  out.top = messageOf();
+  key('ArrowLeft');
+  await waitFor(() => rowOf() !== 0, 3000);
+  out.parent = messageOf();
+  key('ArrowRight');
+  await waitFor(() => messageOf() !== out.parent, 3000);
+  out.child = messageOf();
+  // Enter = двойной клик: на коммите без веток — окно «Переключиться…»; Esc закрывает
+  const overlays = () => document.querySelectorAll('.fixed.inset-0').length;
+  const base = overlays();
+  key('Enter');
+  out.enter = Boolean(await waitFor(() => overlays() > base, 3000));
+  window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }));
+  await waitFor(() => overlays() === base, 3000);
+  // Shift+F10 — меню строки (шапка меню коммита)
+  key('F10', { shiftKey: true });
+  out.menu = Boolean(await waitFor(() => document.querySelector('[data-testid="menu-header-copy"]'), 3000));
+  window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }));
+  document.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
+  await waitFor(() => !document.querySelector('[data-testid="menu-header-copy"]'), 3000);
+  // Поле ввода внутри графа (поиск ветки в меню вида): End не двигает выбор
+  const header = document.querySelector('[data-testid="graph-header"]');
+  header.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true, clientX: 200, clientY: 10 }));
+  const add = await waitFor(() => [...document.querySelectorAll('button')].find((b) => b.textContent.includes('Добавить ветку')), 3000);
+  add?.click();
+  const input = await waitFor(() => document.querySelector('[data-testid="main-branches-menu"] input'), 3000);
+  const rowBefore = rowOf();
+  if (input) key('End', {}, input);
+  await sleep(200);
+  out.inputIgnored = Boolean(input) && rowOf() === rowBefore;
+  if (input) key('Escape', {}, input);
+  window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }));
+  out.roles = [grid.getAttribute('role'), document.getElementById(selectedId())?.getAttribute('role'), document.getElementById(selectedId())?.getAttribute('aria-selected'), document.querySelector('[data-testid="graph-svg"]')?.getAttribute('aria-hidden'), document.querySelectorAll(`#${selectedId()} [role="gridcell"]`).length > 0];
   return out;
 }
 

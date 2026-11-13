@@ -2497,19 +2497,23 @@ export default function App() {
     : (allCommits.find((c) => c.hash === selectedHash && !c.stash) as SelectedEntry | undefined) ?? null;
   const selectedKey = selected ? selected.key ?? selected.hash : null;
 
-  // Файлы выбранного коммита или stash подгружаем лениво
+  // Файлы выбранного коммита или stash подгружаем лениво — через 100 мс после выбора: зажатая стрелка в графе не шлёт
+  // запрос на каждую строку, файлы приходят, когда выбор остановился
   useEffect(() => {
     if (!repo || !selected || selected.wip || filesByHash[selectedKey!]) return undefined;
     let cancelled = false;
-    const request = selected.isStash
-      ? api.repo.stashDetails(repo!.path, selected.hash)
-      : api.repo.commitFiles(repo!.path, selected.hash, selected.parents[0]);
-    request.then((res) => {
-      if (cancelled) return;
-      setFilesByHash((m) => ({ ...m, [selectedKey!]: res.ok ? res.data : { error: res.error.message } }));
-    });
+    const timer = setTimeout(() => {
+      const request = selected.isStash
+        ? api.repo.stashDetails(repo!.path, selected.hash)
+        : api.repo.commitFiles(repo!.path, selected.hash, selected.parents[0]);
+      request.then((res) => {
+        if (cancelled) return;
+        setFilesByHash((m) => ({ ...m, [selectedKey!]: res.ok ? res.data : { error: res.error.message } }));
+      });
+    }, 100);
     return () => {
       cancelled = true;
+      clearTimeout(timer);
     };
   }, [repo, selectedKey, filesByHash]); // eslint-disable-line react-hooks/exhaustive-deps
 

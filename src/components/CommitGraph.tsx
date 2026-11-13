@@ -158,6 +158,9 @@ function committedLine(node: GraphItem): string {
   return diff > 60_000 ? `\n${tr('committed-at', fullDate(node.commitDate))}` : '';
 }
 
+/** id строки в DOM: для aria-activedescendant и меню с клавиатуры */
+export const rowDomId = (row: number) => `graph-row-${row}`;
+
 /** Окно отрисовки для прокрутки `top`: первая и последняя строка с запасом OVERSCAN, округлённые наружу до VIEW_STEP */
 function windowFor(top: number, height: number, width: number, rowH: number) {
   const first = Math.max(0, Math.floor(top / rowH) - OVERSCAN);
@@ -351,14 +354,24 @@ export default function CommitGraph({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [focus, nodes]);
 
+  // Откуда пришёл выбор: с клавиатуры графа — прокрутка мгновенная и ровно до строки (зажатая стрелка не дёргает список),
+  // извне (поиск, боковая панель) — плавно, со сдвигом на треть экрана
+  const keyboardSelect = useRef(false);
   // Прокручиваем к выбранному коммиту, если он вне экрана
-  useEffect(() => {
+  useLayoutEffect(() => {
     const el = scrollRef.current;
     const row = selectedHash === null ? undefined : rowByHash.get(selectedHash);
+    const fromKeyboard = keyboardSelect.current;
+    keyboardSelect.current = false;
     if (!el || row === undefined) return;
     if (focus?.hash === selectedHash) return; // к нему уже едем по центру (focus)
     const top = row * m.rowH;
-    if (top < el.scrollTop || top + m.rowH > el.scrollTop + el.clientHeight - HEADER_HEIGHT) {
+    const visible = el.clientHeight - HEADER_HEIGHT;
+    if (top >= el.scrollTop && top + m.rowH <= el.scrollTop + visible) return;
+    if (fromKeyboard) {
+      el.scrollTop = top < el.scrollTop ? top : top + m.rowH - visible;
+      measureView(el);
+    } else {
       el.scrollTo({ top: Math.max(0, top - el.clientHeight / 3), behavior: 'smooth' });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -392,12 +405,78 @@ export default function CommitGraph({
   // Хвост к незагруженному родителю идёт до нижнего края графа: виден, если его узел не ниже окна
   const visibleTails = useMemo(() => tails.filter((t) => t.from.row <= last), [tails, last]);
 
+  // Контекстное меню выбранной строки с клавиатуры (Shift+F10, клавиша меню): у строки, а не там, где мышь
+  const menuFromKeyboard = useRef(false);
+  const openRowMenu = (node: GraphItem) => {
+    const el = document.getElementById(rowDomId(node.row));
+    const r = el?.getBoundingClientRect() ?? scrollRef.current!.getBoundingClientRect();
+    onContextMenu?.(node, r.left + Math.min(240, r.width / 3), r.top + Math.min(r.height, m.rowH) / 2);
+  };
+
+  const selectedRow = selectedHash === null ? undefined : rowByHash.get(selectedHash);
+
   const onKeyDown = (e: KeyboardEvent<HTMLDivElement>) => {
-    if (e.key !== 'ArrowDown' && e.key !== 'ArrowUp') return;
-    e.preventDefault();
+    // Поле ввода внутри графа (меню вида) — его клавиши не трогаем
+    const target = e.target as HTMLElement;
+    if (target.closest('input, textarea, select, [contenteditable="true"], [role="menu"]')) return;
+    if (e.ctrlKey || e.altKey || e.metaKey) return;
     const index = selectedHash === null ? -1 : rowByHash.get(selectedHash) ?? -1;
-    const next = nodes[Math.min(nodes.length - 1, Math.max(0, index + (e.key === 'ArrowDown' ? 1 : -1)))];
-    if (next) onSelect(next.hash);
+    const current = index === -1 ? null : nodes[index];
+    const go = (row: number) => {
+      const next = nodes[Math.min(nodes.length - 1, Math.max(0, row))];
+      if (!next || next.hash === selectedHash) return;
+      keyboardSelect.current = true;
+      onSelect(next.hash);
+    };
+    const page = Math.max(1, Math.floor((scrollRef.current!.clientHeight - HEADER_HEIGHT) / m.rowH) - 1);
+    const key = e.shiftKey ? (e.key === 'F10' ? 'menu' : '') : e.key;
+    switch (key) {
+      case 'ArrowDown':
+        go(index + 1);
+        break;
+      case 'ArrowUp':
+        go(index === -1 ? 0 : index - 1);
+        break;
+      case 'PageDown':
+        go(index + page);
+        break;
+      case 'PageUp':
+        go(index === -1 ? 0 : index - page);
+        break;
+      case 'Home':
+        go(0);
+        break;
+      case 'End':
+        go(nodes.length - 1);
+        break;
+      case 'Enter':
+        if (current) onActivate?.(current);
+        break;
+      case 'ArrowLeft': {
+        // К первому родителю
+        const parent = current?.parents[0];
+        const row = parent === undefined ? undefined : rowByHash.get(parent);
+        if (row !== undefined) go(row);
+        break;
+      }
+      case 'ArrowRight': {
+        // К ближайшему потомку: ребро, которое приходит в выбранный коммит, с самой нижней строки
+        let child = -1;
+        if (current) for (const edge of edges) if (edge.to.hash === current.hash && edge.from.row > child) child = edge.from.row;
+        if (child !== -1) go(child);
+        break;
+      }
+      case 'ContextMenu':
+      case 'menu':
+        if (!current) break;
+        menuFromKeyboard.current = true;
+        setTimeout(() => (menuFromKeyboard.current = false), 500);
+        openRowMenu(current);
+        break;
+      default:
+        return;
+    }
+    e.preventDefault();
   };
 
   // Двойной клик по разделителю: ширина под содержимое колонки (граф — снова авто)
@@ -519,14 +598,26 @@ export default function CommitGraph({
     <div
       ref={scrollRef}
       tabIndex={0}
+      role="grid"
+      aria-label={tr('commit-graph-table')}
+      aria-rowcount={nodes.length + 1}
+      aria-activedescendant={selectedRow === undefined ? undefined : rowDomId(selectedRow)}
       onKeyDown={onKeyDown}
+      // Клавиша меню и Shift+F10 сами шлют contextmenu фокусу: меню строки уже открыто из onKeyDown
+      onContextMenu={(e) => {
+        if (!menuFromKeyboard.current) return;
+        menuFromKeyboard.current = false;
+        e.preventDefault();
+      }}
       onScroll={(e) => measureView(e.currentTarget)}
-      className="relative min-h-0 flex-1 overflow-auto bg-gk-bg outline-none"
+      className="relative min-h-0 flex-1 overflow-auto bg-gk-bg outline-none focus-visible:outline focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-gk-blue/70"
     >
       {/* Заголовки колонок. Правый клик — настройка вида */}
       <div
         style={{ height: HEADER_HEIGHT }}
         data-testid="graph-header"
+        role="row"
+        aria-rowindex={1}
         onContextMenu={(e) => {
           e.preventDefault();
           openMenuAt(e.clientX, e.clientY);
@@ -657,6 +748,7 @@ export default function CommitGraph({
             viewBox={`0 0 ${width} ${height}`}
             preserveAspectRatio="xMinYMin meet"
             data-testid="graph-svg"
+            aria-hidden="true"
             data-width={Math.round(graphW_)}
             data-hidden-lanes={gm.hiddenLanes ?? 0}
             data-lane-w={Math.round(gm.laneW * 10) / 10}
@@ -844,6 +936,7 @@ function HeaderCell({ id, width, last, dropSide, dragging, cellRef, children, ..
     <div
       {...drag}
       ref={cellRef}
+      role="columnheader"
       data-col={id}
       style={{ width }}
       className={`relative flex h-full shrink-0 cursor-grab items-center border-r border-gk-border/60 px-3 last-of-type:border-r-0 active:cursor-grabbing ${
@@ -979,6 +1072,7 @@ const Row = memo(function Row({
         return (
           <div
             key={id}
+            role="gridcell"
             style={{ width: cols.refs }}
             className={`@container relative flex shrink-0 items-center gap-1 overflow-hidden hover:overflow-visible ${
               refsSide === 'left' ? 'justify-end pl-2' : 'justify-start pr-2'
@@ -1008,11 +1102,12 @@ const Row = memo(function Row({
           </div>
         );
       case 'graph':
-        return <div key={id} style={{ width: cols.graph }} className="shrink-0" />;
+        return <div key={id} role="gridcell" style={{ width: cols.graph }} className="shrink-0" />;
       case 'message':
         return (
           <div
             key={id}
+            role="gridcell"
             data-col="message"
             style={{ borderColor: color, width: cols.message, height: m.rowH - 8 }}
             className="relative flex shrink-0 items-center overflow-hidden border-l-[3px] px-3"
@@ -1071,7 +1166,7 @@ const Row = memo(function Row({
         );
       case 'sha':
         return (
-          <div key={id} data-col="sha" style={{ width: cols.sha }} className="relative flex shrink-0 items-center overflow-hidden px-2.5">
+          <div key={id} role="gridcell" data-col="sha" style={{ width: cols.sha }} className="relative flex shrink-0 items-center overflow-hidden px-2.5">
             {node.stash ? (
               <span className="truncate px-1 font-mono text-[12px] text-gk-dim">{node.stash.id}</span>
             ) : !node.wip && (
@@ -1096,6 +1191,7 @@ const Row = memo(function Row({
         return (
           <div
             key={id}
+            role="gridcell"
             data-col="author"
             style={{ width: cols.author }}
             data-tip={node.wip || node.stash ? undefined : `${node.author.name} <${node.author.email}>`}
@@ -1108,6 +1204,7 @@ const Row = memo(function Row({
         return (
           <div
             key={id}
+            role="gridcell"
             data-col="date"
             style={{ width: cols.date }}
             data-tip={node.wip ? undefined : `${dateFormat === 'relative' ? fullDate(node.date) : `${fullDate(node.date)} · ${relativeTime(node.date)}`}${committedLine(node)}`}
@@ -1123,6 +1220,10 @@ const Row = memo(function Row({
 
   return (
     <div
+      id={rowDomId(node.row)}
+      role="row"
+      aria-rowindex={node.row + 2}
+      aria-selected={selected}
       onMouseDown={(e) => e.button === 0 && onSelect(node, e)}
       onMouseEnter={() => onHoverNode(node.hash, true)}
       onMouseLeave={() => onHoverNode(node.hash, false)}

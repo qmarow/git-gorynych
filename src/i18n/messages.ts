@@ -471,6 +471,7 @@ export type MessageId =
   | 'commit-forbidden'
   | 'commit-form-settings'
   | 'commit-graph-branches-stash-conflicts'
+  | 'commit-graph-table'
   | 'commit-hash'
   | 'commit-in-message-field'
   | 'commit-is-forbidden-by-check'

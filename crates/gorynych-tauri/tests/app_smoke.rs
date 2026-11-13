@@ -270,6 +270,18 @@ fn long_history_shows_tails_and_squeezes_lanes() {
     // Новая ветка перечитывает граф с пределом 4000: список не сжался до 2000
     assert_eq!(lanes["branchShown"], json!(true), "{report}");
     assert_eq!(lanes["rowsAfterReload"], json!(2160), "{report}");
+    // Клавиатура (этап 6): 40 нажатий стрелки — выбранная строка видна после каждого кадра, файлы коммита запрошены один раз,
+    // после остановки; PageDown — на страницу, End — последняя загруженная, ← к первому родителю, → к ближайшему потомку,
+    // Enter — окно «Переключиться», Shift+F10 — меню строки; в поле ввода End не двигает выбор; роли таблицы на месте
+    assert_eq!(
+        report["keyboard"],
+        json!({
+            "home": 0, "afterArrows": 40, "hiddenDuringArrows": 0, "filesDuringArrows": 0, "filesAfterStop": 1, "pageDown": true,
+            "end": [2159, 2159, true], "top": "ветка 59", "parent": "main 2036", "child": "main 2037", "enter": true, "menu": true,
+            "inputIgnored": true, "roles": ["grid", "row", "true", "true", true]
+        }),
+        "клавиатура: {report}"
+    );
 }
 
 #[test]

@@ -2871,3 +2871,7 @@ lanes-hidden-stretch-column = Скрыто дорожек: { $a0 }. Растян
 
 loading-history = Загрузка истории…
 load-more-history = Загрузить ещё
+
+## Граф: клавиатура и доступность (этап 6)
+
+commit-graph-table = Граф коммитов
