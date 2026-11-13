@@ -1879,3 +1879,10 @@ view = Вид
 actions = Действия
 window = Окно
 help = Справка
+
+## gorynych-cicd/src/issues (задачи, новое в 2.0)
+
+issues-not-supported = Этот сервер так не умеет
+issues-disabled = В репозитории на { $a0 } нет задач: трекер выключен или его нет у сервера
+issues-disabled-hint = Включите задачи в настройках репозитория на сервере
+issues-not-found = Задача #{ $a0 } не найдена

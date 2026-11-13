@@ -32,8 +32,11 @@ fn string_list(value: &Value) -> Vec<String> {
 #[test]
 fn every_code_from_electron_is_in_the_enum() {
     let electron: BTreeSet<String> = string_list(&FIXTURE["codes"]).into_iter().collect();
-    let ours: BTreeSet<String> = ErrorCode::ALL.iter().map(|c| c.as_str().to_owned()).collect();
+    // Коды, которых в 1.x не было: новые функции 2.0
+    const NEW_IN_2X: &[&str] = &["ISSUES_DISABLED"];
+    let ours: BTreeSet<String> = ErrorCode::ALL.iter().map(|c| c.as_str().to_owned()).filter(|code| !NEW_IN_2X.contains(&code.as_str())).collect();
     assert_eq!(ours, electron);
+    assert!(NEW_IN_2X.iter().all(|code| !electron.contains(*code)), "новый код уже был в 1.x");
 }
 
 #[test]

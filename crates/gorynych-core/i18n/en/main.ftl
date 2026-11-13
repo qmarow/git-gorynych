@@ -1879,3 +1879,10 @@ view = View
 actions = Actions
 window = Window
 help = Help
+
+## gorynych-cicd/src/issues (задачи, новое в 2.0)
+
+issues-not-supported = This server can't do that
+issues-disabled = The repository on { $a0 } has no issues: the tracker is turned off or the server has none
+issues-disabled-hint = Turn on issues in the repository settings on the server
+issues-not-found = Issue #{ $a0 } not found

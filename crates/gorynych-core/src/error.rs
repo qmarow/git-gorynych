@@ -82,6 +82,8 @@ error_codes! {
     HostKey => "HOST_KEY",
     HunkStale => "HUNK_STALE",
     InvalidName => "INVALID_NAME",
+    // Новое в 2.0: трекер задач выключен в репозитории (или у сервера его нет).
+    IssuesDisabled => "ISSUES_DISABLED",
     JobExists => "JOB_EXISTS",
     KeygenFailed => "KEYGEN_FAILED",
     LocalChanges => "LOCAL_CHANGES",

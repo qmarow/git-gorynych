@@ -1,6 +1,7 @@
 //! Контракт типов для интерфейса: всё, что идёт через IPC, экспортируется в TypeScript с именами полей как в 1.x.
 
 use gorynych_cicd::detect_server::DetectedServer;
+use gorynych_cicd::issues;
 use gorynych_cicd::gitlab::*;
 use gorynych_cicd::models::*;
 use gorynych_cicd::runner_setup::{DockerStatus, LocalRunner};
@@ -67,10 +68,25 @@ fn everything_crossing_ipc_exports_to_typescript() {
         .register::<GlVariableRef>()
         .register::<GlScheduleInput>()
         .register::<GlScheduleAction>()
-        .register::<GlMergeRequestInput>();
+        .register::<GlMergeRequestInput>()
+        // Задачи (новое в 2.0)
+        .register::<issues::IssuesListResponse>()
+        .register::<issues::IssueDetail>()
+        .register::<issues::IssueMeta>()
+        .register::<issues::Issue>()
+        .register::<issues::IssueComment>()
+        .register::<issues::IssueLabel>()
+        .register::<issues::IssueQuery>()
+        .register::<issues::IssueInput>()
+        .register::<issues::IssuePatch>();
 
     let text = Typescript::default().export(&types, specta_serde::PhasesFormat).unwrap();
     for field in [
+        "commentsCount",
+        "timelineTruncated",
+        "closeReasons",
+        "clearMilestone",
+        "type: \"event\"",
         "canListPipelines",
         "canManageVariables",
         "localRunner",

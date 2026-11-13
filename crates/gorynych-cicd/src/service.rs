@@ -37,6 +37,7 @@ use tokio::sync::watch;
 
 use crate::gitlab::{GlProject, GlRemoteStatus};
 use crate::http::{Downloaded, HttpCtx};
+use crate::issues::{Issue, IssueComment, IssueDetail, IssueInput, IssueLabel, IssueMeta, IssuePatch, IssueProvider, IssueQuery, IssuesListResponse, issue_adapter};
 use crate::json::Json;
 use crate::models::*;
 use crate::providers::{CapsInput, CiCdProvider, Ctx, DetailData, RegistrationRequest, adapter};
@@ -1126,6 +1127,68 @@ impl CicdService {
             }
         }
         Ok(RunnerTagReport { available: true, reason: None, issues, labels, runners: Some(list.len() as u32), live: Some(live.len() as u32), provider: Some(provider.id().as_str().to_owned()) })
+    }
+
+    /* ---------- Задачи (новое в 2.0, `crate::issues`) ---------- */
+
+    /// Сервер репозитория и его адаптер задач.
+    async fn issues_context(&self, root: &Path, preferred: Option<&str>) -> Result<(&'static dyn CiCdProvider, &'static dyn IssueProvider, Ctx)> {
+        let (provider, ctx) = self.context(root, preferred).await?;
+        Ok((provider, issue_adapter(provider.id()), ctx))
+    }
+
+    /// Страница задач, возможности и адрес списка задач на сервере.
+    pub async fn issues_list(&self, root: &Path, query: &IssueQuery, preferred: Option<&str>) -> Result<IssuesListResponse> {
+        let (provider, issues, ctx) = self.issues_context(root, preferred).await?;
+        let list = issues.list(&ctx, query).await?;
+        Ok(IssuesListResponse { list, caps: issues.caps(&ctx), provider: provider.id().as_str().to_owned(), label: label_of(provider.id()).to_owned(), web_url: issues.web_url(&ctx) })
+    }
+
+    /// Задача с лентой комментариев и событий.
+    pub async fn issues_get(&self, root: &Path, number: u64, preferred: Option<&str>) -> Result<IssueDetail> {
+        let (_, issues, ctx) = self.issues_context(root, preferred).await?;
+        issues.get(&ctx, number).await
+    }
+
+    /// Метки, открытые вехи, участники, текущий пользователь и шаблоны.
+    pub async fn issues_meta(&self, root: &Path, preferred: Option<&str>) -> Result<IssueMeta> {
+        let (_, issues, ctx) = self.issues_context(root, preferred).await?;
+        issues.meta(&ctx).await
+    }
+
+    pub async fn issues_create(&self, root: &Path, input: &IssueInput, preferred: Option<&str>) -> Result<Issue> {
+        let (_, issues, ctx) = self.issues_context(root, preferred).await?;
+        issues.create(&ctx, input).await
+    }
+
+    pub async fn issues_update(&self, root: &Path, number: u64, patch: &IssuePatch, preferred: Option<&str>) -> Result<Issue> {
+        let (_, issues, ctx) = self.issues_context(root, preferred).await?;
+        issues.update(&ctx, number, patch).await
+    }
+
+    pub async fn issues_comment_add(&self, root: &Path, number: u64, body: &str, preferred: Option<&str>) -> Result<IssueComment> {
+        let (_, issues, ctx) = self.issues_context(root, preferred).await?;
+        issues.comment_add(&ctx, number, body).await
+    }
+
+    pub async fn issues_comment_update(&self, root: &Path, number: u64, id: &str, body: &str, preferred: Option<&str>) -> Result<IssueComment> {
+        let (_, issues, ctx) = self.issues_context(root, preferred).await?;
+        issues.comment_update(&ctx, number, id, body).await
+    }
+
+    pub async fn issues_comment_delete(&self, root: &Path, number: u64, id: &str, preferred: Option<&str>) -> Result<()> {
+        let (_, issues, ctx) = self.issues_context(root, preferred).await?;
+        issues.comment_delete(&ctx, number, id).await
+    }
+
+    pub async fn issues_delete(&self, root: &Path, number: u64, preferred: Option<&str>) -> Result<()> {
+        let (_, issues, ctx) = self.issues_context(root, preferred).await?;
+        issues.delete(&ctx, number).await
+    }
+
+    pub async fn issues_label_create(&self, root: &Path, name: &str, color: &str, preferred: Option<&str>) -> Result<IssueLabel> {
+        let (_, issues, ctx) = self.issues_context(root, preferred).await?;
+        issues.label_create(&ctx, name, color).await
     }
 }
 

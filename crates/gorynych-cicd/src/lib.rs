@@ -4,10 +4,12 @@
 //! - [`gitlab`] — API GitLab в форме `gitlab:*` (`gitlab.cjs`): этим каналом пользуются панель пайплайнов, переменные, расписания, CI Lint и MR.
 //! - [`providers`] — адаптеры на трейте [`providers::CiCdProvider`].
 //! - [`runner_setup`] — команды подключения раннера и локальный Docker-раннер.
+//! - [`issues`] — задачи сервера репозитория (новое в 2.0).
 
 pub mod detect_server;
 pub mod gitlab;
 pub mod http;
+pub mod issues;
 pub mod json;
 pub mod models;
 pub mod providers;
