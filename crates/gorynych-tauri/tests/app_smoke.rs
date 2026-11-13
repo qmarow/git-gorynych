@@ -184,6 +184,12 @@ fn real_interface_opens_repository_on_the_compatibility_layer() {
     assert_eq!(highlight["cleared"], json!(true), "{report}");
     assert_eq!(highlight["after"], json!("1"), "{report}");
     assert_eq!(highlight["rowRenders"], Value::Null, "{report}");
+    // Раздел «Показывать» (этап 6): «Метки тегов» прячут и возвращают тег, «Stash в графе» убирает строку stash
+    assert_eq!(
+        report["filters"],
+        json!({ "tagShown": true, "tagsOff": "false", "tagHidden": true, "tagsOn": "true", "tagBack": true, "stashBefore": true, "stashOff": "false", "stashHidden": true, "pref": false }),
+        "фильтры вида: {report}"
+    );
     // Две дорожки помещаются: шаг прежний, хвостов нет
     assert_eq!(report["lanes"], json!({ "before": { "laneW": 28, "forceDots": false, "hidden": 0 }, "badge": null, "tails": 0 }), "дорожки: {report}");
 
@@ -200,6 +206,7 @@ fn real_interface_opens_repository_on_the_compatibility_layer() {
     assert_eq!(again["report"]["seeded"], json!("сохранено"), "настройка вернулась из SQLite: {again}");
     assert_eq!(again["report"]["fullFilePref"], json!("1"), "выбор «Весь файл» вернулся из SQLite: {again}");
     assert_eq!(again["report"]["mainPref"], json!("[\"main\"]"), "главные ветки вернулись из SQLite: {again}");
+    assert_eq!(again["report"]["viewPref"], json!({ "showStash": false, "stashRow": false }), "«Stash в графе» вернулся из SQLite: {again}");
     assert_eq!(again["report"]["errors"], json!([]), "{again}");
 }
 

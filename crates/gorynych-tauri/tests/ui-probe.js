@@ -31,12 +31,17 @@ window.__GORYNYCH_PROBE__ = async (initial) => {
   const search = lanes?.rowsAfter ? await searchScenario(waitFor).catch((e) => ({ probeError: String(e?.stack ?? e) })) : null;
   const main = graph && fullFilePref === null ? await mainBranchScenario(invoke, waitFor).catch((e) => ({ probeError: String(e?.stack ?? e) })) : null;
   const highlight = graph && fullFilePref === null && !lanes?.rowsAfter ? await highlightScenario(waitFor).catch((e) => ({ probeError: String(e?.stack ?? e) })) : null;
+  // Фильтры вида — пока в центре граф (сценарий редактора оставляет окно изменений); «Stash в графе» остаётся выключенным
+  // до второго запуска
+  const filters = graph && fullFilePref === null && !lanes?.rowsAfter ? await filtersScenario(invoke, waitFor).catch((e) => ({ probeError: String(e?.stack ?? e) })) : null;
   const editor = graph && fullFilePref === null ? await editorScenario(invoke, waitFor, sleep).catch((e) => ({ probeError: String(e?.stack ?? e) })) : null;
+  // Второй запуск: выбор «Stash в графе» вернулся из SQLite — строки stash нет
+  const viewPref = { showStash: JSON.parse(localStorage.getItem('graph.view.v1') ?? 'null')?.showStash ?? null, stashRow: Boolean(document.querySelector('[data-testid="graph-stash"]')) };
   // Выбор главных веток из прошлого запуска (второй запуск — из SQLite)
   const mainPref = localStorage.getItem(`graph.mainBranches.v1:${await invoke('repo_get_last')}`);
   // Запись уходит в базу пачкой через 400 мс
   await sleep(1000);
-  const report = { ...initial, graph, seeded, fullFilePref, editor, stash, main, mainPref, lanes, keyboard, search, highlight, errors: [...(window.__gorynychErrors || [])], text: graph ? '' : text().slice(0, 3000) };
+  const report = { ...initial, graph, seeded, fullFilePref, editor, stash, main, mainPref, lanes, keyboard, search, highlight, filters, viewPref, errors: [...(window.__gorynychErrors || [])], text: graph ? '' : text().slice(0, 3000) };
   await invoke('frontend_ready', { report: JSON.stringify(report) });
 };
 
@@ -305,6 +310,38 @@ async function highlightScenario(waitFor) {
   const cleared = Boolean(await waitFor(() => !svg().dataset.highlight, 2000));
   await sleep(200);
   return { early, highlighted: Boolean(tip), lit, cleared, after: opacity('WIP'), rowRenders: before === null ? null : during - before, idleRenders: idle };
+}
+
+// Раздел «Показывать» меню вида (этап 6): тег на «Начало» виден в «+1» у метки main, «Метки тегов» его прячут и возвращают;
+// «Stash в графе» убирает строку stash и остаётся выключенным — второй запуск теста проверяет, что выбор вернулся из SQLite
+async function filtersScenario(invoke, waitFor) {
+  const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+  const dir = await invoke('repo_get_last');
+  const refsCell = () => [...document.querySelectorAll('[data-ref-name]')].find((el) => el.textContent === 'main')?.closest('[role="gridcell"]');
+  const plus = () => /\+1/.test(refsCell()?.textContent ?? '');
+  const hash = [...document.querySelectorAll('[data-testid="graph-svg"] g[data-hash]')].map((g) => g.dataset.hash).find((h) => h !== 'WIP' && !h.startsWith('stash:'));
+  await invoke('repo_action', { dir, action: { name: 'createTag', payload: { name: 'v-проба', hash } } });
+  const out = { tagShown: Boolean(await waitFor(plus, 10000)) };
+  const toggle = async (id) => {
+    const header = document.querySelector('[data-testid="graph-header"]');
+    header.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true, clientX: 200, clientY: 10 }));
+    const button = await waitFor(() => document.querySelector(`[data-testid="view-${id}"]`), 3000);
+    button.click();
+    await sleep(100);
+    const checked = document.querySelector(`[data-testid="view-${id}"]`)?.getAttribute('aria-checked');
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }));
+    await waitFor(() => !document.querySelector(`[data-testid="view-${id}"]`), 3000);
+    return checked;
+  };
+  out.tagsOff = await toggle('showTags');
+  out.tagHidden = Boolean(await waitFor(() => !plus(), 3000));
+  out.tagsOn = await toggle('showTags');
+  out.tagBack = Boolean(await waitFor(plus, 3000));
+  out.stashBefore = Boolean(document.querySelector('[data-testid="graph-stash"]'));
+  out.stashOff = await toggle('showStash');
+  out.stashHidden = Boolean(await waitFor(() => !document.querySelector('[data-testid="graph-stash"]'), 3000));
+  out.pref = JSON.parse(localStorage.getItem('graph.view.v1') ?? 'null')?.showStash ?? null;
+  return out;
 }
 
 // Главные ветки: в режиме «авто» у main звезда; меню ветки (правый клик по метке) убирает её из главных и возвращает

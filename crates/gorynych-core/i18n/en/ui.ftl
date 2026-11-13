@@ -2882,3 +2882,10 @@ only-matches = Only matches
 only-matches-on = Only matching commits are shown — click to bring back the whole graph
 only-matches-off = Show only matching commits, hide the rest
 go-to-match = Match: row { $a0 }
+
+## Граф: раздел «Показывать» меню вида (этап 6)
+
+view-show-section = Show
+remote-branch-labels = Remote branch labels
+tag-labels = Tag labels
+stash-in-graph = Stash in the graph

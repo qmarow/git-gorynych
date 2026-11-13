@@ -1,7 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, useState, type DragEvent, type ReactNode } from 'react';
 import { Check, GripVertical, Lock, Plus, RotateCcw, Sparkles, Star, X } from 'lucide-react';
 import { MAX_MAIN_BRANCHES, type MainBranches } from '../lib/mainBranches.ts';
-import { DATE_FORMAT_OPTIONS, DENSITY_OPTIONS, NODE_STYLE_OPTIONS, columnById, type Column, type GraphView, type GraphViewPatch, type ViewOption } from '../lib/graphView.ts';
+import { DATE_FORMAT_OPTIONS, DENSITY_OPTIONS, NODE_STYLE_OPTIONS, columnById, type Column, type GraphView, type GraphViewFlag, type GraphViewPatch, type ViewOption } from '../lib/graphView.ts';
 import { t, tj } from '../i18n/index.ts';
 
 /**
@@ -102,6 +102,28 @@ export default function GraphViewMenu({ x, y, view, onChange, onResetLayout, onC
       <Header>{t('graph-nodes')}</Header>
       <Segmented options={NODE_STYLE_OPTIONS} value={view.nodeStyle} onPick={(nodeStyle) => onChange({ nodeStyle })} />
 
+      <Separator />
+      <Header>{t('view-show-section')}</Header>
+      {SHOW_FLAGS.map(({ id, label }) => (
+        <button
+          key={id}
+          role="menuitemcheckbox"
+          aria-checked={view[id]}
+          data-testid={`view-${id}`}
+          onClick={() => onChange((v) => ({ [id]: !v[id] }))}
+          className="flex w-full items-center gap-2.5 px-3 py-[5px] text-left text-gk-text hover:bg-gk-hover"
+        >
+          <span
+            className={`flex h-4 w-4 shrink-0 items-center justify-center rounded border ${
+              view[id] ? 'border-gk-blue bg-gk-blue/80 text-white' : 'border-gk-border bg-gk-sink/20'
+            }`}
+          >
+            {view[id] && <Check size={11} strokeWidth={3} />}
+          </span>
+          <span className="flex-1 truncate">{t(label)}</span>
+        </button>
+      ))}
+
       {main && (
         <>
           <Separator />
@@ -122,6 +144,13 @@ export default function GraphViewMenu({ x, y, view, onChange, onResetLayout, onC
     </div>
   );
 }
+
+// Раздел «Показывать»: что скрывается из графа (сами коммиты остаются, кроме строк stash)
+const SHOW_FLAGS: readonly { id: GraphViewFlag; label: 'remote-branch-labels' | 'tag-labels' | 'stash-in-graph' }[] = [
+  { id: 'showRemote', label: 'remote-branch-labels' },
+  { id: 'showTags', label: 'tag-labels' },
+  { id: 'showStash', label: 'stash-in-graph' },
+];
 
 const Header = ({ children }: { children: ReactNode }) => (
   <div className="px-3 pb-1 pt-2 text-[10px] font-semibold uppercase tracking-wider text-gk-dim">{children}</div>

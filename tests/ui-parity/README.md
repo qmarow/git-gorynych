@@ -200,3 +200,15 @@ node tests/ui-parity/graph-fit.mjs $PWD
 ```powershell
 node tests/ui-parity/search-marks.mjs $PWD
 ```
+
+## Вид таблицы коммитов (этап 6.5)
+
+`graph-view.mjs` заменяет `i18n-graph-view.mjs` (тот читает `electron/i18n/en.json` и `translateKnown` и с перехода на Fluent не
+запускается): `normalizeView`, `moveColumn` и значения по умолчанию новой `graphView.ts` против копии до раздела «Показывать».
+
+```powershell
+$old = "$env:TEMP\gv-old"
+New-Item -ItemType Directory -Force "$old\lib" | Out-Null
+cmd /c "git show f423922:src/lib/graphView.ts > `"$old\lib\graphView.ts`""
+node tests/ui-parity/graph-view.mjs $old $PWD
+```

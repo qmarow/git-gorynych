@@ -122,6 +122,7 @@ import { gitBusy, syncStore, useSyncStore } from './state/syncStore.ts';
 import { ciStore, useCiStore } from './state/ciStore.ts';
 import { withStashes, type StashData } from './lib/graphStash.ts';
 import { MAX_MAIN_BRANCHES, useMainBranches } from './lib/mainBranches.ts';
+import { useGraphView } from './lib/graphView.ts';
 import type { RefDragPayload } from './lib/dnd.ts';
 import type { ActionOutput, ActionPayload, RepoActionName } from './state/repoActions.ts';
 import type { ApiError, ApiResult } from './platform/tauri.ts';
@@ -2466,9 +2467,12 @@ export default function App() {
   // Зависит только от коммитов, stash, HEAD и наличия изменений: правка файла (новый repo из `applyStatus`) граф не
   // пересчитывает — число файлов в строке WIP приходит отдельно (`wipCount`)
   const hasWip = (repo?.wipFiles.length ?? 0) > 0;
+  const [graphView] = useGraphView();
+  const showStash = graphView.showStash;
   const allCommits = useMemo((): GraphEntry[] => {
     if (!repo) return [];
-    const commits = withStashes(repo!.commits, repo!.stashes, (st) => describeStash(st).title);
+    // «Stash в графе» выключен в меню вида — строк stash нет (в боковой панели они остаются)
+    const commits = withStashes(repo!.commits, showStash ? repo!.stashes : null, (st) => describeStash(st).title);
     if (!hasWip) return commits as GraphEntry[];
     const wip = {
       hash: 'WIP',
@@ -2479,7 +2483,7 @@ export default function App() {
     };
     return [wip, ...commits] as GraphEntry[];
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [repo?.commits, repo?.stashes, repo?.headHash, hasWip]);
+  }, [repo?.commits, repo?.stashes, repo?.headHash, hasWip, showStash]);
 
   const commitsBySha = useMemo(() => new Map((repo?.commits ?? []).map((c) => [c.hash, c])), [repo?.commits]);
 

@@ -54,6 +54,23 @@ type MainOrder = ReadonlyMap<string, number>;
 const NO_MAIN: MainOrder = new Map();
 const NO_NAMES: readonly string[] = [];
 
+/** Какие метки видны (раздел «Показывать» меню вида): `r` — серверные ветки, `t` — теги, `-` — скрыты. */
+type RefFilter = string;
+const refFilterOf = (gv: { showRemote: boolean; showTags: boolean }): RefFilter => `${gv.showRemote ? 'r' : '-'}${gv.showTags ? 't' : '-'}`;
+// Отобранные метки — тот же массив, пока refs коммита и фильтр те же: кэш групп меток и memo строк не сбиваются
+const shownCache = new WeakMap<GraphRef[], Map<RefFilter, GraphRef[]>>();
+function shownRefs(refs: GraphRef[], filter: RefFilter): GraphRef[] {
+  if (filter === 'rt') return refs;
+  let byFilter = shownCache.get(refs);
+  if (!byFilter) shownCache.set(refs, (byFilter = new Map()));
+  let out = byFilter.get(filter);
+  if (!out) {
+    out = refs.filter((r) => (filter[0] === 'r' || r.type !== 'remote') && (filter[1] === 't' || r.type !== 'tag'));
+    byFilter.set(filter, out);
+  }
+  return out;
+}
+
 interface CommitGraphProps {
   commits: GraphRow[];
   introKey: string;
@@ -119,6 +136,7 @@ const monoFont = () => getComputedStyle(document.documentElement).getPropertyVal
 
 /** Ширина колонки по содержимому (px) или null, если мерить нечего */
 function measureColumn(id: string, sample: GraphItem[], gv: GraphView, main: MainOrder = NO_MAIN): number | null {
+  const filter = refFilterOf(gv);
   const sans = sansFont();
   const mono = monoFont();
   const real = sample.filter((n) => !n.wip && !n.stash);
@@ -126,8 +144,9 @@ function measureColumn(id: string, sample: GraphItem[], gv: GraphView, main: Mai
     const labelFont = `500 ${gv.density === 'compact' ? 11.5 : 12}px ${sans}`;
     let best = 0;
     for (const n of sample) {
-      if (!n.refs.length) continue;
-      const [g, ...rest] = groupRefs(n.refs, main);
+      const refs = shownRefs(n.refs, filter);
+      if (!refs.length) continue;
+      const [g, ...rest] = groupRefs(refs, main);
       if (!g) continue;
       const w = textWidth(g.name, labelFont) + 16 + 26 + (g.head ? 19 : 0) + (isMainGroup(g, main) ? 17 : 0) + (rest.length ? 36 : 0) + (n.isHead && !n.refs.some((r) => r.head) ? 60 : 0);
       best = Math.max(best, w);
@@ -252,7 +271,8 @@ export default function CommitGraph({
   const [shaW, setShaW, saveShaW] = useStoredWidth('graph.sha', 104, 90, 180);
   // Пока ширину не меняли руками — подбираем по содержимому, чтобы имена веток и авторов не обрезались
   const head = nodes.length > 400 ? nodes.slice(0, 400) : nodes;
-  const autoRefs = useMemo(() => clampW(measureColumn('refs', head, gv, mainOrder) ?? 190, 140, 260), [nodes, gv.density, mainOrder]); // eslint-disable-line react-hooks/exhaustive-deps
+  const refFilter = refFilterOf(gv);
+  const autoRefs = useMemo(() => clampW(measureColumn('refs', head, gv, mainOrder) ?? 190, 140, 260), [nodes, gv.density, mainOrder, refFilter]); // eslint-disable-line react-hooks/exhaustive-deps
   const autoAuthor = useMemo(() => clampW(measureColumn('author', head, gv) ?? 160, 110, 220), [nodes]); // eslint-disable-line react-hooks/exhaustive-deps
   const refsW = refsStored ? refsStoredW : autoRefs;
   const authorW = authorStored ? authorStoredW : autoAuthor;
@@ -749,6 +769,7 @@ export default function CommitGraph({
             onDragLeaveRow={dragLeaveRow}
             currentBranch={currentBranch}
             mainOrder={mainOrder}
+            refFilter={refFilter}
             marks={marks}
             onHighlight={highlightBranch}
             refActions={stableRefActions}
@@ -771,6 +792,7 @@ export default function CommitGraph({
             density={gv.density}
             nodeStyle={gv.nodeStyle}
             refsSide={refsSide}
+            refFilter={refFilter}
             nodes={nodes}
             visibleNodes={visibleNodes}
             visibleEdges={visibleEdges}
@@ -874,6 +896,7 @@ interface GraphLayerProps {
   density: string;
   nodeStyle: string;
   refsSide: 'left' | 'right' | null;
+  refFilter: RefFilter;
   nodes: GraphItem[];
   visibleNodes: GraphItem[];
   visibleEdges: GraphEdge<GraphRow>[];
@@ -889,7 +912,7 @@ interface GraphLayerProps {
  * Узлы, рёбра и хвосты графа. Подсветка истории ветки (наведение на метку, `highlightApi`) — состояние только этого слоя:
  * цепочка первых родителей от вершины видна как есть, остальные узлы и рёбра приглушены до 0.35.
  */
-const GraphLayer = memo(function GraphLayer({ svgRef, highlightApi, left, width, height, graphW, gm, density, nodeStyle, refsSide, nodes, visibleNodes, visibleEdges, visibleTails, first, intro, matchSet, dots, selectedHash }: GraphLayerProps) {
+const GraphLayer = memo(function GraphLayer({ svgRef, highlightApi, left, width, height, graphW, gm, density, nodeStyle, refsSide, refFilter, nodes, visibleNodes, visibleEdges, visibleTails, first, intro, matchSet, dots, selectedHash }: GraphLayerProps) {
   const [tip, setTip] = useState<string | null>(null);
   useEffect(() => {
     highlightApi.current = setTip;
@@ -946,7 +969,7 @@ const GraphLayer = memo(function GraphLayer({ svgRef, highlightApi, left, width,
       {/* Линии от меток веток к узлам */}
       {refsSide &&
         visibleNodes
-          .filter((n) => n.refs.length > 0)
+          .filter((n) => shownRefs(n.refs, refFilter).length > 0)
           .map((n) => (
             <line
               key={`ref-${n.hash}`}
@@ -1165,6 +1188,7 @@ const Row = memo(function Row({
   onDropRow,
   currentBranch,
   mainOrder,
+  refFilter,
   marks,
   onHighlight,
   refActions,
@@ -1201,12 +1225,14 @@ const Row = memo(function Row({
   onDropRow: (node: GraphItem, e: DragEvent<HTMLDivElement>) => void;
   currentBranch: string | null | undefined;
   mainOrder: MainOrder;
+  refFilter: RefFilter;
   marks: readonly string[];
   onHighlight: (tip: string | null) => void;
   refActions: RefActions | null | undefined;
 }) {
   const color = laneColor(node.lane);
   const compact = m.id === 'compact';
+  const refs = shownRefs(node.refs, refFilter);
   // Подсказка значка пайплайна — длинная строка, считается только при смене пайплайна или сводки
   const pipelineTipText = useMemo(
     () =>
@@ -1229,7 +1255,7 @@ const Row = memo(function Row({
               refsSide === 'left' ? 'justify-end pl-2' : 'justify-start pr-2'
             } ${refsSide === 'right' ? '' : refsSide ? '' : 'pl-2'}`}
           >
-            {refsSide === 'right' && node.refs.length > 0 && <span style={{ backgroundColor: color }} className="h-[2px] w-1 shrink-0 opacity-85" />}
+            {refsSide === 'right' && refs.length > 0 && <span style={{ backgroundColor: color }} className="h-[2px] w-1 shrink-0 opacity-85" />}
             {marked && (
               <span data-tip={kb(tr('marked-for-comparison-ctrl-click'))} className="shrink-0 rounded bg-gk-blue/20 px-1.5 text-[10px] font-medium text-gk-blue">
                 A
@@ -1237,7 +1263,7 @@ const Row = memo(function Row({
             )}
             {node.isHead && !node.refs.some((r) => r.head) && <HeadPill detached compact={compact} />}
             <RefLabels
-              refs={node.refs}
+              refs={refs}
               color={color}
               compact={compact}
               connector={refsSide === 'left'}
