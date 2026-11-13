@@ -2875,3 +2875,10 @@ load-more-history = Load more
 ## Граф: клавиатура и доступность (этап 6)
 
 commit-graph-table = Commit graph
+
+## Граф: поиск (этап 6)
+
+only-matches = Only matches
+only-matches-on = Only matching commits are shown — click to bring back the whole graph
+only-matches-off = Show only matching commits, hide the rest
+go-to-match = Match: row { $a0 }

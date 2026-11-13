@@ -2901,6 +2901,8 @@ export default function App() {
   const filterActive = isFilterActive(filter);
   // Поиск ещё и в изменённых строках файлов (git log -G по коммитам графа): где именно найдено
   const [inFiles, setInFiles] = useState(() => readPref('searchInFiles', '1') !== '0');
+  // «Только совпадения»: граф без остальных коммитов (новое в 2.0), выбор запоминается
+  const [onlyMatches, setOnlyMatches] = useState(() => readPref('searchOnlyMatches', '0') === '1');
   const [contentSearch, setContentSearch] = useState<ContentSearch | null>(null); // { query, loading, data: { commits, … }, error }
   const contentQuery = searchOpen && inFiles && repo ? filter.query.trim() : '';
   useEffect(() => {
@@ -2937,6 +2939,9 @@ export default function App() {
     [repo, filter, searchOpen, filterActive, fileHits, noQueryFilter],
   );
   const matchSet = useMemo(() => new Set(searchMatches), [searchMatches]);
+  // В режиме «только совпадения» граф получает лишь найденные коммиты
+  const showOnlyMatches = onlyMatches && searchOpen && filterActive;
+  const graphCommits = useMemo(() => (showOnlyMatches ? allCommits.filter((c) => matchSet.has(c.hash)) : allCommits), [showOnlyMatches, allCommits, matchSet]);
 
   // При изменении фильтра — к первому совпадению; пришли совпадения в файлах, а по описанию ничего — тоже к первому
   const lastJump = useRef<CommitFilter | null>(null);
@@ -2968,6 +2973,12 @@ export default function App() {
   const closeSearch = () => {
     setSearchOpen(false);
     setFilter(EMPTY_FILTER);
+  };
+  const toggleOnlyMatches = () => {
+    setOnlyMatches((v) => {
+      writePref('searchOnlyMatches', v ? '0' : '1');
+      return !v;
+    });
   };
   const toggleInFiles = () => {
     setInFiles((v) => {
@@ -3201,6 +3212,8 @@ export default function App() {
                   truncated={repo!.truncated}
                   inFiles={inFiles}
                   onToggleInFiles={toggleInFiles}
+                  onlyMatches={onlyMatches}
+                  onToggleOnlyMatches={toggleOnlyMatches}
                   content={(contentQuery.length >= 2 ? { loading: Boolean(contentSearch?.loading), error: contentSearch?.error ?? null, commits: fileHits?.size ?? 0, partial: contentSearch?.data?.partial, truncated: contentSearch?.data?.truncated } : null) as PropsOf<typeof SearchBar, 'content'>}
                 />
               )}
@@ -3381,7 +3394,7 @@ export default function App() {
                 />
               ) : (
                 <CommitGraph
-                  commits={allCommits}
+                  commits={graphCommits}
                   introKey={repo!.path}
                   focus={graphFocus}
                   selectedHash={selectedHash}
@@ -3407,6 +3420,8 @@ export default function App() {
                   loadingMore={loadingMore}
                   loadMoreError={loadMoreError?.message ?? null}
                   matchSet={searchOpen && filterActive ? matchSet : null}
+                  searchQuery={searchOpen ? filter.query : ''}
+                  onlyMatches={showOnlyMatches}
                   fileHits={(searchOpen && filterActive ? fileHits : null) as PropsOf<typeof CommitGraph, 'fileHits'>}
                   pipelines={pipelineMap?.bySha ?? null}
                   pipelineTips={pipelineTips}

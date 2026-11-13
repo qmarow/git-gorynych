@@ -14,6 +14,7 @@ import { DEFAULT_VIEW, columnById, moveColumn, useGraphView, type ColumnId, type
 import GraphViewMenu from './GraphViewMenu.tsx';
 import type { MainBranches } from '../lib/mainBranches.ts';
 import { readable } from '../lib/scheme.ts';
+import { markSegments, searchWords } from '../lib/searchMarks.ts';
 import { t as tr, tj, locale } from '../i18n/index.ts';
 
 /** Ссылка на коммите (`CommitRef`): ветка, серверная ветка или тег */
@@ -86,6 +87,10 @@ interface CommitGraphProps {
   mainBranches?: MainBranches | null;
   /** Короткие имена локальных и серверных веток — для «Добавить ветку…» в меню вида */
   branchNames?: readonly string[];
+  /** Текст поиска: найденное в сообщении, авторе и SHA подсвечивается (правила `matchCommit`) */
+  searchQuery?: string;
+  /** Показаны только совпадения поиска: колонки «Граф» нет — без промежуточных коммитов линии бессмысленны */
+  onlyMatches?: boolean;
 }
 
 const HEADER_HEIGHT = 30;
@@ -195,6 +200,8 @@ export default function CommitGraph({
   currentBranch = null,
   refActions = null, // { checkout(ref), deleteRemote(fullName), menu(ref, x, y) } — для поповера «+N»
   onCopySha, // клик по хэшу в колонке SHA
+  searchQuery = '',
+  onlyMatches = false,
   mainBranches = null,
   branchNames = NO_NAMES,
 }: CommitGraphProps) {
@@ -258,7 +265,12 @@ export default function CommitGraph({
   };
 
   // Видимые колонки в выбранном порядке; «Сообщение» видно всегда
-  const columns = useMemo(() => gv.order.filter((id) => id === 'message' || !gv.hidden.includes(id)), [gv.order, gv.hidden]);
+  const columns = useMemo(
+    () => gv.order.filter((id) => id === 'message' || (!gv.hidden.includes(id) && !(onlyMatches && id === 'graph'))),
+    [gv.order, gv.hidden, onlyMatches],
+  );
+  // Слова поиска для подсветки: массив меняется только вместе с запросом — строки (memo) не перерисовываются зря
+  const marks = useMemo(() => searchWords(searchQuery), [searchQuery]);
   const has = (id: ColumnId) => columns.includes(id);
   const fixed: Record<string, number> = { refs: refsW, author: authorW, date: dateW, sha: shaW };
   const fixedSum = columns.reduce((sum, id) => sum + (fixed[id] ?? 0), 0);
@@ -594,7 +606,12 @@ export default function CommitGraph({
 
   const openMenuAt = (x: number, y: number) => setMenu({ x, y });
 
+  // Строки совпадений поиска — для отметок у полосы прокрутки (в режиме «только совпадения» они не нужны)
+  const matchRows = useMemo(() => (matchSet && !onlyMatches ? nodes.filter((n) => matchSet.has(n.hash)).map((n) => n.row) : null), [matchSet, onlyMatches, nodes]);
+  const scrollbarW = scrollRef.current ? scrollRef.current.offsetWidth - scrollRef.current.clientWidth : 0;
+
   return (
+    <div className="relative flex min-h-0 flex-1 flex-col">
     <div
       ref={scrollRef}
       tabIndex={0}
@@ -730,6 +747,7 @@ export default function CommitGraph({
             onDragLeaveRow={dragLeaveRow}
             currentBranch={currentBranch}
             mainOrder={mainOrder}
+            marks={marks}
             refActions={stableRefActions}
             onDropRow={dropRow}
             onSelect={rowSelect}
@@ -796,7 +814,7 @@ export default function CommitGraph({
                 style={intro ? { animationDelay: introDelay(edge.from.row) } : undefined}
                 fill="none"
                 stroke={laneColor(edge.travel)}
-                strokeOpacity={matchSet ? 0.3 : 1}
+                strokeOpacity={matchSet && !(matchSet.has(edge.from.hash) && matchSet.has(edge.to.hash)) ? 0.3 : 1}
                 strokeWidth={gv.density === 'compact' ? 2 : 2.5}
                 strokeLinecap="round"
                 strokeLinejoin="round"
@@ -894,6 +912,41 @@ export default function CommitGraph({
         />
       )}
     </div>
+      {matchRows && matchRows.length > 0 && (
+        <MatchRuler rows={matchRows} total={nodes.length} top={HEADER_HEIGHT} height={Math.max(0, view.height - HEADER_HEIGHT)} right={scrollbarW} onPick={(row) => onSelect(nodes[row].hash)} />
+      )}
+    </div>
+  );
+}
+
+/**
+ * Отметки совпадений поиска у правого края (новое в 2.0): чёрточка на месте строки (`row / total` высоты), клик выбирает
+ * коммит. Совпадения, попавшие в один пиксель, — одна отметка (первая строка).
+ */
+function MatchRuler({ rows, total, top, height, right, onPick }: { rows: number[]; total: number; top: number; height: number; right: number; onPick: (row: number) => void }) {
+  const marks = useMemo(() => {
+    const at = new Map<number, number>();
+    for (const row of rows) {
+      const y = Math.min(Math.max(0, height - 2), Math.floor((row / Math.max(1, total)) * height));
+      if (!at.has(y)) at.set(y, row);
+    }
+    return [...at];
+  }, [rows, total, height]);
+  return (
+    <div data-testid="graph-match-ruler" style={{ top, right, height }} className="pointer-events-none absolute z-20 w-1">
+      {marks.map(([y, row]) => (
+        <button
+          key={y}
+          data-row={row}
+          aria-label={tr('go-to-match', row + 1)}
+          onClick={() => onPick(row)}
+          style={{ top: y - 2 }}
+          className="group pointer-events-auto absolute -left-1 h-[6px] w-[8px] cursor-pointer"
+        >
+          <span className="absolute right-0 top-[2px] h-[2px] w-1 rounded-sm bg-gk-yellow group-hover:h-[3px]" />
+        </button>
+      ))}
+    </div>
   );
 }
 
@@ -952,7 +1005,21 @@ function HeaderCell({ id, width, last, dropSide, dragging, cellRef, children, ..
 }
 
 /** Сообщение коммита: префикс Conventional Commits — отдельным бейджем */
-function MessageText({ node, strong }: { node: GraphItem; strong: boolean | undefined }) {
+/** Текст с подсвеченными словами поиска (`markSegments`); без слов — сам текст */
+function Marked({ text, words }: { text: string; words: readonly string[] }) {
+  if (!words.length) return text;
+  return markSegments(text, words).map(([part, hit], i) =>
+    hit ? (
+      <mark key={i} data-testid="search-mark" className="rounded-[2px] bg-gk-yellow/35 text-inherit">
+        {part}
+      </mark>
+    ) : (
+      part
+    ),
+  );
+}
+
+function MessageText({ node, strong, marks }: { node: GraphItem; strong: boolean | undefined; marks: readonly string[] }) {
   const cc = useMemo(() => parseSummary(node.message), [node.message]);
   // Подсказка: заголовок и описание (пустые строки сжаты, длинное описание укорочено)
   const desc = (node.description ?? '').replace(/\n{3,}/g, '\n\n').trim();
@@ -979,7 +1046,7 @@ function MessageText({ node, strong }: { node: GraphItem; strong: boolean | unde
         data-tip-wide=""
         className={`w-0 flex-1 truncate ${strong ? 'text-gk-strong' : ''} ${node.isHead ? 'font-medium' : ''}`}
       >
-        {text}
+        <Marked text={text} words={marks} />
       </span>
     </>
   );
@@ -1018,6 +1085,7 @@ const Row = memo(function Row({
   onDropRow,
   currentBranch,
   mainOrder,
+  marks,
   refActions,
 }: {
   node: GraphItem;
@@ -1052,6 +1120,7 @@ const Row = memo(function Row({
   onDropRow: (node: GraphItem, e: DragEvent<HTMLDivElement>) => void;
   currentBranch: string | null | undefined;
   mainOrder: MainOrder;
+  marks: readonly string[];
   refActions: RefActions | null | undefined;
 }) {
   const color = laneColor(node.lane);
@@ -1131,7 +1200,7 @@ const Row = memo(function Row({
             ) : (
               <>
                 {node.isHead && <HeadPill compact={compact} />}
-                <MessageText node={node} strong={selected || node.isHead} />
+                <MessageText node={node} strong={selected || node.isHead} marks={marks} />
                 {fileHit && (
                   <span
                     data-testid="row-file-hits"
@@ -1177,7 +1246,9 @@ const Row = memo(function Row({
                 data-tip={tr('click-copy', node.hash)}
                 className="group/sha flex min-w-0 items-center gap-1 rounded px-1 font-mono text-[12px] tabular-nums text-gk-muted hover:bg-gk-fg/5 hover:text-gk-text"
               >
-                <span className="truncate">{node.hash.slice(0, 7)}</span>
+                <span className="truncate">
+                  <Marked text={node.hash.slice(0, 7)} words={marks} />
+                </span>
                 {copied ? (
                   <Check size={11} className="shrink-0 text-gk-green" />
                 ) : (
@@ -1197,7 +1268,11 @@ const Row = memo(function Row({
             data-tip={node.wip || node.stash ? undefined : `${node.author.name} <${node.author.email}>`}
             className={`relative flex shrink-0 items-center overflow-hidden px-3 text-gk-text/90 ${compact ? 'text-[12.5px]' : 'text-[13.5px]'}`}
           >
-            {!node.wip && !node.stash && <span className="truncate">{node.author.name}</span>}
+            {!node.wip && !node.stash && (
+              <span className="truncate">
+                <Marked text={node.author.name} words={marks} />
+              </span>
+            )}
           </div>
         );
       case 'date':

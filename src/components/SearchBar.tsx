@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useRef, useState, type ButtonHTMLAttributes, type ReactNode } from 'react';
-import { CalendarDays, ChevronDown, ChevronUp, FileSearch, Loader2, Search, User, X } from 'lucide-react';
+import { CalendarDays, ChevronDown, ChevronUp, FileSearch, ListFilter, Loader2, Search, User, X } from 'lucide-react';
 import { avatarColor, initials } from '../lib/format.ts';
 import { t as tr, tj } from '../i18n/index.ts';
+import { searchWords } from '../lib/searchMarks.ts';
 
 export type Period = 'all' | 'today' | '7d' | '30d' | 'range';
 
@@ -42,13 +43,14 @@ export function isFilterActive(f: CommitFilter): boolean {
 // Совпадает ли коммит с фильтром: текст (сообщение, описание, SHA, автор, ветки/теги), авторы, даты
 export function matchCommit(c: FilterableCommit, f: CommitFilter): boolean {
   if (c.wip) return false;
-  const q = f.query.trim().toLowerCase();
-  if (q) {
+  // Слова запроса — те же, что подсвечивает граф (`searchMarks.ts`)
+  const words = searchWords(f.query);
+  if (words.length) {
     const hay = [c.message, c.description, c.hash, c.author?.name, c.author?.email, ...(c.refs ?? []).map((r) => r.name)]
       .filter(Boolean)
       .join('\n')
       .toLowerCase();
-    if (!q.split(/\s+/).every((word) => hay.includes(word))) return false;
+    if (!words.every((word) => hay.includes(word))) return false;
   }
   if (f.authors.length && !f.authors.includes(c.author?.name as string)) return false;
   if (f.period !== 'all') {
@@ -89,10 +91,13 @@ interface SearchBarProps {
   truncated?: boolean;
   inFiles?: boolean;
   onToggleInFiles?: () => void;
+  /** «Только совпадения»: граф показывает лишь найденные коммиты (новое в 2.0) */
+  onlyMatches?: boolean;
+  onToggleOnlyMatches?: () => void;
   content?: ContentSearch | null;
 }
 
-export default function SearchBar({ commits, filter, onChange, matches, current, onPrev, onNext, onClose, totalLoaded, truncated, inFiles = false, onToggleInFiles, content = null }: SearchBarProps) {
+export default function SearchBar({ commits, filter, onChange, matches, current, onPrev, onNext, onClose, totalLoaded, truncated, inFiles = false, onToggleInFiles, onlyMatches = false, onToggleOnlyMatches, content = null }: SearchBarProps) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [authorsOpen, setAuthorsOpen] = useState(false);
   const [authorQuery, setAuthorQuery] = useState('');
@@ -158,6 +163,22 @@ export default function SearchBar({ commits, filter, onChange, matches, current,
           }`}
         >
           {tj('in-files', [content?.loading ? <Loader2 size={13} className="animate-spin" /> : <FileSearch size={13} />])}</button>
+      )}
+
+      {/* Только совпадения: остальные коммиты не показываются вовсе */}
+      {onToggleOnlyMatches && (
+        <button
+          onClick={onToggleOnlyMatches}
+          data-testid="search-only-matches"
+          aria-pressed={onlyMatches}
+          data-tip={onlyMatches ? tr('only-matches-on') : tr('only-matches-off')}
+          className={`flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs ring-1 transition-colors ${
+            onlyMatches ? 'bg-gk-blue/15 text-gk-blue ring-gk-blue/40' : 'text-gk-muted ring-gk-border hover:text-gk-text'
+          }`}
+        >
+          <ListFilter size={13} />
+          {tr('only-matches')}
+        </button>
       )}
 
       {/* Авторы */}

@@ -28,13 +28,14 @@ window.__GORYNYCH_PROBE__ = async (initial) => {
   const lanes = graph && fullFilePref === null ? await lanesScenario(waitFor).catch((e) => ({ probeError: String(e?.stack ?? e) })) : null;
   // Клавиатура — на длинной истории (там, где была догрузка)
   const keyboard = lanes?.rowsAfter ? await keyboardScenario(waitFor).catch((e) => ({ probeError: String(e?.stack ?? e) })) : null;
+  const search = lanes?.rowsAfter ? await searchScenario(waitFor).catch((e) => ({ probeError: String(e?.stack ?? e) })) : null;
   const main = graph && fullFilePref === null ? await mainBranchScenario(invoke, waitFor).catch((e) => ({ probeError: String(e?.stack ?? e) })) : null;
   const editor = graph && fullFilePref === null ? await editorScenario(invoke, waitFor, sleep).catch((e) => ({ probeError: String(e?.stack ?? e) })) : null;
   // Выбор главных веток из прошлого запуска (второй запуск — из SQLite)
   const mainPref = localStorage.getItem(`graph.mainBranches.v1:${await invoke('repo_get_last')}`);
   // Запись уходит в базу пачкой через 400 мс
   await sleep(1000);
-  const report = { ...initial, graph, seeded, fullFilePref, editor, stash, main, mainPref, lanes, keyboard, errors: [...(window.__gorynychErrors || [])], text: graph ? '' : text().slice(0, 3000) };
+  const report = { ...initial, graph, seeded, fullFilePref, editor, stash, main, mainPref, lanes, keyboard, search, errors: [...(window.__gorynychErrors || [])], text: graph ? '' : text().slice(0, 3000) };
   await invoke('frontend_ready', { report: JSON.stringify(report) });
 };
 
@@ -228,6 +229,53 @@ async function keyboardScenario(waitFor) {
   if (input) key('Escape', {}, input);
   window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }));
   out.roles = [grid.getAttribute('role'), document.getElementById(selectedId())?.getAttribute('role'), document.getElementById(selectedId())?.getAttribute('aria-selected'), document.querySelector('[data-testid="graph-svg"]')?.getAttribute('aria-hidden'), document.querySelectorAll(`#${selectedId()} [role="gridcell"]`).length > 0];
+  return out;
+}
+
+// Поиск в графе (этап 6), запрос «main»: совпадают 2100 коммитов основной линии (верхний — по метке main), не совпадают
+// 60 коммитов веток. Подсветка найденного, отметки у полосы прокрутки (место и клик), рёбра между совпадениями,
+// «только совпадения» — граф без колонки «Граф» и без остальных коммитов
+async function searchScenario(waitFor) {
+  const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+  const grid = () => document.querySelector('[role="grid"]');
+  const rows = () => Number(grid().getAttribute('aria-rowcount')) - 1;
+  const out = {};
+  window.dispatchEvent(new KeyboardEvent('keydown', { key: 'f', code: 'KeyF', ctrlKey: true, bubbles: true, cancelable: true }));
+  const input = await waitFor(() => document.querySelector('input[placeholder]') && document.activeElement?.tagName === 'INPUT' && document.activeElement, 3000);
+  if (!input) return { opened: false };
+  const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set;
+  setter.call(input, 'main');
+  input.dispatchEvent(new Event('input', { bubbles: true }));
+  const ruler = await waitFor(() => document.querySelector('[data-testid="graph-match-ruler"]'), 5000);
+  await sleep(300);
+  const marks = [...document.querySelectorAll('[data-testid="search-mark"]')].map((m) => m.textContent.toLowerCase());
+  out.marked = marks.length > 0 && marks.every((m) => m === 'main');
+  const buttons = ruler ? [...ruler.querySelectorAll('button')] : [];
+  const total = rows();
+  const h = ruler ? ruler.getBoundingClientRect().height : 0;
+  out.rulerMarks = buttons.length > 10;
+  out.rulerPlaced = buttons.every((b) => Math.abs(parseFloat(b.style.top) + 2 - Math.min(h - 2, Math.floor((Number(b.dataset.row) / total) * h))) <= 1);
+  // Клик по отметке в середине — выбран этот коммит
+  const pick = buttons[Math.floor(buttons.length / 2)];
+  pick?.click();
+  out.rulerPick = Boolean(await waitFor(() => grid().getAttribute('aria-activedescendant') === `graph-row-${pick?.dataset.row}`, 3000));
+  // Около строки 60 видны и рёбра основной линии, и рёбра веток (не совпали), спускающиеся к ней
+  await sleep(600);
+  grid().scrollTop = 60 * 34;
+  await sleep(300);
+  const opacities = new Set([...document.querySelectorAll('[data-testid="graph-svg"] path.graph-edge')].map((p) => p.getAttribute('stroke-opacity')));
+  out.edges = [...opacities].sort();
+  // Только совпадения
+  document.querySelector('[data-testid="search-only-matches"]').click();
+  out.onlyMatches = Boolean(await waitFor(() => !document.querySelector('[data-testid="graph-svg"]') && rows() < total, 3000));
+  out.onlyRows = rows();
+  out.allMatch = [...document.querySelectorAll('[role="row"][id] [data-col="message"]')].every((m) => /main|Начало/.test(m.textContent));
+  out.noRuler = !document.querySelector('[data-testid="graph-match-ruler"]');
+  document.querySelector('[data-testid="search-only-matches"]').click();
+  out.back = Boolean(await waitFor(() => document.querySelector('[data-testid="graph-svg"]') && rows() === total, 3000));
+  input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }));
+  window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }));
+  out.closed = Boolean(await waitFor(() => !document.querySelector('[data-testid="graph-match-ruler"]'), 3000));
   return out;
 }
 

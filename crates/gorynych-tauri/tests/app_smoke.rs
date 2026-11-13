@@ -282,6 +282,16 @@ fn long_history_shows_tails_and_squeezes_lanes() {
         }),
         "клавиатура: {report}"
     );
+    // Поиск «main»: подсвечено найденное, отметки у полосы прокрутки на местах строк и выбирают коммит, ребро между двумя
+    // совпадениями непрозрачно (ветки — приглушены), «только совпадения» — 2100 строк без колонки «Граф» и без отметок
+    assert_eq!(
+        report["search"],
+        json!({
+            "marked": true, "rulerMarks": true, "rulerPlaced": true, "rulerPick": true, "edges": ["0.3", "1"],
+            "onlyMatches": true, "onlyRows": 2100, "allMatch": true, "noRuler": true, "back": true, "closed": true
+        }),
+        "поиск: {report}"
+    );
 }
 
 #[test]
