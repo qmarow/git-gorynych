@@ -2865,3 +2865,4 @@ main-branch-absent = No such branch in the repository
 main-branch-unloaded = Branch tip is outside the loaded history
 no-main-branches = No main branches — lanes are laid out as usual
 find-branch = Find a branch…
+lanes-hidden-stretch-column = Hidden lanes: { $a0 }. Widen the column or double-click its border

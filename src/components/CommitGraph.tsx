@@ -193,7 +193,7 @@ export default function CommitGraph({
   }, [dragSource]);
   // Вершины главных веток по порядку — закреплённые дорожки. Ключ — строка: раскладка не пересчитывается, пока вершины те же
   const pinnedKey = mainBranches?.tips.map((tip) => tip.hash).join(',') ?? '';
-  const { nodes, edges, laneCount } = useMemo(() => layoutGraph(commits, pinnedKey ? { pinned: pinnedKey.split(',') } : undefined), [commits, pinnedKey]);
+  const { nodes, edges, tails, laneCount } = useMemo(() => layoutGraph(commits, pinnedKey ? { pinned: pinnedKey.split(',') } : undefined), [commits, pinnedKey]);
   const mainKey = mainBranches?.names.join('\n') ?? '';
   const mainOrder = useMemo((): MainOrder => (mainKey ? new Map(mainKey.split('\n').map((name, i) => [name, i])) : NO_MAIN), [mainKey]);
   // Строка коммита по хэшу — для перехода к коммиту и стрелок без перебора всего списка
@@ -285,8 +285,11 @@ export default function CommitGraph({
   const [graphBoxW, graphCellRef] = useElementWidth();
   // Пока колонку тянут, измерение может отстать на кадр — берём меньшее из двух, чтобы граф не вылез за край
   const graphW_ = has('graph') ? Math.min(graphBoxW || width, width) : 0;
-  const gm = useMemo(() => fitMetrics(m, laneCount, graphW_, dots ? m.dotR : m.nodeR), [m, laneCount, graphW_, dots]);
-  const dotsEff = dots;
+  // Узкая колонка: сначала ужимается шаг дорожек (аватары тогда — точками), к краю прижимаются, только если и этого мало
+  const gm = useMemo(() => fitMetrics(m, laneCount, graphW_, dots ? m.dotR : m.nodeR, { squeeze: true }), [m, laneCount, graphW_, dots]);
+  const dotsEff = dots || Boolean(gm.forceDots);
+  // «+N» в заголовке графа: расширить колонку до всех дорожек, насколько позволяет место
+  const showAllLanes = () => saveGraphW(setGraphW(Math.max(40, Math.min(graphWidth(laneCount, m), roomForGraph))));
 
   const scrollRef = useRef<HTMLDivElement>(null);
   // Наведение не хранится в состоянии React: узел увеличивается классом is-hover прямо в SVG (`hoverNode`),
@@ -367,6 +370,8 @@ export default function CommitGraph({
   const last = Math.min(nodes.length - 1, view.last);
   const visibleNodes = useMemo(() => nodes.slice(first, last + 1), [nodes, first, last]);
   const visibleEdges = useMemo(() => edges.filter((e) => e.minRow <= last && e.maxRow >= first), [edges, first, last]);
+  // Хвост к незагруженному родителю идёт до нижнего края графа: виден, если его узел не ниже окна
+  const visibleTails = useMemo(() => tails.filter((t) => t.from.row <= last), [tails, last]);
 
   const onKeyDown = (e: KeyboardEvent<HTMLDivElement>) => {
     if (e.key !== 'ArrowDown' && e.key !== 'ArrowUp') return;
@@ -530,6 +535,25 @@ export default function CommitGraph({
               {...headerDrag(id)}
             >
               <span className={`truncate ${id === 'date' ? 'tabular-nums' : ''}`}>{columnById(id)!.label}</span>
+              {id === 'graph' && (gm.hiddenLanes ?? 0) > 0 && (
+                <button
+                  data-testid="graph-hidden-lanes"
+                  data-tip={tr('lanes-hidden-stretch-column', gm.hiddenLanes)}
+                  draggable={false}
+                  onMouseDown={(e) => e.stopPropagation()}
+                  onDragStart={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                  }}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    showAllLanes();
+                  }}
+                  className="ml-1 shrink-0 rounded bg-gk-blue/15 px-1 py-px text-[10px] normal-case tracking-normal text-gk-blue hover:bg-gk-blue/25"
+                >
+                  +{gm.hiddenLanes}
+                </button>
+              )}
               {api && (
                 <ResizeHandle
                   width={cols[id]}
@@ -616,6 +640,8 @@ export default function CommitGraph({
             data-testid="graph-svg"
             data-width={Math.round(graphW_)}
             data-hidden-lanes={gm.hiddenLanes ?? 0}
+            data-lane-w={Math.round(gm.laneW * 10) / 10}
+            data-force-dots={gm.forceDots ? '1' : undefined}
             data-density={gv.density}
             data-nodes={gv.nodeStyle}
           >
@@ -623,6 +649,14 @@ export default function CommitGraph({
               <clipPath id="avatar-clip" clipPathUnits="objectBoundingBox">
                 <circle cx="0.5" cy="0.5" r="0.5" />
               </clipPath>
+              {/* Хвосты затухают на последних двух строках: история продолжается за пределами загруженной */}
+              <linearGradient id="graph-tail-fade" gradientUnits="userSpaceOnUse" x1="0" x2="0" y1={height - 2 * gm.rowH} y2={height}>
+                <stop offset="0" stopColor="#fff" stopOpacity="1" />
+                <stop offset="1" stopColor="#fff" stopOpacity="0" />
+              </linearGradient>
+              <mask id="graph-tail-mask" maskUnits="userSpaceOnUse" x="0" y="0" width={width} height={height}>
+                <rect x="0" y="0" width={width} height={height} fill="url(#graph-tail-fade)" />
+              </mask>
             </defs>
 
             {/* Линии от меток веток к узлам */}
@@ -658,6 +692,29 @@ export default function CommitGraph({
                 strokeDasharray={edge.dashed ? '4 4' : undefined}
               />
             ))}
+
+            {visibleTails.length > 0 && (
+              <g mask="url(#graph-tail-mask)" data-testid="graph-tails">
+                {visibleTails.map((tail) => (
+                  <path
+                    key={tail.id}
+                    data-tail={tail.id}
+                    // Ребро до точки на нижнем крае, на дорожке хвоста: rowY(nodes.length - 0.5) = height
+                    d={edgePath({ from: tail.from, to: { lane: tail.travel, row: nodes.length - 0.5 }, travel: tail.travel }, gm)}
+                    pathLength={tail.dashed ? undefined : 1}
+                    className={`graph-edge ${intro && !tail.dashed ? 'is-intro' : ''}`}
+                    style={intro ? { animationDelay: introDelay(tail.from.row) } : undefined}
+                    fill="none"
+                    stroke={laneColor(tail.travel)}
+                    strokeOpacity={matchSet ? 0.3 : 1}
+                    strokeWidth={gv.density === 'compact' ? 2 : 2.5}
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeDasharray={tail.dashed ? '4 4' : undefined}
+                  />
+                ))}
+              </g>
+            )}
 
             {/* Справа есть прижатые дорожки — край колонки чуть затенён, узлы поверх */}
             {gm.fitted && (

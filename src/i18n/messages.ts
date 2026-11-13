@@ -1248,6 +1248,7 @@ export type MessageId =
   | 'keyboard-shortcuts-2'
   | 'label-is-set-by-server'
   | 'label-optional'
+  | 'lanes-hidden-stretch-column'
   | 'language'
   | 'last-check'
   | 'last-check-at-method'

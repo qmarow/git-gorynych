@@ -79,7 +79,25 @@ function invariants(what, commits, g, pinned) {
     }
   }
   ok(`${what}: дорожек не меньше k`, g.laneCount >= k);
+  tailInvariants(what, g);
   count += 3;
+}
+
+// Хвосты (шаг 4.1): у каждого коммита столько хвостов, сколько незагруженных родителей; ниже начала хвоста на его дорожке
+// нет узлов — линия идёт до края графа, не задевая чужих коммитов
+function tailInvariants(what, g) {
+  const loaded = new Set(g.nodes.map((n) => n.hash));
+  const tailsFrom = new Map();
+  for (const t of g.tails) tailsFrom.set(t.from.hash, (tailsFrom.get(t.from.hash) ?? 0) + 1);
+  for (const n of g.nodes) {
+    const want = n.parents.filter((p) => !loaded.has(p)).length;
+    if ((tailsFrom.get(n.hash) ?? 0) !== want) fail(`${what}: хвостов у узла`, n.hash, tailsFrom.get(n.hash) ?? 0, want);
+  }
+  for (const t of g.tails) {
+    const hit = g.nodes.find((n) => n.lane === t.travel && n.row > t.from.row);
+    if (hit) fail(`${what}: хвост проходит через узел`, t.id, hit.hash);
+  }
+  count += 2;
 }
 
 const day = (i, n) => new Date(Date.UTC(2026, 0, 1) + (n - i) * 3600_000).toISOString();
@@ -88,6 +106,7 @@ for (let round = 0; round < 400; round++) {
   const commits = dag(n, rnd() * 0.4, rnd() * 0.05);
   if (round % 3 === 0) commits.unshift({ hash: 'WIP', wip: true, parents: [commits[Math.floor(rnd() * Math.min(3, n))].hash] });
   const plain = summary(layoutGraph(commits));
+  tailInvariants(`без закрепления ${round}`, layoutGraph(commits));
   if (summary(layoutGraph(commits, {})) !== plain) fail('без pinned');
   if (summary(layoutGraph(commits, { pinned: [] })) !== plain) fail('pinned: []');
   count += 2;

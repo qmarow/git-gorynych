@@ -1,4 +1,4 @@
-//! Запуск настоящего приложения: окно, WebView2, CSP, команды, база. Все данные — во временной папке: настоящий профиль и
+﻿//! Запуск настоящего приложения: окно, WebView2, CSP, команды, база. Все данные — во временной папке: настоящий профиль и
 //! папка данных пользователя не затрагиваются (см. `GORYNYCH_DEV_ROOT` в `lib.rs`). Окно при этом не показывается.
 
 use std::fs;
@@ -175,6 +175,8 @@ fn real_interface_opens_repository_on_the_compatibility_layer() {
         json!([["auto", true, null], ["Убрать из главных веток", true, true, "[]"], ["Сделать главной веткой", true, true, "[\"main\"]"]]),
         "главные ветки: {report}"
     );
+    // Две дорожки помещаются: шаг прежний, хвостов нет
+    assert_eq!(report["lanes"], json!({ "before": { "laneW": 28, "forceDots": false, "hidden": 0 }, "badge": null, "tails": 0 }), "дорожки: {report}");
 
     // Новый профиль WebView: `localStorage` пуст и заполняется из базы
     // Процессы WebView2 отпускают профиль не сразу после выхода приложения
@@ -190,6 +192,72 @@ fn real_interface_opens_repository_on_the_compatibility_layer() {
     assert_eq!(again["report"]["fullFilePref"], json!("1"), "выбор «Весь файл» вернулся из SQLite: {again}");
     assert_eq!(again["report"]["mainPref"], json!("[\"main\"]"), "главные ветки вернулись из SQLite: {again}");
     assert_eq!(again["report"]["errors"], json!([]), "{again}");
+}
+
+/// Граф на длинной истории с множеством веток (этап 4 плана доработки графа): 60 веток не помещаются в колонку «Граф» —
+/// шаг ужат до минимума, аватары стали точками, остальные дорожки посчитаны в «+N», и клик по нему расширяет колонку.
+/// История длиннее предела загрузки (2000): у последнего загруженного коммита main родитель не загружен — хвост вниз.
+#[test]
+fn long_history_shows_tails_and_squeezes_lanes() {
+    let dir = tempfile::tempdir().unwrap();
+    let repo = dir.path().join("Длинный");
+    fs::create_dir(&repo).unwrap();
+    git(&repo, &["init", "-q", "-b", "main"]);
+    // fast-import: 2100 коммитов main (верхний — «Начало», по нему зонд узнаёт, что граф нарисован), затем 60 веток, каждая от своего коммита main (от общего они сошлись бы в одну дорожку),
+    // все новее main
+    let mut stream = String::new();
+    let commit = |out: &mut String, branch: &str, mark: usize, from: Option<usize>, time: u64, message: &str| {
+        out.push_str(&format!("commit refs/heads/{branch}\nmark :{mark}\ncommitter Тест <t@example.com> {time} +0000\ndata {}\n{message}\n", message.len()));
+        if let Some(from) = from {
+            out.push_str(&format!("from :{from}\n"));
+        }
+        out.push('\n');
+    };
+    const MAIN: usize = 2100;
+    for i in 1..=MAIN {
+        let message = if i == MAIN { "Начало".to_owned() } else { format!("main {i}") };
+        commit(&mut stream, "main", i, (i > 1).then(|| i - 1), 1_700_000_000 + i as u64 * 60, &message);
+    }
+    for b in 0..60 {
+        commit(&mut stream, &format!("ветка-{b}"), MAIN + 1 + b, Some(MAIN - 5 - b), 1_800_000_000 + b as u64 * 60, &format!("ветка {b}"));
+    }
+    let mut child = Command::new("git")
+        .current_dir(&repo)
+        .args(["fast-import", "--quiet"])
+        .env("GIT_CONFIG_GLOBAL", repo.join("нет-такого"))
+        .env("GIT_CONFIG_NOSYSTEM", "1")
+        .stdin(std::process::Stdio::piped())
+        .spawn()
+        .unwrap();
+    {
+        use std::io::Write;
+        child.stdin.take().unwrap().write_all(stream.as_bytes()).unwrap();
+    }
+    assert!(child.wait().unwrap().success(), "fast-import");
+    git(&repo, &["reset", "-q", "--hard"]);
+    let profile = dir.path().join("git-Gorynych");
+    fs::create_dir_all(&profile).unwrap();
+    fs::write(profile.join("settings.json"), json!({ "lastRepo": repo.to_str().unwrap(), "tabs": [repo.to_str().unwrap()] }).to_string()).unwrap();
+
+    let (status, ready) = launch_page(dir.path(), Page::Interface);
+    assert!(status.success(), "{status:?}");
+    let report = &ready["report"];
+    assert_eq!(report["graph"], json!(true), "граф коммитов не появился: {report}");
+    assert_eq!(report["errors"], json!([]), "ошибки интерфейса: {report}");
+    let lanes = &report["lanes"];
+    // Стандартная плотность: минимальный шаг 2 × 5.5 + 4 = 15, точки вместо аватаров, часть дорожек всё равно скрыта
+    assert_eq!(lanes["before"]["laneW"], json!(15), "{report}");
+    assert_eq!(lanes["before"]["forceDots"], json!(true), "{report}");
+    let hidden = lanes["before"]["hidden"].as_i64().unwrap();
+    assert!(hidden > 0, "{report}");
+    assert_eq!(lanes["badge"]["text"], json!(format!("+{hidden}")), "{report}");
+    assert!(lanes["badge"]["tip"].as_str().unwrap().contains(&hidden.to_string()), "{report}");
+    // Без соседних колонок графу досталось больше места: скрытых меньше, клик по «+N» расширяет колонку ещё
+    assert_eq!(lanes["mid"], json!(true), "{report}");
+    assert_eq!(lanes["after"], json!(true), "клик по «+N» расширил колонку: {report}");
+    // У 2000-го загруженного коммита main родитель не загружен: один хвост, с затуханием
+    assert_eq!(lanes["tails"], json!(1), "{report}");
+    assert_eq!(lanes["masked"], json!(true), "{report}");
 }
 
 #[test]

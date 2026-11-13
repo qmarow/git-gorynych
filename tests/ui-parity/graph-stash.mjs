@@ -9,7 +9,7 @@ const [repo] = process.argv.slice(2);
 setup(repo);
 globalThis.localStorage = { getItem: () => null, setItem() {} };
 const { withStashes } = await import(pathToFileURL(path.join(repo, 'src', 'lib', 'graphStash.ts')).href);
-const { layoutGraph } = await import(pathToFileURL(path.join(repo, 'src', 'lib', 'graphLayout.ts')).href);
+const { layoutGraph, laneColor } = await import(pathToFileURL(path.join(repo, 'src', 'lib', 'graphLayout.ts')).href);
 
 let count = 0;
 const eq = (what, a, b) => {
@@ -81,5 +81,135 @@ const bg = layoutGraph(withStashes(branchy, [st(0, 's0', 'c4', 9)], title));
 eq('ветки на тех же дорожках', bg.nodes.filter((n) => !n.stash).map((n) => [n.hash, n.lane]), plain);
 eq('stash правее занятой дорожки', bg.nodes[0].lane, 2);
 eq('дорожек 3', bg.laneCount, 3);
+
+// Хвост: коммит с незагруженным родителем — линия до края, stash в её дорожку не встаёт
+const cut = layoutGraph([...linear.slice(0, 3)]);
+eq('хвост к незагруженному родителю', cut.tails.map((t) => [t.id, t.from.hash, t.travel, t.dashed]), [['c3->c2', 'c3', 0, false]]);
+eq('рёбер к нему нет', cut.edges.map((e) => e.id), ['c5->c4', 'c4->c3']);
+const tailed = [
+  { hash: 'c5', parents: ['c4'], date: day(5) },
+  { hash: 'f1', parents: ['gone'], date: day(4.5) },
+  { hash: 'c4', parents: ['c3'], date: day(4) },
+  { hash: 'c3', parents: [], date: day(3) },
+];
+const tg = layoutGraph(withStashes(tailed, [st(0, 's0', 'c3', 9)], title));
+eq('хвост f1 в дорожке 1, stash правее', [tg.tails[0].travel, tg.tails[0].from.row, tg.nodes[0].lane], [1, 2, 2]);
+
+// Подбор дорожки stash по интервалам занятости = прежний перебор всех узлов, рёбер и хвостов на каждую пробу
+let seed = 11;
+const rnd = () => ((seed = (seed * 1103515245 + 12345) % 2147483648) / 2147483648);
+function dag(n, mergeRate, gapRate) {
+  const hashes = Array.from({ length: n }, (_, i) => `h${i.toString(16).padStart(6, '0')}`);
+  const out = [];
+  for (let i = 0; i < n; i++) {
+    const parents = [];
+    const older = n - i - 1;
+    if (older > 0 && rnd() > 0.02) {
+      parents.push(hashes[i + 1 + Math.floor(rnd() * Math.min(older, rnd() < 0.7 ? 2 : 30))]);
+      while (rnd() < mergeRate && parents.length < 3) parents.push(hashes[i + 1 + Math.floor(rnd() * older)]);
+    }
+    if (rnd() < gapRate) parents.push('outside' + i);
+    out.push({ hash: hashes[i], parents, date: new Date(Date.UTC(2026, 0, 1) + (n - i) * 3600_000).toISOString(), refs: [] });
+  }
+  return out;
+}
+// Число закреплённых дорожек — как в layoutGraph: цепочки первых родителей вершин
+function pinnedCount(real, pinned) {
+  const byHash = new Map(real.map((c) => [c.hash, c]));
+  const taken = new Set();
+  let k = 0;
+  for (const tip of pinned ?? []) {
+    if (!byHash.has(tip) || taken.has(tip)) continue;
+    for (let h = tip; h !== undefined && byHash.has(h) && !taken.has(h); h = byHash.get(h).parents[0]) taken.add(h);
+    k++;
+  }
+  return k;
+}
+// Прежняя реализация layoutWithStashes дословно (с хвостами из шага 4.1), busy — перебором
+function reference(commits, options) {
+  const real = commits.filter((c) => !c.stash);
+  const base = layoutGraph(real, options);
+  const k = pinnedCount(real, options?.pinned);
+  const rowOf = new Map(commits.map((c, i) => [c.hash, i]));
+  const byHash = new Map(base.nodes.map((n) => [n.hash, { ...n, row: rowOf.get(n.hash) }]));
+  const edges = base.edges.map((e) => {
+    const from = byHash.get(e.from.hash);
+    const to = byHash.get(e.to.hash);
+    return { ...e, from, to, minRow: from.row, maxRow: to.row };
+  });
+  const tails = base.tails.map((t) => ({ ...t, from: byHash.get(t.from.hash) }));
+  const nodes = [...byHash.values()];
+  const side = [];
+  const busy = (lane, top, bottom) =>
+    nodes.some((n) => n.lane === lane && n.row >= top && n.row <= bottom) ||
+    edges.some((e) => e.travel === lane && e.maxRow > top && e.minRow < bottom) ||
+    tails.some((t) => t.travel === lane && t.from.row < bottom) ||
+    side.some((x) => x.lane === lane && x.bottom >= top && x.top <= bottom);
+  let laneCount = base.laneCount;
+  const out = commits.map((commit, row) => {
+    if (!commit.stash) return byHash.get(commit.hash);
+    const target = byHash.get(commit.parents[0]);
+    let lane = Math.max(target ? target.lane + 1 : 0, k);
+    const bottom = target?.row ?? row;
+    while (busy(lane, row, bottom)) lane++;
+    side.push({ lane, top: row, bottom });
+    laneCount = Math.max(laneCount, lane + 1);
+    const node = { ...commit, row, lane };
+    if (target) edges.push({ id: `${commit.hash}->${target.hash}`, from: node, to: target, travel: lane, minRow: row, maxRow: target.row, dashed: true, color: laneColor(lane) });
+    return node;
+  });
+  return { nodes: out, edges, tails, laneCount };
+}
+const summary = (g) =>
+  JSON.stringify({
+    nodes: g.nodes,
+    edges: g.edges.map((e) => ({ ...e, from: e.from.hash, to: e.to.hash })),
+    tails: g.tails.map((t) => ({ ...t, from: t.from.hash })),
+    laneCount: g.laneCount,
+  });
+let compared = 0;
+for (let round = 0; round < 300; round++) {
+  const n = 2 + Math.floor(rnd() * 250);
+  const real = dag(n, rnd() * 0.4, rnd() * 0.06);
+  const stashes = Array.from({ length: 1 + Math.floor(rnd() * 8) }, (_, i) => ({
+    id: `stash@{${i}}`,
+    hash: `s${i}`,
+    message: 'm',
+    date: real[Math.floor(rnd() * n)].date,
+    base: real[Math.floor(rnd() * n)].hash,
+  }));
+  const rows = withStashes(real, stashes, title);
+  const options = round % 3 === 0 ? { pinned: [real[0].hash, real[Math.floor(rnd() * n)].hash] } : undefined;
+  const a = summary(layoutGraph(rows, options));
+  const b = summary(reference(rows, options));
+  if (a !== b) {
+    console.error('РАСХОЖДЕНИЕ stash: интервалы и перебор, граф', round, '\nновое:', a.slice(0, 400), '\nпрежнее:', b.slice(0, 400));
+    process.exit(1);
+  }
+  compared++;
+}
+count += compared;
+
+// Замер: 40 stash на 20 000 коммитов — не больше чем вдвое медленнее раскладки без stash
+const big = dag(20000, 0.03, 0.001);
+const bigStashes = Array.from({ length: 40 }, (_, i) => ({ id: `stash@{${i}}`, hash: `b${i}`, message: 'm', date: big[Math.floor(rnd() * 20000)].date, base: big[Math.floor(rnd() * 20000)].hash }));
+const bigRows = withStashes(big, bigStashes, title);
+const median = (fn) => {
+  const times = [];
+  for (let i = 0; i < 9; i++) {
+    const t0 = performance.now();
+    fn();
+    times.push(performance.now() - t0);
+  }
+  return times.sort((x, y) => x - y)[4];
+};
+median(() => layoutGraph(big));
+const plainMs = median(() => layoutGraph(big));
+const stashMs = median(() => layoutGraph(bigRows));
+console.log(`замер: без stash ${plainMs.toFixed(1)} мс, 40 stash ${stashMs.toFixed(1)} мс (×${(stashMs / plainMs).toFixed(2)})`);
+if (stashMs > plainMs * 2) {
+  console.error('РАСХОЖДЕНИЕ замер: со stash больше чем вдвое медленнее');
+  process.exit(1);
+}
 
 console.log(`graph-stash: совпало ${count} проверок`);

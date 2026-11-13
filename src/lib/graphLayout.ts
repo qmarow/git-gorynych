@@ -19,6 +19,8 @@ export interface Metrics extends Density {
   visibleLanes?: number;
   hiddenLanes?: number;
   fitted?: boolean;
+  /** Шаг дорожек ужат (`squeeze`): узлы-аватары перекрывались бы — рисовать точки */
+  forceDots?: boolean;
 }
 
 /**
@@ -74,9 +76,20 @@ export interface GraphEdge<T extends LayoutCommit> {
   color: string;
 }
 
+/** «Хвост» — линия к родителю за пределами загруженной истории: от узла по дорожке travel до нижнего края графа. */
+export interface GraphTail<T extends LayoutCommit> {
+  id: string;
+  from: GraphNode<T>;
+  travel: number;
+  color: string;
+  dashed: boolean;
+}
+
 export interface GraphLayout<T extends LayoutCommit> {
   nodes: GraphNode<T>[];
   edges: GraphEdge<T>[];
+  /** Линии к незагруженным родителям (рёбер для них нет, дорожка занята до конца графа) */
+  tails: GraphTail<T>[];
   laneCount: number;
 }
 
@@ -189,10 +202,16 @@ export function layoutGraph<T extends LayoutCommit>(commits: readonly T[], optio
 
   const byHash = new Map(nodes.map((n) => [n.hash, n]));
   const edges: GraphEdge<T>[] = [];
+  const tails: GraphTail<T>[] = [];
   for (const p of pending) {
     const from = byHash.get(p.from);
     const to = byHash.get(p.to);
-    if (!from || !to) continue; // родитель за пределами загруженной истории
+    if (!from) continue;
+    if (!to) {
+      // Родитель за пределами загруженной истории: линия уходит вниз по своей дорожке до края графа
+      tails.push({ id: `${p.from}->${p.to}`, from, travel: p.travel, color: laneColor(p.travel), dashed: Boolean(from.wip || from.stash) });
+      continue;
+    }
     edges.push({
       id: `${p.from}->${p.to}`,
       from,
@@ -205,7 +224,48 @@ export function layoutGraph<T extends LayoutCommit>(commits: readonly T[], optio
     });
   }
 
-  return { nodes, edges, laneCount };
+  return { nodes, edges, tails, laneCount };
+}
+
+/**
+ * Занятые строки дорожек — для подбора дорожки stash. Интервал [a, b] занимает строки a…b; ребро занимает строки строго
+ * между концами ([minRow + 1, maxRow - 1], у соседних строк a > b), хвост — от строки под узлом до конца графа. Пересечение
+ * с [top, bottom]: a <= bottom && b >= top — те же границы, что у прежнего перебора всех узлов и рёбер. Интервалы дорожки
+ * отсортированы по a, `maxB[i]` — наибольший b среди первых i + 1: проверка — двоичный поиск.
+ */
+class LaneIntervals {
+  private lanes = new Map<number, { a: number[]; maxB: number[] }>();
+
+  constructor(items: Iterable<[lane: number, a: number, b: number]>) {
+    const raw = new Map<number, [number, number][]>();
+    for (const [lane, a, b] of items) {
+      const list = raw.get(lane);
+      if (list) list.push([a, b]);
+      else raw.set(lane, [[a, b]]);
+    }
+    for (const [lane, list] of raw) {
+      list.sort((x, y) => x[0] - y[0]);
+      const a = list.map((x) => x[0]);
+      const maxB: number[] = [];
+      let best = -Infinity;
+      for (const [, b] of list) maxB.push((best = Math.max(best, b)));
+      this.lanes.set(lane, { a, maxB });
+    }
+  }
+
+  busy(lane: number, top: number, bottom: number): boolean {
+    const l = this.lanes.get(lane);
+    if (!l) return false;
+    // Последний интервал с a <= bottom
+    let lo = 0;
+    let hi = l.a.length;
+    while (lo < hi) {
+      const mid = (lo + hi) >> 1;
+      if (l.a[mid] <= bottom) lo = mid + 1;
+      else hi = mid;
+    }
+    return lo > 0 && l.maxB[lo - 1] >= top;
+  }
 }
 
 /**
@@ -226,12 +286,19 @@ function layoutWithStashes<T extends LayoutCommit>(commits: readonly T[], option
     const to = byHash.get(e.to.hash)!;
     return { ...e, from, to, minRow: from.row, maxRow: to.row };
   });
+  const tails: GraphTail<T>[] = base.tails.map((t) => ({ ...t, from: byHash.get(t.from.hash)! }));
   const nodes = [...byHash.values()];
+  // Занятость дорожек строится один раз; размещённые stash (их единицы) проверяются перебором
+  const taken = new LaneIntervals(
+    (function* () {
+      for (const n of nodes) yield [n.lane, n.row, n.row] as [number, number, number];
+      for (const e of edges) yield [e.travel, e.minRow + 1, e.maxRow - 1] as [number, number, number];
+      for (const t of tails) yield [t.travel, t.from.row + 1, Infinity] as [number, number, number];
+    })(),
+  );
   const side: { lane: number; top: number; bottom: number }[] = [];
   const busy = (lane: number, top: number, bottom: number) =>
-    nodes.some((n) => n.lane === lane && n.row >= top && n.row <= bottom) ||
-    edges.some((e) => e.travel === lane && e.maxRow > top && e.minRow < bottom) ||
-    side.some((x) => x.lane === lane && x.bottom >= top && x.top <= bottom);
+    taken.busy(lane, top, bottom) || side.some((x) => x.lane === lane && x.bottom >= top && x.top <= bottom);
 
   let laneCount = base.laneCount;
   const out = commits.map((commit, row): GraphNode<T> => {
@@ -248,7 +315,7 @@ function layoutWithStashes<T extends LayoutCommit>(commits: readonly T[], option
     }
     return node;
   });
-  return { nodes: out, edges, laneCount };
+  return { nodes: out, edges, tails, laneCount };
 }
 
 /** Ребру для пути нужны только положения концов и дорожка. */
@@ -303,9 +370,18 @@ export function graphWidth(laneCount: number, m: Metrics = DEFAULT_METRICS): num
  * если все дорожки не помещаются, те, что правее края, прижимаются к нему и двигаются вместе с границей колонки
  * (узлы и линии), как в GitKraken. maxX — x прижатых узлов (узел с кольцом HEAD целиком виден).
  */
-export function fitMetrics(m: Metrics, laneCount: number, width: number, nodeR: number = m.nodeR): Metrics {
+export function fitMetrics(m: Metrics, laneCount: number, width: number, nodeR: number = m.nodeR, options?: { squeeze?: boolean }): Metrics {
   const lanes = Math.max(1, laneCount);
   if (!(width > 0) || graphWidth(lanes, m) <= width) return m;
+  if (options?.squeeze) {
+    // Сначала ужимается шаг дорожек — до того, при котором видны все, но не меньше 2 * dotR + 4; к краю прижимаются,
+    // только если и этого мало. Аватары при узком шаге перекрывались бы — тогда точки (forceDots)
+    const minLaneW = 2 * m.dotR + 4;
+    const laneW = Math.max(minLaneW, (width - GRAPH_PADDING * 2) / lanes);
+    const squeezed: Metrics = { ...m, laneW, ...(laneW < 2 * m.nodeR + 2 ? { forceDots: true } : null) };
+    if (graphWidth(lanes, squeezed) <= width) return squeezed;
+    return fitMetrics(squeezed, lanes, width, squeezed.forceDots ? Math.min(nodeR, m.dotR) : nodeR);
+  }
   const first = GRAPH_PADDING + m.laneW / 2;
   // Край колонки «толкает» дорожки плавно: x прижатых дорожек следует за границей пиксель в пиксель,
   // а дорожки левее края остаются на своих местах, пока граница до них не дойдёт

@@ -25,13 +25,14 @@ window.__GORYNYCH_PROBE__ = async (initial) => {
   // Исключение сценария — в отчёт, иначе тест ждёт до таймаута без объяснений
   // Stash — пока в центре граф, а не окно изменений; потом выбор возвращается на WIP
   const stash = graph && fullFilePref === null ? await stashScenario(waitFor).catch((e) => ({ probeError: String(e?.stack ?? e) })) : null;
+  const lanes = graph && fullFilePref === null ? await lanesScenario(waitFor).catch((e) => ({ probeError: String(e?.stack ?? e) })) : null;
   const main = graph && fullFilePref === null ? await mainBranchScenario(invoke, waitFor).catch((e) => ({ probeError: String(e?.stack ?? e) })) : null;
   const editor = graph && fullFilePref === null ? await editorScenario(invoke, waitFor, sleep).catch((e) => ({ probeError: String(e?.stack ?? e) })) : null;
   // Выбор главных веток из прошлого запуска (второй запуск — из SQLite)
   const mainPref = localStorage.getItem(`graph.mainBranches.v1:${await invoke('repo_get_last')}`);
   // Запись уходит в базу пачкой через 400 мс
   await sleep(1000);
-  const report = { ...initial, graph, seeded, fullFilePref, editor, stash, main, mainPref, errors: [...(window.__gorynychErrors || [])], text: graph ? '' : text().slice(0, 3000) };
+  const report = { ...initial, graph, seeded, fullFilePref, editor, stash, main, mainPref, lanes, errors: [...(window.__gorynychErrors || [])], text: graph ? '' : text().slice(0, 3000) };
   await invoke('frontend_ready', { report: JSON.stringify(report) });
 };
 
@@ -52,12 +53,68 @@ async function stashScenario(waitFor) {
   return { found: true, label: row.textContent, between: Boolean(base && wip && top(wip) < top(row) && top(row) < top(base)), node, dashed: dashed >= 2, panel };
 }
 
+// Дорожки и хвосты: шаг дорожек и скрытые дорожки колонки «Граф», «+N» расширяет колонку; внизу истории — хвосты к
+// незагруженным родителям (видны, когда низ графа в окне прокрутки)
+async function lanesScenario(waitFor) {
+  const svg = () => document.querySelector('[data-testid="graph-svg"]');
+  const hidden = () => Number(svg()?.dataset.hiddenLanes ?? -1);
+  // Ширина колонки меряется ResizeObserver — ждём, пока атрибуты устоятся
+  let prev = '';
+  await waitFor(() => {
+    const now = `${svg()?.dataset.laneW}|${hidden()}`;
+    const stable = now === prev;
+    prev = now;
+    return stable && svg();
+  }, 5000);
+  const before = { laneW: Number(svg().dataset.laneW), forceDots: svg().dataset.forceDots === '1', hidden: hidden() };
+  const graphW = () => Number(svg().dataset.width);
+  const badge = document.querySelector('[data-testid="graph-hidden-lanes"]');
+  const out = { before, badge: badge ? { text: badge.textContent, tip: badge.dataset.tip } : null };
+  if (badge) {
+    // В окне теста колонке «Граф» почти не остаётся места: метки, автор и дата забирают его. Скрываем их в меню вида
+    // (правый клик по заголовку), чтобы «+N» было куда расширить колонку
+    const header = document.querySelector('[data-testid="graph-header"]');
+    header.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true, clientX: 200, clientY: 10 }));
+    await waitFor(() => document.querySelector('[role="menuitemcheckbox"]'), 3000);
+    for (const b of document.querySelectorAll('[role="menuitemcheckbox"][aria-checked="true"]:not([disabled])')) {
+      if (b.textContent.trim() !== 'Граф') b.click();
+    }
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
+    const narrow = graphW();
+    await waitFor(() => graphW() > narrow && document.querySelector('[data-testid="graph-hidden-lanes"]'), 5000);
+    await waitFor(() => {
+      const now = `${graphW()}|${hidden()}`;
+      const stable = now === prev;
+      prev = now;
+      return stable;
+    }, 3000);
+    const mid = hidden();
+    out.mid = mid > 0 && mid < before.hidden;
+    document.querySelector('[data-testid="graph-hidden-lanes"]')?.click();
+    out.after = (await waitFor(() => hidden() >= 0 && hidden() < mid, 5000)) === true;
+  }
+  const scroller = svg().closest('.overflow-auto');
+  // Короткая история целиком в окне и без хвостов — не ждём их зря
+  if (scroller.scrollHeight < scroller.clientHeight * 3) return { ...out, tails: document.querySelectorAll('[data-tail]').length };
+  scroller.scrollTop = scroller.scrollHeight;
+  const tails = await waitFor(() => {
+    const list = [...document.querySelectorAll('[data-tail]')];
+    return list.length ? list : null;
+  }, 5000);
+  out.tails = tails?.length ?? 0;
+  out.masked = Boolean(document.querySelector('[data-testid="graph-tails"][mask]'));
+  scroller.scrollTop = 0;
+  await waitFor(() => !document.querySelector('[data-tail]') || scroller.scrollTop === 0, 2000);
+  return out;
+}
+
 // Главные ветки: в режиме «авто» у main звезда; меню ветки (правый клик по метке) убирает её из главных и возвращает
 async function mainBranchScenario(invoke, waitFor) {
   const key = `graph.mainBranches.v1:${await invoke('repo_get_last')}`;
   const label = () => [...document.querySelectorAll('[data-ref-name]')].find((el) => el.textContent === 'main')?.parentElement;
   const star = () => Boolean(label()?.querySelector('[data-testid="main-branch-star"]'));
   const steps = [['auto', Boolean(await waitFor(star, 5000)), localStorage.getItem(key)]];
+  if (!label()) return { skipped: 'метки main нет в окне' };
   for (const item of ['Убрать из главных веток', 'Сделать главной веткой']) {
     const el = label();
     const r = el.getBoundingClientRect();

@@ -172,3 +172,16 @@ node tests/ui-parity/components-compiled.mjs $old $PWD Toasts CodeText Resizer A
 ```powershell
 node tests/ui-parity/graph-main-branches.mjs $PWD
 ```
+
+## Построение графа (этап 4): хвосты, узкая колонка, stash
+
+- `graph-stash.mjs` — кроме ожидаемых раскладок, сверяет подбор дорожки stash по интервалам занятости с прежним перебором всех
+  узлов, рёбер и хвостов (300 случайных графов) и замеряет 40 stash на 20 000 коммитов: не больше чем вдвое медленнее, чем без stash.
+- `graph-main-branches.mjs` — инварианты хвостов: по одному на каждого незагруженного родителя, ниже начала хвоста на его
+  дорожке нет узлов.
+- `graph-fit.mjs` — `fitMetrics(…, { squeeze: true })`: шаг ужимается до всех дорожек, не меньше `2 * dotR + 4`, точки при
+  узком шаге, прижатие к краю только сверх этого; видно не меньше дорожек, чем без ужатия.
+
+```powershell
+node tests/ui-parity/graph-fit.mjs $PWD
+```
