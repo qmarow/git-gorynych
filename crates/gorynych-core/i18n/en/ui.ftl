@@ -2850,3 +2850,18 @@ window-api-is-unavailable = window.api is unavailable — the interface is open 
 ## src/state/syncStore.ts
 
 no-connection-to-server = No connection to the server
+
+## src/lib/mainBranches.ts (главные ветки графа)
+
+main-branches = Main branches
+main-branch-pinned = Main branch: its own lane on the left
+make-main-branch = Make main branch
+remove-from-main-branches = Remove from main branches
+main-branches-limit = At most { $a0 } main branches
+add-main-branch = Add branch…
+detect-main-branches-automatically = Detect automatically
+main-branches-auto-hint = Picked automatically: main, master or trunk, and develop or dev
+main-branch-absent = No such branch in the repository
+main-branch-unloaded = Branch tip is outside the loaded history
+no-main-branches = No main branches — lanes are laid out as usual
+find-branch = Find a branch…

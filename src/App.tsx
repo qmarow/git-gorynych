@@ -48,6 +48,7 @@ import {
   Trash2,
   X,
   SquareTerminal,
+  Star,
   FolderSync,
   Pencil,
 } from 'lucide-react';
@@ -120,6 +121,7 @@ import { repoStore, useRepoStore, type LoadError, type RepoData, type RepoStatus
 import { gitBusy, syncStore, useSyncStore } from './state/syncStore.ts';
 import { ciStore, useCiStore } from './state/ciStore.ts';
 import { withStashes, type StashData } from './lib/graphStash.ts';
+import { MAX_MAIN_BRANCHES, useMainBranches } from './lib/mainBranches.ts';
 import type { RefDragPayload } from './lib/dnd.ts';
 import type { ActionOutput, ActionPayload, RepoActionName } from './state/repoActions.ts';
 import type { ApiError, ApiResult } from './platform/tauri.ts';
@@ -1392,6 +1394,19 @@ export default function App() {
     return groups;
   };
 
+  // «Сделать главной веткой» / «Убрать из главных веток» (`mainBranches.ts`): имя — короткое, origin/main → main
+  const mainBranchItem = (name: string): MenuItem => {
+    const isMain = mainBranches.names.includes(name);
+    const full = !isMain && mainBranches.names.length >= MAX_MAIN_BRANCHES;
+    return {
+      label: isMain ? tr('remove-from-main-branches') : tr('make-main-branch'),
+      icon: Star,
+      disabled: full,
+      title: full ? tr('main-branches-limit', MAX_MAIN_BRANCHES) : tr('main-branch-pinned'),
+      onClick: () => mainBranches.toggle(name),
+    };
+  };
+
   /**
    * Меню одной ветки или тега. inCommit — подменю внутри меню коммита: там уже есть Rebase и Reset к этому коммиту,
    * поэтому их не повторяем.
@@ -1488,6 +1503,7 @@ export default function App() {
           onClick: () => setDialog({ type: 'renameBranch', from: name, upstream: g.upstream, busy: false, error: null }),
         },
         copyName(name),
+        mainBranchItem(name),
         { separator: true },
         {
           label: tr('delete-branch-3', name),
@@ -1561,6 +1577,7 @@ export default function App() {
             },
           ]),
       copyName(full),
+      mainBranchItem(short),
       { separator: true },
       {
         label: tr('delete-from-server-2', full),
@@ -2461,6 +2478,13 @@ export default function App() {
   }, [repo?.commits, repo?.stashes, repo?.headHash, hasWip]);
 
   const commitsBySha = useMemo(() => new Map((repo?.commits ?? []).map((c) => [c.hash, c])), [repo?.commits]);
+
+  // Главные ветки графа: свои закреплённые дорожки слева, выбор — для каждого репозитория (`mainBranches.ts`)
+  const mainBranches = useMainBranches(repo?.path, repo);
+  const branchNames = useMemo(
+    () => [...new Set([...(repo?.localBranches ?? []).map((b) => b.name), ...(repo?.remotes ?? []).flatMap((r) => r.branches.map((b) => b.name)).filter((n) => n !== 'HEAD')])],
+    [repo?.localBranches, repo?.remotes],
+  );
 
   const selectedStash =
     repo && selectedHash?.startsWith('stash:') ? repo!.stashes.find((st) => `stash:${st.hash}` === selectedHash) ?? null : null;
@@ -3378,6 +3402,8 @@ export default function App() {
                   onPipelineHover={loadPipelineTip}
                   onPipelineClick={(p) => openPipelines(p.id, p.status === 'failed')}
                   onCopySha={(hash) => copy(hash, tr('commit-hash'))}
+                  mainBranches={mainBranches}
+                  branchNames={branchNames}
                 />
               )}
             </main>

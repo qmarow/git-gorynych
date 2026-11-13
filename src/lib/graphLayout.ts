@@ -87,9 +87,37 @@ interface PendingEdge {
   primary: boolean;
 }
 
-function takeFreeLane(lanes: (string | null)[]): number {
-  const free = lanes.indexOf(null);
-  return free === -1 ? lanes.length : free;
+/** Параметры раскладки. Без них (или с пустым `pinned`) результат прежний. */
+export interface LayoutOptions {
+  /** Хэши вершин главных веток по порядку дорожек (`mainBranches.ts`): каждая получает свою дорожку слева на всю высоту */
+  pinned?: readonly string[];
+}
+
+// Первая свободная дорожка, не левее from (дорожки левее from закреплены за главными ветками)
+function takeFreeLane(lanes: (string | null)[], from = 0): number {
+  const free = lanes.indexOf(null, from);
+  return free === -1 ? Math.max(lanes.length, from) : free;
+}
+
+/**
+ * Цепочки главных веток: от каждой вершины по первым родителям, пока коммит загружен и не занят более ранней цепочкой.
+ * Вершина не загружена или уже занята — ветка дорожку не получает, следующие сдвигаются. `tips` — вершины получивших.
+ */
+function pinnedChains(commits: readonly LayoutCommit[], pinned: readonly string[] | undefined) {
+  const chainLane = new Map<string, number>();
+  const tips: string[] = [];
+  if (!pinned?.length) return { chainLane, tips };
+  const byHash = new Map(commits.map((c) => [c.hash, c]));
+  for (const tip of pinned) {
+    if (!byHash.has(tip) || chainLane.has(tip)) continue;
+    let hash: string | undefined = tip;
+    while (hash !== undefined && byHash.has(hash) && !chainLane.has(hash)) {
+      chainLane.set(hash, tips.length);
+      hash = byHash.get(hash)!.parents[0];
+    }
+    tips.push(tip);
+  }
+  return { chainLane, tips };
 }
 
 /**
@@ -102,16 +130,25 @@ function takeFreeLane(lanes: (string | null)[]): number {
  * Каждое ребро запоминает колонку, по которой идёт вниз (travel), поэтому линии не пересекают чужие узлы.
  * Порядок коммитов важен: git log --date-order (родители всегда ниже детей, параллельные ветки
  * перемежаются по времени) — тогда мерджи короткие и колонки быстро освобождаются.
+ *
+ * Главные ветки (`options.pinned`): дорожки 0…k-1 закреплены за цепочками первых родителей их вершин на всю высоту.
+ * Коммит цепочки всегда стоит на своей дорожке, остальные ветки берут дорожки начиная с k. Строка WIP встаёт в дорожку,
+ * которая уже ждёт её родителя, — над вершиной главной ветки, а не сбоку.
  */
-export function layoutGraph<T extends LayoutCommit>(commits: readonly T[]): GraphLayout<T> {
-  if (commits.some((c) => c.stash)) return layoutWithStashes(commits);
-  const lanes: (string | null)[] = [];
+export function layoutGraph<T extends LayoutCommit>(commits: readonly T[], options?: LayoutOptions): GraphLayout<T> {
+  if (commits.some((c) => c.stash)) return layoutWithStashes(commits, options);
+  const { chainLane, tips } = pinnedChains(commits, options?.pinned);
+  const k = tips.length;
+  // Закреплённые дорожки с самого верха ждут вершины своих веток
+  const lanes: (string | null)[] = [...tips];
   const pending: PendingEdge[] = [];
-  let laneCount = 1;
+  let laneCount = Math.max(1, k);
 
   const nodes = commits.map((commit, row): GraphNode<T> => {
-    let lane = lanes.indexOf(commit.hash);
-    if (lane === -1) lane = takeFreeLane(lanes);
+    const chain = chainLane.get(commit.hash);
+    let lane = chain ?? lanes.indexOf(commit.hash);
+    if (lane === -1 && k && commit.wip && commit.parents[0] !== undefined) lane = lanes.indexOf(commit.parents[0]);
+    if (lane === -1) lane = takeFreeLane(lanes, k);
 
     // Остальные дорожки, ждавшие этот коммит, здесь сходятся и освобождаются
     for (let i = 0; i < lanes.length; i++) {
@@ -124,7 +161,8 @@ export function layoutGraph<T extends LayoutCommit>(commits: readonly T[]): Grap
     } else {
       // Первый родитель продолжает дорожку прямой линией. Исключение: его уже ждёт дорожка левее —
       // тогда ветвь сразу уходит туда, а наша колонка освобождается для других веток ниже.
-      const waitingLeft = lanes.findIndex((h, i) => h === firstParent && i < lane);
+      // Цепочка главной ветки всегда продолжает свою дорожку (и до коммита другой главной ветки — тоже)
+      const waitingLeft = chain === undefined ? lanes.findIndex((h, i) => h === firstParent && i < lane) : -1;
       if (waitingLeft !== -1) {
         lanes[lane] = null;
         pending.push({ from: commit.hash, to: firstParent, travel: waitingLeft, primary: true });
@@ -137,14 +175,14 @@ export function layoutGraph<T extends LayoutCommit>(commits: readonly T[]): Grap
     for (const parent of otherParents) {
       let travel = lanes.indexOf(parent);
       if (travel === -1) {
-        travel = takeFreeLane(lanes);
+        travel = takeFreeLane(lanes, k);
         lanes[travel] = parent;
       }
       pending.push({ from: commit.hash, to: parent, travel, primary: false });
     }
 
     laneCount = Math.max(laneCount, lanes.length, lane + 1);
-    while (lanes.length && lanes[lanes.length - 1] === null) lanes.pop();
+    while (lanes.length > k && lanes[lanes.length - 1] === null) lanes.pop();
 
     return { ...commit, row, lane };
   });
@@ -176,8 +214,11 @@ export function layoutGraph<T extends LayoutCommit>(commits: readonly T[]): Grap
  * коммита: там нет ни узла, ни вертикали чужого ребра, ни другого stash. Пунктир идёт вниз по этой дорожке и у коммита
  * поворачивает к нему.
  */
-function layoutWithStashes<T extends LayoutCommit>(commits: readonly T[]): GraphLayout<T> {
-  const base = layoutGraph(commits.filter((c) => !c.stash));
+function layoutWithStashes<T extends LayoutCommit>(commits: readonly T[], options?: LayoutOptions): GraphLayout<T> {
+  const real = commits.filter((c) => !c.stash);
+  const base = layoutGraph(real, options);
+  // Закреплённые дорожки главных веток stash не занимает
+  const k = pinnedChains(real, options?.pinned).tips.length;
   const rowOf = new Map(commits.map((c, i) => [c.hash, i]));
   const byHash = new Map(base.nodes.map((n): [string, GraphNode<T>] => [n.hash, { ...n, row: rowOf.get(n.hash)! }]));
   const edges: GraphEdge<T>[] = base.edges.map((e) => {
@@ -196,7 +237,7 @@ function layoutWithStashes<T extends LayoutCommit>(commits: readonly T[]): Graph
   const out = commits.map((commit, row): GraphNode<T> => {
     if (!commit.stash) return byHash.get(commit.hash)!;
     const target = byHash.get(commit.parents[0]);
-    let lane = target ? target.lane + 1 : 0;
+    let lane = Math.max(target ? target.lane + 1 : 0, k);
     const bottom = target?.row ?? row;
     while (busy(lane, row, bottom)) lane++;
     side.push({ lane, top: row, bottom });

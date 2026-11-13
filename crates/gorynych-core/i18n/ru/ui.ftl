@@ -2850,3 +2850,18 @@ window-api-is-unavailable = window.api недоступен — интерфей
 ## src/state/syncStore.ts
 
 no-connection-to-server = Нет связи с сервером
+
+## src/lib/mainBranches.ts (главные ветки графа)
+
+main-branches = Главные ветки
+main-branch-pinned = Главная ветка: своя дорожка слева
+make-main-branch = Сделать главной веткой
+remove-from-main-branches = Убрать из главных веток
+main-branches-limit = Главных веток не больше { $a0 }
+add-main-branch = Добавить ветку…
+detect-main-branches-automatically = Определять автоматически
+main-branches-auto-hint = Выбраны автоматически: main, master или trunk и develop или dev
+main-branch-absent = Такой ветки нет в репозитории
+main-branch-unloaded = Вершина ветки за пределами загруженной истории
+no-main-branches = Главных веток нет — дорожки раскладываются как обычно
+find-branch = Найти ветку…

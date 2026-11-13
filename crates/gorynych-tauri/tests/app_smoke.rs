@@ -170,6 +170,11 @@ fn real_interface_opens_repository_on_the_compatibility_layer() {
         json!({ "found": true, "label": "Stashпроба стэша", "between": true, "node": true, "dashed": true, "panel": true }),
         "stash в графе: {report}"
     );
+    assert_eq!(
+        report["main"]["steps"],
+        json!([["auto", true, null], ["Убрать из главных веток", true, true, "[]"], ["Сделать главной веткой", true, true, "[\"main\"]"]]),
+        "главные ветки: {report}"
+    );
 
     // Новый профиль WebView: `localStorage` пуст и заполняется из базы
     // Процессы WebView2 отпускают профиль не сразу после выхода приложения
@@ -183,6 +188,7 @@ fn real_interface_opens_repository_on_the_compatibility_layer() {
     assert!(status.success(), "{status:?}");
     assert_eq!(again["report"]["seeded"], json!("сохранено"), "настройка вернулась из SQLite: {again}");
     assert_eq!(again["report"]["fullFilePref"], json!("1"), "выбор «Весь файл» вернулся из SQLite: {again}");
+    assert_eq!(again["report"]["mainPref"], json!("[\"main\"]"), "главные ветки вернулись из SQLite: {again}");
     assert_eq!(again["report"]["errors"], json!([]), "{again}");
 }
 

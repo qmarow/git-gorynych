@@ -1,6 +1,6 @@
 import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type DragEvent, type HTMLAttributes, type KeyboardEvent, type MouseEvent } from 'react';
 import { flushSync } from 'react-dom';
-import { Archive, Check, Copy, FileSearch, Pencil, SlidersHorizontal } from 'lucide-react';
+import { Archive, Check, Copy, FileSearch, Pencil, SlidersHorizontal, Star } from 'lucide-react';
 import { RefKindIcon, RefsPopover, refKindLabel, useHoverPopover, type RefActions, type RefGroup, type RefItem } from './RefBadge.tsx';
 import { edgePath, fitMetrics, graphWidth, laneColor, laneX, layoutGraph, metricsFor, rowY, type GraphNode, type LayoutCommit, type Metrics } from '../lib/graphLayout.ts';
 import { StatusIcon, statusInfo } from './PipelineStatus.tsx';
@@ -12,6 +12,7 @@ import { isMod, kb } from '../lib/platform.ts';
 import { CC_TYPES, parseSummary } from '../lib/commitMsg.ts';
 import { DEFAULT_VIEW, columnById, moveColumn, useGraphView, type ColumnId, type GraphView } from '../lib/graphView.ts';
 import GraphViewMenu from './GraphViewMenu.tsx';
+import type { MainBranches } from '../lib/mainBranches.ts';
 import { readable } from '../lib/scheme.ts';
 import { t as tr, tj, locale } from '../i18n/index.ts';
 
@@ -47,6 +48,10 @@ type FileHit = { files: { path: string; count: number }[]; moreFiles?: number };
 /** Ширина колонки: значение, «потянуть» (возвращает итог) и сохранить */
 type WidthApi = [number | null, (value: number | null) => number, (value: number | null) => void];
 type DragPayload = RefDragPayload & { message?: string };
+/** Главные ветки: короткое имя → место в списке (`mainBranches.ts`). Пустая — главных нет */
+type MainOrder = ReadonlyMap<string, number>;
+const NO_MAIN: MainOrder = new Map();
+const NO_NAMES: readonly string[] = [];
 
 interface CommitGraphProps {
   commits: GraphRow[];
@@ -72,6 +77,10 @@ interface CommitGraphProps {
   currentBranch?: string | null;
   refActions?: RefActions | null;
   onCopySha?: (hash: string) => void;
+  /** Главные ветки (`useMainBranches`): закреплённые дорожки слева и раздел меню вида */
+  mainBranches?: MainBranches | null;
+  /** Короткие имена локальных и серверных веток — для «Добавить ветку…» в меню вида */
+  branchNames?: readonly string[];
 }
 
 const HEADER_HEIGHT = 30;
@@ -99,7 +108,7 @@ const sansFont = () => getComputedStyle(document.body).fontFamily || 'sans-serif
 const monoFont = () => getComputedStyle(document.documentElement).getPropertyValue('--font-mono').trim() || 'monospace';
 
 /** Ширина колонки по содержимому (px) или null, если мерить нечего */
-function measureColumn(id: string, sample: GraphItem[], gv: GraphView): number | null {
+function measureColumn(id: string, sample: GraphItem[], gv: GraphView, main: MainOrder = NO_MAIN): number | null {
   const sans = sansFont();
   const mono = monoFont();
   const real = sample.filter((n) => !n.wip && !n.stash);
@@ -108,9 +117,9 @@ function measureColumn(id: string, sample: GraphItem[], gv: GraphView): number |
     let best = 0;
     for (const n of sample) {
       if (!n.refs.length) continue;
-      const [g, ...rest] = groupRefs(n.refs);
+      const [g, ...rest] = groupRefs(n.refs, main);
       if (!g) continue;
-      const w = textWidth(g.name, labelFont) + 16 + 26 + (g.head ? 19 : 0) + (rest.length ? 36 : 0) + (n.isHead && !n.refs.some((r) => r.head) ? 60 : 0);
+      const w = textWidth(g.name, labelFont) + 16 + 26 + (g.head ? 19 : 0) + (isMainGroup(g, main) ? 17 : 0) + (rest.length ? 36 : 0) + (n.isHead && !n.refs.some((r) => r.head) ? 60 : 0);
       best = Math.max(best, w);
     }
     return best ? Math.ceil(best + 8 + 6 + 8) : null;
@@ -175,14 +184,29 @@ export default function CommitGraph({
   currentBranch = null,
   refActions = null, // { checkout(ref), deleteRemote(fullName), menu(ref, x, y) } — для поповера «+N»
   onCopySha, // клик по хэшу в колонке SHA
+  mainBranches = null,
+  branchNames = NO_NAMES,
 }: CommitGraphProps) {
   const [dropHash, setDropHash] = useState<string | null>(null);
   useEffect(() => {
     if (!dragSource) setDropHash(null);
   }, [dragSource]);
-  const { nodes, edges, laneCount } = useMemo(() => layoutGraph(commits), [commits]);
+  // Вершины главных веток по порядку — закреплённые дорожки. Ключ — строка: раскладка не пересчитывается, пока вершины те же
+  const pinnedKey = mainBranches?.tips.map((tip) => tip.hash).join(',') ?? '';
+  const { nodes, edges, laneCount } = useMemo(() => layoutGraph(commits, pinnedKey ? { pinned: pinnedKey.split(',') } : undefined), [commits, pinnedKey]);
+  const mainKey = mainBranches?.names.join('\n') ?? '';
+  const mainOrder = useMemo((): MainOrder => (mainKey ? new Map(mainKey.split('\n').map((name, i) => [name, i])) : NO_MAIN), [mainKey]);
   // Строка коммита по хэшу — для перехода к коммиту и стрелок без перебора всего списка
   const rowByHash = useMemo(() => new Map(nodes.map((n) => [n.hash, n.row])), [nodes]);
+  // Цвет дорожки каждой главной ветки для меню вида: дорожка узла её вершины
+  const mainColors = useMemo(() => {
+    const out: Record<string, string> = {};
+    for (const tip of mainBranches?.tips ?? []) {
+      const row = rowByHash.get(tip.hash);
+      if (row !== undefined) out[tip.name] = laneColor(nodes[row].lane);
+    }
+    return out;
+  }, [mainBranches?.tips, rowByHash, nodes]);
 
   // Вид таблицы: колонки, порядок, плотность, формат даты, стиль узлов
   const [gv, setGv] = useGraphView();
@@ -210,7 +234,7 @@ export default function CommitGraph({
   const [shaW, setShaW, saveShaW] = useStoredWidth('graph.sha', 104, 90, 180);
   // Пока ширину не меняли руками — подбираем по содержимому, чтобы имена веток и авторов не обрезались
   const head = nodes.length > 400 ? nodes.slice(0, 400) : nodes;
-  const autoRefs = useMemo(() => clampW(measureColumn('refs', head, gv) ?? 190, 140, 260), [nodes, gv.density]); // eslint-disable-line react-hooks/exhaustive-deps
+  const autoRefs = useMemo(() => clampW(measureColumn('refs', head, gv, mainOrder) ?? 190, 140, 260), [nodes, gv.density, mainOrder]); // eslint-disable-line react-hooks/exhaustive-deps
   const autoAuthor = useMemo(() => clampW(measureColumn('author', head, gv) ?? 160, 110, 220), [nodes]); // eslint-disable-line react-hooks/exhaustive-deps
   const refsW = refsStored ? refsStoredW : autoRefs;
   const authorW = authorStored ? authorStoredW : autoAuthor;
@@ -353,7 +377,7 @@ export default function CommitGraph({
   };
 
   // Двойной клик по разделителю: ширина под содержимое колонки (граф — снова авто)
-  const fitWidth = (id: string) => measureColumn(id, nodes.length > FIT_SAMPLE ? nodes.slice(0, FIT_SAMPLE) : nodes, gv);
+  const fitWidth = (id: string) => measureColumn(id, nodes.length > FIT_SAMPLE ? nodes.slice(0, FIT_SAMPLE) : nodes, gv, mainOrder);
 
   const resetLayout = () => {
     for (const [, set, save] of Object.values(widthApi) as WidthApi[]) {
@@ -571,6 +595,7 @@ export default function CommitGraph({
             onDragOverRow={dragOverRow}
             onDragLeaveRow={dragLeaveRow}
             currentBranch={currentBranch}
+            mainOrder={mainOrder}
             refActions={stableRefActions}
             onDropRow={dropRow}
             onSelect={rowSelect}
@@ -669,7 +694,15 @@ export default function CommitGraph({
       )}
 
       {menu && (
-        <GraphViewMenu x={menu.x} y={menu.y} view={gv} onChange={setGv} onResetLayout={resetLayout} onClose={closeMenu} />
+        <GraphViewMenu
+          x={menu.x}
+          y={menu.y}
+          view={gv}
+          onChange={setGv}
+          onResetLayout={resetLayout}
+          onClose={closeMenu}
+          main={mainBranches ? { state: mainBranches, colors: mainColors, branches: branchNames } : null}
+        />
       )}
     </div>
   );
@@ -794,6 +827,7 @@ const Row = memo(function Row({
   onDragLeaveRow,
   onDropRow,
   currentBranch,
+  mainOrder,
   refActions,
 }: {
   node: GraphItem;
@@ -827,6 +861,7 @@ const Row = memo(function Row({
   onDragLeaveRow: (node: GraphItem) => void;
   onDropRow: (node: GraphItem, e: DragEvent<HTMLDivElement>) => void;
   currentBranch: string | null | undefined;
+  mainOrder: MainOrder;
   refActions: RefActions | null | undefined;
 }) {
   const color = laneColor(node.lane);
@@ -865,6 +900,7 @@ const Row = memo(function Row({
               compact={compact}
               connector={refsSide === 'left'}
               currentBranch={currentBranch}
+              main={mainOrder}
               actions={refActions}
               onDragStart={(e, g) => {
                 e.stopPropagation();
@@ -1021,15 +1057,28 @@ const Row = memo(function Row({
 
 /* ---------------- Метки веток ---------------- */
 
-// Группы меток по массиву refs коммита: массив тот же, пока граф не перечитан, — группировка не повторяется
-const groupCache = new WeakMap<GraphRef[], RefGroup[]>();
-function groupRefs(refs: GraphRef[]): RefGroup[] {
-  let groups = groupCache.get(refs);
-  if (!groups) {
-    groups = groupRefsNow(refs);
-    groupCache.set(refs, groups);
-  }
+// Группы меток по массиву refs коммита: массив тот же, пока граф не перечитан и главные ветки те же, — группировка не повторяется
+const groupCache = new WeakMap<GraphRef[], { main: MainOrder; groups: RefGroup[] }>();
+function groupRefs(refs: GraphRef[], main: MainOrder = NO_MAIN): RefGroup[] {
+  const hit = groupCache.get(refs);
+  if (hit && hit.main === main) return hit.groups;
+  const groups = sortMainFirst(groupRefsNow(refs), main);
+  groupCache.set(refs, { main, groups });
   return groups;
+}
+
+/** Короткое имя ветки группы для списка главных: `origin/main` → `main`; у тега — null */
+function mainNameOf(g: RefGroup): string | null {
+  if (g.tag) return null;
+  return g.local ? g.name : g.remoteName!.slice(g.remoteName!.indexOf('/') + 1);
+}
+const isMainGroup = (g: RefGroup, main: MainOrder) => main.size > 0 && main.has(mainNameOf(g) ?? '');
+
+// Главные ветки — сразу после текущей (HEAD), в порядке списка, чтобы их метка не пряталась в «+N»; остальные — как были
+function sortMainFirst(groups: RefGroup[], main: MainOrder): RefGroup[] {
+  if (!main.size) return groups;
+  const rank = (g: RefGroup) => (g.head ? -1 : main.get(mainNameOf(g) ?? '') ?? main.size);
+  return groups.map((g, i) => ({ g, i, r: rank(g) })).sort((a, b) => a.r - b.r || a.i - b.i).map((x) => x.g);
 }
 
 // Локальная и удалённая ветка с одним именем показываются одной меткой с двумя иконками
@@ -1064,13 +1113,14 @@ interface RefLabelsProps {
   actions: RefActions | null | undefined;
   compact?: boolean;
   connector?: boolean;
+  main?: MainOrder;
 }
 
-function RefLabels({ refs, color, onDragStart, currentBranch, actions, compact = false, connector = true }: RefLabelsProps) {
+function RefLabels({ refs, color, onDragStart, currentBranch, actions, compact = false, connector = true, main = NO_MAIN }: RefLabelsProps) {
   const pop = useHoverPopover();
   const [expanded, setExpanded] = useState(false);
   const badgeRef = useRef<HTMLSpanElement>(null);
-  const groups = groupRefs(refs);
+  const groups = groupRefs(refs, main);
   // Подсказка метки — длинная строка: считается только при смене меток
   const tip = useMemo(() => {
     const [g, ...others] = groups;
@@ -1081,6 +1131,7 @@ function RefLabels({ refs, color, onDragStart, currentBranch, actions, compact =
   if (!groups.length) return null;
   const [first, ...rest] = groups;
   const draggable = !first.tag;
+  const isMain = isMainGroup(first, main);
   const remoteOnly = first.remote && !first.local;
   // Локальная — заливка цветом ветки; только на сервере — контур пунктиром; тег — приглушённая заливка
   const style = remoteOnly
@@ -1116,6 +1167,7 @@ function RefLabels({ refs, color, onDragStart, currentBranch, actions, compact =
         className={`relative flex min-w-0 items-center gap-1.5 rounded-l px-2 font-medium ${compact ? 'h-[18px] text-[11.5px]' : 'h-[22px] text-[12px]'} ${remoteOnly ? 'border border-dashed text-gk-strong/90' : 'text-gk-strong'}`}
       >
         {first.head && <Check size={13} strokeWidth={3} className="shrink-0 text-gk-strong" />}
+        {isMain && <Star size={12} strokeWidth={2.5} data-testid="main-branch-star" data-tip={tr('main-branch-pinned')} className="shrink-0 fill-current text-gk-strong" />}
         {/* Где живёт ветка: ноутбук — у вас, облако — на сервере, вместе — синхронизированы */}
         <span className="hidden shrink-0 opacity-85 @[96px]:flex">
           <RefKindIcon local={first.local} remote={first.remote} tag={first.tag} size={12} />
@@ -1136,6 +1188,7 @@ function RefLabels({ refs, color, onDragStart, currentBranch, actions, compact =
             className={`pointer-events-none absolute left-0 top-0 z-40 flex h-full items-center gap-1.5 whitespace-nowrap rounded px-2 font-medium shadow-lg shadow-gk-sink/40 ${remoteOnly ? 'border border-dashed text-gk-strong/90' : 'text-gk-strong'} ${compact ? 'text-[11.5px]' : 'text-[12px]'}`}
           >
             {first.head && <Check size={13} strokeWidth={3} className="shrink-0 text-gk-strong" />}
+            {isMain && <Star size={12} strokeWidth={2.5} className="shrink-0 fill-current text-gk-strong" />}
             <RefKindIcon local={first.local} remote={first.remote} tag={first.tag} size={12} />
             {first.name}
           </span>

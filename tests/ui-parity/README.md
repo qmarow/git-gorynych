@@ -163,3 +163,12 @@ node tests/ui-parity/components-compiled.mjs $old $PWD Toasts CodeText Resizer A
 Обе копии компилируются как TypeScript (`loader: 'tsx'`): он убирает неиспользуемые импорты (`COLUMNS` в `GraphViewMenu`),
 и это не считается отличием. Импорт, у которого не используется ни одно имя, пропал бы целиком — у компонентов таких
 импортов ради побочного действия нет. Компоненты из подпапок задаются путём: `ci/common`, `ci/DagView`.
+
+## Главные ветки графа (`src/lib/mainBranches.ts`, `layoutGraph(commits, { pinned })`)
+
+Новая возможность 2.0, прежней копии нет. `graph-main-branches.mjs` проверяет инварианты закреплённых дорожек на случайных
+графах (с WIP и stash) и чистые функции выбора; без `pinned` раскладка обязана совпасть с прежней (это же сверяет `graph-layout.mjs`).
+
+```powershell
+node tests/ui-parity/graph-main-branches.mjs $PWD
+```

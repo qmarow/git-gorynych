@@ -25,10 +25,13 @@ window.__GORYNYCH_PROBE__ = async (initial) => {
   // Исключение сценария — в отчёт, иначе тест ждёт до таймаута без объяснений
   // Stash — пока в центре граф, а не окно изменений; потом выбор возвращается на WIP
   const stash = graph && fullFilePref === null ? await stashScenario(waitFor).catch((e) => ({ probeError: String(e?.stack ?? e) })) : null;
+  const main = graph && fullFilePref === null ? await mainBranchScenario(invoke, waitFor).catch((e) => ({ probeError: String(e?.stack ?? e) })) : null;
   const editor = graph && fullFilePref === null ? await editorScenario(invoke, waitFor, sleep).catch((e) => ({ probeError: String(e?.stack ?? e) })) : null;
+  // Выбор главных веток из прошлого запуска (второй запуск — из SQLite)
+  const mainPref = localStorage.getItem(`graph.mainBranches.v1:${await invoke('repo_get_last')}`);
   // Запись уходит в базу пачкой через 400 мс
   await sleep(1000);
-  const report = { ...initial, graph, seeded, fullFilePref, editor, stash, errors: [...(window.__gorynychErrors || [])], text: graph ? '' : text().slice(0, 3000) };
+  const report = { ...initial, graph, seeded, fullFilePref, editor, stash, main, mainPref, errors: [...(window.__gorynychErrors || [])], text: graph ? '' : text().slice(0, 3000) };
   await invoke('frontend_ready', { report: JSON.stringify(report) });
 };
 
@@ -47,6 +50,24 @@ async function stashScenario(waitFor) {
   wip?.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, button: 0 }));
   await waitFor(() => !document.querySelector('[data-testid="stash-panel"]'), 5000);
   return { found: true, label: row.textContent, between: Boolean(base && wip && top(wip) < top(row) && top(row) < top(base)), node, dashed: dashed >= 2, panel };
+}
+
+// Главные ветки: в режиме «авто» у main звезда; меню ветки (правый клик по метке) убирает её из главных и возвращает
+async function mainBranchScenario(invoke, waitFor) {
+  const key = `graph.mainBranches.v1:${await invoke('repo_get_last')}`;
+  const label = () => [...document.querySelectorAll('[data-ref-name]')].find((el) => el.textContent === 'main')?.parentElement;
+  const star = () => Boolean(label()?.querySelector('[data-testid="main-branch-star"]'));
+  const steps = [['auto', Boolean(await waitFor(star, 5000)), localStorage.getItem(key)]];
+  for (const item of ['Убрать из главных веток', 'Сделать главной веткой']) {
+    const el = label();
+    const r = el.getBoundingClientRect();
+    el.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true, clientX: r.left + 5, clientY: r.top + 5 }));
+    const button = await waitFor(() => [...document.querySelectorAll('button')].find((b) => b.textContent.includes(item)), 5000);
+    button?.click();
+    const want = item.startsWith('Сделать');
+    steps.push([item, Boolean(button), Boolean(await waitFor(() => star() === want, 5000)), localStorage.getItem(key)]);
+  }
+  return { steps };
 }
 
 // Окно изменений: файл открывается кликом в списке «Неиндексированные файлы»
