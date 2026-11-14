@@ -5,6 +5,7 @@ import {
   ArrowUpFromLine,
   Check,
   ChevronDown,
+  CircleDot,
   CloudDownload,
   FolderGit2,
   GitBranch,
@@ -61,6 +62,11 @@ interface ToolbarProps {
   onSettings?: () => void;
   onSearch?: () => void;
   searchOpen?: boolean;
+  /** Новое в 2.0: раздел «Задачи». Кнопка есть, только если у репозитория определён сервер (`repo.forge`). */
+  onIssues?: () => void;
+  issuesActive?: boolean;
+  /** Открытые задачи, назначенные пользователю; ноль и `undefined` не показываются. */
+  issuesCount?: number;
   customActions?: ToolbarAction[];
   onRunAction?: (id: string) => void;
   onOpenActions?: () => void;
@@ -96,6 +102,9 @@ export default function Toolbar({
   onSettings,
   onSearch,
   searchOpen,
+  onIssues,
+  issuesActive,
+  issuesCount,
   customActions = [],
   onRunAction,
   onOpenActions,
@@ -236,6 +245,20 @@ export default function Toolbar({
 
       <div className="flex items-center gap-1">
         <AccessChip repo={repo} access={access} onClick={onAccessClick} />
+        {onIssues && repo.forge?.provider && (
+          <button
+            type="button"
+            data-testid="toolbar-issues"
+            data-tip={kb(t('issues-toolbar-tip'))}
+            aria-pressed={Boolean(issuesActive)}
+            onClick={onIssues}
+            className={`flex h-8 items-center gap-1.5 rounded px-2 text-xs transition-colors hover:bg-gk-hover ${issuesActive ? 'text-gk-blue' : 'text-gk-muted hover:text-gk-text'}`}
+          >
+            <CircleDot size={16} strokeWidth={1.75} />
+            {t('issues-title')}
+            {Boolean(issuesCount) && <span className="rounded-full bg-gk-blue/20 px-1.5 text-[11px] leading-4 text-gk-blue">{issuesCount}</span>}
+          </button>
+        )}
         <IconButton
           icon={Search}
           title={kb(t('search-commits-ctrl-f'))}

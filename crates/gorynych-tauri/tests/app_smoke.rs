@@ -190,6 +190,21 @@ fn real_interface_opens_repository_on_the_compatibility_layer() {
         json!({ "tagShown": true, "tagsOff": "false", "tagHidden": true, "tagsOn": "true", "tagBack": true, "stashBefore": true, "stashOff": "false", "stashHidden": true, "pref": false }),
         "фильтры вида: {report}"
     );
+    // Раздел «Задачи» (новое в 2.0): у репозитория нет remote — кнопки нет, Ctrl+I и Ctrl+Ш открывают раздел с «нет сервера»,
+    // граф под ним не размонтирован, Esc и повторное Ctrl+I закрывают
+    assert_eq!(
+        report["issues"],
+        json!({ "button": false, "opened": true, "state": "no-server", "graphKept": true, "detailsHidden": true, "focused": true, "escClosed": true, "reopened": true, "toggledOff": true, "sameGraph": true, "list": report["issues"]["list"] }),
+        "раздел задач: {report}"
+    );
+    // Список на подставном `window.api.issues` (500 задач): рисуются только видимые строки, поиск уходит одним запросом после
+    // паузы, «Назначены мне» — `@me`, прокрутка к концу просит страницу 2, пять нажатий ↓ — одна загрузка карточки,
+    // прокрутка и выбор переживают закрытие раздела
+    assert_eq!(
+        report["issues"]["list"],
+        json!({ "loaded": true, "rendered": 21, "counts": "Открытые500", "searchEarly": 0, "search": "123", "mine": "@me", "loadMore": true, "keys": [496], "selected": "496", "card": true, "scrollKept": true, "selectedKept": true }),
+        "список задач: {report}"
+    );
     // Две дорожки помещаются: шаг прежний, хвостов нет
     assert_eq!(report["lanes"], json!({ "before": { "laneW": 28, "forceDots": false, "hidden": 0 }, "badge": null, "tails": 0 }), "дорожки: {report}");
 

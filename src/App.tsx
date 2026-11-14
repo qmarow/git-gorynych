@@ -63,6 +63,8 @@ import TooltipLayer from './components/TooltipLayer.tsx';
 import DiffView, { type DiffData, type DiffEditor, type DiffTarget, type FileAction, type HunkAction } from './components/DiffView.tsx';
 import ConflictView, { type RunAction } from './components/ConflictView.tsx';
 import CiView from './components/CiView.tsx';
+import IssuesView from './components/issues/IssuesView.tsx';
+import { issuesStore } from './state/issuesStore.ts';
 import RebaseView, { type RebaseSession } from './components/RebaseView.tsx';
 import CompareView, { type CompareSearchJump } from './components/CompareView.tsx';
 import FileView, { type FileViewState } from './components/FileView.tsx';
@@ -542,10 +544,23 @@ export default function App() {
   const [rebaseView, setRebaseViewRaw] = useState<RebaseSession | null>(null); // { upstream, onto?, nonce } — интерактивный rebase
   const [fileView, setFileViewRaw] = useState<FileViewState | null>(null); // { path, rev, mode, blameRev, blamePath, blameStack, focus } — история файла / blame
   const [compareMark, setCompareMark] = useState<string | null>(null); // коммит, отмеченный для сравнения
+  // Новое в 2.0: раздел «Задачи» в центре вместо графа; открыт ли он — запоминается для каждой вкладки
+  const [issuesView, setIssuesViewRaw] = useState<{ n: number } | null>(null);
+  const issuesTabs = useRef(new Map<string, boolean>());
   // В центре одновременно открыта только одна большая панель
+  const setIssuesView = (v: { n: number } | null) => {
+    setIssuesViewRaw(v);
+    if (v) {
+      setCiViewRaw(null);
+      setCompareViewRaw(null);
+      setRebaseViewRaw(null);
+      setFileViewRaw(null);
+    }
+  };
   const setCiView = (v: CiViewState | null) => {
     setCiViewRaw(v);
     if (v) {
+      setIssuesViewRaw(null);
       setCompareViewRaw(null);
       setRebaseViewRaw(null);
       setFileViewRaw(null);
@@ -621,7 +636,15 @@ export default function App() {
   const rememberActiveTab = () => repoStore.getState().rememberActive();
 
   // Пустая вкладка («Новая вкладка») или ни одной: репозитория нет, показываем стартовую страницу
+  // Раздел «Задачи» покидаемой вкладки запоминается, у новой — восстанавливается
+  const switchIssuesTab = (next: string | null) => {
+    const leaving = activeRef.current;
+    if (leaving) issuesTabs.current.set(leaving, Boolean(issuesView));
+    setIssuesViewRaw(next && issuesTabs.current.get(next) ? { n: Date.now() } : null);
+  };
+
   const showBlank = (path: string | null) => {
+    switchIssuesTab(path);
     repoStore.getState().showBlank(path); // заодно отменяет ответы на ещё идущие загрузки
     setDiffTarget(null);
     setCiView(null);
@@ -648,6 +671,7 @@ export default function App() {
       return;
     }
     rememberActiveTab();
+    switchIssuesTab(path);
     setDiffTarget(null);
     setCiView(null);
     setCompareView(null);
@@ -681,6 +705,8 @@ export default function App() {
     if (index === -1) return;
     const rest = tabs.filter((t) => t.path !== path);
     repoStore.getState().forgetTab(path);
+    issuesStore.getState().forget(path);
+    issuesTabs.current.delete(path);
     setTabs(rest);
     if (path !== activePath) return;
     if (rest.length) {
@@ -688,6 +714,7 @@ export default function App() {
     } else {
       showBlank(null);
     }
+    issuesTabs.current.delete(path); // `showTab` запомнил закрытую вкладку как покидаемую
   };
 
   const cycleTab = (delta: number) => {
@@ -901,6 +928,9 @@ export default function App() {
       } else if ((key === 'f' || key === 'а') && repoRef.current) {
         e.preventDefault();
         setSearchOpen(true);
+      } else if ((key === 'i' || key === 'ш') && !e.shiftKey && repoRef.current) {
+        e.preventDefault();
+        toggleIssues();
       } else if (key === 'o' || key === 'щ') {
         e.preventDefault();
         openRepository();
@@ -1244,6 +1274,7 @@ export default function App() {
   const locateCommit = (hash: string | null | undefined) => {
     if (!hash) return;
     setDiffTarget(null);
+    setIssuesView(null);
     setCiView(null);
     setCompareView(null);
     setRebaseView(null);
@@ -3064,6 +3095,9 @@ export default function App() {
 
   // CI/CD занимает центр (а не diff, конфликт, сравнение или rebase поверх него)
   const ciCentered = Boolean(ciView) && !(conflictPath || diffTarget || compareView || rebaseView || fileView);
+  // Раздел «Задачи» — по той же формуле
+  const issuesCentered = Boolean(issuesView) && !(conflictPath || diffTarget || compareView || rebaseView || fileView);
+  const toggleIssues = () => setIssuesView(issuesView ? null : { n: Date.now() });
 
   /* ---------- Разметка ---------- */
 
@@ -3122,6 +3156,8 @@ export default function App() {
             onSettings={() => openSettings('appearance')}
             onSearch={() => (searchOpen ? closeSearch() : setSearchOpen(true))}
             searchOpen={searchOpen}
+            onIssues={toggleIssues}
+            issuesActive={issuesCentered}
             customActions={userActions
               .filter((a) => a.toolbar)
               .map((a) => ({
@@ -3397,6 +3433,23 @@ export default function App() {
                   notify={notify}
                 />
               ) : (
+                <>
+                {issuesView && (
+                  <IssuesView
+                    repoPath={repo!.path}
+                    remote={forge?.remote ?? null}
+                    forge={forge as PropsOf<typeof IssuesView, 'forge'>}
+                    currentBranch={repo!.currentBranch}
+                    onClose={() => setIssuesView(null)}
+                    onLogin={() => openAuth({ actionLabel: tr('save-and-check'), forCi: true })}
+                    onServerSettings={() => openSettings('integrations')}
+                    onOpenWeb={(url) => void api.openExternal(url)}
+                    onCopy={(text, what) => void copy(text, what)}
+                    notify={notify}
+                  />
+                )}
+                {/* Граф под разделом задач не размонтируется: после закрытия раздела прокрутка на прежнем месте */}
+                <div className={issuesView ? 'pointer-events-none invisible absolute inset-0 flex flex-col' : 'contents'} inert={Boolean(issuesView)}>
                 <CommitGraph
                   commits={graphCommits}
                   introKey={repo!.path}
@@ -3435,10 +3488,12 @@ export default function App() {
                   mainBranches={mainBranches}
                   branchNames={branchNames}
                 />
+                </div>
+                </>
               )}
             </main>
             {/* Пока в центре CI/CD — у него свой инспектор задания справа; панель коммита прячем, чтобы не было двух правых панелей */}
-            {!ciCentered && <div style={{ width: detailsW }} className="relative flex shrink-0">
+            {!ciCentered && !issuesCentered && <div data-testid="commit-details" style={{ width: detailsW }} className="relative flex shrink-0">
               <ResizeHandle
                 width={detailsW}
                 direction={-1}

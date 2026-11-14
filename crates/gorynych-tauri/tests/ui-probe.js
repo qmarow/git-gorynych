@@ -34,6 +34,8 @@ window.__GORYNYCH_PROBE__ = async (initial) => {
   // Фильтры вида — пока в центре граф (сценарий редактора оставляет окно изменений); «Stash в графе» остаётся выключенным
   // до второго запуска
   const filters = graph && fullFilePref === null && !lanes?.rowsAfter ? await filtersScenario(invoke, waitFor).catch((e) => ({ probeError: String(e?.stack ?? e) })) : null;
+  // Раздел «Задачи» (новое в 2.0) — пока в центре граф; у тестового репозитория нет remote
+  const issues = graph && fullFilePref === null && !lanes?.rowsAfter ? await issuesScenario(waitFor).catch((e) => ({ probeError: String(e?.stack ?? e) })) : null;
   const editor = graph && fullFilePref === null ? await editorScenario(invoke, waitFor, sleep).catch((e) => ({ probeError: String(e?.stack ?? e) })) : null;
   // Второй запуск: выбор «Stash в графе» вернулся из SQLite — строки stash нет
   const viewPref = { showStash: JSON.parse(localStorage.getItem('graph.view.v1') ?? 'null')?.showStash ?? null, stashRow: Boolean(document.querySelector('[data-testid="graph-stash"]')) };
@@ -41,7 +43,7 @@ window.__GORYNYCH_PROBE__ = async (initial) => {
   const mainPref = localStorage.getItem(`graph.mainBranches.v1:${await invoke('repo_get_last')}`);
   // Запись уходит в базу пачкой через 400 мс
   await sleep(1000);
-  const report = { ...initial, graph, seeded, fullFilePref, editor, stash, main, mainPref, lanes, keyboard, search, highlight, filters, viewPref, errors: [...(window.__gorynychErrors || [])], text: graph ? '' : text().slice(0, 3000) };
+  const report = { ...initial, graph, seeded, fullFilePref, editor, stash, main, mainPref, lanes, keyboard, search, highlight, filters, issues, viewPref, errors: [...(window.__gorynychErrors || [])], text: graph ? '' : text().slice(0, 3000) };
   await invoke('frontend_ready', { report: JSON.stringify(report) });
 };
 
@@ -341,6 +343,126 @@ async function filtersScenario(invoke, waitFor) {
   out.stashOff = await toggle('showStash');
   out.stashHidden = Boolean(await waitFor(() => !document.querySelector('[data-testid="graph-stash"]'), 3000));
   out.pref = JSON.parse(localStorage.getItem('graph.view.v1') ?? 'null')?.showStash ?? null;
+  return out;
+}
+
+// Раздел «Задачи» (этап 3): кнопки на панели инструментов нет (у репозитория нет сервера), Ctrl+I открывает раздел вместо
+// графа — «нет сервера с задачами», правая панель коммита скрыта, граф не размонтирован; Esc закрывает раздел, Ctrl+Ш
+// (русская раскладка) открывает снова, Ctrl+I закрывает. После закрытия — тот же узел графа
+async function issuesScenario(waitFor) {
+  const svg = () => document.querySelector('[data-testid="graph-svg"]');
+  const section = () => document.querySelector('[data-testid="issues-view"]');
+  const graphBefore = svg();
+  const key = (key, init = {}) => (document.activeElement ?? document.body).dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true, ...init }));
+  const out = { button: Boolean(document.querySelector('[data-testid="toolbar-issues"]')) };
+  key('i', { code: 'KeyI', ctrlKey: true });
+  out.opened = Boolean(await waitFor(section, 3000));
+  out.state = (await waitFor(() => section()?.querySelector('[data-testid="issues-state"]')?.dataset.state, 10000)) ?? section()?.innerText.slice(0, 300) ?? null;
+  out.graphKept = svg() === graphBefore && Boolean(svg()?.closest('[inert]'));
+  out.detailsHidden = !document.querySelector('[data-testid="commit-details"]');
+  out.focused = document.activeElement === section();
+  key('Escape', { code: 'Escape' });
+  out.escClosed = Boolean(await waitFor(() => !section(), 3000));
+  key('ш', { code: 'KeyI', ctrlKey: true });
+  out.reopened = Boolean(await waitFor(section, 3000));
+  key('i', { code: 'KeyI', ctrlKey: true });
+  out.toggledOff = Boolean(await waitFor(() => !section(), 3000));
+  out.sameGraph = svg() === graphBefore && !svg()?.closest('[inert]');
+  out.list = await issuesListScenario(waitFor, key, section).catch((e) => ({ probeError: String(e?.stack ?? e) }));
+  return out;
+}
+
+// Список задач на подставном `window.api.issues` (настоящего сервера в тесте нет): 500 задач страницами по 30,
+// виртуализация, поиск через 300 мс, «Назначены мне», подгрузка при прокрутке, выбор с клавиатуры — один запрос
+// карточки через 150 мс, прокрутка вкладки после закрытия и открытия раздела
+async function issuesListScenario(waitFor, key, section) {
+  const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+  const real = window.api.issues;
+  const calls = [];
+  const me = { id: '1', login: 'tester', name: 'Тестер', avatarUrl: null, webUrl: null };
+  const issue = (n) => ({
+    id: String(n), number: n, title: `Задача номер ${n}`, body: `Описание ${n}`, state: 'open', stateReason: null, author: me,
+    assignees: n % 3 ? [] : [me], labels: n % 2 ? [{ id: 'b', name: 'bug', color: '#d73a4a', description: null }] : [], milestone: null,
+    commentsCount: n % 4, createdAt: '2026-11-01T10:00:00Z', updatedAt: '2026-11-10T10:00:00Z', closedAt: null, dueDate: null,
+    confidential: false, locked: false, webUrl: `https://example.invalid/i/${n}`,
+  });
+  const caps = { create: true, edit: true, comment: true, editComments: true, deleteComments: true, close: true, labels: true, createLabel: true, multipleAssignees: true, milestones: true, dueDate: true, confidential: false, lock: true, delete: false, events: true, textSearch: true, counts: true, closeReasons: [] };
+  window.api.issues = {
+    ...real,
+    list: async (_dir, query) => {
+      calls.push(['list', query.page, query.search ?? null, query.assignee ?? null]);
+      const all = Array.from({ length: 500 }, (_, i) => issue(500 - i)).filter((x) => (!query.search || x.title.includes(query.search)) && (query.assignee !== '@me' || x.assignees.length));
+      const items = all.slice((query.page - 1) * 30, query.page * 30);
+      return { ok: true, data: { list: { items, page: query.page, hasMore: query.page * 30 < all.length, counts: { open: all.length, closed: 0 } }, caps, provider: 'github', label: 'GitHub', webUrl: 'https://example.invalid/i' } };
+    },
+    meta: async () => ({ ok: true, data: { labels: [{ id: 'b', name: 'bug', color: '#d73a4a', description: null }], milestones: [], members: [me], me, templates: [] } }),
+    get: async (_dir, number) => {
+      calls.push(['get', number]);
+      return { ok: true, data: { issue: issue(number), timeline: [], timelineTruncated: false } };
+    },
+  };
+  const rows = () => [...section().querySelectorAll('[role="option"][data-number]')];
+  const listbox = () => section().querySelector('[role="listbox"]');
+  const out = {};
+  try {
+    key('i', { code: 'KeyI', ctrlKey: true });
+    await waitFor(section, 3000);
+    out.loaded = Boolean(await waitFor(() => rows().length && rows()[0].dataset.number === '500', 10000));
+    out.rendered = rows().length; // только видимые и по 10 сверху и снизу
+    out.counts = section().querySelector('[role="tab"][aria-selected="true"]')?.textContent ?? null;
+    // Поиск: запрос уходит один раз, после паузы
+    const input = section().querySelector('input[placeholder]');
+    const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set;
+    calls.length = 0;
+    for (const value of ['1', '12', '123']) {
+      setter.call(input, value);
+      input.dispatchEvent(new Event('input', { bubbles: true }));
+      await sleep(50);
+    }
+    out.searchEarly = calls.length;
+    out.search = Boolean(await waitFor(() => rows().length === 1 && rows()[0].dataset.number === '123', 3000)) && calls.map((c) => c[2]).join(',');
+    section().querySelector('button[aria-label="Очистить"]').click();
+    await waitFor(() => rows().length > 1, 3000);
+    // «Назначены мне»
+    const mine = [...section().querySelectorAll('button[aria-pressed]')].find((b) => b.textContent === 'Назначены мне');
+    calls.length = 0;
+    mine.click();
+    out.mine = Boolean(await waitFor(() => rows()[0]?.dataset.number === '498', 3000)) && calls[0]?.[3];
+    mine.click();
+    await waitFor(() => rows()[0]?.dataset.number === '500', 3000);
+    // Подгрузка: прокрутка к концу запрашивает страницу 2
+    calls.length = 0;
+    listbox().scrollTop = listbox().scrollHeight;
+    out.loadMore = Boolean(await waitFor(() => calls.some((c) => c[0] === 'list' && c[1] === 2), 3000));
+    await waitFor(() => rows().some((r) => r.dataset.number === '440'), 3000);
+    // Клавиатура: пять нажатий подряд — карточка загружается один раз, для последней задачи
+    listbox().scrollTop = 0;
+    await sleep(100);
+    listbox().focus();
+    calls.length = 0;
+    for (let i = 0; i < 5; i++) {
+      key('ArrowDown', { code: 'ArrowDown' });
+      await sleep(20);
+    }
+    await sleep(400);
+    out.keys = calls.filter((c) => c[0] === 'get').map((c) => c[1]);
+    out.selected = section().querySelector('[role="option"][aria-selected="true"]')?.dataset.number ?? null;
+    out.card = Boolean(await waitFor(() => section().innerText.includes('Описание 496'), 3000));
+    // Прокрутка вкладки переживает закрытие раздела
+    listbox().scrollTop = 30 * 56;
+    await sleep(100);
+    const scrolled = listbox().scrollTop;
+    key('i', { code: 'KeyI', ctrlKey: true });
+    await waitFor(() => !section(), 3000);
+    key('i', { code: 'KeyI', ctrlKey: true });
+    await waitFor(section, 3000);
+    out.scrollKept = Boolean(await waitFor(() => listbox() && listbox().scrollTop === scrolled, 3000));
+    out.selectedKept = section().innerText.includes('Описание 496'); // строка 496 вне окна прокрутки, карточка — та же
+  } finally {
+    window.api.issues = real;
+    if (section()) key('i', { code: 'KeyI', ctrlKey: true });
+    await waitFor(() => !section(), 3000);
+  }
   return out;
 }
 
