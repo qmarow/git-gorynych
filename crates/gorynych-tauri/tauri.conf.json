@@ -16,7 +16,7 @@
     "withGlobalTauri": true,
     "windows": [],
     "security": {
-      "csp": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: http://gorynych-bg.localhost gorynych-bg: https://gravatar.com https://*.gravatar.com https://avatars.githubusercontent.com https://github.com; font-src 'self'; connect-src ipc: http://ipc.localhost; object-src 'none'; base-uri 'none'; frame-ancestors 'none'"
+      "csp": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: http://gorynych-bg.localhost gorynych-bg: https://gravatar.com https://*.gravatar.com https://avatars.githubusercontent.com https://github.com https:; font-src 'self'; connect-src ipc: http://ipc.localhost; object-src 'none'; base-uri 'none'; frame-ancestors 'none'"
     }
   },
   "bundle": {

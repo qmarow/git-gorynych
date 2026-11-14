@@ -135,6 +135,11 @@ export const commands = {
 	issuesCommentDelete: (dir: string, number: number, id: string, opts: RemoteOptions_Deserialize | null) => typedError<null, GorynychError_Serialize>(__TAURI_INVOKE("issues_comment_delete", { dir, number, id, opts })),
 	issuesLabelCreate: (dir: string, name: string, color: string, opts: RemoteOptions_Deserialize | null) => typedError<IssueLabel_Serialize, GorynychError_Serialize>(__TAURI_INVOKE("issues_label_create", { dir, name, color, opts })),
 	issuesDelete: (dir: string, number: number, opts: RemoteOptions_Deserialize | null) => typedError<null, GorynychError_Serialize>(__TAURI_INVOKE("issues_delete", { dir, number, opts })),
+	/**
+	 *  Markdown в безопасный HTML — предпросмотр в редакторе. Относительные ссылки — от страницы репозитория на сервере,
+	 *  если он определился; иначе они снимаются. Ошибок нет: не найден репозиторий — рендер без адреса.
+	 */
+	issuesRenderMarkdown: (dir: string, text: string, opts: RemoteOptions_Deserialize | null) => typedError<string, GorynychError_Serialize>(__TAURI_INVOKE("issues_render_markdown", { dir, text, opts })),
 	repoOpenDialog: (title: string | null) => typedError<string | null, GorynychError_Serialize>(__TAURI_INVOKE("repo_open_dialog", { title })),
 	/**  Открыть файл репозитория в программе по умолчанию (например, VS Code). */
 	repoOpenPath: (dir: string, rel: string) => typedError<OpenedPath, GorynychError_Serialize>(__TAURI_INVOKE("repo_open_path", { dir, rel })),
@@ -4048,6 +4053,8 @@ export type IssueComment = IssueComment_Serialize | IssueComment_Deserialize;
 export type IssueComment_Deserialize = {
 	id: string,
 	body: string,
+	/**  `body` в HTML после очистки; заполняет сервис. */
+	bodyHtml?: string,
 	author?: IssueUser_Deserialize | null,
 	createdAt: string,
 	updatedAt?: string | null,
@@ -4058,6 +4065,8 @@ export type IssueComment_Deserialize = {
 export type IssueComment_Serialize = {
 	id: string,
 	body: string,
+	/**  `body` в HTML после очистки; заполняет сервис. */
+	bodyHtml: string,
 	author: IssueUser_Serialize | null,
 	createdAt: string,
 	updatedAt: string | null,
@@ -4338,6 +4347,8 @@ export type Issue_Deserialize = {
 	title: string,
 	/**  Исходный Markdown; пустая строка вместо `null`. */
 	body: string,
+	/**  `body` в HTML после очистки ([`super::markdown::render`]). Заполняет сервис в карточке, создании и правке; в списке пусто. */
+	bodyHtml?: string,
 	state: IssueState,
 	stateReason?: string | null,
 	author?: IssueUser_Deserialize | null,
@@ -4361,6 +4372,8 @@ export type Issue_Serialize = {
 	title: string,
 	/**  Исходный Markdown; пустая строка вместо `null`. */
 	body: string,
+	/**  `body` в HTML после очистки ([`super::markdown::render`]). Заполняет сервис в карточке, создании и правке; в списке пусто. */
+	bodyHtml: string,
 	state: IssueState,
 	stateReason: string | null,
 	author: IssueUser_Serialize | null,

@@ -59,6 +59,9 @@ pub struct Issue {
     pub title: String,
     /// Исходный Markdown; пустая строка вместо `null`.
     pub body: String,
+    /// `body` в HTML после очистки ([`super::markdown::render`]). Заполняет сервис в карточке, создании и правке; в списке пусто.
+    #[serde(default)]
+    pub body_html: String,
     pub state: IssueState,
     pub state_reason: Option<String>,
     pub author: Option<IssueUser>,
@@ -80,6 +83,9 @@ pub struct Issue {
 pub struct IssueComment {
     pub id: String,
     pub body: String,
+    /// `body` в HTML после очистки; заполняет сервис.
+    #[serde(default)]
+    pub body_html: String,
     pub author: Option<IssueUser>,
     pub created_at: String,
     pub updated_at: Option<String>,

@@ -424,6 +424,7 @@ pub fn specta_builder() -> Builder<tauri::Wry> {
             commands::issues::issues_comment_delete,
             commands::issues::issues_label_create,
             commands::issues::issues_delete,
+            commands::issues::issues_render_markdown,
             commands::desktop::repo_open_dialog,
             commands::desktop::repo_open_path,
             commands::desktop::creds_pick_key,

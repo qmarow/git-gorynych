@@ -17,6 +17,8 @@ gorynych-ci-linter = { path = "crates/gorynych-ci-linter" }
 gorynych-cicd = { path = "crates/gorynych-cicd" }
 
 aes-gcm = "0.11"
+# Очистка HTML задач (новое в 2.0): после рендера Markdown остаются только разрешённые теги и атрибуты.
+ammonia = "4.2"
 async-trait = "0.1"
 base64 = "0.23"
 chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
@@ -30,6 +32,8 @@ indexmap = { version = "2", features = ["serde"] }
 interprocess = "2"
 keyring = "4"
 notify = "8"
+# Markdown задач (новое в 2.0). Без `html` по умолчанию нельзя: он и даёт `push_html`.
+pulldown-cmark = { version = "0.13", default-features = false, features = ["html"] }
 # Синтаксис и семантика регулярных выражений ECMAScript: правила пользователя написаны для JS.
 regress = { version = "0.12", default-features = false, features = ["std", "utf16"] }
 regex = "1"

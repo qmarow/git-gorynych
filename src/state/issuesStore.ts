@@ -81,6 +81,8 @@ export interface IssuesState {
   commentDelete: (path: string, number: number, id: string) => Promise<ApiResult<null>>;
   labelCreate: (path: string, name: string, color: string) => Promise<ApiResult<IssueLabel_Serialize>>;
   remove: (path: string, number: number) => Promise<ApiResult<null>>;
+  /** Предпросмотр Markdown: тот же HTML, что сервис кладёт в `bodyHtml`. */
+  renderMarkdown: (path: string, text: string) => Promise<ApiResult<string>>;
   forget: (path: string) => void;
 }
 
@@ -397,7 +399,7 @@ export function createIssuesStore(getApi: () => IssuesApi | undefined, options: 
         const repo = repoOf(path);
         const id = `${TEMP_PREFIX}${++tempId}`;
         if (repo) {
-          const temp: TimelineItem_Serialize = { type: 'comment', id, body, author: repo.meta?.me ?? null, createdAt: new Date(now()).toISOString(), updatedAt: null, canEdit: false, webUrl: null };
+          const temp: TimelineItem_Serialize = { type: 'comment', id, body, bodyHtml: '', author: repo.meta?.me ?? null, createdAt: new Date(now()).toISOString(), updatedAt: null, canEdit: false, webUrl: null };
           mapTimeline(path, number, (timeline) => [...timeline, temp]);
           mapIssue(path, number, (issue) => ({ ...issue, commentsCount: issue.commentsCount + 1 }));
           pendingDelta(path, number, 1);
@@ -420,7 +422,7 @@ export function createIssuesStore(getApi: () => IssuesApi | undefined, options: 
         if (!api) return { ok: false, error: NO_API };
         const old = repoOf(path)?.details[number]?.detail?.timeline.find((item) => item.type === 'comment' && item.id === id);
         const isTarget = (item: TimelineItem_Serialize) => item.type === 'comment' && item.id === id;
-        mapTimeline(path, number, (timeline) => timeline.map((item) => (isTarget(item) ? { ...item, body } : item)));
+        mapTimeline(path, number, (timeline) => timeline.map((item) => (isTarget(item) ? { ...item, body, bodyHtml: '' } : item)));
         pendingDelta(path, number, 1);
         const res = await api.commentUpdate(path, number, id, body, opts(path));
         if (!repoOf(path)) return res;
@@ -475,6 +477,12 @@ export function createIssuesStore(getApi: () => IssuesApi | undefined, options: 
         });
         if (issue) shiftCounts(path, issue.state, null);
         return res;
+      },
+
+      renderMarkdown: async (path, text) => {
+        const api = getApi();
+        if (!api) return { ok: false, error: NO_API };
+        return api.renderMarkdown(path, text, opts(path));
       },
 
       forget: (path) => {

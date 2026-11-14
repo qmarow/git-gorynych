@@ -47,6 +47,7 @@ pub fn issue_from(value: &Value) -> Issue {
         number: uint(value, "iid"),
         title: string(value, "title"),
         body: string(value, "description"),
+        body_html: String::new(),
         state: if text(value, "state").as_deref() == Some("closed") { IssueState::Closed } else { IssueState::Open },
         state_reason: None,
         author: user_at(value, "author"),
@@ -83,7 +84,7 @@ pub fn note_from(value: &Value, me: Option<&str>) -> TimelineItem {
 pub fn comment_from(value: &Value, me: Option<&str>) -> IssueComment {
     let author = user_at(value, "author");
     let can_edit = me.is_some_and(|me| author.as_ref().is_some_and(|user| user.login == me));
-    IssueComment { id: id_text(value, "id"), body: string(value, "body"), author, created_at: string(value, "created_at"), updated_at: non_empty(value, "updated_at"), can_edit, web_url: None }
+    IssueComment { id: id_text(value, "id"), body: string(value, "body"), body_html: String::new(), author, created_at: string(value, "created_at"), updated_at: non_empty(value, "updated_at"), can_edit, web_url: None }
 }
 
 pub fn counts_from(value: &Value) -> Option<IssueCounts> {

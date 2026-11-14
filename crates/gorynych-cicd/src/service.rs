@@ -37,7 +37,7 @@ use tokio::sync::watch;
 
 use crate::gitlab::{GlProject, GlRemoteStatus};
 use crate::http::{Downloaded, HttpCtx};
-use crate::issues::{Issue, IssueComment, IssueDetail, IssueInput, IssueLabel, IssueMeta, IssuePatch, IssueProvider, IssueQuery, IssuesListResponse, issue_adapter};
+use crate::issues::{Issue, IssueComment, IssueDetail, IssueInput, IssueLabel, IssueMeta, IssuePatch, IssueProvider, IssueQuery, IssuesListResponse, TimelineItem, issue_adapter, markdown};
 use crate::json::Json;
 use crate::models::*;
 use crate::providers::{CapsInput, CiCdProvider, Ctx, DetailData, RegistrationRequest, adapter};
@@ -1147,7 +1147,21 @@ impl CicdService {
     /// Задача с лентой комментариев и событий.
     pub async fn issues_get(&self, root: &Path, number: u64, preferred: Option<&str>) -> Result<IssueDetail> {
         let (_, issues, ctx) = self.issues_context(root, preferred).await?;
-        issues.get(&ctx, number).await
+        let mut detail = issues.get(&ctx, number).await?;
+        let base = ctx.web_url.as_deref();
+        render_issue(&mut detail.issue, base);
+        for item in &mut detail.timeline {
+            if let TimelineItem::Comment(comment) = item {
+                render_comment(comment, base);
+            }
+        }
+        Ok(detail)
+    }
+
+    /// Markdown в HTML для предпросмотра: ссылки — от страницы репозитория, если сервер определился, иначе без неё.
+    pub async fn issues_render_markdown(&self, root: &Path, text: &str, preferred: Option<&str>) -> String {
+        let base = self.issues_context(root, preferred).await.ok().and_then(|(_, _, ctx)| ctx.web_url);
+        markdown::render(text, base.as_deref())
     }
 
     /// Метки, открытые вехи, участники, текущий пользователь и шаблоны.
@@ -1158,22 +1172,30 @@ impl CicdService {
 
     pub async fn issues_create(&self, root: &Path, input: &IssueInput, preferred: Option<&str>) -> Result<Issue> {
         let (_, issues, ctx) = self.issues_context(root, preferred).await?;
-        issues.create(&ctx, input).await
+        let mut issue = issues.create(&ctx, input).await?;
+        render_issue(&mut issue, ctx.web_url.as_deref());
+        Ok(issue)
     }
 
     pub async fn issues_update(&self, root: &Path, number: u64, patch: &IssuePatch, preferred: Option<&str>) -> Result<Issue> {
         let (_, issues, ctx) = self.issues_context(root, preferred).await?;
-        issues.update(&ctx, number, patch).await
+        let mut issue = issues.update(&ctx, number, patch).await?;
+        render_issue(&mut issue, ctx.web_url.as_deref());
+        Ok(issue)
     }
 
     pub async fn issues_comment_add(&self, root: &Path, number: u64, body: &str, preferred: Option<&str>) -> Result<IssueComment> {
         let (_, issues, ctx) = self.issues_context(root, preferred).await?;
-        issues.comment_add(&ctx, number, body).await
+        let mut comment = issues.comment_add(&ctx, number, body).await?;
+        render_comment(&mut comment, ctx.web_url.as_deref());
+        Ok(comment)
     }
 
     pub async fn issues_comment_update(&self, root: &Path, number: u64, id: &str, body: &str, preferred: Option<&str>) -> Result<IssueComment> {
         let (_, issues, ctx) = self.issues_context(root, preferred).await?;
-        issues.comment_update(&ctx, number, id, body).await
+        let mut comment = issues.comment_update(&ctx, number, id, body).await?;
+        render_comment(&mut comment, ctx.web_url.as_deref());
+        Ok(comment)
     }
 
     pub async fn issues_comment_delete(&self, root: &Path, number: u64, id: &str, preferred: Option<&str>) -> Result<()> {
@@ -1190,6 +1212,14 @@ impl CicdService {
         let (_, issues, ctx) = self.issues_context(root, preferred).await?;
         issues.label_create(&ctx, name, color).await
     }
+}
+
+fn render_issue(issue: &mut Issue, base: Option<&str>) {
+    issue.body_html = markdown::render(&issue.body, base);
+}
+
+fn render_comment(comment: &mut IssueComment, base: Option<&str>) {
+    comment.body_html = markdown::render(&comment.body, base);
 }
 
 fn aggregate_jobs(jobs: &[PipelineJob]) -> String {

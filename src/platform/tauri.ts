@@ -193,6 +193,8 @@ export interface IssuesApi {
   commentDelete: (dir: string, number: number, id: string, opts?: IssueOpts) => Promise<ApiResult<null>>;
   labelCreate: (dir: string, name: string, color: string, opts?: IssueOpts) => Promise<ApiResult<IssueLabel_Serialize>>;
   remove: (dir: string, number: number, opts?: IssueOpts) => Promise<ApiResult<null>>;
+  /** Markdown → безопасный HTML (предпросмотр редактора). */
+  renderMarkdown: (dir: string, text: string, opts?: IssueOpts) => Promise<ApiResult<string>>;
 }
 
 const issuesApi: IssuesApi = {
@@ -206,6 +208,7 @@ const issuesApi: IssuesApi = {
   commentDelete: (dir, number, id, opts) => safe('issues_comment_delete', { dir, number, id, opts: opts ?? null }),
   labelCreate: (dir, name, color, opts) => safe('issues_label_create', { dir, name, color, opts: opts ?? null }),
   remove: (dir, number, opts) => safe('issues_delete', { dir, number, opts: opts ?? null }),
+  renderMarkdown: (dir, text, opts) => safe('issues_render_markdown', { dir, text, opts: opts ?? null }),
 };
 
 type Opts = Json;

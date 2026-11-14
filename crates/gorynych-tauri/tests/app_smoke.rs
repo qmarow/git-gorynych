@@ -202,8 +202,23 @@ fn real_interface_opens_repository_on_the_compatibility_layer() {
     // прокрутка и выбор переживают закрытие раздела
     assert_eq!(
         report["issues"]["list"],
-        json!({ "loaded": true, "rendered": 21, "counts": "Открытые500", "searchEarly": 0, "search": "123", "mine": "@me", "loadMore": true, "keys": [496], "selected": "496", "card": true, "scrollKept": true, "selectedKept": true }),
+        json!({ "loaded": true, "rendered": 21, "counts": "Открытые500", "searchEarly": 0, "search": "123", "mine": "@me", "loadMore": true, "keys": [496], "selected": "496", "card": true, "scrollKept": true, "selectedKept": true, "detail": report["issues"]["list"]["detail"] }),
         "список задач: {report}"
+    );
+    // Карточка (этап 4): HTML описания — настоящий `issues_render_markdown`; вредоносная разметка не исполняется, сломанная
+    // картинка — ссылка, внешняя ссылка — в браузер, флажок меняет описание; лента склеена и по-русски; комментарий —
+    // полупрозрачный до ответа, при ошибке текст возвращается; правка, удаление с подтверждением, цитата, черновик, #77
+    assert_eq!(
+        report["issues"]["list"]["detail"],
+        json!({
+            "table": true, "code": true, "tasks": "0-,1x", "safe": true, "brokenImage": true, "external": "https://example.invalid/page",
+            "events": "closed+labeled,assigned", "eventText": "Анна — задача закрыта", "selfAssigned": true, "toggle": true,
+            "quote": "> Первый **комментарий**
+
+", "italic": "_курсив_", "cleared": true, "pending": true, "sent": true, "failed": "returned", "comments": "c1,c2",
+            "edited": true, "confirm": true, "deleted": true, "switched": true, "draft": true, "preview": "Не уйдёт", "issueLink": true
+        }),
+        "карточка задачи: {report}"
     );
     // Две дорожки помещаются: шаг прежний, хвостов нет
     assert_eq!(report["lanes"], json!({ "before": { "laneW": 28, "forceDots": false, "hidden": 0 }, "badge": null, "tails": 0 }), "дорожки: {report}");

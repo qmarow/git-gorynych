@@ -48,6 +48,7 @@ pub fn issue_from(value: &Value) -> Issue {
         number: uint(value, "number"),
         title: string(value, "title"),
         body: string(value, "body"),
+        body_html: String::new(),
         state: if text(value, "state").as_deref() == Some("closed") { IssueState::Closed } else { IssueState::Open },
         state_reason: non_empty(value, "state_reason"),
         author: user_at(value, "user"),
@@ -72,6 +73,7 @@ pub fn comment_from(value: &Value, me: Option<&str>, write: bool) -> IssueCommen
     IssueComment {
         id: id_text(value, "id"),
         body: string(value, "body"),
+        body_html: String::new(),
         author,
         created_at: string(value, "created_at"),
         updated_at: non_empty(value, "updated_at"),

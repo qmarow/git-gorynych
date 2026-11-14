@@ -106,3 +106,15 @@ mod tests {
         assert_eq!((input.title.as_str(), input.labels[0].name.as_str(), input.labels[0].id.as_str()), ("Т", "bug", ""));
     }
 }
+
+/// Markdown в безопасный HTML — предпросмотр в редакторе. Относительные ссылки — от страницы репозитория на сервере,
+/// если он определился; иначе они снимаются. Ошибок нет: не найден репозиторий — рендер без адреса.
+#[tauri::command]
+#[specta::specta]
+pub async fn issues_render_markdown(state: State<'_, AppState>, dir: String, text: String, opts: Option<RemoteOptions>) -> Result<String> {
+    let cicd = &state.services()?.cicd;
+    match root_of(&dir).await {
+        Ok(root) => Ok(cicd.issues_render_markdown(&root, &text, remote(&opts)).await),
+        Err(_) => Ok(gorynych_cicd::issues::markdown::render(&text, None)),
+    }
+}

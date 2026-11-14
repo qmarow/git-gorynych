@@ -458,11 +458,160 @@ async function issuesListScenario(waitFor, key, section) {
     await waitFor(section, 3000);
     out.scrollKept = Boolean(await waitFor(() => listbox() && listbox().scrollTop === scrolled, 3000));
     out.selectedKept = section().innerText.includes('Описание 496'); // строка 496 вне окна прокрутки, карточка — та же
+    out.detail = await issueCardScenario(waitFor, section, real, me, issue, calls).catch((e) => ({ probeError: String(e?.stack ?? e) }));
   } finally {
     window.api.issues = real;
     if (section()) key('i', { code: 'KeyI', ctrlKey: true });
     await waitFor(() => !section(), 3000);
   }
+  return out;
+}
+
+// Карточка задачи (этап 4) на том же подставном API, HTML описания — настоящий `issues_render_markdown` из Rust: таблица,
+// подсветка кода, флажки, вредоносная разметка не исполняется, сломанная картинка → ссылка, внешняя ссылка — во внешний
+// браузер, `#77` открывает задачу 77; лента (события склеены, тексты по-русски); комментарий по Ctrl+Enter полупрозрачный
+// до ответа, при ошибке текст возвращается; правка, удаление через подтверждение, цитата; черновик переживает переход
+// к другой задаче; Ctrl+I в поле — курсив, раздел открыт; вкладка «Просмотр»
+async function issueCardScenario(waitFor, section, real, me, issue, calls) {
+  const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+  const api = window.api.issues;
+  const card = () => section().querySelector('[data-testid="issue-detail"]');
+  const row = (n) => section().querySelector(`[role="option"][data-number="${n}"]`);
+  const listbox = () => section().querySelector('[role="listbox"]');
+  const other = { id: '2', login: 'anna', name: 'Анна', avatarUrl: null, webUrl: null };
+  const html = async (dir, text) => (await real.renderMarkdown(dir, text)).data;
+  const body = [
+    '| A | B |', '|:--|--:|', '| 1 | 2 |', '', '```rust', 'fn main() { let x = 1; }', '```', '', '- [ ] первый', '- [x] второй', '',
+    'Смотри #77 и [сайт](https://example.invalid/page).', '', '<script>window.__pwned = 1</script><img src="x" onerror="window.__pwned = 1">', '',
+    '![нет](https://127.0.0.1:1/missing.png)',
+  ].join('\n');
+  const bodies = new Map();
+  let failComment = false;
+  let commentNo = 1;
+  const opened = [];
+  const openExternal = window.api.openExternal;
+  window.api.openExternal = async (url) => (opened.push(url), true);
+  api.get = async (dir, number) => {
+    calls.push(['get', number]);
+    const text = bodies.get(number) ?? body;
+    const comment = { id: 'c1', body: 'Первый **комментарий**', bodyHtml: await html(dir, 'Первый **комментарий**'), author: me, createdAt: '2026-11-02T10:00:00Z', updatedAt: null, canEdit: true, webUrl: null };
+    const timeline = [
+      { type: 'comment', ...comment },
+      { type: 'event', id: 'e1', kind: 'closed', actor: other, createdAt: '2026-11-03T10:00:00Z', label: null, user: null, from: null, to: null, text: null },
+      { type: 'event', id: 'e2', kind: 'labeled', actor: other, createdAt: '2026-11-03T10:00:20Z', label: { id: 'b', name: 'bug', color: '#d73a4a', description: null }, user: null, from: null, to: null, text: null },
+      { type: 'event', id: 'e3', kind: 'assigned', actor: me, createdAt: '2026-11-04T10:00:00Z', label: null, user: me, from: null, to: null, text: null },
+    ];
+    return { ok: true, data: { issue: { ...issue(number), body: text, bodyHtml: await html(dir, text) }, timeline, timelineTruncated: false } };
+  };
+  api.update = async (dir, number, patch) => {
+    calls.push(['update', number, patch.body ?? null]);
+    if (patch.body != null) bodies.set(number, patch.body);
+    return { ok: true, data: { ...issue(number), body: patch.body ?? body, bodyHtml: await html(dir, patch.body ?? body) } };
+  };
+  api.commentAdd = async (dir, number, text) => {
+    calls.push(['commentAdd', number, text]);
+    await sleep(300);
+    if (failComment) return { ok: false, error: { code: 'NETWORK', message: 'нет сети', hint: null, details: '' } };
+    return { ok: true, data: { id: `c${++commentNo}`, body: text, bodyHtml: await html(dir, text), author: me, createdAt: new Date().toISOString(), updatedAt: null, canEdit: true, webUrl: null } };
+  };
+  api.commentUpdate = async (dir, number, id, text) => {
+    calls.push(['commentUpdate', id, text]);
+    return { ok: true, data: { id, body: text, bodyHtml: await html(dir, text), author: me, createdAt: '2026-11-02T10:00:00Z', updatedAt: '2026-11-05T10:00:00Z', canEdit: true, webUrl: null } };
+  };
+  api.commentDelete = async (_dir, _number, id) => (calls.push(['commentDelete', id]), { ok: true, data: null });
+
+  const type = (el, value) => {
+    Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value').set.call(el, value);
+    el.dispatchEvent(new Event('input', { bubbles: true }));
+  };
+  const field = () => card()?.querySelector('[data-testid="md-editor"] textarea');
+  const press = (el, init) => el.dispatchEvent(new KeyboardEvent('keydown', { bubbles: true, cancelable: true, ...init }));
+  const menuItem = async (comment, text) => {
+    comment.querySelector('[data-testid="comment-menu"]').click();
+    const button = await waitFor(() => [...document.querySelectorAll('button')].find((b) => b.textContent.trim() === text), 3000);
+    button.click();
+  };
+  const out = {};
+  const dbg = [];
+  const note = (step) => dbg.push([step, Object.entries(localStorage).filter(([k]) => k.includes(':495:')).map(([, v]) => v).join('|'), field()?.value ?? null, Boolean(document.querySelector('.bg-gk-scrim'))]);
+  try {
+    listbox().scrollTop = 0;
+    await waitFor(() => row(495), 3000);
+    row(495).click();
+    await waitFor(() => card()?.dataset.number === '495' && card().querySelector('.md-body table'), 5000);
+    const md = card().querySelector('[data-testid="issue-description"] .md-body');
+    out.table = Boolean(md.querySelector('th[align="left"]') && md.querySelector('td[align="right"]'));
+    out.code = Boolean(md.querySelector('pre > code.language-rust span.tok-keyword'));
+    out.tasks = [...md.querySelectorAll('input[data-task-index]')].map((i) => `${i.dataset.taskIndex}${i.checked ? 'x' : '-'}${i.disabled ? 'd' : ''}`).join(',');
+    out.safe = !window.__pwned && !md.querySelector('script') && !md.innerHTML.includes('onerror');
+    out.brokenImage = Boolean(await waitFor(() => md.querySelector('a[data-broken-image]'), 8000)) || md.innerHTML.match(/<img[^>]*>/g)?.join(' ') || 'нет img';
+    md.querySelector('a[href="https://example.invalid/page"]').click();
+    out.external = opened.join(',');
+    // Лента: комментарий, «закрыта» и «метка» одной строкой (один автор за минуту), «взята в работу»
+    out.events = [...card().querySelectorAll('[data-testid="issue-event"]')].map((li) => [...li.querySelectorAll('[data-kind]')].map((e) => e.dataset.kind).join('+')).join(',');
+    out.eventText = card().querySelector('[data-kind="closed"]')?.textContent.split('·')[0].trim() ?? null;
+    out.selfAssigned = card().querySelector('[data-kind="assigned"]')?.textContent.includes('взята в работу') ?? false;
+    // Флажок меняет описание
+    md.querySelector('input[data-task-index="0"]').click();
+    out.toggle = Boolean(await waitFor(() => calls.some((c) => c[0] === 'update' && c[2]?.includes('- [x] первый')), 3000));
+    // Цитата в поле комментария
+    await menuItem(card().querySelector('[data-comment-id="c1"]'), 'Цитировать');
+    out.quote = (await waitFor(() => field()?.value.startsWith('> Первый **комментарий**') && field().value, 3000)) ?? field()?.value ?? null;
+    // Ctrl+I в поле — курсив, раздел не закрывается
+    type(field(), '');
+    field().focus();
+    press(field(), { key: 'i', code: 'KeyI', ctrlKey: true });
+    await sleep(50);
+    out.italic = section() ? field().value : 'раздел закрыт';
+    // Отправка: сразу полупрозрачный, затем обычный
+    type(field(), 'Новый комментарий');
+    press(field(), { key: 'Enter', code: 'Enter', ctrlKey: true });
+    out.cleared = (await waitFor(() => field()?.value === '', 1000)) ?? false;
+    out.pending = Boolean(await waitFor(() => card().querySelector('[data-testid="issue-comment"][aria-busy="true"]'), 1000));
+    out.sent = Boolean(await waitFor(() => card().querySelector('[data-comment-id="c2"]:not([aria-busy])'), 3000));
+    // Ошибка: комментарий исчезает, текст возвращается
+    failComment = true;
+    type(field(), 'Не уйдёт');
+    press(field(), { key: 'Enter', code: 'Enter', ctrlKey: true });
+    await waitFor(() => field()?.value === '' && card().querySelector('[aria-busy="true"]'), 1000);
+    out.failed = (await waitFor(() => field()?.value === 'Не уйдёт' && !card().querySelector('[aria-busy="true"]') && 'returned', 3000)) ?? field()?.value ?? null;
+    failComment = false;
+    note('failed');
+    out.comments = [...card().querySelectorAll('[data-comment-id]')].map((li) => li.dataset.commentId).join(',');
+    // Правка
+    await menuItem(card().querySelector('[data-comment-id="c1"]'), 'Изменить');
+    const editor = await waitFor(() => card().querySelector('[data-comment-id="c1"] textarea'), 3000);
+    type(editor, 'Исправлено');
+    card().querySelector('[data-comment-id="c1"] [data-testid="md-submit"]').click();
+    out.edited = Boolean(await waitFor(() => !card().querySelector('[data-comment-id="c1"] textarea') && card().querySelector('[data-comment-id="c1"] .md-body')?.textContent.includes('Исправлено'), 3000));
+    // Удаление — через подтверждение
+    await menuItem(card().querySelector('[data-comment-id="c2"]'), 'Удалить комментарий');
+    const confirmButton = await waitFor(() => [...document.querySelectorAll('.bg-gk-scrim button')].find((b) => b.textContent.trim() === 'Удалить комментарий'), 3000);
+    out.confirm = Boolean(confirmButton);
+    note('confirm');
+    confirmButton?.click();
+    await sleep(100);
+    note('clicked');
+    out.deleted = Boolean(await waitFor(() => !card().querySelector('[data-comment-id="c2"]'), 3000)) && calls.some((c) => c[0] === 'commentDelete' && c[1] === 'c2');
+    // Черновик: в поле остался «Не уйдёт»; другая задача и обратно — текст на месте
+    await sleep(600);
+    note('switch');
+    const beforeSwitch = field()?.value ?? null;
+    row(496).click();
+    out.switched = Boolean(await waitFor(() => card()?.dataset.number === '496', 3000)) || beforeSwitch;
+    row(495).click();
+    await waitFor(() => card()?.dataset.number === '495', 3000);
+    out.draft = Boolean(await waitFor(() => field()?.value === 'Не уйдёт' && card().innerText.includes('Восстановлен черновик'), 3000)) || { value: field()?.value ?? null, number: card()?.dataset.number, stored: Object.entries(localStorage).filter(([k]) => k.includes(':495:')) };
+    // Просмотр — HTML из Rust
+    [...card().querySelectorAll('[data-testid="md-editor"] [role="tab"]')].find((b) => b.textContent === 'Просмотр').click();
+    out.preview = (await waitFor(() => card().querySelector('[data-testid="md-preview"] .md-body p')?.textContent, 3000)) ?? null;
+    // #77 в описании открывает задачу 77
+    card().querySelector('[data-testid="issue-description"] a[data-issue="77"]').click();
+    out.issueLink = Boolean(await waitFor(() => card()?.dataset.number === '77', 3000));
+  } finally {
+    window.api.openExternal = openExternal;
+  }
+  if (out.draft !== true || out.deleted !== true) out.dbg = dbg;
   return out;
 }
 

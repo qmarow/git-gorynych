@@ -34,6 +34,7 @@ pub mod bitbucket;
 pub mod gitea;
 pub mod github;
 pub mod gitlab;
+pub mod markdown;
 pub mod models;
 pub mod templates;
 

@@ -21,8 +21,9 @@ import type { ForgeStatus_Serialize } from '../../../crates/gorynych-tauri/bindi
 import IssuesHeader from './IssuesHeader.tsx';
 import IssueFilters from './IssueFilters.tsx';
 import IssueList from './IssueList.tsx';
-import IssuePreview from './IssuePreview.tsx';
+import IssueDetail from './IssueDetail.tsx';
 import { EmptyState, ErrorBar, Skeleton } from './IssueBits.tsx';
+import { KeyHelp, KeyList } from './IssueKeys.tsx';
 
 const REFRESH_EVERY = 120_000;
 const REFRESH_ON_FOCUS_AFTER = 60_000;
@@ -235,9 +236,11 @@ export default function IssuesView({ repoPath, remote, forge, onClose, onLogin, 
   const fatal = repo?.listStatus === 'error' && code && (LOGIN_CODES.has(code) || NO_SERVER_CODES.has(code) || code === 'ISSUES_DISABLED') ? code : null;
   const caps = repo?.caps ?? null;
   const readOnly = Boolean(caps && !caps.create && !caps.edit && !caps.close && !caps.comment);
-  const shownIssue = shown != null ? (repo?.items.find((i) => i.number === shown) ?? null) : null;
-  const showList = !narrow || shownIssue == null;
-  const showCard = !narrow || shownIssue != null;
+  // Задача не из списка (ссылка #номер в тексте) — из загруженной карточки
+  const shownIssue = shown != null ? (repo?.items.find((i) => i.number === shown) ?? repo?.details[shown]?.detail?.issue ?? null) : null;
+  const shownEntry = shown != null ? repo?.details[shown] : undefined;
+  const showList = !narrow || shown == null;
+  const showCard = !narrow || shown != null;
 
   let body: ReactNode;
   if (fatal && LOGIN_CODES.has(fatal)) {
@@ -315,8 +318,28 @@ export default function IssuesView({ repoPath, remote, forge, onClose, onLogin, 
           <div className="relative flex min-w-0 flex-1 flex-col">
             {help ? (
               <KeyHelp />
-            ) : shownIssue ? (
-              <IssuePreview ref={cardEl} key={shownIssue.number} issue={shownIssue} entry={repo?.details[shownIssue.number]} onBack={narrow ? () => selectNow(null) : undefined} />
+            ) : shownIssue && repo ? (
+              <IssueDetail
+                ref={cardEl}
+                key={shownIssue.number}
+                repoPath={repoPath}
+                issue={shownIssue}
+                entry={shownEntry}
+                caps={repo.caps}
+                meta={repo.meta}
+                issues={repo.items}
+                onBack={narrow ? () => selectNow(null) : undefined}
+                onOpenIssue={selectNow}
+                onOpenWeb={onOpenWeb}
+                onCopy={onCopy}
+                notify={notify}
+              />
+            ) : shown != null && shownEntry?.status === 'error' ? (
+              <EmptyState state="card-error" icon={SearchX} title={`${t('issues-card-failed')}: ${shownEntry.error?.message ?? ''}`}>
+                <button type="button" onClick={() => selectNow(shown)} className="text-xs text-gk-blue hover:underline">{t('issues-retry')}</button>
+              </EmptyState>
+            ) : shown != null ? (
+              <div className="min-h-0 flex-1 overflow-hidden pt-3" aria-label={t('issues-card-loading')}><Skeleton rows={4} /></div>
             ) : (
               <EmptyState icon={CircleDot} title={t('issues-no-selection')}>
                 <KeyList />
@@ -347,36 +370,5 @@ export default function IssuesView({ repoPath, remote, forge, onClose, onLogin, 
       {body}
       {menu && <ContextMenu x={menu.x} y={menu.y} items={menu.items} onClose={() => setMenu(null)} />}
     </div>
-  );
-}
-
-const KEYS: [string, Parameters<typeof t>[0]][] = [
-  ['Ctrl+I', 'issues-key-toggle'],
-  ['↑ ↓ · K J', 'issues-key-nav'],
-  ['Enter', 'issues-key-card'],
-  ['/', 'issues-key-search'],
-  ['F5', 'issues-key-refresh'],
-  ['Esc', 'issues-key-escape'],
-  ['?', 'issues-key-help'],
-];
-
-function KeyList() {
-  return (
-    <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1 text-left text-xs">
-      {KEYS.map(([key, id]) => (
-        <div key={id} className="contents">
-          <dt><kbd className="rounded border border-gk-border bg-gk-sink/30 px-1.5 py-px font-mono text-[11px] text-gk-text">{key}</kbd></dt>
-          <dd className="text-gk-muted">{t(id)}</dd>
-        </div>
-      ))}
-    </dl>
-  );
-}
-
-function KeyHelp() {
-  return (
-    <EmptyState icon={Keyboard} title={t('issues-keys-title')}>
-      <KeyList />
-    </EmptyState>
   );
 }
