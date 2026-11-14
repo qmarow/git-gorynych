@@ -4,6 +4,7 @@
  *
  * - «Просмотр» — `render(text)` (команда `issues_render_markdown`) через 300 мс после переключения или правки; пока идёт
  *   запрос, виден прежний результат.
+ * - `secondaryLabel` / `onSecondarySubmit` — вторая кнопка и Ctrl+Shift+Enter («Отправить и закрыть задачу»).
  * - Клавиши в поле: Ctrl+B — жирный, Ctrl+I — курсив (раздел при этом не закрывается: событие дальше поля не идёт),
  *   Ctrl+E — код, Ctrl+K — ссылка, Ctrl+Enter — `onSubmit` (пустой текст — ничего), Esc — `onCancel`, если задан;
  *   Enter в пункте списка продолжает список, в пустом пункте — завершает; Tab / Shift+Tab в пунктах — отступ.
@@ -31,11 +32,10 @@ import type { ApiResult } from '../../platform/tauri.ts';
 import { t } from '../../i18n/index.ts';
 import type { IssueUser_Serialize } from '../../../crates/gorynych-tauri/bindings/commands.ts';
 import Markdown from './Markdown.tsx';
-import { UserAvatar, userName } from './IssueBits.tsx';
+import { buildSuggestions, type Suggestion } from './suggestions.tsx';
 
 const PREVIEW_DELAY = 300;
 const LINE = 20;
-const MAX_SUGGESTIONS = 8;
 
 export interface MarkdownEditorProps {
   value: string;
@@ -52,6 +52,15 @@ export interface MarkdownEditorProps {
   /** Идёт отправка: поле и кнопки заблокированы, на кнопке — индикатор. */
   busy?: boolean;
   submitLabel: ReactNode;
+  /** Вторая кнопка (Ctrl+Shift+Enter): «Отправить и закрыть задачу». */
+  secondaryLabel?: ReactNode;
+  onSecondarySubmit?: () => void;
+  /** Пустой текст разрешён (описание задачи). */
+  allowEmpty?: boolean;
+  /** Кнопка отправки неактивна (форма: пустой заголовок), а Ctrl+Enter всё равно зовёт `onSubmit` — для подсказки. */
+  submitDisabled?: boolean;
+  /** Слева в нижней строке вместо подсказки клавиш. */
+  footer?: ReactNode;
   cancelLabel?: ReactNode;
   render: (text: string) => Promise<ApiResult<string>>;
   issues?: readonly { number: number; title: string }[];
@@ -59,7 +68,6 @@ export interface MarkdownEditorProps {
   textareaRef?: (el: HTMLTextAreaElement | null) => void;
 }
 
-type Suggestion = { key: string; insert: string; label: ReactNode };
 
 export default function MarkdownEditor({
   value,
@@ -74,6 +82,11 @@ export default function MarkdownEditor({
   disabled,
   busy,
   submitLabel,
+  secondaryLabel,
+  onSecondarySubmit,
+  allowEmpty = false,
+  submitDisabled = false,
+  footer,
   cancelLabel,
   render,
   issues = [],
@@ -150,39 +163,7 @@ export default function MarkdownEditor({
     };
   }, [tab, value, render]);
 
-  const suggestions: Suggestion[] = useMemo(() => {
-    if (!trigger) return [];
-    const q = trigger.query.toLocaleLowerCase();
-    if (trigger.kind === '#') {
-      return issues
-        .filter((issue) => !q || String(issue.number).startsWith(q) || issue.title.toLocaleLowerCase().includes(q))
-        .slice(0, MAX_SUGGESTIONS)
-        .map((issue) => ({
-          key: `#${issue.number}`,
-          insert: String(issue.number),
-          label: (
-            <>
-              <span className="shrink-0 text-gk-dim">#{issue.number}</span>
-              <span className="truncate">{issue.title}</span>
-            </>
-          ),
-        }));
-    }
-    return members
-      .filter((user) => !q || user.login.toLocaleLowerCase().includes(q) || (user.name ?? '').toLocaleLowerCase().includes(q))
-      .slice(0, MAX_SUGGESTIONS)
-      .map((user) => ({
-        key: `@${user.login}`,
-        insert: user.login,
-        label: (
-          <>
-            <UserAvatar user={user} size={16} tip={false} />
-            <span className="truncate">{userName(user)}</span>
-            <span className="shrink-0 text-gk-dim">@{user.login}</span>
-          </>
-        ),
-      }));
-  }, [trigger, issues, members]);
+  const suggestions = useMemo(() => buildSuggestions(trigger, issues, members), [trigger, issues, members]);
 
   const updateTrigger = (el: HTMLTextAreaElement) => {
     const next = el.selectionStart === el.selectionEnd ? findTrigger(el.value, el.selectionStart) : null;
@@ -241,7 +222,7 @@ export default function MarkdownEditor({
     }
     if (mod && !e.altKey && e.key === 'Enter') {
       stop();
-      if (value.trim() && !locked) onSubmit();
+      if ((value.trim() || allowEmpty) && !locked) (e.shiftKey && onSecondarySubmit ? onSecondarySubmit : onSubmit)();
       return;
     }
     if (mod && !e.altKey && !e.shiftKey) {
@@ -376,13 +357,18 @@ export default function MarkdownEditor({
         )}
       </div>
       <div className="flex items-center justify-end gap-2 border-t border-gk-border px-2 py-1.5">
-        <span className="mr-auto text-[11px] text-gk-dim">{t('issues-md-hint')}</span>
+        {footer ?? <span className="mr-auto text-[11px] text-gk-dim">{t('issues-md-hint')}</span>}
         {onCancel && (
           <Button type="button" onClick={onCancel} disabled={busy}>
             {cancelLabel ?? t('cancel')}
           </Button>
         )}
-        <Button type="button" variant="blue" data-testid="md-submit" disabled={locked || !value.trim()} onClick={onSubmit}>
+        {secondaryLabel && onSecondarySubmit && (
+          <Button type="button" data-testid="md-submit-secondary" disabled={locked || (!value.trim() && !allowEmpty)} onClick={onSecondarySubmit}>
+            {secondaryLabel}
+          </Button>
+        )}
+        <Button type="button" variant="blue" data-testid="md-submit" disabled={locked || submitDisabled || (!value.trim() && !allowEmpty)} onClick={onSubmit}>
           {busy && <Loader2 size={13} className="animate-spin" />}
           {submitLabel}
         </Button>

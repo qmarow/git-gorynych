@@ -29,13 +29,15 @@ interface IssueListProps {
   seenAt: Record<number, string>;
   hasMore: boolean;
   listStatus: ListStatus;
+  /** Состояние фильтра: задачи другого состояния приглушены. */
+  stateFilter?: 'open' | 'closed' | null;
   onLoadMore: () => void;
   onSelect: (number: number) => void;
   onContextMenu: (number: number, x: number, y: number) => void;
   listRef?: (el: HTMLDivElement | null) => void;
 }
 
-export default function IssueList({ scrollKey, items, selected, seenAt, hasMore, listStatus, onLoadMore, onSelect, onContextMenu, listRef }: IssueListProps) {
+export default function IssueList({ scrollKey, items, selected, seenAt, hasMore, listStatus, stateFilter = null, onLoadMore, onSelect, onContextMenu, listRef }: IssueListProps) {
   const box = useRef<HTMLDivElement | null>(null);
   const [scrollTop, setScrollTop] = useState(() => scrollMemory.get(scrollKey) ?? 0);
   const [height, setHeight] = useState(600);
@@ -102,6 +104,7 @@ export default function IssueList({ scrollKey, items, selected, seenAt, hasMore,
         issue={issue}
         top={i * ROW_HEIGHT}
         selected={issue.number === selected}
+        dimmed={stateFilter != null && issue.state !== stateFilter}
         updated={isUpdatedSince(issue, seenAt[issue.number])}
         domId={issueDomId(issue.number)}
         onClick={onSelect}

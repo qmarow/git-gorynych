@@ -386,7 +386,7 @@ async function issuesListScenario(waitFor, key, section) {
     commentsCount: n % 4, createdAt: '2026-11-01T10:00:00Z', updatedAt: '2026-11-10T10:00:00Z', closedAt: null, dueDate: null,
     confidential: false, locked: false, webUrl: `https://example.invalid/i/${n}`,
   });
-  const caps = { create: true, edit: true, comment: true, editComments: true, deleteComments: true, close: true, labels: true, createLabel: true, multipleAssignees: true, milestones: true, dueDate: true, confidential: false, lock: true, delete: false, events: true, textSearch: true, counts: true, closeReasons: [] };
+  const caps = { create: true, edit: true, comment: true, editComments: true, deleteComments: true, close: true, labels: true, createLabel: true, multipleAssignees: true, milestones: true, dueDate: true, confidential: true, lock: true, delete: true, events: true, textSearch: true, counts: true, closeReasons: ['completed', 'not_planned'] };
   window.api.issues = {
     ...real,
     list: async (_dir, query) => {
@@ -395,7 +395,16 @@ async function issuesListScenario(waitFor, key, section) {
       const items = all.slice((query.page - 1) * 30, query.page * 30);
       return { ok: true, data: { list: { items, page: query.page, hasMore: query.page * 30 < all.length, counts: { open: all.length, closed: 0 } }, caps, provider: 'github', label: 'GitHub', webUrl: 'https://example.invalid/i' } };
     },
-    meta: async () => ({ ok: true, data: { labels: [{ id: 'b', name: 'bug', color: '#d73a4a', description: null }], milestones: [], members: [me], me, templates: [] } }),
+    meta: async () => ({
+      ok: true,
+      data: {
+        labels: [{ id: 'b', name: 'bug', color: '#d73a4a', description: null }, { id: 'f', name: 'feature', color: '#0e8a16', description: null }],
+        milestones: [{ id: 'm1', number: 1, title: 'v1.0', dueDate: '2026-12-31', closed: false }],
+        members: [me, { id: '2', login: 'anna', name: 'Анна', avatarUrl: null, webUrl: null }],
+        me,
+        templates: [{ name: 'Ошибка', title: 'Ошибка: ', body: '## Шаги\n', labels: ['bug', 'нет-такой'] }, { name: 'Идея', title: null, body: '## Зачем\n', labels: ['feature'] }],
+      },
+    }),
     get: async (_dir, number) => {
       calls.push(['get', number]);
       return { ok: true, data: { issue: issue(number), timeline: [], timelineTruncated: false } };
@@ -459,6 +468,7 @@ async function issuesListScenario(waitFor, key, section) {
     out.scrollKept = Boolean(await waitFor(() => listbox() && listbox().scrollTop === scrolled, 3000));
     out.selectedKept = section().innerText.includes('Описание 496'); // строка 496 вне окна прокрутки, карточка — та же
     out.detail = await issueCardScenario(waitFor, section, real, me, issue, calls).catch((e) => ({ probeError: String(e?.stack ?? e) }));
+    out.edit = await issueEditScenario(waitFor, section, real, issue, calls).catch((e) => ({ probeError: String(e?.stack ?? e) }));
   } finally {
     window.api.issues = real;
     if (section()) key('i', { code: 'KeyI', ctrlKey: true });
@@ -528,7 +538,8 @@ async function issueCardScenario(waitFor, section, real, me, issue, calls) {
   const press = (el, init) => el.dispatchEvent(new KeyboardEvent('keydown', { bubbles: true, cancelable: true, ...init }));
   const menuItem = async (comment, text) => {
     comment.querySelector('[data-testid="comment-menu"]').click();
-    const button = await waitFor(() => [...document.querySelectorAll('button')].find((b) => b.textContent.trim() === text), 3000);
+    // Не кнопка описания с тем же текстом («Изменить»)
+    const button = await waitFor(() => [...document.querySelectorAll('button')].find((b) => !b.closest('[data-testid="issue-description"]') && b.textContent.trim() === text), 3000);
     button.click();
   };
   const out = {};
@@ -612,6 +623,226 @@ async function issueCardScenario(waitFor, section, real, me, issue, calls) {
     window.api.openExternal = openExternal;
   }
   if (out.draft !== true || out.deleted !== true) out.dbg = dbg;
+  return out;
+}
+
+// Правка задачи и создание (этап 5) на том же подставном API: заголовок по E (Esc — отмена), закрытие с причиной и
+// «Отменить», приглушённая строка под фильтром «Открытые», метки по L — два клика одним запросом, новая метка, откат при
+// ошибке и «Повторить», веха, срок «Через неделю», конфиденциальность; конфликт описания; «Отправить и закрыть»;
+// блокировка; удаление с вводом номера; форма новой задачи — проверка заголовка, шаблоны с подтверждением замены,
+// «Создать ещё одну», черновик в шапке, создание
+async function issueEditScenario(waitFor, section, real, issue, calls) {
+  const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+  const api = window.api.issues;
+  const card = () => section().querySelector('[data-testid="issue-detail"]');
+  const row = (n) => section().querySelector(`[role="option"][data-number="${n}"]`);
+  const listbox = () => section().querySelector('[role="listbox"]:not([aria-multiselectable])');
+  const picker = () => document.querySelector('[role="listbox"][aria-multiselectable]');
+  const option = (text) => [...(picker()?.querySelectorAll('[role="option"]') ?? [])].find((o) => o.textContent.includes(text));
+  const press = (el, init) => el.dispatchEvent(new KeyboardEvent('keydown', { bubbles: true, cancelable: true, ...init }));
+  const keyOnSection = (code, key = code.replace(/^Key/, '').toLowerCase()) => {
+    section().focus();
+    press(section(), { key, code });
+  };
+  const toast = (text) => [...document.querySelectorAll('[data-testid="toast-action"]')].find((b) => b.parentElement.textContent.includes(text));
+  const setValue = (el, value) => {
+    const proto = el instanceof HTMLTextAreaElement ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype;
+    Object.getOwnPropertyDescriptor(proto, 'value').set.call(el, value);
+    el.dispatchEvent(new Event('input', { bubbles: true }));
+  };
+  const labelsShown = (root) => [...root.querySelectorAll('[data-testid="meta-labels"] span.truncate')].map((x) => x.textContent);
+  const html = async (dir, text) => (await real.renderMarkdown(dir, text)).data;
+  const state = new Map();
+  let failUpdate = false;
+  let serverBody = null;
+  const updates = () => calls.filter((c) => c[0] === 'update2').map((c) => c[2]);
+  api.update = async (dir, number, patch) => {
+    calls.push(['update2', number, patch]);
+    await sleep(50);
+    if (failUpdate) return { ok: false, error: { code: 'NETWORK', message: 'нет сети', hint: null, details: '' } };
+    const next = { ...issue(number), ...(state.get(number) ?? {}) };
+    if (patch.title != null) next.title = patch.title;
+    if (patch.body != null) next.body = patch.body;
+    if (patch.state) Object.assign(next, { state: patch.state, stateReason: patch.stateReason ?? null });
+    if (patch.labels) next.labels = patch.labels.map((l) => ({ id: l.id, name: l.name, color: '#888888', description: null }));
+    if (patch.locked != null) next.locked = patch.locked;
+    if (patch.confidential != null) next.confidential = patch.confidential;
+    if (patch.milestone) next.milestone = { ...patch.milestone, dueDate: null, closed: false };
+    if (patch.dueDate) next.dueDate = patch.dueDate;
+    state.set(number, next);
+    return { ok: true, data: { ...next, bodyHtml: await html(dir, next.body) } };
+  };
+  const get = api.get;
+  api.get = async (dir, number) => {
+    const res = await get(dir, number);
+    Object.assign(res.data.issue, state.get(number) ?? {});
+    if (serverBody != null && number === 495) Object.assign(res.data.issue, { body: serverBody, updatedAt: '2030-01-01T00:00:00Z' });
+    return res;
+  };
+  api.labelCreate = async (_dir, name, color) => (calls.push(['labelCreate', name, color]), { ok: true, data: { id: 'n1', name, color, description: null } });
+  api.remove = async (_dir, number) => (calls.push(['remove', number]), { ok: true, data: null });
+  api.create = async (dir, input) => {
+    calls.push(['create', input]);
+    const n = 500 + calls.filter((c) => c[0] === 'create').length;
+    return { ok: true, data: { ...issue(n), title: input.title, body: input.body, bodyHtml: await html(dir, input.body), labels: input.labels.map((l) => ({ ...l, color: '#888888', description: null })) } };
+  };
+  const out = {};
+  // Свежие возможности (причины закрытия, удаление) — обновлением списка
+  keyOnSection('F5', 'F5');
+  await sleep(300);
+  listbox().scrollTop = 0;
+  await waitFor(() => row(495), 3000);
+  row(495).click();
+  await waitFor(() => card()?.dataset.number === '495' && card().querySelector('[data-testid="issue-close-reasons"]'), 5000);
+
+  // Заголовок: E → поле с выделенным текстом; Esc — без запроса; Enter — сохранить
+  keyOnSection('KeyE');
+  const title = await waitFor(() => card().querySelector('[data-testid="issue-title-input"]'), 2000);
+  out.titleSelected = title ? title.selectionStart === 0 && title.selectionEnd === title.value.length && title.value.length > 0 : false;
+  if (title) press(title, { key: 'Escape', code: 'Escape' });
+  await sleep(50);
+  out.titleCancel = !card().querySelector('[data-testid="issue-title-input"]') && updates().length === 0 && Boolean(section());
+  keyOnSection('KeyE');
+  const input = await waitFor(() => card().querySelector('[data-testid="issue-title-input"]'), 2000);
+  setValue(input, 'Новый заголовок');
+  press(input, { key: 'Enter', code: 'Enter' });
+  out.title = (await waitFor(() => card().querySelector('[data-testid="issue-title"]')?.textContent.startsWith('Новый заголовок') && updates().at(-1)?.title, 2000)) ?? null;
+
+  // Закрытие: основная кнопка — «как выполненную»; уведомление с «Отменить»; строка приглушена
+  card().querySelector('[data-testid="issue-state-button"]').click();
+  out.closed = (await waitFor(() => updates().at(-1)?.state === 'closed' && updates().at(-1).stateReason, 2000)) ?? null;
+  out.dimmed = Boolean(await waitFor(() => row(495)?.className.includes('opacity-50'), 2000));
+  const undo = await waitFor(() => toast('#495'), 2000);
+  undo?.click();
+  out.undo = (await waitFor(() => updates().at(-1)?.state === 'open' && 'open', 2000)) ?? null;
+  // Причина — из меню у стрелки
+  (await waitFor(() => card().querySelector('[data-testid="issue-close-reasons"]'), 2000))?.click();
+  const notPlanned = await waitFor(() => [...document.querySelectorAll('button')].find((b) => b.textContent.trim() === 'Закрыть как непланируемую'), 2000);
+  notPlanned?.click();
+  out.notPlanned = (await waitFor(() => updates().at(-1)?.stateReason === 'not_planned' && 'not_planned', 2000)) ?? null;
+  (await waitFor(() => card().querySelector('[data-testid="issue-state-button"]')?.textContent.includes('Открыть заново') && card().querySelector('[data-testid="issue-state-button"]'), 2000))?.click();
+  await waitFor(() => updates().at(-1)?.state === 'open', 2000);
+
+  // Метки по L: два клика — один запрос через 400 мс
+  const before = updates().length;
+  keyOnSection('KeyL');
+  await waitFor(() => option('feature'), 2000);
+  option('feature').click();
+  await sleep(100);
+  option('bug').click();
+  await sleep(150);
+  out.labelsBatched = updates().length === before;
+  out.labelsShown = labelsShown(card()).join(',');
+  await sleep(500);
+  out.labels = updates().slice(before).map((u) => (u.labels ?? []).map((l) => l.name).join('+')).join(',');
+  // Новая метка: совпадений нет → «Создать метку»
+  const searchBox = picker()?.parentElement.querySelector('input');
+  if (searchBox) {
+    setValue(searchBox, 'срочно');
+    (await waitFor(() => option('срочно'), 2000))?.click();
+  }
+  out.labelCreated = (await waitFor(() => updates().at(-1)?.labels?.some((l) => l.name === 'срочно') && calls.find((c) => c[0] === 'labelCreate')?.[2], 3000)) ?? null;
+  await sleep(200); // ответ на создание метки — до включения ошибки
+  // Ошибка: значение возвращается, «Повторить» отправляет снова
+  failUpdate = true;
+  keyOnSection('KeyL');
+  (await waitFor(() => option('срочно'), 2000))?.click();
+  if (picker()) press(picker(), { key: 'Escape', code: 'Escape' });
+  const retry = await waitFor(() => toast('нет сети'), 3000);
+  out.rolledBack = labelsShown(card()).includes('срочно');
+  failUpdate = false;
+  retry?.click();
+  out.retried = Boolean(await waitFor(() => updates().at(-1)?.labels && !updates().at(-1).labels.some((l) => l.name === 'срочно') && !labelsShown(card()).includes('срочно'), 3000));
+  // Веха по M, срок, конфиденциальность
+  keyOnSection('KeyM');
+  (await waitFor(() => option('v1.0'), 2000))?.click();
+  out.milestone = (await waitFor(() => updates().at(-1)?.milestone?.title, 2000)) ?? null;
+  card().querySelector('[data-testid="meta-due"] button').click();
+  (await waitFor(() => [...document.querySelectorAll('[data-testid="date-popover"] button')].find((b) => b.textContent === 'Через неделю'), 2000))?.click();
+  const inWeek = new Date();
+  inWeek.setDate(inWeek.getDate() + 7);
+  const expected = `${inWeek.getFullYear()}-${String(inWeek.getMonth() + 1).padStart(2, '0')}-${String(inWeek.getDate()).padStart(2, '0')}`;
+  out.due = (await waitFor(() => updates().at(-1)?.dueDate === expected && 'week', 2000)) ?? updates().at(-1)?.dueDate ?? null;
+  card().querySelector('[data-testid="meta-confidential"]').click();
+  out.confidential = (await waitFor(() => updates().at(-1)?.confidential, 2000)) ?? null;
+
+  // Описание изменили на сервере: полоса, без выбора ничего не уходит; «Сохранить мою»
+  card().querySelector('[data-testid="description-edit"]').click();
+  const editor = await waitFor(() => card().querySelector('[data-testid="issue-description"] textarea'), 2000);
+  setValue(editor, 'Моё описание');
+  serverBody = 'Чужая правка';
+  const sent = updates().length;
+  card().querySelector('[data-testid="issue-description"] [data-testid="md-submit"]').click();
+  out.conflict = Boolean(await waitFor(() => card().querySelector('[data-testid="description-conflict"]'), 3000)) && updates().length === sent;
+  card().querySelector('[data-testid="description-save-mine"]')?.click();
+  out.savedMine = (await waitFor(() => updates().at(-1)?.body === 'Моё описание' && !card().querySelector('[data-testid="issue-description"] textarea') && 'saved', 3000)) ?? null;
+  serverBody = null;
+
+  // «Отправить и закрыть» (Ctrl+Shift+Enter): сначала комментарий, потом закрытие
+  const field = card().querySelector('[data-testid="md-editor"] textarea');
+  setValue(field, 'Готово');
+  const commentsBefore = calls.filter((c) => c[0] === 'commentAdd').length;
+  press(field, { key: 'Enter', code: 'Enter', ctrlKey: true, shiftKey: true });
+  out.sendClose = (await waitFor(() => calls.filter((c) => c[0] === 'commentAdd').length > commentsBefore && updates().at(-1)?.state === 'closed' && 'closed', 3000)) ?? null;
+  await sleep(100);
+  out.reopenLabel = card().querySelector('[data-testid="md-submit-secondary"]')?.textContent ?? null;
+
+  // Меню «⋯»: блокировка; удаление с вводом номера
+  const menuItem = async (text) => {
+    card().querySelector('[data-testid="issue-more"]').click();
+    (await waitFor(() => [...document.querySelectorAll('button')].find((x) => x.textContent.trim() === text), 2000))?.click();
+  };
+  await menuItem('Заблокировать обсуждение');
+  out.locked = (await waitFor(() => updates().at(-1)?.locked, 2000)) ?? null;
+  await menuItem('Удалить задачу');
+  const confirm = await waitFor(() => document.querySelector('[data-testid="issue-delete-confirm"]'), 2000);
+  out.deleteDisabled = Boolean(confirm?.disabled);
+  setValue(document.querySelector('[data-testid="issue-delete-number"]'), '495');
+  await sleep(30);
+  confirm?.click();
+  out.deleted = Boolean(await waitFor(() => calls.some((c) => c[0] === 'remove' && c[1] === 495) && !row(495) && !card(), 3000));
+
+  // Новая задача: C
+  keyOnSection('KeyC');
+  const form = () => section().querySelector('[data-testid="issue-form"]');
+  await waitFor(form, 2000);
+  const titleField = form().querySelector('[data-testid="issue-form-title"]');
+  out.formFocus = document.activeElement === titleField;
+  out.createDisabled = Boolean(form().querySelector('[data-testid="md-submit"]')?.disabled);
+  press(titleField, { key: 'Enter', code: 'Enter', ctrlKey: true });
+  out.titleRequired = Boolean(await waitFor(() => form().querySelector('[data-testid="issue-form-title-error"]'), 1000));
+  // Шаблон «Ошибка»: описание, заголовок и только существующие метки
+  const template = (name) => [...form().querySelectorAll('[data-testid="issue-form-templates"] button')].find((b) => b.textContent === name);
+  template('Ошибка').click();
+  await sleep(50);
+  const body = () => form().querySelector('[data-testid="md-editor"] textarea');
+  out.template = [titleField.value, body()?.value, labelsShown(form()).join(',')];
+  setValue(body(), '## Шаги\nмоё');
+  template('Идея').click();
+  const replace = await waitFor(() => [...document.querySelectorAll('.bg-gk-scrim button')].find((b) => b.textContent.trim() === 'Заменить'), 2000);
+  out.replaceAsked = Boolean(replace);
+  replace?.click();
+  await sleep(50);
+  out.replaced = [body()?.value ?? null, labelsShown(form()).join(',')];
+  // «Создать ещё одну»: заголовок и описание очищаются, метки остаются
+  setValue(titleField, 'Первая');
+  form().querySelector('[data-testid="issue-form-another"]').click();
+  form().querySelector('[data-testid="md-submit"]').click();
+  await waitFor(() => calls.some((c) => c[0] === 'create'), 2000);
+  await sleep(100);
+  const created = calls.find((c) => c[0] === 'create')?.[1];
+  out.created = created ? [created.title, created.labels.map((l) => l.name).join('+')] : null;
+  out.another = Boolean(form()) && titleField.value === '' && body()?.value === '' && labelsShown(form()).includes('bug');
+  // Отмена (Esc) — черновик в шапке раздела
+  press(titleField, { key: 'Escape', code: 'Escape' });
+  out.draftLink = Boolean(await waitFor(() => !form() && section().querySelector('[data-testid="issues-draft-link"]'), 2000));
+  section().querySelector('[data-testid="issues-draft-link"]')?.click();
+  await waitFor(form, 2000);
+  out.draftBack = labelsShown(form()).join(',');
+  setValue(form().querySelector('[data-testid="issue-form-title"]'), 'Вторая');
+  form().querySelector('[data-testid="md-submit"]').click();
+  out.opened = (await waitFor(() => !form() && card()?.dataset.number, 3000)) ?? null;
+  out.firstInList = section().querySelector('[role="option"][data-number]')?.dataset.number ?? null;
   return out;
 }
 

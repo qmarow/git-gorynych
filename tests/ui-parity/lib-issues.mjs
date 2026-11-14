@@ -300,4 +300,71 @@ drafts.clearDraft(P, C7);
 eq(drafts.loadDraft(P, C7), null, 'ошибки localStorage молча игнорируются');
 broken = false;
 
+/* ---------- Флажки списка задач (те же номера, что data-task-index в issues/markdown.rs) ---------- */
+
+const doc = ['- [ ] a', '- [x] b', '```', '- [ ] в коде', '```', '  1. [ ] c', '> - [ ] d', '~~~~', '- [ ] тоже код', '~~~', '- [ ] всё ещё код', '~~~~', '* [X] e', '- [ ]нет пробела', '- [] нет'].join('\n');
+eq(lib.toggleTask(doc, 0, true).split('\n')[0], '- [x] a');
+eq(lib.toggleTask(doc, 1, false).split('\n')[1], '- [ ] b');
+eq(lib.toggleTask(doc, 2, true).split('\n')[5], '  1. [x] c', 'блок кода пропущен');
+eq(lib.toggleTask(doc, 3, true).split('\n')[6], '> - [x] d');
+eq(lib.toggleTask(doc, 4, false).split('\n')[12], '* [ ] e', 'закрывающая ограда не короче открывающей');
+eq(lib.toggleTask(doc, 5, true), null);
+eq(lib.toggleTask('- [ ] a\r', 0, true), '- [x] a\r');
+
+// Случайные: переключение меняет ровно один символ и обратимо
+const rndTask = (() => {
+  let x = 7;
+  return () => ((x = (x * 1103515245 + 12345) % 2 ** 31), x / 2 ** 31);
+})();
+const parts = ['- [ ] t', '- [x] t', '  - [ ] t', 'текст', '```', '1. [ ] t', '> - [x] t', ''];
+for (let n = 0; n < 2000; n++) {
+  const body = Array.from({ length: 1 + Math.floor(rndTask() * 12) }, () => parts[Math.floor(rndTask() * parts.length)]).join('\n');
+  for (let i = 0; i < 6; i++) {
+    const next = lib.toggleTask(body, i, true);
+    if (next == null) {
+      eq(lib.toggleTask(body, i + 1, true), null, 'номера идут подряд');
+      break;
+    }
+    eq(next.length, body.length);
+    eq([...next].filter((c, k) => c !== body[k]).length <= 1, true);
+    eq(lib.toggleTask(lib.toggleTask(next, i, false), i, true), next, 'обратимо');
+  }
+}
+
+
+/* ---------- Палитра меток и срок ---------- */
+
+eq(lib.LABEL_PALETTE.length, 8);
+eq(lib.nextLabelColor(0), lib.LABEL_PALETTE[0]);
+eq(lib.nextLabelColor(9), lib.LABEL_PALETTE[1], 'по кругу');
+eq(lib.localDate(new Date(2026, 0, 5)), '2026-01-05');
+eq(lib.isOverdue({ state: 'open', dueDate: '2026-11-13' }, '2026-11-14'), true);
+eq(lib.isOverdue({ state: 'open', dueDate: '2026-11-14' }, '2026-11-14'), false, 'сегодня — не просрочено');
+eq(lib.isOverdue({ state: 'closed', dueDate: '2026-01-01' }, '2026-11-14'), false, 'закрытая');
+eq(lib.isOverdue({ state: 'open', dueDate: null }, '2026-11-14'), false);
+eq(lib.isOverdue({ state: 'open', dueDate: '2026-11-13T00:00:00Z' }, '2026-11-14'), true);
+
+/* ---------- Свойства → запрос ---------- */
+
+{
+  const u = { id: "7", login: "ann", name: "Анна", avatarUrl: null, webUrl: null };
+  const l = { id: "3", name: "bug", color: "#d73a4a", description: null };
+  const m = { id: "9", number: 2, title: "v1", dueDate: null, closed: false };
+  eq(lib.propsPatch({}), {});
+  eq(lib.propsPatch({ assignees: [u], labels: [l] }), { assignees: [{ id: "7", login: "ann" }], labels: [{ id: "3", name: "bug" }] });
+  eq(lib.propsPatch({ assignees: [] }), { assignees: [] }, "пустой список — снять всех");
+  eq(lib.propsPatch({ milestone: m }), { milestone: { id: "9", number: 2, title: "v1" } });
+  eq(lib.propsPatch({ milestone: null }), { clearMilestone: true });
+  eq(lib.propsPatch({ dueDate: "2026-12-01" }), { dueDate: "2026-12-01" });
+  eq(lib.propsPatch({ dueDate: null }), { clearDueDate: true });
+  eq(lib.propsPatch({ confidential: false }), { confidential: false });
+  // Правка, собранная из изменения, применяется так же, как её применит сервер
+  const issue = { number: 1, title: "x", body: "", state: "open", stateReason: null, labels: [], assignees: [], milestone: m, dueDate: "2026-01-01", confidential: false, locked: false, closedAt: null };
+  const next = lib.applyPatch(issue, lib.propsPatch({ assignees: [u], labels: [l], milestone: null, dueDate: null }), { labels: [l], milestones: [m], members: [u], me: null, templates: [] });
+  eq([next.assignees[0].name, next.labels[0].color, next.milestone, next.dueDate], ["Анна", "#d73a4a", null, null]);
+  eq(lib.issueInput({ title: "  Заголовок ", body: "т", labels: [l], assignees: [u], milestone: null, dueDate: "", confidential: true }), {
+    title: "Заголовок", body: "т", labels: [{ id: "3", name: "bug" }], assignees: [{ id: "7", login: "ann" }], milestone: null, dueDate: null, confidential: true,
+  });
+}
+
 console.log(`lib-issues: ${checks} проверок прошли`);

@@ -138,7 +138,7 @@ fn text_is_escaped() {
     assert!(html.contains("a &lt; b &amp; \"c\""), "{html}");
 }
 
-/// Тот же документ, что в `tests/ui-parity/markdown-edit.mjs` (`toggleTask`): номера флажков у Rust и интерфейса совпадают.
+/// Тот же документ, что в `tests/ui-parity/lib-issues.mjs` (`toggleTask` из `lib/issues.ts`): номера флажков у Rust и интерфейса совпадают.
 #[test]
 fn task_indices_match_toggle_task_in_interface() {
     let doc = ["- [ ] a", "- [x] b", "```", "- [ ] в коде", "```", "  1. [ ] c", "> - [ ] d", "~~~~", "- [ ] тоже код", "~~~", "- [ ] всё ещё код", "~~~~", "* [X] e", "- [ ]нет пробела", "- [] нет"].join("\n");

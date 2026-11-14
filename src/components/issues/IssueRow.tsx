@@ -20,13 +20,15 @@ interface IssueRowProps {
   issue: Issue;
   top: number;
   selected: boolean;
+  /** Не подходит под фильтр после своей правки (закрыта при «Открытых»): приглушена до обновления списка. */
+  dimmed?: boolean;
   updated: boolean;
   domId: string;
   onClick: (number: number) => void;
   onContextMenu: (number: number, x: number, y: number) => void;
 }
 
-function IssueRow({ issue, top, selected, updated, domId, onClick, onContextMenu }: IssueRowProps) {
+function IssueRow({ issue, top, selected, dimmed = false, updated, domId, onClick, onContextMenu }: IssueRowProps) {
   const shown = issue.labels.slice(0, MAX_LABELS);
   const hidden = issue.labels.slice(MAX_LABELS);
   return (
@@ -44,7 +46,7 @@ function IssueRow({ issue, top, selected, updated, domId, onClick, onContextMenu
       }}
       className={`absolute inset-x-0 flex cursor-default items-center gap-3 border-b border-gk-border/60 px-3 ${
         selected ? 'bg-gk-hover' : 'hover:bg-gk-hover/60'
-      }`}
+      } ${dimmed ? 'opacity-50' : ''}`}
     >
       {selected && <span className="absolute inset-y-0 left-0 w-[2px] bg-gk-blue" />}
       <StateIcon issue={issue} />

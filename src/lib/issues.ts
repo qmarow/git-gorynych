@@ -6,6 +6,7 @@
 import type {
   IssueComment_Serialize,
   IssueEvent_Serialize,
+  IssueInput_Deserialize,
   IssueLabel_Serialize,
   IssueMeta_Serialize,
   IssueMilestone_Serialize,
@@ -238,6 +239,105 @@ export function labelTextColor(hex: string | null | undefined): '#000000' | '#ff
   const luminance = 0.2126 * r + 0.7152 * g + 0.0722 * b;
   // Контраст с чёрным (L + 0.05) / 0.05 против контраста с белым 1.05 / (L + 0.05)
   return (luminance + 0.05) / 0.05 >= 1.05 / (luminance + 0.05) ? '#000000' : '#ffffff';
+}
+
+/* ---------- Список задач в описании ---------- */
+
+const FENCE = /^\s{0,3}(`{3,}|~{3,})/;
+const TASK = /^(\s*(?:>\s*)*(?:[-*+]|\d{1,9}[.)])\s+)\[([ xX])\](?=\s)/;
+
+/**
+ * Отметить флажок номер `index` (с нуля, по порядку в тексте, вне блоков кода) — те же номера, что `data-task-index`
+ * у `issues/markdown.rs`. Нет такого флажка — `null`.
+ */
+export function toggleTask(body: string, index: number, checked: boolean): string | null {
+  const lines = body.split('\n');
+  let fence: string | null = null;
+  let seen = 0;
+  for (let i = 0; i < lines.length; i += 1) {
+    const line = lines[i];
+    const open = FENCE.exec(line);
+    if (fence) {
+      if (open && open[1][0] === fence[0] && open[1].length >= fence.length && !line.trim().slice(open[1].length).trim()) fence = null;
+      continue;
+    }
+    if (open) {
+      fence = open[1];
+      continue;
+    }
+    const task = TASK.exec(line);
+    if (!task) continue;
+    if (seen === index) {
+      lines[i] = `${task[1]}[${checked ? 'x' : ' '}]${line.slice(task[0].length)}`;
+      return lines.join('\n');
+    }
+    seen += 1;
+  }
+  return null;
+}
+
+/* ---------- Метки, сроки ---------- */
+
+/** Цвета новых меток по кругу (`labelCreate` из выбора меток). */
+export const LABEL_PALETTE: readonly string[] = ['#d73a4a', '#0e8a16', '#1d76db', '#fbca04', '#5319e7', '#e99695', '#0052cc', '#c2e0c6'];
+
+/** Цвет следующей новой метки: по кругу от числа уже существующих. */
+export const nextLabelColor = (existing: number): string => LABEL_PALETTE[((existing % LABEL_PALETTE.length) + LABEL_PALETTE.length) % LABEL_PALETTE.length];
+
+/** Дата `YYYY-MM-DD` по местному времени. */
+export function localDate(date: Date): string {
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
+}
+
+/** Срок открытой задачи прошёл (`today` — `YYYY-MM-DD`; срок — дата или начало ISO-строки). */
+export function isOverdue(issue: Pick<Issue, 'state' | 'dueDate'>, today: string): boolean {
+  return issue.state === 'open' && Boolean(issue.dueDate) && issue.dueDate!.slice(0, 10) < today;
+}
+
+/* ---------- Свойства → запрос ---------- */
+
+/** Свойства задачи, как их меняет панель свойств: полные новые значения. */
+export interface IssueProps {
+  assignees?: readonly IssueUser_Serialize[];
+  labels?: readonly IssueLabel_Serialize[];
+  milestone?: IssueMilestone_Serialize | null;
+  dueDate?: string | null;
+  confidential?: boolean;
+}
+
+const userRef = (u: IssueUser_Serialize) => ({ id: u.id, login: u.login });
+const labelRef = (l: IssueLabel_Serialize) => ({ id: l.id, name: l.name });
+const milestoneRef = (m: IssueMilestone_Serialize) => ({ id: m.id, number: m.number, title: m.title });
+
+/** Правка задачи из изменения свойств: снять веху и срок — `clearMilestone`, `clearDueDate`. */
+export function propsPatch(change: IssueProps): IssuePatch {
+  const patch: IssuePatch = {};
+  if (change.assignees) patch.assignees = change.assignees.map(userRef);
+  if (change.labels) patch.labels = change.labels.map(labelRef);
+  if (change.milestone !== undefined) {
+    if (change.milestone) patch.milestone = milestoneRef(change.milestone);
+    else patch.clearMilestone = true;
+  }
+  if (change.dueDate !== undefined) {
+    if (change.dueDate) patch.dueDate = change.dueDate;
+    else patch.clearDueDate = true;
+  }
+  if (change.confidential !== undefined) patch.confidential = change.confidential;
+  return patch;
+}
+
+/** Новая задача из формы. */
+export function issueInput(form: { title: string; body: string } & Required<IssueProps>): IssueInput_Deserialize {
+  return {
+    title: form.title.trim(),
+    body: form.body,
+    labels: form.labels.map(labelRef),
+    assignees: form.assignees.map(userRef),
+    milestone: form.milestone ? milestoneRef(form.milestone) : null,
+    dueDate: form.dueDate || null,
+    confidential: form.confidential,
+  };
 }
 
 /* ---------- Прочее ---------- */

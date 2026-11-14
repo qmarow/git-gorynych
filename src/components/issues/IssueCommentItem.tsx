@@ -35,19 +35,13 @@ export interface CommentActions {
 
 interface IssueCommentItemProps {
   comment: IssueComment_Serialize;
-  /** Описание задачи — тот же вид, без меню правки комментария. */
-  description?: boolean;
-  /** Флажки списка задач в описании (при праве правки). */
-  onTaskToggle?: (index: number, checked: boolean) => void;
-  /** Меняется — HTML вставляется заново (флажок после отказа сервера). */
-  revision?: number;
   actions: CommentActions;
 }
 
 const edited = (comment: IssueComment_Serialize) =>
   Boolean(comment.updatedAt && Math.abs(Date.parse(comment.updatedAt) - Date.parse(comment.createdAt)) > 60_000);
 
-function IssueCommentItem({ comment, description = false, onTaskToggle, revision = 0, actions }: IssueCommentItemProps) {
+function IssueCommentItem({ comment, actions }: IssueCommentItemProps) {
   const bodyEl = useRef<HTMLDivElement>(null);
   const [menu, setMenu] = useState<{ x: number; y: number } | null>(null);
   const [editing, setEditing] = useState<string | null>(null);
@@ -75,8 +69,8 @@ function IssueCommentItem({ comment, description = false, onTaskToggle, revision
 
   const items: MenuEntry[] = [
     actions.canQuote && { label: t('issues-comment-quote'), icon: Quote, onClick: () => actions.onQuote(quoteSource()) },
-    !description && comment.canEdit && actions.canEdit && { label: t('issues-comment-edit'), icon: Pencil, onClick: () => setEditing(comment.body) },
-    !description && comment.canEdit && actions.canDelete && { label: t('issues-comment-delete'), icon: Trash2, danger: true, onClick: () => actions.onDelete(comment) },
+    comment.canEdit && actions.canEdit && { label: t('issues-comment-edit'), icon: Pencil, onClick: () => setEditing(comment.body) },
+    comment.canEdit && actions.canDelete && { label: t('issues-comment-delete'), icon: Trash2, danger: true, onClick: () => actions.onDelete(comment) },
     comment.webUrl && { separator: true },
     comment.webUrl && { label: t('issues-menu-copy-link'), icon: Copy, onClick: () => actions.onCopy(comment.webUrl!, t('issues-what-link')) },
     comment.webUrl && { label: t('issues-open-on-server'), icon: ExternalLink, onClick: () => actions.onOpenLink(comment.webUrl!) },
@@ -85,8 +79,8 @@ function IssueCommentItem({ comment, description = false, onTaskToggle, revision
   const author = comment.author;
   return (
     <li
-      data-testid={description ? 'issue-description' : 'issue-comment'}
-      data-comment-id={description ? undefined : comment.id}
+      data-testid="issue-comment"
+      data-comment-id={comment.id}
       className={`flex gap-3 py-2 ${temporary ? 'opacity-50' : ''}`}
       aria-busy={temporary || undefined}
     >
@@ -138,9 +132,9 @@ function IssueCommentItem({ comment, description = false, onTaskToggle, revision
         ) : (
           <div ref={bodyEl} className="px-3 py-2">
             {!comment.body.trim() ? (
-              <span className="text-xs text-gk-dim italic">{description ? t('issues-no-description') : t('issues-comment-empty')}</span>
+              <span className="text-xs text-gk-dim italic">{t('issues-comment-empty')}</span>
             ) : comment.bodyHtml ? (
-              <Markdown key={revision} html={comment.bodyHtml} onTaskToggle={onTaskToggle} onIssueClick={actions.onIssueClick} onOpenLink={actions.onOpenLink} />
+              <Markdown html={comment.bodyHtml} onIssueClick={actions.onIssueClick} onOpenLink={actions.onOpenLink} />
             ) : (
               <div className="text-[13px] leading-relaxed whitespace-pre-wrap text-gk-text">{comment.body}</div>
             )}

@@ -202,7 +202,7 @@ fn real_interface_opens_repository_on_the_compatibility_layer() {
     // прокрутка и выбор переживают закрытие раздела
     assert_eq!(
         report["issues"]["list"],
-        json!({ "loaded": true, "rendered": 21, "counts": "Открытые500", "searchEarly": 0, "search": "123", "mine": "@me", "loadMore": true, "keys": [496], "selected": "496", "card": true, "scrollKept": true, "selectedKept": true, "detail": report["issues"]["list"]["detail"] }),
+        json!({ "loaded": true, "rendered": 21, "counts": "Открытые500", "searchEarly": 0, "search": "123", "mine": "@me", "loadMore": true, "keys": [496], "selected": "496", "card": true, "scrollKept": true, "selectedKept": true, "detail": report["issues"]["list"]["detail"], "edit": report["issues"]["list"]["edit"] }),
         "список задач: {report}"
     );
     // Карточка (этап 4): HTML описания — настоящий `issues_render_markdown`; вредоносная разметка не исполняется, сломанная
@@ -219,6 +219,23 @@ fn real_interface_opens_repository_on_the_compatibility_layer() {
             "edited": true, "confirm": true, "deleted": true, "switched": true, "draft": true, "preview": "Не уйдёт", "issueLink": true
         }),
         "карточка задачи: {report}"
+    );
+    // Правка и создание (этап 5): заголовок по E, закрытие с причиной и «Отменить», приглушённая строка, метки по L — два
+    // клика одним запросом, новая метка цветом палитры, откат и «Повторить», веха, срок, конфиденциальность, конфликт
+    // описания, «Отправить и закрыть», блокировка, удаление с вводом номера, форма: проверка заголовка, шаблоны, замена
+    // с подтверждением, «Создать ещё одну», черновик в шапке, новая задача первой в списке
+    assert_eq!(
+        report["issues"]["list"]["edit"],
+        json!({
+            "titleSelected": true, "titleCancel": true, "title": "Новый заголовок", "closed": "completed", "dimmed": true, "undo": "open",
+            "notPlanned": "not_planned", "labelsBatched": true, "labelsShown": "feature", "labels": "feature", "labelCreated": "#1d76db",
+            "rolledBack": true, "retried": true, "milestone": "v1.0", "due": "week", "confidential": true, "conflict": true, "savedMine": "saved",
+            "sendClose": "closed", "reopenLabel": "Отправить и открыть заново", "locked": true, "deleteDisabled": true, "deleted": true,
+            "formFocus": true, "createDisabled": true, "titleRequired": true, "template": ["Ошибка: ", "## Шаги\n", "bug"], "replaceAsked": true,
+            "replaced": ["## Зачем\n", "bug,feature"], "created": ["Первая", "bug+feature"], "another": true, "draftLink": true,
+            "draftBack": "bug,feature", "opened": "502", "firstInList": "502"
+        }),
+        "правка задачи: {report}"
     );
     // Две дорожки помещаются: шаг прежний, хвостов нет
     assert_eq!(report["lanes"], json!({ "before": { "laneW": 28, "forceDots": false, "hidden": 0 }, "badge": null, "tails": 0 }), "дорожки: {report}");

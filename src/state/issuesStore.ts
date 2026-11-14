@@ -74,7 +74,8 @@ export interface IssuesState {
   loadMore: (path: string) => Promise<void>;
   loadMeta: (path: string, opts?: { force?: boolean }) => Promise<void>;
   select: (path: string, number: number | 'new' | null) => Promise<void>;
-  create: (path: string, input: IssueInput_Deserialize) => Promise<ApiResult<Issue>>;
+  /** `stay` — форма «Создать ещё одну»: выбор остаётся `'new'`. */
+  create: (path: string, input: IssueInput_Deserialize, opts?: { stay?: boolean }) => Promise<ApiResult<Issue>>;
   update: (path: string, number: number, patch: IssuePatch) => Promise<ApiResult<Issue>>;
   commentAdd: (path: string, number: number, body: string) => Promise<ApiResult<IssueComment_Serialize>>;
   commentUpdate: (path: string, number: number, id: string, body: string) => Promise<ApiResult<IssueComment_Serialize>>;
@@ -83,6 +84,8 @@ export interface IssuesState {
   remove: (path: string, number: number) => Promise<ApiResult<null>>;
   /** Предпросмотр Markdown: тот же HTML, что сервис кладёт в `bodyHtml`. */
   renderMarkdown: (path: string, text: string) => Promise<ApiResult<string>>;
+  /** Задача с сервера без записи в состояние — проверка «описание изменили на сервере» перед сохранением. */
+  fetchDetail: (path: string, number: number) => Promise<ApiResult<IssueDetail>>;
   forget: (path: string) => void;
 }
 
@@ -345,7 +348,7 @@ export function createIssuesStore(getApi: () => IssuesApi | undefined, options: 
         persist(path);
       },
 
-      create: async (path, input) => {
+      create: async (path, input, { stay = false } = {}) => {
         const api = getApi();
         if (!api) return { ok: false, error: NO_API };
         const res = await api.create(path, input, opts(path));
@@ -353,7 +356,7 @@ export function createIssuesStore(getApi: () => IssuesApi | undefined, options: 
         const issue = res.data;
         patch(path, (cur) => ({
           items: [issue, ...cur.items.filter((i) => i.number !== issue.number)],
-          selected: issue.number,
+          selected: stay ? cur.selected : issue.number,
           details: { ...cur.details, [issue.number]: { detail: { issue, timeline: [], timelineTruncated: false }, status: 'idle', error: null, loadedAt: now() } },
           seenAt: { ...cur.seenAt, [issue.number]: issue.updatedAt },
         }));
@@ -477,6 +480,12 @@ export function createIssuesStore(getApi: () => IssuesApi | undefined, options: 
         });
         if (issue) shiftCounts(path, issue.state, null);
         return res;
+      },
+
+      fetchDetail: async (path, number) => {
+        const api = getApi();
+        if (!api) return { ok: false, error: NO_API };
+        return api.get(path, number, opts(path));
       },
 
       renderMarkdown: async (path, text) => {

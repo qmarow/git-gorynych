@@ -2,10 +2,10 @@
  * Новое в 2.0: лента задачи — описание, затем комментарии и события по времени (`mergeTimeline`: события одного автора
  * за минуту — одна строка). При `timelineTruncated` сверху строка «Показаны первые 300 записей» и «Открыть на сервере».
  */
-import { memo, useMemo } from 'react';
+import { memo, useMemo, type ReactNode } from 'react';
 import { mergeTimeline } from '../../lib/issues.ts';
 import { t } from '../../i18n/index.ts';
-import type { IssueComment_Serialize, TimelineItem_Serialize } from '../../../crates/gorynych-tauri/bindings/commands.ts';
+import type { TimelineItem_Serialize } from '../../../crates/gorynych-tauri/bindings/commands.ts';
 import type { Issue } from '../../lib/issues.ts';
 import IssueCommentItem, { type CommentActions } from './IssueCommentItem.tsx';
 import IssueEventItem from './IssueEventItem.tsx';
@@ -16,17 +16,12 @@ interface IssueTimelineProps {
   truncated: boolean;
   loading: boolean;
   actions: CommentActions;
-  onTaskToggle?: (index: number, checked: boolean) => void;
-  descriptionRevision: number;
+  /** Описание задачи — первым элементом (`IssueDescription`). */
+  description: ReactNode;
 }
 
-function IssueTimeline({ issue, timeline, truncated, loading, actions, onTaskToggle, descriptionRevision }: IssueTimelineProps) {
+function IssueTimeline({ issue, timeline, truncated, loading, actions, description }: IssueTimelineProps) {
   const entries = useMemo(() => mergeTimeline(timeline ?? []), [timeline]);
-  // Описание — как комментарий автора задачи
-  const description: IssueComment_Serialize = useMemo(
-    () => ({ id: `issue-${issue.number}`, body: issue.body, bodyHtml: issue.bodyHtml, author: issue.author, createdAt: issue.createdAt, updatedAt: null, canEdit: false, webUrl: issue.webUrl }),
-    [issue.number, issue.body, issue.bodyHtml, issue.author, issue.createdAt, issue.webUrl],
-  );
   const bodyPending = loading && !timeline && Boolean(issue.body.trim()) && !issue.bodyHtml;
 
   return (
@@ -37,7 +32,7 @@ function IssueTimeline({ issue, timeline, truncated, loading, actions, onTaskTog
           <span className="skeleton h-24 flex-1 rounded-md" />
         </li>
       ) : (
-        <IssueCommentItem comment={description} description actions={actions} onTaskToggle={onTaskToggle} revision={descriptionRevision} />
+        description
       )}
       {truncated && (
         <li data-testid="timeline-truncated" className="my-1 flex items-center gap-2 rounded border border-gk-border bg-gk-hover/50 px-3 py-1.5 text-xs text-gk-muted">

@@ -133,36 +133,3 @@ export function appendQuote(value: string, text: string): string {
   if (!value.trim()) return quote;
   return `${value.replace(/\s+$/, '')}\n\n${quote}`;
 }
-
-const FENCE = /^\s{0,3}(`{3,}|~{3,})/;
-const TASK = /^(\s*(?:>\s*)*(?:[-*+]|\d{1,9}[.)])\s+)\[([ xX])\](?=\s)/;
-
-/**
- * Отметить флажок номер `index` (с нуля, по порядку в тексте, вне блоков кода) — те же номера, что `data-task-index`
- * у `issues/markdown.rs`. Нет такого флажка — `null`.
- */
-export function toggleTask(body: string, index: number, checked: boolean): string | null {
-  const lines = body.split('\n');
-  let fence: string | null = null;
-  let seen = 0;
-  for (let i = 0; i < lines.length; i += 1) {
-    const line = lines[i];
-    const open = FENCE.exec(line);
-    if (fence) {
-      if (open && open[1][0] === fence[0] && open[1].length >= fence.length && !line.trim().slice(open[1].length).trim()) fence = null;
-      continue;
-    }
-    if (open) {
-      fence = open[1];
-      continue;
-    }
-    const task = TASK.exec(line);
-    if (!task) continue;
-    if (seen === index) {
-      lines[i] = `${task[1]}[${checked ? 'x' : ' '}]${line.slice(task[0].length)}`;
-      return lines.join('\n');
-    }
-    seen += 1;
-  }
-  return null;
-}

@@ -86,39 +86,4 @@ eq(m.quoteText('a\n\nb  \n'), '> a\n>\n> b\n\n');
 eq(m.appendQuote('', 'x'), '> x\n\n');
 eq(m.appendQuote('текст\n\n', 'x\ny'), 'текст\n\n> x\n> y\n\n');
 
-/* ---------- Флажки списка задач (те же номера, что data-task-index в issues/markdown.rs) ---------- */
-
-const doc = ['- [ ] a', '- [x] b', '```', '- [ ] в коде', '```', '  1. [ ] c', '> - [ ] d', '~~~~', '- [ ] тоже код', '~~~', '- [ ] всё ещё код', '~~~~', '* [X] e', '- [ ]нет пробела', '- [] нет'].join('\n');
-eq(m.toggleTask(doc, 0, true).split('\n')[0], '- [x] a');
-eq(m.toggleTask(doc, 1, false).split('\n')[1], '- [ ] b');
-eq(m.toggleTask(doc, 2, true).split('\n')[5], '  1. [x] c', 'блок кода пропущен');
-eq(m.toggleTask(doc, 3, true).split('\n')[6], '> - [x] d');
-eq(m.toggleTask(doc, 4, false).split('\n')[12], '* [ ] e', 'закрывающая ограда не короче открывающей');
-eq(m.toggleTask(doc, 5, true), null);
-eq(m.toggleTask('- [ ] a\r', 0, true), '- [x] a\r');
-
-// Случайные: переключение меняет ровно один символ и обратимо
-const rnd = (() => {
-  let x = 7;
-  return () => ((x = (x * 1103515245 + 12345) % 2 ** 31), x / 2 ** 31);
-})();
-const parts = ['- [ ] t', '- [x] t', '  - [ ] t', 'текст', '```', '1. [ ] t', '> - [x] t', ''];
-for (let n = 0; n < 2000; n++) {
-  const body = Array.from({ length: 1 + Math.floor(rnd() * 12) }, () => parts[Math.floor(rnd() * parts.length)]).join('\n');
-  for (let i = 0; i < 6; i++) {
-    const next = m.toggleTask(body, i, true);
-    if (next == null) {
-      eq(m.toggleTask(body, i + 1, true), null, 'номера идут подряд');
-      break;
-    }
-    eq(next.length, body.length);
-    eq([...next].filter((c, k) => c !== body[k]).length <= 1, true);
-    eq(m.toggleTask(m.toggleTask(next, i, false), i, true), next, 'обратимо');
-  }
-  // Курсор в конце любой строки пункта: Enter даёт новую строку того же вида
-  const line = parts[Math.floor(rnd() * parts.length)];
-  const edit = m.continueList(line, line.length, line.length);
-  if (edit) eq(edit.value.startsWith(line) || edit.value === '', true);
-}
-
 console.log(`markdown-edit: ${checks} проверок`);

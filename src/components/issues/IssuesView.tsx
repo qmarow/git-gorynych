@@ -10,7 +10,8 @@
  * работают в полях ввода. Уже 640 px видна одна панель: список или карточка с «Назад к списку».
  */
 import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from 'react';
-import { CheckCircle2, CircleDot, Copy, ExternalLink, Inbox, KeyRound, Keyboard, Plug, RotateCcw, SearchX, UserPlus } from 'lucide-react';
+import { CircleDot, FilePen, Inbox, KeyRound, Keyboard, Plus, Plug, SearchX } from 'lucide-react';
+import { rowMenu } from './issueRowMenu.ts';
 import { Button } from '../Dialogs.tsx';
 import ContextMenu, { type MenuEntry } from '../ContextMenu.tsx';
 import { ResizeHandle, useStoredWidth } from '../Resizer.tsx';
@@ -21,7 +22,9 @@ import type { ForgeStatus_Serialize } from '../../../crates/gorynych-tauri/bindi
 import IssuesHeader from './IssuesHeader.tsx';
 import IssueFilters from './IssueFilters.tsx';
 import IssueList from './IssueList.tsx';
-import IssueDetail from './IssueDetail.tsx';
+import IssueDetail, { type IssueDetailHandle } from './IssueDetail.tsx';
+import IssueForm from './IssueForm.tsx';
+import { loadDraft } from '../../lib/issueDrafts.ts';
 import { EmptyState, ErrorBar, Skeleton } from './IssueBits.tsx';
 import { KeyHelp, KeyList } from './IssueKeys.tsx';
 
@@ -65,7 +68,7 @@ export default function IssuesView({ repoPath, remote, forge, onClose, onLogin, 
   const rootRef = useRef<HTMLDivElement>(null);
   const listEl = useRef<HTMLDivElement | null>(null);
   const searchEl = useRef<HTMLInputElement | null>(null);
-  const cardEl = useRef<HTMLDivElement | null>(null);
+  const cardEl = useRef<IssueDetailHandle | null>(null);
   const lastFetch = useRef(0);
   const selectTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const [cursor, setCursor] = useState<number | null>(null);
@@ -123,6 +126,14 @@ export default function IssuesView({ repoPath, remote, forge, onClose, onLogin, 
   }, [repo?.items, repo?.caps?.textSearch, localSearch]);
 
   const selected = typeof repo?.selected === 'number' ? repo.selected : null;
+  const formOpen = repo?.selected === 'new';
+  const openForm = () => {
+    clearTimeout(selectTimer.current);
+    setCursor(null);
+    setHelp(false);
+    void store().select(repoPath, 'new');
+  };
+  const hasDraft = Boolean(repo && !formOpen && repo.caps?.create && loadDraft(repoPath, 'new'));
   const shown = cursor ?? selected;
 
   const onQuery = useCallback(
@@ -161,33 +172,12 @@ export default function IssuesView({ repoPath, remote, forge, onClose, onLogin, 
       const cur = issuesStore.getState().byRepo[repoPath];
       const issue = cur?.items.find((i) => i.number === number);
       if (!cur || !issue) return;
-      const caps = cur.caps;
-      const me = cur.meta?.me ?? null;
-      const assigned = Boolean(me && issue.assignees.some((u) => u.login === me.login));
       setMenu({
         x,
         y,
-        items: [
-          { header: `#${issue.number}` },
-          { label: t('issues-menu-open'), icon: CircleDot, onClick: () => selectNow(number) },
-          caps?.close && issue.state === 'open' && { label: t('issues-menu-close'), icon: CheckCircle2, onClick: () => void changeIssue(number, { state: 'closed' }) },
-          caps?.close && issue.state === 'closed' && { label: t('issues-menu-reopen'), icon: RotateCcw, onClick: () => void changeIssue(number, { state: 'open' }) },
-          caps?.edit && me && !assigned && {
-            label: t('issues-menu-assign-me'),
-            icon: UserPlus,
-            onClick: () => {
-              const others = caps.multipleAssignees ? issue.assignees.map((u) => ({ id: u.id, login: u.login })) : [];
-              void changeIssue(number, { assignees: [...others, { id: me.id, login: me.login }] });
-            },
-          },
-          { separator: true },
-          { label: t('issues-menu-copy-link'), icon: Copy, onClick: () => onCopy(issue.webUrl, t('issues-what-link')) },
-          { label: t('issues-menu-copy-number', issue.number), icon: Copy, onClick: () => onCopy(`#${issue.number}`, t('issues-what-number')) },
-          { label: t('issues-open-on-server'), icon: ExternalLink, onClick: () => onOpenWeb(issue.webUrl) },
-        ],
+        items: rowMenu(issue, cur.caps, cur.meta?.me ?? null, { open: () => selectNow(number), change: (patch) => void changeIssue(number, patch), onCopy, onOpenWeb }),
       });
     },
-    // changeIssue читает свежие значения через хранилище
     [repoPath, selectNow, onCopy, onOpenWeb],
   );
 
@@ -217,6 +207,19 @@ export default function IssuesView({ repoPath, remote, forge, onClose, onLogin, 
       e.preventDefault();
       if (cursor != null) selectNow(cursor);
       cardEl.current?.focus();
+    } else if (e.code === 'KeyC' && !e.shiftKey) {
+      if (!repo?.caps?.create) return;
+      e.preventDefault();
+      openForm();
+    } else if (e.code === 'KeyR' && !e.shiftKey && cardEl.current) {
+      e.preventDefault();
+      cardEl.current.focusComment();
+    } else if (e.code === 'KeyE' && !e.shiftKey && cardEl.current) {
+      e.preventDefault();
+      cardEl.current.editTitle();
+    } else if ((e.code === 'KeyL' || e.code === 'KeyA' || e.code === 'KeyM') && !e.shiftKey && cardEl.current) {
+      e.preventDefault();
+      cardEl.current.openPicker(e.code === 'KeyL' ? 'labels' : e.code === 'KeyA' ? 'assignees' : 'milestone');
     } else if (e.code === 'Slash' || e.key === '/') {
       if (e.shiftKey && e.key === '?') {
         e.preventDefault();
@@ -239,8 +242,8 @@ export default function IssuesView({ repoPath, remote, forge, onClose, onLogin, 
   // Задача не из списка (ссылка #номер в тексте) — из загруженной карточки
   const shownIssue = shown != null ? (repo?.items.find((i) => i.number === shown) ?? repo?.details[shown]?.detail?.issue ?? null) : null;
   const shownEntry = shown != null ? repo?.details[shown] : undefined;
-  const showList = !narrow || shown == null;
-  const showCard = !narrow || shown != null;
+  const showList = !narrow || (shown == null && !formOpen);
+  const showCard = !narrow || shown != null || formOpen;
 
   let body: ReactNode;
   if (fatal && LOGIN_CODES.has(fatal)) {
@@ -275,6 +278,7 @@ export default function IssuesView({ repoPath, remote, forge, onClose, onLogin, 
           seenAt={repo.seenAt}
           hasMore={repo.hasMore && !localSearch.trim()}
           listStatus={repo.listStatus}
+          stateFilter={repo.query.state ?? null}
           onLoadMore={loadMore}
           onSelect={selectNow}
           onContextMenu={openMenu}
@@ -293,7 +297,13 @@ export default function IssuesView({ repoPath, remote, forge, onClose, onLogin, 
           </button>
         </EmptyState>
       ) : (
-        <EmptyState state="empty-repo" icon={Inbox} title={t('issues-empty-repo')} />
+        <EmptyState state="empty-repo" icon={Inbox} title={t('issues-empty-repo')}>
+          {repo.caps?.create && (
+            <Button variant="primary" onClick={openForm}>
+              {t('issues-create-first')}
+            </Button>
+          )}
+        </EmptyState>
       );
     body = (
       <div className="flex min-h-0 flex-1">
@@ -318,6 +328,8 @@ export default function IssuesView({ repoPath, remote, forge, onClose, onLogin, 
           <div className="relative flex min-w-0 flex-1 flex-col">
             {help ? (
               <KeyHelp />
+            ) : formOpen && repo ? (
+              <IssueForm key={repoPath} repoPath={repoPath} caps={repo.caps} meta={repo.meta} issues={repo.items} notify={notify} onCancel={() => selectNow(null)} />
             ) : shownIssue && repo ? (
               <IssueDetail
                 ref={cardEl}
@@ -361,9 +373,23 @@ export default function IssuesView({ repoPath, remote, forge, onClose, onLogin, 
         onOpenWeb={onOpenWeb}
         onClose={onClose}
         extra={
+          <>
+          {hasDraft && (
+            <button type="button" data-testid="issues-draft-link" onClick={openForm} className="flex items-center gap-1 rounded px-1.5 py-1 text-xs text-gk-blue hover:bg-gk-hover">
+              <FilePen size={13} />
+              {t('issues-draft-link')}
+            </button>
+          )}
+          {caps?.create && !fatal && (
+            <Button variant="primary" data-testid="issues-new" onClick={openForm} className="h-7 py-0 text-xs">
+              <Plus size={13} />
+              {t('issues-new')}
+            </Button>
+          )}
           <button type="button" data-tip={t('issues-key-help')} aria-label={t('issues-key-help')} onClick={() => setHelp((h) => !h)} className="flex h-7 w-7 items-center justify-center rounded text-gk-muted hover:bg-gk-hover hover:text-gk-text">
             <Keyboard size={15} strokeWidth={1.75} />
           </button>
+          </>
         }
       />
       {readOnly && !fatal && <div className="shrink-0 border-b border-gk-border bg-gk-yellow/10 px-3 py-1 text-xs text-gk-muted">{t('issues-read-only')}</div>}
