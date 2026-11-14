@@ -10,7 +10,7 @@
  * работают в полях ввода. Уже 640 px видна одна панель: список или карточка с «Назад к списку».
  */
 import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from 'react';
-import { CircleDot, FilePen, GitBranch, Inbox, Keyboard, Plus, SearchX } from 'lucide-react';
+import { FilePen, Inbox, Keyboard, Plus, SearchX } from 'lucide-react';
 import { rowMenu } from './issueRowMenu.ts';
 import { Button } from '../Dialogs.tsx';
 import ContextMenu, { type MenuEntry } from '../ContextMenu.tsx';
@@ -23,11 +23,14 @@ import type { ForgeStatus_Serialize } from '../../../crates/gorynych-tauri/bindi
 import IssuesHeader from './IssuesHeader.tsx';
 import IssueFilters from './IssueFilters.tsx';
 import IssueList from './IssueList.tsx';
-import IssueDetail, { type IssueDetailHandle } from './IssueDetail.tsx';
-import IssueForm from './IssueForm.tsx';
+import type { IssueDetailHandle } from './IssueDetail.tsx';
+import IssueCardPane, { type CardPaneActions } from './IssueCardPane.tsx';
+import IssueBoard from './IssueBoard.tsx';
+import IssueBulkBar from './IssueBulkBar.tsx';
+import IssueSavedFilters, { filterSets, fullQuery } from './IssueSavedFilters.tsx';
 import { loadDraft } from '../../lib/issueDrafts.ts';
 import { EmptyState, ErrorBar, Skeleton } from './IssueBits.tsx';
-import { KeyHelp, KeyList } from './IssueKeys.tsx';
+import { useIssueSelection } from './useIssueSelection.ts';
 import FatalState, { isFatal } from './IssuesFatal.tsx';
 
 const REFRESH_EVERY = 120_000;
@@ -151,6 +154,12 @@ export default function IssuesView({ repoPath, remote, forge, onClose, onLogin, 
   );
   const loadMore = useCallback(() => void store().loadMore(repoPath), [repoPath, store]);
 
+  // Выделение для массовых действий: Ctrl+клик, Shift+клик (диапазон), Ctrl+A, X
+  const { checked, setChecked, toggleChecked, onRowClick } = useIssueSelection(repoPath, items, selectNow);
+  const [boardKey, setBoardKey] = useState(0);
+  const savedFilters = repo ? <IssueSavedFilters repoPath={repoPath} query={repo.query} onApply={(q) => onQuery(q)} /> : null;
+  const paneActions: CardPaneActions = { onSelect: selectNow, onOpenWeb, onCopy, notify, onCreateBranch, onLocateCommit, onCheckout };
+
   const move = (delta: number) => {
     if (!items.length) return;
     const index = items.findIndex((issue) => issue.number === shown);
@@ -180,10 +189,35 @@ export default function IssuesView({ repoPath, remote, forge, onClose, onLogin, 
   );
 
   const onKeyDown = (e: ReactKeyboardEvent<HTMLDivElement>) => {
+    const inList = Boolean(listEl.current) && e.target === listEl.current;
+    if (inList && (e.ctrlKey || e.metaKey) && e.code === 'KeyA') {
+      e.preventDefault();
+      setChecked(new Set(items.map((i) => i.number)));
+      return;
+    }
     if (e.ctrlKey || e.altKey || e.metaKey) return;
+    if (e.key === 'Escape' && checked.size && !menu) {
+      e.preventDefault();
+      setChecked(new Set());
+      return;
+    }
+    if (inList && e.code === 'KeyX' && shown != null) {
+      e.preventDefault();
+      toggleChecked(shown);
+      return;
+    }
+    if (inList && /^Digit[1-9]$/.test(e.code) && repo) {
+      const set = filterSets(repoPath)[Number(e.code.slice(5)) - 1];
+      if (set) {
+        e.preventDefault();
+        onQuery(fullQuery(set.query));
+      }
+      return;
+    }
     if (e.key === 'F5') {
       e.preventDefault();
       refresh(false);
+      setBoardKey((k) => k + 1);
       return;
     }
     if (e.key === 'Escape') {
@@ -242,13 +276,19 @@ export default function IssuesView({ repoPath, remote, forge, onClose, onLogin, 
   const readOnly = Boolean(caps && !caps.create && !caps.edit && !caps.close && !caps.comment);
   // Задача не из списка (ссылка #номер в тексте) — из загруженной карточки
   const shownIssue = shown != null ? (repo?.items.find((i) => i.number === shown) ?? repo?.details[shown]?.detail?.issue ?? null) : null;
-  const shownEntry = shown != null ? repo?.details[shown] : undefined;
   const showList = !narrow || (shown == null && !formOpen);
   const showCard = !narrow || shown != null || formOpen;
 
   let body: ReactNode;
   if (fatal) {
     body = <FatalState code={fatal} forge={forge} onLogin={onLogin} onServerSettings={onServerSettings} onOpenWeb={onOpenWeb} />;
+  } else if (repo?.view === 'board' && !formOpen && !help) {
+    body = (
+      <div className="flex min-h-0 flex-1 flex-col">
+        <IssueFilters key={repoPath} repo={repo} onQuery={onQuery} onOpenNumber={(n) => selectNow(n)} onLocalSearch={setLocalSearch} searchRef={(el) => (searchEl.current = el)} hideStateTabs leading={savedFilters} />
+        <IssueBoard repoPath={repoPath} repo={repo} refreshKey={boardKey} notify={notify} renderDetail={(n, close) => <IssueCardPane repoPath={repoPath} repo={repo} number={n} onBack={close} cardRef={cardEl} actions={paneActions} />} />
+      </div>
+    );
   } else {
     const filtered = repo ? !isDefaultQuery(repo.query) || Boolean(localSearch.trim()) : false;
     const listBody =
@@ -264,7 +304,9 @@ export default function IssuesView({ repoPath, remote, forge, onClose, onLogin, 
           listStatus={repo.listStatus}
           stateFilter={repo.query.state ?? null}
           onLoadMore={loadMore}
-          onSelect={selectNow}
+          onSelect={onRowClick}
+          checked={checked}
+          onToggle={toggleChecked}
           onContextMenu={openMenu}
           listRef={(el) => (listEl.current = el)}
         />
@@ -293,15 +335,10 @@ export default function IssuesView({ repoPath, remote, forge, onClose, onLogin, 
       <div className="flex min-h-0 flex-1">
         {showList && (
           <div style={narrow ? undefined : { width: listW }} className={`relative flex min-h-0 flex-col border-r border-gk-border ${narrow ? 'flex-1' : 'shrink-0'}`}>
-            {repo && (
-              <IssueFilters
-                key={repoPath}
-                repo={repo}
-                onQuery={onQuery}
-                onOpenNumber={(n) => selectNow(n)}
-                onLocalSearch={setLocalSearch}
-                searchRef={(el) => (searchEl.current = el)}
-              />
+            {repo && checked.size > 0 ? (
+              <IssueBulkBar repoPath={repoPath} repo={repo} selected={checked} onSelection={setChecked} notify={notify} />
+            ) : (
+              repo && <IssueFilters key={repoPath} repo={repo} onQuery={onQuery} onOpenNumber={(n) => selectNow(n)} onLocalSearch={setLocalSearch} searchRef={(el) => (searchEl.current = el)} leading={savedFilters} />
             )}
             {repo?.listStatus === 'error' && repo.listError && <ErrorBar message={repo.listError.message} onRetry={() => refresh(false)} />}
             {listBody}
@@ -310,48 +347,7 @@ export default function IssuesView({ repoPath, remote, forge, onClose, onLogin, 
         )}
         {showCard && (
           <div className="relative flex min-w-0 flex-1 flex-col">
-            {help ? (
-              <KeyHelp />
-            ) : formOpen && repo ? (
-              <IssueForm key={repoPath} repoPath={repoPath} caps={repo.caps} meta={repo.meta} issues={repo.items} notify={notify} onCancel={() => selectNow(null)} createdAction={onCreateBranch && ((issue) => ({ label: t('issues-create-branch'), onClick: () => onCreateBranch(issue) }))} />
-            ) : shownIssue && repo ? (
-              <IssueDetail
-                ref={cardEl}
-                key={shownIssue.number}
-                repoPath={repoPath}
-                issue={shownIssue}
-                entry={shownEntry}
-                caps={repo.caps}
-                meta={repo.meta}
-                issues={repo.items}
-                onBack={narrow ? () => selectNow(null) : undefined}
-                onOpenIssue={selectNow}
-                onOpenWeb={onOpenWeb}
-                onCopy={onCopy}
-                notify={notify}
-                onLocate={(hash) => onLocateCommit?.(hash)}
-                onCheckout={onCheckout}
-                onCreateBranch={onCreateBranch && (() => onCreateBranch(shownIssue))}
-                extra={
-                  onCreateBranch && (
-                    <button type="button" data-testid="issue-create-branch" onClick={() => onCreateBranch(shownIssue)} className="flex h-7 items-center gap-1.5 rounded border border-gk-border bg-gk-hover px-2.5 text-xs text-gk-text hover:bg-gk-fg/10">
-                      <GitBranch size={13} className="text-gk-green" />
-                      {t('issues-create-branch')}
-                    </button>
-                  )
-                }
-              />
-            ) : shown != null && shownEntry?.status === 'error' ? (
-              <EmptyState state="card-error" icon={SearchX} title={`${t('issues-card-failed')}: ${shownEntry.error?.message ?? ''}`}>
-                <button type="button" onClick={() => selectNow(shown)} className="text-xs text-gk-blue hover:underline">{t('issues-retry')}</button>
-              </EmptyState>
-            ) : shown != null ? (
-              <div className="min-h-0 flex-1 overflow-hidden pt-3" aria-label={t('issues-card-loading')}><Skeleton rows={4} /></div>
-            ) : (
-              <EmptyState icon={CircleDot} title={t('issues-no-selection')}>
-                <KeyList />
-              </EmptyState>
-            )}
+            {repo && <IssueCardPane repoPath={repoPath} repo={repo} number={shown} formOpen={formOpen} help={help} onBack={narrow ? () => selectNow(null) : undefined} cardRef={cardEl} actions={paneActions} />}
           </div>
         )}
       </div>
@@ -364,9 +360,11 @@ export default function IssuesView({ repoPath, remote, forge, onClose, onLogin, 
         repoName={forge?.path ?? null}
         refreshing={repo?.listStatus === 'refreshing'}
         webUrl={repo?.webUrl ?? null}
-        onRefresh={() => refresh(false)}
+        onRefresh={() => (refresh(false), setBoardKey((k) => k + 1))}
         onOpenWeb={onOpenWeb}
         onClose={onClose}
+        view={repo?.view ?? 'list'}
+        onView={repo && !fatal ? (view) => store().setView(repoPath, view) : undefined}
         extra={
           <>
           {hasDraft && (

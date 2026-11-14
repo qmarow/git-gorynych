@@ -22,13 +22,17 @@ interface IssueRowProps {
   selected: boolean;
   /** Не подходит под фильтр после своей правки (закрыта при «Открытых»): приглушена до обновления списка. */
   dimmed?: boolean;
+  /** Выделена для массового действия; `selecting` — выделение не пусто (флажки видны у всех строк). */
+  checked?: boolean;
+  selecting?: boolean;
+  onToggle?: (number: number) => void;
   updated: boolean;
   domId: string;
-  onClick: (number: number) => void;
+  onClick: (number: number, mods: { ctrl: boolean; shift: boolean }) => void;
   onContextMenu: (number: number, x: number, y: number) => void;
 }
 
-function IssueRow({ issue, top, selected, dimmed = false, updated, domId, onClick, onContextMenu }: IssueRowProps) {
+function IssueRow({ issue, top, selected, dimmed = false, checked = false, selecting = false, onToggle, updated, domId, onClick, onContextMenu }: IssueRowProps) {
   const shown = issue.labels.slice(0, MAX_LABELS);
   const hidden = issue.labels.slice(MAX_LABELS);
   return (
@@ -39,17 +43,35 @@ function IssueRow({ issue, top, selected, dimmed = false, updated, domId, onClic
       data-number={issue.number}
       style={{ top, height: ROW_HEIGHT }}
       onMouseDown={(e) => e.button === 0 && e.preventDefault()}
-      onClick={() => onClick(issue.number)}
+      data-checked={checked || undefined}
+      onClick={(e) => onClick(issue.number, { ctrl: e.ctrlKey || e.metaKey, shift: e.shiftKey })}
       onContextMenu={(e) => {
         e.preventDefault();
         onContextMenu(issue.number, e.clientX, e.clientY);
       }}
-      className={`absolute inset-x-0 flex cursor-default items-center gap-3 border-b border-gk-border/60 px-3 ${
-        selected ? 'bg-gk-hover' : 'hover:bg-gk-hover/60'
+      className={`group absolute inset-x-0 flex cursor-default items-center gap-3 border-b border-gk-border/60 px-3 ${
+        checked ? 'bg-gk-blue/10' : selected ? 'bg-gk-hover' : 'hover:bg-gk-hover/60'
       } ${dimmed ? 'opacity-50' : ''}`}
     >
       {selected && <span className="absolute inset-y-0 left-0 w-[2px] bg-gk-blue" />}
-      <StateIcon issue={issue} />
+      {onToggle ? (
+        <span className="flex w-4 shrink-0 justify-center">
+          <span className={checked || selecting ? 'hidden' : 'flex group-hover:hidden'}>
+            <StateIcon issue={issue} />
+          </span>
+          <input
+            type="checkbox"
+            data-testid="issue-row-check"
+            aria-label={t('issues-select-row', issue.number)}
+            checked={checked}
+            onClick={(e) => e.stopPropagation()}
+            onChange={() => onToggle(issue.number)}
+            className={`${checked || selecting ? 'block' : 'hidden group-hover:block'} accent-gk-blue`}
+          />
+        </span>
+      ) : (
+        <StateIcon issue={issue} />
+      )}
       <div className="flex min-w-0 flex-1 flex-col gap-1">
         <div className="flex min-w-0 items-center gap-1.5">
           <span

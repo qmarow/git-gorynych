@@ -221,6 +221,7 @@ node tests/ui-parity/graph-view.mjs $old $PWD
 node tests/ui-parity/lib-issues.mjs $PWD
 node tests/ui-parity/issues-store.mjs $PWD
 node tests/ui-parity/markdown-edit.mjs $PWD
+node tests/ui-parity/lib-issue-board.mjs $PWD
 ```
 
 - `lib-issues.mjs` — `src/lib/issues.ts` (фильтр, `#123`, имя ветки, склейка ленты, `applyPatch`, цвет текста метки) и
@@ -229,6 +230,8 @@ node tests/ui-parity/markdown-edit.mjs $PWD
   хранилища, откат `update`, временный комментарий, `loadMore`, предел страниц `refresh`, карточки; затем 300 случайных
   сценариев с инвариантами. Проверено от противного: без счётчика списка или карточки, без `keepPending`, со стиранием
   данных при ошибке, с записью после `forget` и без удаления черновика сверка падает.
+- `lib-issue-board.mjs` — `src/lib/issueBoard.ts` (доска: `columnsFor`, `columnOf`, `patchForMove` на четырёх случаях и 3000 случайных
+  переносах, хранение колонок).
 - `markdown-edit.mjs` — `src/lib/markdownEdit.ts` (редактор Markdown: обёртка выделения, ссылка, приставки строк, продолжение и
   отступ списка, подсказки `#`/`@`, цитата). `toggleTask` (`lib/issues.ts`) — в `lib-issues.mjs`; документ флажков тот же, что в Rust-тесте
   `task_indices_match_toggle_task_in_interface` (`gorynych-cicd/tests/issues_markdown.rs`): номера совпадают.

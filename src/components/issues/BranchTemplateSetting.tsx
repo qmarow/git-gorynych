@@ -1,10 +1,10 @@
 /**
  * Новое в 2.0: настройка «Шаблон имени ветки для задачи» (вкладка «Ветки» в настройках). Переменные `{number}`, `{slug}`,
  * `{type}`; под полем — живой пример. Хранение — `localStorage` (`lib/issues.ts`, в 2.0 ещё и SQLite), как у соседних
- * настроек; пустое поле — шаблон по умолчанию.
+ * настроек; пустое поле — шаблон по умолчанию. Рядом — «Уведомлять о назначенных задачах» (по умолчанию включено).
  */
 import { useState } from 'react';
-import { branchNameFor, DEFAULT_BRANCH_TEMPLATE, readBranchTemplate, writeBranchTemplate } from '../../lib/issues.ts';
+import { branchNameFor, DEFAULT_BRANCH_TEMPLATE, readBranchTemplate, readNotifyAssigned, writeBranchTemplate, writeNotifyAssigned } from '../../lib/issues.ts';
 import { t } from '../../i18n/index.ts';
 
 export default function BranchTemplateSetting() {
@@ -31,5 +31,26 @@ export default function BranchTemplateSetting() {
         {t('issues-branch-template-example')} <span data-testid="branch-template-example" className="font-mono text-gk-text">{example}</span>
       </div>
     </div>
+  );
+}
+
+export function NotifyAssignedSetting() {
+  const [on, setOn] = useState(() => readNotifyAssigned());
+  return (
+    <label data-testid="notify-assigned-setting" className="flex cursor-pointer items-start gap-2.5">
+      <input
+        type="checkbox"
+        checked={on}
+        onChange={(e) => {
+          setOn(e.target.checked);
+          writeNotifyAssigned(e.target.checked);
+        }}
+        className="mt-0.5 accent-gk-blue"
+      />
+      <span>
+        <span className="block font-medium text-gk-text">{t('issues-notify-assigned')}</span>
+        <span className="block text-[11.5px] text-gk-muted">{t('issues-notify-assigned-hint')}</span>
+      </span>
+    </label>
   );
 }

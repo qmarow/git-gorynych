@@ -35,9 +35,13 @@ interface IssueFiltersProps {
   onOpenNumber: (number: number) => void;
   onLocalSearch: (text: string) => void;
   searchRef: (el: HTMLInputElement | null) => void;
+  /** Слева от поиска — сохранённые фильтры. */
+  leading?: ReactNode;
+  /** На доске вкладки состояния скрыты. */
+  hideStateTabs?: boolean;
 }
 
-export default function IssueFilters({ repo, onQuery, onOpenNumber, onLocalSearch, searchRef }: IssueFiltersProps) {
+export default function IssueFilters({ repo, onQuery, onOpenNumber, onLocalSearch, searchRef, leading, hideStateTabs = false }: IssueFiltersProps) {
   const { query, caps, meta, counts, provider } = repo;
   const serverSearch = caps?.textSearch !== false;
   const [text, setText] = useState(query.search ?? '');
@@ -73,6 +77,7 @@ export default function IssueFilters({ repo, onQuery, onOpenNumber, onLocalSearc
   return (
     <div className="flex shrink-0 flex-col gap-1.5 border-b border-gk-border px-2 py-1.5">
       <div className="flex h-7 items-center gap-1.5">
+        {leading}
         <label className="flex h-7 min-w-0 flex-1 items-center gap-1.5 rounded border border-gk-border bg-gk-sink/25 px-2 focus-within:border-gk-blue" data-tip={t('issues-search-tip')}>
           <Search size={13} className="shrink-0 text-gk-dim" />
           <input
@@ -120,7 +125,7 @@ export default function IssueFilters({ repo, onQuery, onOpenNumber, onLocalSearc
       {!serverSearch && <div className="px-0.5 text-[11px] text-gk-dim">{t('issues-search-loaded-only')}</div>}
 
       <div className="flex flex-wrap items-center gap-1">
-        <div role="tablist" className="flex items-center rounded border border-gk-border p-px">
+        <div role="tablist" className={`${hideStateTabs ? 'hidden' : 'flex'} items-center rounded border border-gk-border p-px`}>
           {([
             ['open', t('issues-state-open'), counts?.open],
             ['closed', t('issues-state-closed'), counts?.closed],

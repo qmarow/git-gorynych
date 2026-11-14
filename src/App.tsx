@@ -64,8 +64,11 @@ import DiffView, { type DiffData, type DiffEditor, type DiffTarget, type FileAct
 import ConflictView, { type RunAction } from './components/ConflictView.tsx';
 import CiView from './components/CiView.tsx';
 import IssuesView from './components/issues/IssuesView.tsx';
-import { issuesStore } from './state/issuesStore.ts';
-import { branchNameFor, readBranchTemplate } from './lib/issues.ts';
+import { issuesStore, useIssuesStore } from './state/issuesStore.ts';
+import { branchNameFor, readBranchTemplate, readNotifyAssigned } from './lib/issues.ts';
+
+/** Как часто спрашивать задачи, назначенные мне (новое в 2.0). */
+const MINE_EVERY = 5 * 60_000;
 import RebaseView, { type RebaseSession } from './components/RebaseView.tsx';
 import CompareView, { type CompareSearchJump } from './components/CompareView.tsx';
 import FileView, { type FileViewState } from './components/FileView.tsx';
@@ -3125,6 +3128,34 @@ export default function App() {
     setIssuesView({ n: Date.now() });
   };
   const issueRefs = forge?.provider ? openIssueRef : undefined;
+  // Задачи, назначенные мне (новое в 2.0): счётчик на кнопке «Задачи» и уведомления о новых — при открытии репозитория и
+  // каждые 5 минут в видимом окне, даже при закрытом разделе; без входа на сервер запроса нет, ошибки молча
+  const minePath = repo?.path ?? null;
+  const mineRemote = forge?.remote ?? null;
+  const mineOn = Boolean(forge?.provider && forge.token?.configured);
+  const openIssueRefLive = useRef(openIssueRef);
+  openIssueRefLive.current = openIssueRef;
+  useEffect(() => {
+    if (!minePath || !mineOn) return undefined;
+    let stopped = false;
+    const tick = async () => {
+      if (document.visibilityState !== 'visible') return;
+      const fresh = await issuesStore.getState().refreshMine(minePath, mineRemote);
+      if (stopped || !readNotifyAssigned()) return;
+      for (const issue of fresh) {
+        notify({ type: 'info', title: tr('issues-assigned-toast', issue.number, issue.title), action: { label: tr('issues-open'), onClick: () => openIssueRefLive.current(issue.number) } });
+      }
+    };
+    void tick();
+    const timer = setInterval(() => void tick(), MINE_EVERY);
+    return () => {
+      stopped = true;
+      clearInterval(timer);
+    };
+    // notify стабилен по смыслу: последний обработчик читается через ref
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [minePath, mineRemote, mineOn]);
+  const mineCount = useIssuesStore((st) => (minePath && mineOn ? st.mine[minePath]?.length : undefined));
 
   /* ---------- Разметка ---------- */
 
@@ -3185,6 +3216,7 @@ export default function App() {
             searchOpen={searchOpen}
             onIssues={toggleIssues}
             issuesActive={issuesCentered}
+            issuesCount={mineCount}
             customActions={userActions
               .filter((a) => a.toolbar)
               .map((a) => ({

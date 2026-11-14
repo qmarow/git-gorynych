@@ -93,6 +93,109 @@ async function opened(p = P, list = listOf([1, 2, 3])) {
   return t;
 }
 
+/* ---------- Этап 7: вид, доска, bulkUpdate, refreshMine ---------- */
+{
+  local.clear();
+  // Вид хранится в issues.state.v1 и возвращается после перезапуска
+  let t = await opened();
+  eq(t.repo(P).view, 'list', 'по умолчанию — список');
+  t.s().setView(P, 'board');
+  eq(JSON.parse(local.get(STATE_PREFIX + P)).view, 'board', 'вид сохранён');
+  t = await opened();
+  eq(t.repo(P).view, 'board', 'вид после перезапуска');
+  t.s().setView(P, 'list');
+  ok(!('view' in JSON.parse(local.get(STATE_PREFIX + P))), 'список — умолчание, не хранится');
+
+  // Доска: открытые страницами по 100 (до трёх) с фильтром панели и 30 закрытых
+  t = await opened();
+  void t.s().setQuery(P, { labels: ['bug'], search: 'вход' });
+  await settle();
+  await t.answer('list', okRes(listOf([1])));
+  const board = t.s().loadBoard(P);
+  await settle();
+  eq(t.repo(P).board.status, 'loading');
+  const first = t.waiting('list')[0].args[1];
+  eq([first.state, first.page, first.perPage, first.labels, first.search], ['open', 1, 100, ['bug'], 'вход'], 'фильтры панели — и на доске, состояние — своё');
+  await t.answer('list', okRes(listOf(Array.from({ length: 100 }, (_, i) => i + 1), 1, true)));
+  await t.answer('list', okRes(listOf(Array.from({ length: 100 }, (_, i) => i + 101), 2, true)));
+  await t.answer('list', okRes(listOf(Array.from({ length: 100 }, (_, i) => i + 201), 3, true)));
+  const closedCall = t.waiting('list')[0].args[1];
+  eq([closedCall.state, closedCall.perPage], ['closed', 30], 'закрытые — 30 последних');
+  await t.answer('list', okRes(listOf([issue(900, { state: 'closed' })])));
+  await board;
+  eq([t.repo(P).board.items.length, t.repo(P).board.truncated, t.repo(P).board.status], [301, true, 'idle'], 'больше 300 открытых — отметка');
+  // Правка задачи меняет и доску, ошибка — откат
+  const up = t.s().update(P, 5, { state: 'closed' });
+  eq(t.repo(P).board.items.find((i) => i.number === 5).state, 'closed', 'доска — сразу');
+  await settle();
+  await t.answer('update', errRes());
+  await up;
+  eq(t.repo(P).board.items.find((i) => i.number === 5).state, 'open', 'доска — откат');
+  // Ответ доски после смены пути не пишется
+  const late = t.s().loadBoard(P);
+  await settle();
+  t.s().forget(P);
+  await t.answer('list', okRes(listOf([1])));
+  await late;
+  eq(t.waiting('list').length, 0, 'после forget закрытые не запрашиваются');
+  eq(t.repo(P), undefined, 'после forget — никуда');
+
+  // bulkUpdate: по 4 одновременно, прогресс, ошибки отдельно
+  t = await opened(P, listOf([1, 2, 3, 4, 5, 6, 7]));
+  const bulk = t.s().bulkUpdate(P, [1, 2, 3, 4, 5, 6, 7], () => ({ state: 'closed' }));
+  await settle();
+  eq(t.waiting('update').length, 4, 'не больше 4 запросов сразу');
+  eq(t.repo(P).bulk, { done: 0, total: 7, running: true });
+  await t.answer('update', okRes(issue(1, { state: 'closed' })));
+  eq(t.waiting('update').length, 4, 'место освободилось — следующий');
+  eq(t.repo(P).bulk.done, 1, 'прогресс');
+  await t.answer('update', errRes(), (a) => a[1] === 2);
+  for (const n of [3, 4, 5, 6, 7]) await t.answer('update', okRes(issue(n, { state: 'closed' })), (a) => a[1] === n);
+  const result = await bulk;
+  eq([result.ok.sort(), result.failed, result.stopped], [[1, 3, 4, 5, 6, 7], [2], false], 'итог');
+  eq(t.repo(P).bulk, null, 'прогресс снят');
+  eq(t.repo(P).items.find((i) => i.number === 2).state, 'open', 'неудавшаяся — откатилась, остальные закрыты');
+  eq(t.repo(P).items.filter((i) => i.state === 'closed').length, 6);
+  // Пустая правка — без запроса, считается сделанной
+  const none = t.s().bulkUpdate(P, [1, 2], (i) => (i.number === 1 ? null : { title: 'x' }));
+  await settle();
+  eq(t.waiting('update').map((c) => c.args[1]), [2], 'пустая правка — без запроса');
+  await t.answer('update', okRes(issue(2, { title: 'x' })));
+  eq((await none).ok.sort(), [1, 2]);
+  // Остановка: начатые доходят, новые не начинаются
+  t = await opened(P, listOf([1, 2, 3, 4, 5, 6, 7, 8]));
+  const stopped = t.s().bulkUpdate(P, [1, 2, 3, 4, 5, 6, 7, 8], () => ({ state: 'closed' }));
+  await settle();
+  t.s().stopBulk(P);
+  for (const n of [1, 2, 3, 4]) await t.answer('update', okRes(issue(n, { state: 'closed' })), (a) => a[1] === n);
+  const stop = await stopped;
+  eq([stop.ok.length, stop.failed.length, stop.stopped, t.waiting('update').length], [4, 0, true, 0], 'после «Остановить» новых запросов нет');
+
+  // refreshMine: первый ответ только запоминается, потом — новые; без открытого раздела тоже
+  t = makeStore();
+  const firstMine = t.s().refreshMine(Q, 'origin');
+  await settle();
+  const mineCall = t.waiting('list')[0].args;
+  eq([mineCall[1].assignee, mineCall[1].state, mineCall[1].perPage, mineCall[2]], ['@me', 'open', 100, { remote: 'origin' }], 'запрос назначенных');
+  await t.answer('list', okRes(listOf([1, 2])));
+  eq(await firstMine, [], 'первый ответ — без уведомлений');
+  eq(t.s().mine[Q].map((i) => i.number), [1, 2], 'счётчик без открытого раздела');
+  eq(t.repo(Q), undefined, 'раздел не создан');
+  const second = t.s().refreshMine(Q, 'origin');
+  await settle();
+  await t.answer('list', okRes(listOf([2, 3])));
+  eq((await second).map((i) => i.number), [3], 'новая назначенная');
+  const failed = t.s().refreshMine(Q, 'origin');
+  await settle();
+  await t.answer('list', errRes('NO_TOKEN'));
+  eq([await failed, t.s().mine[Q].length], [[], 2], 'ошибка молча, прежнее на месте');
+  const lateMine = t.s().refreshMine(Q, 'origin');
+  await settle();
+  t.s().forget(Q);
+  await t.answer('list', okRes(listOf([5])));
+  eq([await lateMine, t.s().mine[Q]], [[], undefined], 'после forget не пишется');
+}
+
 /* ---------- open ---------- */
 {
   local.clear();

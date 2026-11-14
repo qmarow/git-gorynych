@@ -138,6 +138,26 @@ export function writeBranchTemplate(template: string): void {
   }
 }
 
+/** «Уведомлять о назначенных задачах» — настройка «Ветки», по умолчанию включена. */
+export const NOTIFY_ASSIGNED_KEY = 'issues.notifyAssigned';
+
+export function readNotifyAssigned(): boolean {
+  try {
+    return localStorage.getItem(NOTIFY_ASSIGNED_KEY) !== '0';
+  } catch {
+    return true;
+  }
+}
+
+export function writeNotifyAssigned(on: boolean): void {
+  try {
+    if (on) localStorage.removeItem(NOTIFY_ASSIGNED_KEY);
+    else localStorage.setItem(NOTIFY_ASSIGNED_KEY, '0');
+  } catch {
+    /* хранилище недоступно */
+  }
+}
+
 /** В имени ветки номер задачи стоит отдельным числом: `(^|[^0-9])N([^0-9]|$)`. */
 export function branchMentions(name: string, number: number): boolean {
   return new RegExp(`(^|[^0-9])${number}([^0-9]|$)`).test(name);

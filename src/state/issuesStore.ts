@@ -30,7 +30,7 @@ import type {
   TimelineItem_Serialize,
 } from '../../crates/gorynych-tauri/bindings/commands.ts';
 import type { ApiError, ApiResult, IssuesApi } from '../platform/tauri.ts';
-import { TEMP_PREFIX, applyPatch, normalizeQuery, type Issue, type IssuePatch, type IssueQuery } from '../lib/issues.ts';
+import { DEFAULT_QUERY, TEMP_PREFIX, applyPatch, normalizeQuery, type Issue, type IssuePatch, type IssueQuery } from '../lib/issues.ts';
 import { clearDraft } from '../lib/issueDrafts.ts';
 
 export type ListStatus = 'idle' | 'loading' | 'refreshing' | 'loadingMore' | 'error';
@@ -43,8 +43,34 @@ export interface DetailEntry {
   loadedAt: number;
 }
 
+export type IssuesViewMode = 'list' | 'board';
+
+export interface BoardData {
+  items: Issue[];
+  status: 'idle' | 'loading' | 'error';
+  error: ApiError | null;
+  /** Открытых больше 300 — показаны первые. */
+  truncated: boolean;
+}
+
+export interface BulkProgress {
+  done: number;
+  total: number;
+  running: boolean;
+}
+
+export interface BulkResult {
+  ok: number[];
+  failed: number[];
+  stopped: boolean;
+}
+
 export interface RepoIssues {
   query: IssueQuery;
+  /** Список или доска; хранится в `issues.state.v1`. */
+  view: IssuesViewMode;
+  board: BoardData | null;
+  bulk: BulkProgress | null;
   /** remote, к которому обращаться (`opts.remote`); `null` — upstream текущей ветки или `origin`. */
   remote: string | null;
   items: Issue[];
@@ -68,6 +94,8 @@ export interface RepoIssues {
 
 export interface IssuesState {
   byRepo: Record<string, RepoIssues>;
+  /** Открытые задачи, назначенные мне, по путям (`refreshMine`): живёт и без открытого раздела. */
+  mine: Record<string, Issue[]>;
   open: (path: string, remote?: string | null) => Promise<void>;
   setQuery: (path: string, patch: Partial<IssueQuery>) => Promise<void>;
   refresh: (path: string, opts?: { silent?: boolean }) => Promise<void>;
@@ -87,6 +115,17 @@ export interface IssuesState {
   /** Задача с сервера без записи в состояние — проверка «описание изменили на сервере» перед сохранением. */
   fetchDetail: (path: string, number: number) => Promise<ApiResult<IssueDetail>>;
   forget: (path: string) => void;
+  setView: (path: string, view: IssuesViewMode) => void;
+  /** Доска: все открытые (до 300, страницами по 100) и 30 последних закрытых, с фильтрами панели. */
+  loadBoard: (path: string) => Promise<void>;
+  /** Правка многих задач: по 4 запроса одновременно, `stopBulk` останавливает очередь. */
+  bulkUpdate: (path: string, numbers: readonly number[], makePatch: (issue: Issue) => IssuePatch | null) => Promise<BulkResult>;
+  stopBulk: (path: string) => void;
+  /**
+   * Открытые задачи, назначенные мне (`assignee: '@me'`, до 100): `mine`. Возвращает задачи, которых не было в прошлом
+   * ответе; первый ответ по репозиторию только запоминается. Ошибки молча игнорируются (`[]`).
+   */
+  refreshMine: (path: string, remote?: string | null) => Promise<Issue[]>;
 }
 
 export const STATE_PREFIX = 'issues.state.v1:';
@@ -96,13 +135,22 @@ export const META_TTL = 10 * 60_000;
 export const MAX_DETAILS = 50;
 /** `refresh` перечитывает не больше пяти страниц. */
 export const MAX_REFRESH_PAGES = 5;
+/** Доска: открытые — до трёх страниц по 100, закрытые — 30 последних. */
+export const BOARD_PAGES = 3;
+export const BOARD_PAGE = 100;
+export const BOARD_CLOSED = 30;
+/** Сколько правок `bulkUpdate` идёт одновременно. */
+export const BULK_PARALLEL = 4;
 const MAX_SEEN = 500;
 
 const NO_API: ApiError = { code: 'UNSUPPORTED', message: 'window.api.issues is unavailable', hint: null, details: '' };
 
-export function emptyRepo(query?: Partial<IssueQuery>, seenAt: Record<number, string> = {}): RepoIssues {
+export function emptyRepo(query?: Partial<IssueQuery>, seenAt: Record<number, string> = {}, view: IssuesViewMode = 'list'): RepoIssues {
   return {
     query: normalizeQuery(query),
+    view,
+    board: null,
+    bulk: null,
     remote: null,
     items: [],
     page: 0,
@@ -149,6 +197,11 @@ export function createIssuesStore(getApi: () => IssuesApi | undefined, options: 
   const listSeq = new Map<string, number>();
   const metaSeq = new Map<string, number>();
   const detailSeq = new Map<string, number>();
+  const boardSeq = new Map<string, number>();
+  const bulkSeq = new Map<string, number>();
+  const mineSeq = new Map<string, number>();
+  /** Номера назначенных из прошлого ответа `refreshMine` (первый ответ только запоминается). */
+  const mineSeen = new Map<string, Set<number>>();
   let tempId = 0;
 
   const bump = (map: Map<string, number>, key: string) => {
@@ -157,11 +210,11 @@ export function createIssuesStore(getApi: () => IssuesApi | undefined, options: 
     return next;
   };
 
-  function readSaved(path: string): { query?: Partial<IssueQuery>; seenAt?: Record<number, string> } {
+  function readSaved(path: string): { query?: Partial<IssueQuery>; seenAt?: Record<number, string>; view?: IssuesViewMode } {
     try {
       const raw = storage()?.getItem(STATE_PREFIX + path);
       const value: unknown = raw ? JSON.parse(raw) : null;
-      return value && typeof value === 'object' ? (value as { query?: Partial<IssueQuery>; seenAt?: Record<number, string> }) : {};
+      return value && typeof value === 'object' ? (value as { query?: Partial<IssueQuery>; seenAt?: Record<number, string>; view?: IssuesViewMode }) : {};
     } catch {
       return {};
     }
@@ -184,7 +237,7 @@ export function createIssuesStore(getApi: () => IssuesApi | undefined, options: 
       if (!repo) return;
       try {
         const seen = Object.entries(repo.seenAt).slice(-MAX_SEEN);
-        storage()?.setItem(STATE_PREFIX + path, JSON.stringify({ query: { ...repo.query, page: 1 }, seenAt: Object.fromEntries(seen) }));
+        storage()?.setItem(STATE_PREFIX + path, JSON.stringify({ query: { ...repo.query, page: 1 }, seenAt: Object.fromEntries(seen), ...(repo.view === 'board' ? { view: 'board' } : {}) }));
       } catch {
         /* хранилище недоступно — фильтр живёт до перезапуска */
       }
@@ -203,6 +256,7 @@ export function createIssuesStore(getApi: () => IssuesApi | undefined, options: 
         const entry = repo.details[number];
         return {
           items: repo.items.map((issue) => (issue.number === number ? fn(issue) : issue)),
+          ...(repo.board ? { board: { ...repo.board, items: repo.board.items.map((issue) => (issue.number === number ? fn(issue) : issue)) } } : {}),
           ...(entry?.detail ? { details: { ...repo.details, [number]: { ...entry, detail: { ...entry.detail, issue: fn(entry.detail.issue) } } } } : {}),
         };
       });
@@ -258,6 +312,7 @@ export function createIssuesStore(getApi: () => IssuesApi | undefined, options: 
 
     return {
       byRepo: {},
+      mine: {},
 
       open: async (path, remote) => {
         const existing = repoOf(path);
@@ -272,7 +327,8 @@ export function createIssuesStore(getApi: () => IssuesApi | undefined, options: 
         }
         const saved = readSaved(path);
         const seenAt = saved.seenAt && typeof saved.seenAt === 'object' ? saved.seenAt : {};
-        set((s) => ({ byRepo: { ...s.byRepo, [path]: { ...emptyRepo(saved.query, seenAt), remote: remote ?? null } } }));
+        const view = saved.view === 'board' ? 'board' : 'list';
+        set((s) => ({ byRepo: { ...s.byRepo, [path]: { ...emptyRepo(saved.query, seenAt, view), remote: remote ?? null } } }));
         await Promise.all([fetchPages(path, 1, 1, 'loading'), get().loadMeta(path)]);
       },
 
@@ -356,6 +412,7 @@ export function createIssuesStore(getApi: () => IssuesApi | undefined, options: 
         const issue = res.data;
         patch(path, (cur) => ({
           items: [issue, ...cur.items.filter((i) => i.number !== issue.number)],
+          ...(cur.board ? { board: { ...cur.board, items: [issue, ...cur.board.items.filter((i) => i.number !== issue.number)] } } : {}),
           selected: stay ? cur.selected : issue.number,
           details: { ...cur.details, [issue.number]: { detail: { issue, timeline: [], timelineTruncated: false }, status: 'idle', error: null, loadedAt: now() } },
           seenAt: { ...cur.seenAt, [issue.number]: issue.updatedAt },
@@ -370,8 +427,8 @@ export function createIssuesStore(getApi: () => IssuesApi | undefined, options: 
         const api = getApi();
         const repo = repoOf(path);
         if (!api) return { ok: false, error: NO_API };
-        const before = repo?.items.find((i) => i.number === number) ?? repo?.details[number]?.detail?.issue ?? null;
-        const snapshot = { item: repo?.items.find((i) => i.number === number), detail: repo?.details[number]?.detail?.issue };
+        const before = repo?.items.find((i) => i.number === number) ?? repo?.board?.items.find((i) => i.number === number) ?? repo?.details[number]?.detail?.issue ?? null;
+        const snapshot = { item: repo?.items.find((i) => i.number === number), board: repo?.board?.items.find((i) => i.number === number), detail: repo?.details[number]?.detail?.issue };
         if (repo) {
           mapIssue(path, number, (issue) => applyPatch(issue, change, repo.meta, new Date(now()).toISOString()));
           if (before && change.state && change.state !== before.state) shiftCounts(path, before.state, change.state);
@@ -386,8 +443,10 @@ export function createIssuesStore(getApi: () => IssuesApi | undefined, options: 
         } else {
           patch(path, (cur) => {
             const entry = cur.details[number];
+            const back = snapshot.item ?? snapshot.board;
             return {
               items: cur.items.map((i) => (i.number === number && snapshot.item ? snapshot.item : i)),
+              ...(cur.board && back ? { board: { ...cur.board, items: cur.board.items.map((i) => (i.number === number ? back : i)) } } : {}),
               ...(entry?.detail && snapshot.detail ? { details: { ...cur.details, [number]: { ...entry, detail: { ...entry.detail, issue: snapshot.detail } } } } : {}),
             };
           });
@@ -476,7 +535,12 @@ export function createIssuesStore(getApi: () => IssuesApi | undefined, options: 
         patch(path, (cur) => {
           const details = { ...cur.details };
           delete details[number];
-          return { items: cur.items.filter((i) => i.number !== number), details, selected: cur.selected === number ? null : cur.selected };
+          return {
+            items: cur.items.filter((i) => i.number !== number),
+            ...(cur.board ? { board: { ...cur.board, items: cur.board.items.filter((i) => i.number !== number) } } : {}),
+            details,
+            selected: cur.selected === number ? null : cur.selected,
+          };
         });
         if (issue) shiftCounts(path, issue.state, null);
         return res;
@@ -494,15 +558,114 @@ export function createIssuesStore(getApi: () => IssuesApi | undefined, options: 
         return api.renderMarkdown(path, text, opts(path));
       },
 
+      setView: (path, view) => {
+        if (!repoOf(path) || repoOf(path)!.view === view) return;
+        patch(path, () => ({ view }));
+        persist(path);
+      },
+
+      loadBoard: async (path) => {
+        const api = getApi();
+        const repo = repoOf(path);
+        if (!repo) return;
+        const mine = bump(boardSeq, path);
+        if (!api) {
+          patch(path, (cur) => ({ board: { items: cur.board?.items ?? [], status: 'error', error: NO_API, truncated: false } }));
+          return;
+        }
+        patch(path, (cur) => ({ board: { items: cur.board?.items ?? [], status: 'loading', error: null, truncated: cur.board?.truncated ?? false } }));
+        const base = { ...repo.query, sort: 'updated' as const, ascending: false };
+        const open: Issue[] = [];
+        let truncated = false;
+        for (let page = 1; page <= BOARD_PAGES; page += 1) {
+          const res = await api.list(path, { ...base, state: 'open', page, perPage: BOARD_PAGE }, opts(path));
+          if (boardSeq.get(path) !== mine) return;
+          if (!res.ok) {
+            patch(path, (cur) => ({ board: { items: cur.board?.items ?? [], status: 'error', error: res.error, truncated: false } }));
+            return;
+          }
+          open.push(...res.data.list.items);
+          if (!res.data.list.hasMore) break;
+          if (page === BOARD_PAGES) truncated = true;
+        }
+        const closed = await api.list(path, { ...base, state: 'closed', page: 1, perPage: BOARD_CLOSED }, opts(path));
+        if (boardSeq.get(path) !== mine) return;
+        if (!closed.ok) {
+          patch(path, (cur) => ({ board: { items: cur.board?.items ?? [], status: 'error', error: closed.error, truncated: false } }));
+          return;
+        }
+        patch(path, (cur) => ({
+          board: { items: keepPending(uniqueByNumber([...open, ...closed.data.list.items]), cur.board?.items ?? [], cur.pending), status: 'idle', error: null, truncated },
+        }));
+      },
+
+      bulkUpdate: async (path, numbers, makePatch) => {
+        const result: BulkResult = { ok: [], failed: [], stopped: false };
+        const repo = repoOf(path);
+        if (!repo || !numbers.length) return result;
+        const run = bump(bulkSeq, path);
+        const queue = [...numbers];
+        patch(path, () => ({ bulk: { done: 0, total: numbers.length, running: true } }));
+        const find = (n: number) => {
+          const cur = repoOf(path);
+          return cur?.items.find((i) => i.number === n) ?? cur?.board?.items.find((i) => i.number === n) ?? cur?.details[n]?.detail?.issue ?? null;
+        };
+        const worker = async () => {
+          for (;;) {
+            if (bulkSeq.get(path) !== run) {
+              result.stopped = true;
+              return;
+            }
+            const number = queue.shift();
+            if (number === undefined) return;
+            const issue = find(number);
+            const change = issue ? makePatch(issue) : null;
+            if (!change) result.ok.push(number);
+            else {
+              const res = await get().update(path, number, change);
+              (res.ok ? result.ok : result.failed).push(number);
+            }
+            patch(path, () => ({ bulk: { done: result.ok.length + result.failed.length, total: numbers.length, running: true } }));
+          }
+        };
+        await Promise.all(Array.from({ length: Math.min(BULK_PARALLEL, numbers.length) }, worker));
+        result.stopped = result.stopped || result.ok.length + result.failed.length < numbers.length;
+        patch(path, () => ({ bulk: null }));
+        return result;
+      },
+
+      stopBulk: (path) => {
+        bump(bulkSeq, path);
+      },
+
+      refreshMine: async (path, remote) => {
+        const api = getApi();
+        if (!api) return [];
+        const run = bump(mineSeq, path);
+        const res = await api.list(path, { ...DEFAULT_QUERY, state: 'open', assignee: '@me', page: 1, perPage: 100 }, remote ? { remote } : opts(path));
+        if (mineSeq.get(path) !== run || !res.ok) return [];
+        const items = res.data.list.items;
+        const before = mineSeen.get(path);
+        mineSeen.set(path, new Set(items.map((i) => i.number)));
+        set((st) => ({ mine: { ...st.mine, [path]: items } }));
+        return before ? items.filter((i) => !before.has(i.number)) : [];
+      },
+
       forget: (path) => {
         bump(listSeq, path);
+        bump(boardSeq, path);
+        bump(bulkSeq, path);
+        mineSeen.delete(path);
+        bump(mineSeq, path);
         bump(metaSeq, path);
         for (const key of [...detailSeq.keys()]) if (key.startsWith(`${path}\n`)) bump(detailSeq, key);
         set((s) => {
-          if (!s.byRepo[path]) return s;
+          if (!s.byRepo[path] && !s.mine[path]) return s;
           const byRepo = { ...s.byRepo };
           delete byRepo[path];
-          return { byRepo };
+          const mine = { ...s.mine };
+          delete mine[path];
+          return { byRepo, mine };
         });
       },
     };

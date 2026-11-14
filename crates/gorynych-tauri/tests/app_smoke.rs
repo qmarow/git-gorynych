@@ -202,7 +202,7 @@ fn real_interface_opens_repository_on_the_compatibility_layer() {
     // прокрутка и выбор переживают закрытие раздела
     assert_eq!(
         report["issues"]["list"],
-        json!({ "loaded": true, "rendered": 21, "counts": "Открытые500", "searchEarly": 0, "search": "123", "mine": "@me", "loadMore": true, "keys": [496], "selected": "496", "card": true, "scrollKept": true, "selectedKept": true, "detail": report["issues"]["list"]["detail"], "edit": report["issues"]["list"]["edit"] }),
+        json!({ "loaded": true, "rendered": 21, "counts": "Открытые500", "searchEarly": 0, "search": "123", "mine": "@me", "loadMore": true, "keys": [496], "selected": "496", "card": true, "scrollKept": true, "selectedKept": true, "detail": report["issues"]["list"]["detail"], "edit": report["issues"]["list"]["edit"], "board": report["issues"]["list"]["board"] }),
         "список задач: {report}"
     );
     // Карточка (этап 4): HTML описания — настоящий `issues_render_markdown`; вредоносная разметка не исполняется, сломанная
@@ -237,13 +237,27 @@ fn real_interface_opens_repository_on_the_compatibility_layer() {
         }),
         "правка задачи: {report}"
     );
+    // Массовые действия, наборы и доска (этап 7): Ctrl+клик и Shift+клик (диапазон от последней отмеченной), закрытие по 4
+    // запроса с прогрессом, частичная ошибка — неудавшаяся выделена, «Повторить для неудавшихся»; Ctrl+A и больше 10 —
+    // подтверждение; Esc снимает выделение; наборы — меню, свой набор, клавиша 1; доска — 3 страницы открытых и закрытые,
+    // колонка-метка, перенос мышью и Shift+→, панель задачи и Esc, вид запомнен
+    assert_eq!(
+        report["issues"]["list"]["board"],
+        json!({
+            "ctrl": "Выбрано 2", "shift": "Выбрано 4", "progress": true, "done": "Изменено 3, ошибок 1", "requests": 4, "failedSelected": "498",
+            "retried": true, "all": "Выбрано 61", "confirm": true, "cleared": true, "setApplied": "@me", "saved": "Мои задачи:@me",
+            "digit": "Все открытые", "boardRequests": "1,2,3,1", "viewSaved": "board", "columns": "open,label:bug,closed", "bugCount": "45",
+            "highlight": true, "dropped": "bug", "inColumn": true, "keyMove": "closed", "panel": "498", "panelClosed": true
+        }),
+        "доска и массовые действия: {report}"
+    );
     // Задачи и git (этап 6): `#7` в графе — ссылка, клик не выбирает строку и открывает задачу; в карточке ветка и коммит,
     // клик по коммиту — к нему в графе; ветка из задачи по шаблону настроек, раздел остаётся, «Показать в графе»; в форме
     // коммита на ветке задачи — строка задачи, «Упомянуть» без повтора, «Закрыть коммитом», подсказка по `#`
     assert_eq!(
         report["issueGit"],
         json!({
-            "forge": true, "tipBefore": "Открыть задачу #7", "noRequests": 0, "selectionKept": true, "opened": "7", "branches": "7-vkhod",
+            "forge": true, "badge": "2", "tipBefore": "Открыть задачу #7", "noRequests": 0, "selectionKept": true, "opened": "7", "branches": "7-vkhod",
             "commits": "Починить вход", "locate": true, "tipAfter": "#7 Вход через SSO · Открыта", "branchName": "issue/7-vkhod-cherez-sso",
             "sectionStays": true, "shown": true, "bar": "Задача #7: Вход через SSO", "description": "Refs #7\n\nCloses #7",
             "suggest": "#7Вход через SSO,#8Другая", "summary": "Правка #7 "

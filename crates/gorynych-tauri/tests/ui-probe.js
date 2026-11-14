@@ -420,7 +420,7 @@ async function issuesListScenario(waitFor, key, section) {
     await waitFor(section, 3000);
     out.loaded = Boolean(await waitFor(() => rows().length && rows()[0].dataset.number === '500', 10000));
     out.rendered = rows().length; // только видимые и по 10 сверху и снизу
-    out.counts = section().querySelector('[role="tab"][aria-selected="true"]')?.textContent ?? null;
+    out.counts = section().querySelector('[role="tablist"]:not([data-testid="issues-view-switch"]) [role="tab"][aria-selected="true"]')?.textContent ?? null;
     // Поиск: запрос уходит один раз, после паузы
     const input = section().querySelector('input[placeholder]');
     const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set;
@@ -471,6 +471,7 @@ async function issuesListScenario(waitFor, key, section) {
     out.selectedKept = section().innerText.includes('Описание 496'); // строка 496 вне окна прокрутки, карточка — та же
     out.detail = await issueCardScenario(waitFor, section, real, me, issue, calls).catch((e) => ({ probeError: String(e?.stack ?? e) }));
     out.edit = await issueEditScenario(waitFor, section, real, issue, calls).catch((e) => ({ probeError: String(e?.stack ?? e) }));
+    out.board = await issueBoardScenario(waitFor, section, calls).catch((e) => ({ probeError: String(e?.stack ?? e) }));
   } finally {
     window.api.issues = real;
     if (section()) key('i', { code: 'KeyI', ctrlKey: true });
@@ -848,6 +849,130 @@ async function issueEditScenario(waitFor, section, real, issue, calls) {
   return out;
 }
 
+// Массовые действия, наборы фильтров и доска (этап 7) на подставном API сценария правки (update там записывает
+// `update2`): Ctrl+клик и Shift+клик — выделение, «Закрыть» по 4 запроса, частичная ошибка — неудавшаяся остаётся
+// выделенной и «Повторить для неудавшихся»; Ctrl+A и больше 10 — подтверждение; Esc снимает выделение. Наборы — меню,
+// сохранение своего, клавиша 1. Доска: открытые по 100 и закрытые, колонка-метка, перенос мышью (HTML5) и Shift+→,
+// панель задачи и Esc, вид запоминается
+async function issueBoardScenario(waitFor, section, calls) {
+  const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+  const api = window.api.issues;
+  const row = (n) => section().querySelector(`[role="option"][data-number="${n}"]`);
+  const listbox = () => section().querySelector('[role="listbox"]:not([aria-multiselectable])');
+  const bar = () => section().querySelector('[data-testid="issue-bulk-bar"]');
+  const toast = (text) => [...document.querySelectorAll('[data-testid="toast-action"]')].find((b) => b.parentElement.textContent.includes(text));
+  const toastText = (text) => [...document.querySelectorAll('.glass-strong')].map((el) => el.textContent).find((x) => x.includes(text)) ?? null;
+  const updates = () => calls.filter((c) => c[0] === 'update2');
+  const out = {};
+  const update = api.update;
+  let fail = new Set();
+  api.update = async (dir, number, patch) => {
+    if (fail.has(number)) {
+      calls.push(['update2', number, patch]);
+      return { ok: false, error: { code: 'NETWORK', message: 'нет сети', hint: null, details: '' } };
+    }
+    return update(dir, number, patch);
+  };
+  const click = (el, init = {}) => el.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, ...init }));
+  // Выделение
+  listbox().scrollTop = 0;
+  await waitFor(() => row(500), 3000);
+  click(row(500), { ctrlKey: true });
+  click(row(499), { ctrlKey: true });
+  out.ctrl = (await waitFor(() => bar()?.querySelector('[data-testid="bulk-count"]')?.textContent, 2000)) ?? null;
+  click(row(496), { shiftKey: true });
+  await sleep(50);
+  out.shift = bar()?.querySelector('[data-testid="bulk-count"]')?.textContent ?? null;
+  // Частичная ошибка: 498 не закрывается
+  fail = new Set([498]);
+  const before = updates().length;
+  bar().querySelector('[data-testid="bulk-close"]').click();
+  out.progress = Boolean(await waitFor(() => bar()?.querySelector('[data-testid="bulk-progress"]'), 1000));
+  out.done = (await waitFor(() => toastText('Изменено'), 5000))?.replace('Повторить для неудавшихся', '') ?? null;
+  out.requests = updates().length - before;
+  out.failedSelected = [...section().querySelectorAll('[data-checked]')].map((r) => r.dataset.number).join(',');
+  fail = new Set();
+  toast('Изменено')?.click();
+  out.retried = Boolean(await waitFor(() => !bar() && updates().at(-1)?.[1] === 498, 3000));
+  // Ctrl+A и больше 10 — подтверждение; Esc снимает выделение
+  listbox().focus();
+  listbox().dispatchEvent(new KeyboardEvent('keydown', { key: 'a', code: 'KeyA', ctrlKey: true, bubbles: true, cancelable: true }));
+  out.all = (await waitFor(() => bar()?.querySelector('[data-testid="bulk-count"]')?.textContent, 2000)) ?? null;
+  bar().querySelector('[data-testid="bulk-close"]').click();
+  const cancel = await waitFor(() => [...document.querySelectorAll('.bg-gk-scrim button')].find((b) => b.textContent.trim() === 'Отмена'), 2000);
+  out.confirm = Boolean(cancel);
+  cancel?.click();
+  await sleep(50);
+  listbox().dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', code: 'Escape', bubbles: true, cancelable: true }));
+  out.cleared = Boolean(await waitFor(() => !bar(), 2000));
+  // Наборы фильтров: «Назначены мне» из меню, свой набор, клавиша 1
+  const filtersButton = () => section().querySelector('[data-testid="saved-filters"]');
+  filtersButton().click();
+  const menu = () => document.querySelector('[data-testid="saved-filters-menu"]');
+  await waitFor(menu, 2000);
+  [...menu().querySelectorAll('[role="menuitem"] button')].find((b) => b.textContent === 'Назначены мне').click();
+  out.setApplied = (await waitFor(() => filtersButton()?.textContent === 'Назначены мне' && calls.filter((c) => c[0] === 'list').at(-1)?.[3], 3000)) ?? null;
+  filtersButton().click();
+  await waitFor(menu, 2000);
+  menu().querySelector('[data-testid="saved-filters-save"]').click();
+  const name = await waitFor(() => menu()?.querySelector('[data-testid="saved-filters-name"]'), 2000);
+  Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(name, 'Мои задачи');
+  name.dispatchEvent(new Event('input', { bubbles: true }));
+  name.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', code: 'Enter', bubbles: true, cancelable: true }));
+  await sleep(50);
+  const dir = await window.__TAURI__.core.invoke('repo_get_last');
+  out.saved = JSON.parse(localStorage.getItem(`issues.filters.v1:${dir}`) ?? '[]').map((f) => `${f.name}:${f.query.assignee}`).join(',');
+  document.body.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
+  await waitFor(() => !menu(), 1000);
+  await waitFor(() => listbox(), 3000);
+  listbox().focus();
+  listbox().dispatchEvent(new KeyboardEvent('keydown', { key: '1', code: 'Digit1', bubbles: true, cancelable: true }));
+  out.digit = (await waitFor(() => filtersButton()?.textContent === 'Все открытые' && 'Все открытые', 3000)) ?? filtersButton()?.textContent ?? null;
+  // Доска
+  section().querySelector('[data-testid="issues-view-switch"] [data-view="board"]').click();
+  const boardEl = () => section().querySelector('[data-testid="issue-board"]');
+  await waitFor(() => boardEl()?.querySelector('[data-testid="board-card"]'), 5000);
+  const lists = calls.filter((c) => c[0] === 'list').slice(-4);
+  out.boardRequests = lists.map((c) => c[1]).join(',');
+  out.viewSaved = JSON.parse(localStorage.getItem(`issues.state.v1:${dir}`) ?? '{}').view ?? null;
+  // Колонка-метка bug
+  boardEl().querySelector('[data-testid="board-columns"]').click();
+  const opt = await waitFor(() => [...document.querySelectorAll('[role="listbox"][aria-multiselectable] [role="option"]')].find((o) => o.textContent.includes('bug')), 2000);
+  opt?.click();
+  document.body.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
+  const column = (id) => boardEl().querySelector(`[data-testid="board-column"][data-column="${id}"]`);
+  await waitFor(() => column('label:bug'), 2000);
+  out.columns = [...boardEl().querySelectorAll('[data-testid="board-column"]')].map((c) => c.dataset.column).join(',');
+  out.bugCount = column('label:bug')?.querySelector('[data-testid="board-column-count"]')?.textContent ?? null;
+  // Перенос мышью: карточка из «Открытые» в «bug»
+  const card = column('open').querySelector('[data-testid="board-card"]');
+  const moved = Number(card.dataset.number);
+  const dt = new DataTransfer();
+  card.dispatchEvent(new DragEvent('dragstart', { bubbles: true, cancelable: true, dataTransfer: dt }));
+  column('label:bug').dispatchEvent(new DragEvent('dragover', { bubbles: true, cancelable: true, dataTransfer: dt }));
+  out.highlight = Boolean(await waitFor(() => column('label:bug').dataset.over === 'true', 1000));
+  column('label:bug').dispatchEvent(new DragEvent('drop', { bubbles: true, cancelable: true, dataTransfer: dt }));
+  out.dropped = (await waitFor(() => updates().at(-1)?.[1] === moved && updates().at(-1)[2].labels?.map((l) => l.name).join('+'), 2000)) ?? null;
+  out.inColumn = Boolean(await waitFor(() => column('label:bug')?.querySelector(`[data-number="${moved}"]`), 2000));
+  // Клавиатура: Shift+→ — в «Закрытые»
+  const focusCard = column('label:bug').querySelector(`[data-number="${moved}"]`);
+  focusCard.focus();
+  await sleep(50);
+  focusCard.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', code: 'ArrowRight', shiftKey: true, bubbles: true, cancelable: true }));
+  out.keyMove = (await waitFor(() => updates().at(-1)?.[1] === moved && updates().at(-1)[2].state, 2000)) ?? null;
+  // Панель задачи: клик по карточке, Esc закрывает
+  const any = column('open').querySelector('[data-testid="board-card"]');
+  any.click();
+  out.panel = (await waitFor(() => boardEl().querySelector('[data-testid="board-detail"] [data-testid="issue-detail"]')?.dataset.number, 3000)) ?? null;
+  boardEl().dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', code: 'Escape', bubbles: true, cancelable: true }));
+  out.panelClosed = Boolean(await waitFor(() => !boardEl()?.querySelector('[data-testid="board-detail"]'), 2000)) && Boolean(section());
+  section().querySelector('[data-testid="issues-view-switch"] [data-view="list"]').click();
+  await waitFor(() => listbox(), 3000);
+  localStorage.removeItem(`issues.board.v1:${dir}`);
+  api.update = update;
+  return out;
+}
+
 // Задачи и git (этап 6). У тестового репозитория нет сервера: `repo:load` дополняется подставным `forge` (GitHub), задачи
 // — подставной `window.api.issues`. Коммит «Починить вход #7» и ветка `7-vkhod`: в графе `#7` — ссылка (подсказка без
 // запросов, клик не выбирает строку и открывает задачу 7); в карточке — ветка и коммит, клик по коммиту выбирает его в
@@ -865,7 +990,7 @@ async function issueGitScenario(invoke, waitFor, sleep) {
   const forge = {
     kind: 'github', provider: 'github', label: 'GitHub', remote: 'origin', url: 'https://example.invalid/o/r.git', protocol: 'https', host: 'example.invalid',
     base: 'https://example.invalid', path: 'o/r', webUrl: 'https://example.invalid/o/r', apiBase: null,
-    token: { configured: false, source: null, pending: null, user: null, scopes: null, expiresAt: null, savedAt: null, login: null, repoLogin: null, unreadable: null, repoKey: null },
+    token: { configured: true, source: null, pending: null, user: null, scopes: null, expiresAt: null, savedAt: null, login: null, repoLogin: null, unreadable: null, repoKey: null },
     capabilities: {}, settings: null, detectedKind: null,
   };
   const me = { id: '1', login: 'tester', name: 'Тестер', avatarUrl: null, webUrl: null };
@@ -895,6 +1020,8 @@ async function issueGitScenario(invoke, waitFor, sleep) {
     await invoke('repo_action', { dir, action: { name: 'createBranch', payload: { name: '7-vkhod', checkout: false } } });
     out.forge = Boolean(await waitFor(() => document.querySelector('[data-testid="toolbar-issues"]') && message('Починить вход')?.querySelector('[data-issue-ref="7"]'), 8000));
     const ref = () => message('Починить вход')?.querySelector('[data-issue-ref="7"]');
+    // Счётчик назначенных на кнопке «Задачи» (запрос с assignee @me — подставной ответ отдаёт две задачи)
+    out.badge = (await waitFor(() => document.querySelector('[data-testid="toolbar-issues"] span.rounded-full')?.textContent, 5000)) ?? null;
     if (!ref()) return { ...out, text: message('Починить вход')?.innerHTML ?? null };
     const callsBefore = calls.length;
     ref().dispatchEvent(new MouseEvent('mouseover', { bubbles: true }));
