@@ -166,6 +166,11 @@ async function cicdSmoke(dir) {
   const badSecret = await rejected(invoke('cicd_secret_save', { dir, data: { key: '1x', value: 'v' }, opts: null }));
   const badRunner = await rejected(invoke('cicd_local_runner_stop', { name: 'не-горыныч' }));
   const notRepo = await rejected(invoke('cicd_info', { dir: `${dir}\\нет-такой-папки`, opts: null }));
+  // Задачи (новое в 2.0): та же связка сервера, без входа — NO_TOKEN; аргументы неверной формы отклоняет Tauri строкой
+  const issuesNoToken = await rejected(invoke('issues_list', { dir, query: { state: null, assignee: '@me' }, opts: null }));
+  const issueNoToken = await rejected(invoke('issues_get', { dir, number: 1, opts: { remote: 'origin' } }));
+  const issueBadNumber = await rejected(invoke('issues_get', { dir, number: -1, opts: null }));
+  const issueNoInput = await rejected(invoke('issues_create', { dir, opts: null }));
   return {
     status: status && { kind: status.kind, host: status.host, path: status.path, protocol: status.protocol, base: status.base, configured: status.token.configured },
     gitlab: gitlab && { kind: gitlab.kind, remote: gitlab.remote, path: gitlab.path, configured: gitlab.token.configured },
@@ -181,6 +186,7 @@ async function cicdSmoke(dir) {
     badSecret,
     badRunner,
     notRepo,
+    issues: { noToken: issuesNoToken?.code, getNoToken: issueNoToken?.code, badNumber: typeof issueBadNumber, noInput: typeof issueNoInput },
   };
 }
 

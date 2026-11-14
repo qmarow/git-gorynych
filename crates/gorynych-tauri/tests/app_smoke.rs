@@ -78,7 +78,7 @@ fn bindings_are_up_to_date() {
     }
     let committed = fs::read_to_string(&path).unwrap_or_default().replace("\r\n", "\n");
     assert!(actual == committed, "команды изменились: обновите bindings/commands.ts");
-    for expected in ["tabsSave", "appearanceSet", "windowMaximizedChanged", "\"NO_STORAGE\"", "imageBlur", "openedAt"] {
+    for expected in ["tabsSave", "appearanceSet", "windowMaximizedChanged", "\"NO_STORAGE\"", "imageBlur", "openedAt", "issuesList", "issuesCommentAdd", "\"ISSUES_DISABLED\""] {
         assert!(actual.contains(expected), "нет «{expected}» в:\n{actual}");
     }
 }
@@ -452,6 +452,7 @@ fn git_commands_work_through_the_page() {
     assert_eq!(cicd["badSecret"]["code"], json!("INVALID_NAME"));
     assert_eq!(cicd["badRunner"]["code"], json!("BAD_ARGS"), "чужой контейнер не трогаем: {cicd}");
     assert_eq!(cicd["notRepo"]["code"], json!("NOT_A_REPO"));
+    assert_eq!(cicd["issues"], json!({ "noToken": "NO_TOKEN", "getNoToken": "NO_TOKEN", "badNumber": "string", "noInput": "string" }), "задачи через окно: {cicd}");
 
     // Диалоги, открытие, терминал (`desktopSmoke` в `ui/app.js`)
     let desktop = &report["desktop"];

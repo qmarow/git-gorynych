@@ -212,3 +212,19 @@ New-Item -ItemType Directory -Force "$old\lib" | Out-Null
 cmd /c "git show f423922:src/lib/graphView.ts > `"$old\lib\graphView.ts`""
 node tests/ui-parity/graph-view.mjs $old $PWD
 ```
+
+## Задачи (новое в 2.0)
+
+Эталона в 1.x нет: ожидаемые значения записаны в самих сверках, плюс случайные проверки свойств.
+
+```powershell
+node tests/ui-parity/lib-issues.mjs $PWD
+node tests/ui-parity/issues-store.mjs $PWD
+```
+
+- `lib-issues.mjs` — `src/lib/issues.ts` (фильтр, `#123`, имя ветки, склейка ленты, `applyPatch`, цвет текста метки) и
+  `src/lib/issueDrafts.ts` (ключи, запись не чаще 500 мс, удаление пустого, ошибки `localStorage`) на подставных часах.
+- `issues-store.mjs` — `src/state/issuesStore.ts` на заглушке API, ответы отдаются вручную в любом порядке: пять правил
+  хранилища, откат `update`, временный комментарий, `loadMore`, предел страниц `refresh`, карточки; затем 300 случайных
+  сценариев с инвариантами. Проверено от противного: без счётчика списка или карточки, без `keepPending`, со стиранием
+  данных при ошибке, с записью после `forget` и без удаления черновика сверка падает.

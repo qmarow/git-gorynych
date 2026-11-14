@@ -131,7 +131,7 @@ pub struct LocalRunnerStartRequest {
 
 /* ---------- Вспомогательное ---------- */
 
-async fn root_of(dir: &str) -> Result<PathBuf> {
+pub(crate) async fn root_of(dir: &str) -> Result<PathBuf> {
     resolve_repo_root(Path::new(dir)).await
 }
 
@@ -140,7 +140,7 @@ fn id_or_undefined(id: Option<CiId>) -> CiId {
     id.unwrap_or_else(|| CiId::Text("undefined".to_owned()))
 }
 
-fn remote(opts: &Option<RemoteOptions>) -> Option<&str> {
+pub(crate) fn remote(opts: &Option<RemoteOptions>) -> Option<&str> {
     opts.as_ref().and_then(|opts| opts.remote.as_deref())
 }
 

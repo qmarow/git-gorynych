@@ -2,7 +2,8 @@
 //!
 //! Даты — строки ISO 8601, как их отдал сервер. Идентификаторы — строки, даже если у сервера они числа: у одних серверов
 //! это числа, у других строки, а интерфейсу нужен один тип. Номер задачи в репозитории (`number`) — число: его пишут в
-//! `#123`. Числа больше `u32` идут в TypeScript как `number` (`specta` запрещает `bigint`), как и в остальном крейте.
+//! `#123`. В TypeScript поля `u64` описаны как `u32` (`#[specta(type = u32)]`) и становятся `number`: `specta` запрещает
+//! `bigint`, а `f64` он описывает как `number | null`. Номеров задач больше 4 млрд не бывает.
 
 use serde::{Deserialize, Serialize};
 
@@ -33,7 +34,7 @@ pub struct IssueLabel {
 #[serde(rename_all = "camelCase")]
 pub struct IssueMilestone {
     pub id: String,
-    #[specta(type = Option<f64>)]
+    #[specta(type = Option<u32>)]
     pub number: Option<u64>,
     pub title: String,
     pub due_date: Option<String>,
@@ -53,7 +54,7 @@ pub enum IssueState {
 pub struct Issue {
     pub id: String,
     /// Номер в репозитории: `iid` у GitLab, `number` у GitHub, `index` у Gitea (в ответе — `number`), `id` у Bitbucket.
-    #[specta(type = f64)]
+    #[specta(type = u32)]
     pub number: u64,
     pub title: String,
     /// Исходный Markdown; пустая строка вместо `null`.
@@ -236,7 +237,7 @@ pub struct UserRef {
 #[serde(rename_all = "camelCase", default)]
 pub struct MilestoneRef {
     pub id: String,
-    #[specta(type = Option<f64>)]
+    #[specta(type = Option<u32>)]
     pub number: Option<u64>,
     pub title: String,
 }

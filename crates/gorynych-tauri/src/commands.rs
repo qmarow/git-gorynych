@@ -1,10 +1,11 @@
 //! Команды каркаса. Семантика — как у одноимённых обработчиков `ipcMain` в `electron/main.cjs`; см. шапку `lib.rs`.
-//! Команды git — в [`repo`], авторизация на серверах — в [`creds`], CI/CD — в [`cicd`], диалоги, открытие файлов и
+//! Команды git — в [`repo`], авторизация на серверах — в [`creds`], CI/CD — в [`cicd`], задачи сервера — в [`issues`], диалоги, открытие файлов и
 //! терминал — в [`desktop`].
 
 pub mod cicd;
 pub mod creds;
 pub mod desktop;
+pub mod issues;
 pub mod menu;
 pub mod repo;
 pub mod storage;

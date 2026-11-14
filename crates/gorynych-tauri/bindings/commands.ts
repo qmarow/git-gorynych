@@ -122,6 +122,19 @@ export const commands = {
 	gitlabScheduleSave: (dir: string, schedule: GlScheduleInput_Deserialize | null, opts: RemoteOptions_Deserialize | null) => typedError<GlSchedule_Serialize, GorynychError_Serialize>(__TAURI_INVOKE("gitlab_schedule_save", { dir, schedule, opts })),
 	gitlabScheduleAction: (dir: string, action: GlScheduleAction_Deserialize | null, opts: RemoteOptions_Deserialize | null) => typedError<GlScheduleActionResult, GorynychError_Serialize>(__TAURI_INVOKE("gitlab_schedule_action", { dir, action, opts })),
 	gitlabCreateMr: (dir: string, mr: GlMergeRequestInput_Deserialize | null, opts: RemoteOptions_Deserialize | null) => typedError<GlMergeRequest_Serialize, GorynychError_Serialize>(__TAURI_INVOKE("gitlab_create_mr", { dir, mr, opts })),
+	/**  Страница задач, возможности сервера и адрес списка задач на нём. */
+	issuesList: (dir: string, query: IssueQuery_Deserialize | null, opts: RemoteOptions_Deserialize | null) => typedError<IssuesListResponse_Serialize, GorynychError_Serialize>(__TAURI_INVOKE("issues_list", { dir, query, opts })),
+	/**  Задача с лентой комментариев и событий. */
+	issuesGet: (dir: string, number: number, opts: RemoteOptions_Deserialize | null) => typedError<IssueDetail_Serialize, GorynychError_Serialize>(__TAURI_INVOKE("issues_get", { dir, number, opts })),
+	/**  Метки, открытые вехи, участники, текущий пользователь и шаблоны задач. */
+	issuesMeta: (dir: string, opts: RemoteOptions_Deserialize | null) => typedError<IssueMeta_Serialize, GorynychError_Serialize>(__TAURI_INVOKE("issues_meta", { dir, opts })),
+	issuesCreate: (dir: string, input: IssueInput_Deserialize, opts: RemoteOptions_Deserialize | null) => typedError<Issue_Serialize, GorynychError_Serialize>(__TAURI_INVOKE("issues_create", { dir, input, opts })),
+	issuesUpdate: (dir: string, number: number, patch: IssuePatch_Deserialize, opts: RemoteOptions_Deserialize | null) => typedError<Issue_Serialize, GorynychError_Serialize>(__TAURI_INVOKE("issues_update", { dir, number, patch, opts })),
+	issuesCommentAdd: (dir: string, number: number, body: string, opts: RemoteOptions_Deserialize | null) => typedError<IssueComment_Serialize, GorynychError_Serialize>(__TAURI_INVOKE("issues_comment_add", { dir, number, body, opts })),
+	issuesCommentUpdate: (dir: string, number: number, id: string, body: string, opts: RemoteOptions_Deserialize | null) => typedError<IssueComment_Serialize, GorynychError_Serialize>(__TAURI_INVOKE("issues_comment_update", { dir, number, id, body, opts })),
+	issuesCommentDelete: (dir: string, number: number, id: string, opts: RemoteOptions_Deserialize | null) => typedError<null, GorynychError_Serialize>(__TAURI_INVOKE("issues_comment_delete", { dir, number, id, opts })),
+	issuesLabelCreate: (dir: string, name: string, color: string, opts: RemoteOptions_Deserialize | null) => typedError<IssueLabel_Serialize, GorynychError_Serialize>(__TAURI_INVOKE("issues_label_create", { dir, name, color, opts })),
+	issuesDelete: (dir: string, number: number, opts: RemoteOptions_Deserialize | null) => typedError<null, GorynychError_Serialize>(__TAURI_INVOKE("issues_delete", { dir, number, opts })),
 	repoOpenDialog: (title: string | null) => typedError<string | null, GorynychError_Serialize>(__TAURI_INVOKE("repo_open_dialog", { title })),
 	/**  Открыть файл репозитория в программе по умолчанию (например, VS Code). */
 	repoOpenPath: (dir: string, rel: string) => typedError<OpenedPath, GorynychError_Serialize>(__TAURI_INVOKE("repo_open_path", { dir, rel })),
@@ -4005,6 +4018,390 @@ export type InvalidRule_Serialize = {
 	error: string,
 };
 
+export type Issue = Issue_Serialize | Issue_Deserialize;
+
+/**  Что сервер умеет и что разрешено пользователю: чего нет, того нет в интерфейсе. */
+export type IssueCaps = {
+	create: boolean,
+	edit: boolean,
+	comment: boolean,
+	editComments: boolean,
+	deleteComments: boolean,
+	close: boolean,
+	labels: boolean,
+	createLabel: boolean,
+	multipleAssignees: boolean,
+	milestones: boolean,
+	dueDate: boolean,
+	confidential: boolean,
+	lock: boolean,
+	delete: boolean,
+	events: boolean,
+	textSearch: boolean,
+	counts: boolean,
+	/**  Причины закрытия (GitHub: `completed`, `not_planned`). */
+	closeReasons: string[],
+};
+
+export type IssueComment = IssueComment_Serialize | IssueComment_Deserialize;
+
+export type IssueComment_Deserialize = {
+	id: string,
+	body: string,
+	author?: IssueUser_Deserialize | null,
+	createdAt: string,
+	updatedAt?: string | null,
+	canEdit: boolean,
+	webUrl?: string | null,
+};
+
+export type IssueComment_Serialize = {
+	id: string,
+	body: string,
+	author: IssueUser_Serialize | null,
+	createdAt: string,
+	updatedAt: string | null,
+	canEdit: boolean,
+	webUrl: string | null,
+};
+
+export type IssueCounts = {
+	open: number,
+	closed: number,
+};
+
+export type IssueDetail = IssueDetail_Serialize | IssueDetail_Deserialize;
+
+export type IssueDetail_Deserialize = {
+	issue: Issue_Deserialize,
+	/**  По возрастанию времени. */
+	timeline: TimelineItem_Deserialize[],
+	timelineTruncated: boolean,
+};
+
+export type IssueDetail_Serialize = {
+	issue: Issue_Serialize,
+	/**  По возрастанию времени. */
+	timeline: TimelineItem_Serialize[],
+	timelineTruncated: boolean,
+};
+
+export type IssueEvent = IssueEvent_Serialize | IssueEvent_Deserialize;
+
+export type IssueEventKind = "closed" | "reopened" | "labeled" | "unlabeled" | "assigned" | "unassigned" | "renamed" | "milestoned" | "demilestoned" | "referenced" | "locked" | "unlocked" | "other";
+
+export type IssueEvent_Deserialize = {
+	id: string,
+	kind: IssueEventKind,
+	actor?: IssueUser_Deserialize | null,
+	createdAt: string,
+	label?: IssueLabel_Deserialize | null,
+	user?: IssueUser_Deserialize | null,
+	from?: string | null,
+	to?: string | null,
+	/**  Готовый текст сервера для `Other` (системная заметка GitLab). */
+	text?: string | null,
+};
+
+export type IssueEvent_Serialize = {
+	id: string,
+	kind: IssueEventKind,
+	actor: IssueUser_Serialize | null,
+	createdAt: string,
+	label: IssueLabel_Serialize | null,
+	user: IssueUser_Serialize | null,
+	from: string | null,
+	to: string | null,
+	/**  Готовый текст сервера для `Other` (системная заметка GitLab). */
+	text: string | null,
+};
+
+export type IssueInput = IssueInput_Serialize | IssueInput_Deserialize;
+
+export type IssueInput_Deserialize = {
+	title?: string,
+	body?: string,
+	labels?: LabelRef_Deserialize[],
+	assignees?: UserRef_Deserialize[],
+	milestone?: MilestoneRef_Deserialize | null,
+	dueDate?: string | null,
+	confidential?: boolean,
+};
+
+export type IssueInput_Serialize = {
+	title: string,
+	body: string,
+	labels: LabelRef_Serialize[],
+	assignees: UserRef_Serialize[],
+	milestone: MilestoneRef_Serialize | null,
+	dueDate: string | null,
+	confidential: boolean,
+};
+
+export type IssueLabel = IssueLabel_Serialize | IssueLabel_Deserialize;
+
+export type IssueLabel_Deserialize = {
+	id: string,
+	name: string,
+	/**  Всегда `#rrggbb`; нет цвета — [`DEFAULT_LABEL_COLOR`]. */
+	color: string,
+	description?: string | null,
+};
+
+export type IssueLabel_Serialize = {
+	id: string,
+	name: string,
+	/**  Всегда `#rrggbb`; нет цвета — [`DEFAULT_LABEL_COLOR`]. */
+	color: string,
+	description: string | null,
+};
+
+export type IssueList = IssueList_Serialize | IssueList_Deserialize;
+
+export type IssueList_Deserialize = {
+	items: Issue_Deserialize[],
+	page: number,
+	hasMore: boolean,
+	counts?: IssueCounts | null,
+};
+
+export type IssueList_Serialize = {
+	items: Issue_Serialize[],
+	page: number,
+	hasMore: boolean,
+	counts: IssueCounts | null,
+};
+
+export type IssueMeta = IssueMeta_Serialize | IssueMeta_Deserialize;
+
+export type IssueMeta_Deserialize = {
+	labels: IssueLabel_Deserialize[],
+	/**  Только открытые. */
+	milestones: IssueMilestone_Deserialize[],
+	members: IssueUser_Deserialize[],
+	me?: IssueUser_Deserialize | null,
+	templates: IssueTemplate_Deserialize[],
+};
+
+export type IssueMeta_Serialize = {
+	labels: IssueLabel_Serialize[],
+	/**  Только открытые. */
+	milestones: IssueMilestone_Serialize[],
+	members: IssueUser_Serialize[],
+	me: IssueUser_Serialize | null,
+	templates: IssueTemplate_Serialize[],
+};
+
+export type IssueMilestone = IssueMilestone_Serialize | IssueMilestone_Deserialize;
+
+export type IssueMilestone_Deserialize = {
+	id: string,
+	number?: number | null,
+	title: string,
+	dueDate?: string | null,
+	closed: boolean,
+};
+
+export type IssueMilestone_Serialize = {
+	id: string,
+	number: number | null,
+	title: string,
+	dueDate: string | null,
+	closed: boolean,
+};
+
+/**  Изменение задачи: меняются только заданные поля. Снять веху и срок — `clear_milestone`, `clear_due_date`. */
+export type IssuePatch = IssuePatch_Serialize | IssuePatch_Deserialize;
+
+/**  Изменение задачи: меняются только заданные поля. Снять веху и срок — `clear_milestone`, `clear_due_date`. */
+export type IssuePatch_Deserialize = {
+	title?: string | null,
+	body?: string | null,
+	state?: IssueState | null,
+	stateReason?: string | null,
+	labels?: LabelRef_Deserialize[] | null,
+	assignees?: UserRef_Deserialize[] | null,
+	milestone?: MilestoneRef_Deserialize | null,
+	dueDate?: string | null,
+	confidential?: boolean | null,
+	locked?: boolean | null,
+	clearMilestone?: boolean,
+	clearDueDate?: boolean,
+};
+
+/**  Изменение задачи: меняются только заданные поля. Снять веху и срок — `clear_milestone`, `clear_due_date`. */
+export type IssuePatch_Serialize = {
+	title: string | null,
+	body: string | null,
+	state: IssueState | null,
+	stateReason: string | null,
+	labels: LabelRef_Serialize[] | null,
+	assignees: UserRef_Serialize[] | null,
+	milestone: MilestoneRef_Serialize | null,
+	dueDate: string | null,
+	confidential: boolean | null,
+	locked: boolean | null,
+	clearMilestone: boolean,
+	clearDueDate: boolean,
+};
+
+/**
+ *  Запрос списка. Особые значения: `assignee` — `"@me"` (текущий пользователь) или `"@none"` (без исполнителя),
+ *  `author` — `"@me"`, `milestone` — `"@none"` (без вехи).
+ */
+export type IssueQuery = IssueQuery_Serialize | IssueQuery_Deserialize;
+
+/**
+ *  Запрос списка. Особые значения: `assignee` — `"@me"` (текущий пользователь) или `"@none"` (без исполнителя),
+ *  `author` — `"@me"`, `milestone` — `"@none"` (без вехи).
+ */
+export type IssueQuery_Deserialize = {
+	/**  `None` — все. */
+	state?: IssueState | null,
+	search?: string | null,
+	/**  Имена меток. */
+	labels?: string[],
+	assignee?: string | null,
+	author?: string | null,
+	milestone?: string | null,
+	sort?: IssueSort,
+	ascending?: boolean,
+	/**  С 1. */
+	page?: number,
+	/**  По умолчанию 30, не больше 100. */
+	perPage?: number,
+};
+
+/**
+ *  Запрос списка. Особые значения: `assignee` — `"@me"` (текущий пользователь) или `"@none"` (без исполнителя),
+ *  `author` — `"@me"`, `milestone` — `"@none"` (без вехи).
+ */
+export type IssueQuery_Serialize = {
+	/**  `None` — все. */
+	state: IssueState | null,
+	search: string | null,
+	/**  Имена меток. */
+	labels: string[],
+	assignee: string | null,
+	author: string | null,
+	milestone: string | null,
+	sort: IssueSort,
+	ascending: boolean,
+	/**  С 1. */
+	page: number,
+	/**  По умолчанию 30, не больше 100. */
+	perPage: number,
+};
+
+export type IssueSort = "updated" | "created" | "comments";
+
+export type IssueState = "open" | "closed";
+
+export type IssueTemplate = IssueTemplate_Serialize | IssueTemplate_Deserialize;
+
+export type IssueTemplate_Deserialize = {
+	name: string,
+	title?: string | null,
+	body: string,
+	labels: string[],
+};
+
+export type IssueTemplate_Serialize = {
+	name: string,
+	title: string | null,
+	body: string,
+	labels: string[],
+};
+
+export type IssueUser = IssueUser_Serialize | IssueUser_Deserialize;
+
+export type IssueUser_Deserialize = {
+	id: string,
+	login: string,
+	name?: string | null,
+	avatarUrl?: string | null,
+	webUrl?: string | null,
+};
+
+export type IssueUser_Serialize = {
+	id: string,
+	login: string,
+	name: string | null,
+	avatarUrl: string | null,
+	webUrl: string | null,
+};
+
+export type Issue_Deserialize = {
+	id: string,
+	/**  Номер в репозитории: `iid` у GitLab, `number` у GitHub, `index` у Gitea (в ответе — `number`), `id` у Bitbucket. */
+	number: number,
+	title: string,
+	/**  Исходный Markdown; пустая строка вместо `null`. */
+	body: string,
+	state: IssueState,
+	stateReason?: string | null,
+	author?: IssueUser_Deserialize | null,
+	assignees: IssueUser_Deserialize[],
+	labels: IssueLabel_Deserialize[],
+	milestone?: IssueMilestone_Deserialize | null,
+	commentsCount: number,
+	createdAt: string,
+	updatedAt: string,
+	closedAt?: string | null,
+	dueDate?: string | null,
+	confidential: boolean,
+	locked: boolean,
+	webUrl: string,
+};
+
+export type Issue_Serialize = {
+	id: string,
+	/**  Номер в репозитории: `iid` у GitLab, `number` у GitHub, `index` у Gitea (в ответе — `number`), `id` у Bitbucket. */
+	number: number,
+	title: string,
+	/**  Исходный Markdown; пустая строка вместо `null`. */
+	body: string,
+	state: IssueState,
+	stateReason: string | null,
+	author: IssueUser_Serialize | null,
+	assignees: IssueUser_Serialize[],
+	labels: IssueLabel_Serialize[],
+	milestone: IssueMilestone_Serialize | null,
+	commentsCount: number,
+	createdAt: string,
+	updatedAt: string,
+	closedAt: string | null,
+	dueDate: string | null,
+	confidential: boolean,
+	locked: boolean,
+	webUrl: string,
+};
+
+/**  Ответ `issues_list`: страница, возможности, сервер и адрес списка задач на нём. */
+export type IssuesListResponse = IssuesListResponse_Serialize | IssuesListResponse_Deserialize;
+
+/**  Ответ `issues_list`: страница, возможности, сервер и адрес списка задач на нём. */
+export type IssuesListResponse_Deserialize = {
+	list: IssueList_Deserialize,
+	caps: IssueCaps,
+	/**  `gitlab`, `github`, `gitea`, `bitbucket`. */
+	provider: string,
+	/**  «GitLab», «GitHub»… */
+	label: string,
+	webUrl?: string | null,
+};
+
+/**  Ответ `issues_list`: страница, возможности, сервер и адрес списка задач на нём. */
+export type IssuesListResponse_Serialize = {
+	list: IssueList_Serialize,
+	caps: IssueCaps,
+	/**  `gitlab`, `github`, `gitea`, `bitbucket`. */
+	provider: string,
+	/**  «GitLab», «GitHub»… */
+	label: string,
+	webUrl: string | null,
+};
+
 /**  Файл артефакта задания GitLab. */
 export type JobArtifactFile = JobArtifactFile_Serialize | JobArtifactFile_Deserialize;
 
@@ -4096,6 +4493,21 @@ export type KeyDefaults_Serialize = {
 	name: string,
 	comment: string | null,
 	dir: string,
+};
+
+/**  Метка в запросе: адаптер берёт то, что нужно его API (GitLab и GitHub — имя, Gitea — `id`). */
+export type LabelRef = LabelRef_Serialize | LabelRef_Deserialize;
+
+/**  Метка в запросе: адаптер берёт то, что нужно его API (GitLab и GitHub — имя, Gitea — `id`). */
+export type LabelRef_Deserialize = {
+	id?: string,
+	name?: string,
+};
+
+/**  Метка в запросе: адаптер берёт то, что нужно его API (GitLab и GitHub — имя, Gitea — `id`). */
+export type LabelRef_Serialize = {
+	id: string,
+	name: string,
 };
 
 /**  Язык интерфейса и сообщений. */
@@ -4547,6 +4959,23 @@ export type MigrationReport_Serialize = {
 	customActions: number,
 	backgrounds: number,
 	issues: MigrationIssue[],
+};
+
+/**  Веха в запросе: GitLab и Gitea — `id`, GitHub — номер (`number`, в нём же `id`-строка не нужна). */
+export type MilestoneRef = MilestoneRef_Serialize | MilestoneRef_Deserialize;
+
+/**  Веха в запросе: GitLab и Gitea — `id`, GitHub — номер (`number`, в нём же `id`-строка не нужна). */
+export type MilestoneRef_Deserialize = {
+	id?: string,
+	number?: number | null,
+	title?: string,
+};
+
+/**  Веха в запросе: GitLab и Gitea — `id`, GitHub — номер (`number`, в нём же `id`-строка не нужна). */
+export type MilestoneRef_Serialize = {
+	id: string,
+	number: number | null,
+	title: string,
 };
 
 /**  Изменения, перенесённые в новую ветку. */
@@ -6795,6 +7224,23 @@ export type TextDiff_Serialize = {
 	truncated: boolean,
 };
 
+/**  Элемент ленты задачи: комментарий или событие. */
+export type TimelineItem = TimelineItem_Serialize | TimelineItem_Deserialize;
+
+/**  Элемент ленты задачи: комментарий или событие. */
+export type TimelineItem_Deserialize = {
+	type: "comment",
+} & IssueComment_Deserialize | {
+	type: "event",
+} & IssueEvent_Deserialize;
+
+/**  Элемент ленты задачи: комментарий или событие. */
+export type TimelineItem_Serialize = {
+	type: "comment",
+} & IssueComment_Serialize | {
+	type: "event",
+} & IssueEvent_Serialize;
+
 /**  Вход репозитория в статусе токена. */
 export type TokenLogin = TokenLogin_Serialize | TokenLogin_Deserialize;
 
@@ -6878,6 +7324,21 @@ export type UpdateBranch_Serialize = {
 /**  Ответ `creds:check-url`. */
 export type UrlChecked = {
 	ok: boolean,
+};
+
+/**  Пользователь в запросе: GitLab — `id`, GitHub и Gitea — `login`. */
+export type UserRef = UserRef_Serialize | UserRef_Deserialize;
+
+/**  Пользователь в запросе: GitLab — `id`, GitHub и Gitea — `login`. */
+export type UserRef_Deserialize = {
+	id?: string,
+	login?: string,
+};
+
+/**  Пользователь в запросе: GitLab — `id`, GitHub и Gitea — `login`. */
+export type UserRef_Serialize = {
+	id: string,
+	login: string,
 };
 
 /**  Параметры `repo:watch`. */

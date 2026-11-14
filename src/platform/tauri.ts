@@ -19,6 +19,18 @@
  */
 import { invoke } from '@tauri-apps/api/core';
 import { listen, type UnlistenFn } from '@tauri-apps/api/event';
+import type {
+  IssueComment_Serialize,
+  IssueDetail_Serialize,
+  IssueInput_Deserialize,
+  IssueLabel_Serialize,
+  IssueMeta_Serialize,
+  IssuePatch_Deserialize,
+  IssueQuery_Deserialize,
+  IssuesListResponse_Serialize,
+  Issue_Serialize,
+  RemoteOptions_Deserialize,
+} from '../../crates/gorynych-tauri/bindings/commands.ts';
 
 type Json = unknown;
 type Args = Record<string, Json>;
@@ -164,6 +176,38 @@ async function syncLocalStorage(): Promise<void> {
 
 /* ---------- window.api ---------- */
 
+type IssueOpts = RemoteOptions_Deserialize | null | undefined;
+
+/**
+ * Задачи сервера репозитория (нового в 2.0, `commands/issues.rs`). В preload 1.x этого раздела нет. Типы — из bindings:
+ * аргументы — `*_Deserialize` (поля можно пропускать), ответы — `*_Serialize`.
+ */
+export interface IssuesApi {
+  list: (dir: string, query: IssueQuery_Deserialize, opts?: IssueOpts) => Promise<ApiResult<IssuesListResponse_Serialize>>;
+  get: (dir: string, number: number, opts?: IssueOpts) => Promise<ApiResult<IssueDetail_Serialize>>;
+  meta: (dir: string, opts?: IssueOpts) => Promise<ApiResult<IssueMeta_Serialize>>;
+  create: (dir: string, input: IssueInput_Deserialize, opts?: IssueOpts) => Promise<ApiResult<Issue_Serialize>>;
+  update: (dir: string, number: number, patch: IssuePatch_Deserialize, opts?: IssueOpts) => Promise<ApiResult<Issue_Serialize>>;
+  commentAdd: (dir: string, number: number, body: string, opts?: IssueOpts) => Promise<ApiResult<IssueComment_Serialize>>;
+  commentUpdate: (dir: string, number: number, id: string, body: string, opts?: IssueOpts) => Promise<ApiResult<IssueComment_Serialize>>;
+  commentDelete: (dir: string, number: number, id: string, opts?: IssueOpts) => Promise<ApiResult<null>>;
+  labelCreate: (dir: string, name: string, color: string, opts?: IssueOpts) => Promise<ApiResult<IssueLabel_Serialize>>;
+  remove: (dir: string, number: number, opts?: IssueOpts) => Promise<ApiResult<null>>;
+}
+
+const issuesApi: IssuesApi = {
+  list: (dir, query, opts) => safe('issues_list', { dir, query, opts: opts ?? null }),
+  get: (dir, number, opts) => safe('issues_get', { dir, number, opts: opts ?? null }),
+  meta: (dir, opts) => safe('issues_meta', { dir, opts: opts ?? null }),
+  create: (dir, input, opts) => safe('issues_create', { dir, input, opts: opts ?? null }),
+  update: (dir, number, patch, opts) => safe('issues_update', { dir, number, patch, opts: opts ?? null }),
+  commentAdd: (dir, number, body, opts) => safe('issues_comment_add', { dir, number, body, opts: opts ?? null }),
+  commentUpdate: (dir, number, id, body, opts) => safe('issues_comment_update', { dir, number, id, body, opts: opts ?? null }),
+  commentDelete: (dir, number, id, opts) => safe('issues_comment_delete', { dir, number, id, opts: opts ?? null }),
+  labelCreate: (dir, name, color, opts) => safe('issues_label_create', { dir, name, color, opts: opts ?? null }),
+  remove: (dir, number, opts) => safe('issues_delete', { dir, number, opts: opts ?? null }),
+};
+
 type Opts = Json;
 const unsupported = (what: string): Promise<ApiResult> =>
   Promise.resolve({ ok: false, error: { code: 'UNSUPPORTED', message: `${what}: в 2.0 нет — авторизация репозитория одна`, hint: null, details: '' } });
@@ -252,6 +296,7 @@ function buildApi() {
       downloadArtifact: (dir: Json, artifact: Json, opts: Opts) => safe('cicd_artifact_download', { dir, artifact, opts }),
       showFile: (file: Json) => safe('cicd_show_file', { file: String(file) }),
     },
+    issues: issuesApi,
     gitlab: {
       status: (dir: Json, opts: Opts) => safe('gitlab_status', { dir, opts }),
       setToken: () => unsupported('gitlab:set-token'),
