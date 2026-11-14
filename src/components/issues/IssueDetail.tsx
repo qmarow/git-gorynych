@@ -28,6 +28,7 @@ import IssueDescription from './IssueDescription.tsx';
 import MarkdownEditor from './MarkdownEditor.tsx';
 import type { CommentActions } from './IssueCommentItem.tsx';
 import { ErrorBar } from './IssueBits.tsx';
+import IssueGitPanel, { type GitTarget } from './IssueGitPanel.tsx';
 
 const COMPACT = 720;
 
@@ -53,12 +54,16 @@ interface IssueDetailProps {
   onOpenWeb: (url: string) => void;
   onCopy: (text: string, what: string) => void;
   notify: Notify;
-  /** Кнопки шапки перед кнопкой состояния (этап 6: «Создать ветку»). */
+  /** Кнопки шапки перед кнопкой состояния («Создать ветку»). */
   extra?: ReactNode;
+  /** Ветки и коммиты задачи: к коммиту в графе, checkout, ветка из задачи. */
+  onLocate: (hash: string) => void;
+  onCheckout?: (target: GitTarget) => void;
+  onCreateBranch?: () => void;
 }
 
 const IssueDetail = forwardRef<IssueDetailHandle, IssueDetailProps>(function IssueDetail(
-  { repoPath, issue: fromList, entry, caps, meta, issues, onBack, onOpenIssue, onOpenWeb, onCopy, notify, extra },
+  { repoPath, issue: fromList, entry, caps, meta, issues, onBack, onOpenIssue, onOpenWeb, onCopy, notify, extra, onLocate, onCheckout, onCreateBranch },
   ref,
 ) {
   const issue = entry?.detail?.issue ?? fromList;
@@ -239,6 +244,7 @@ const IssueDetail = forwardRef<IssueDetailHandle, IssueDetailProps>(function Iss
       issue={issue}
       onOpenWeb={onOpenWeb}
       compact={compact}
+      git={<IssueGitPanel number={number} onLocate={onLocate} onCheckout={onCheckout} onCreateBranch={onCreateBranch} />}
     />
   );
   const otherState = issue.state === 'open' ? 'closed' : 'open';

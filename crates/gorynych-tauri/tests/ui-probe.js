@@ -37,13 +37,15 @@ window.__GORYNYCH_PROBE__ = async (initial) => {
   // Раздел «Задачи» (новое в 2.0) — пока в центре граф; у тестового репозитория нет remote
   const issues = graph && fullFilePref === null && !lanes?.rowsAfter ? await issuesScenario(waitFor).catch((e) => ({ probeError: String(e?.stack ?? e) })) : null;
   const editor = graph && fullFilePref === null ? await editorScenario(invoke, waitFor, sleep).catch((e) => ({ probeError: String(e?.stack ?? e) })) : null;
+  // Задачи и git (этап 6) — последним: делает коммит и ветку
+  const issueGit = graph && fullFilePref === null && !lanes?.rowsAfter ? await issueGitScenario(invoke, waitFor, sleep).catch((e) => ({ probeError: String(e?.stack ?? e) })) : null;
   // Второй запуск: выбор «Stash в графе» вернулся из SQLite — строки stash нет
   const viewPref = { showStash: JSON.parse(localStorage.getItem('graph.view.v1') ?? 'null')?.showStash ?? null, stashRow: Boolean(document.querySelector('[data-testid="graph-stash"]')) };
   // Выбор главных веток из прошлого запуска (второй запуск — из SQLite)
   const mainPref = localStorage.getItem(`graph.mainBranches.v1:${await invoke('repo_get_last')}`);
   // Запись уходит в базу пачкой через 400 мс
   await sleep(1000);
-  const report = { ...initial, graph, seeded, fullFilePref, editor, stash, main, mainPref, lanes, keyboard, search, highlight, filters, issues, viewPref, errors: [...(window.__gorynychErrors || [])], text: graph ? '' : text().slice(0, 3000) };
+  const report = { ...initial, graph, seeded, fullFilePref, editor, stash, main, mainPref, lanes, keyboard, search, highlight, filters, issues, issueGit, viewPref, errors: [...(window.__gorynychErrors || [])], text: graph ? '' : text().slice(0, 3000) };
   await invoke('frontend_ready', { report: JSON.stringify(report) });
 };
 
@@ -843,6 +845,118 @@ async function issueEditScenario(waitFor, section, real, issue, calls) {
   form().querySelector('[data-testid="md-submit"]').click();
   out.opened = (await waitFor(() => !form() && card()?.dataset.number, 3000)) ?? null;
   out.firstInList = section().querySelector('[role="option"][data-number]')?.dataset.number ?? null;
+  return out;
+}
+
+// Задачи и git (этап 6). У тестового репозитория нет сервера: `repo:load` дополняется подставным `forge` (GitHub), задачи
+// — подставной `window.api.issues`. Коммит «Починить вход #7» и ветка `7-vkhod`: в графе `#7` — ссылка (подсказка без
+// запросов, клик не выбирает строку и открывает задачу 7); в карточке — ветка и коммит, клик по коммиту выбирает его в
+// графе; «Создать ветку» — диалог с именем по шаблону из настроек, после создания раздел открыт, «Показать в графе»;
+// в форме коммита на новой ветке — «Задача #7», «Упомянуть» без повтора, «Закрыть коммитом», подсказка по `#`
+async function issueGitScenario(invoke, waitFor, sleep) {
+  const dir = await invoke('repo_get_last');
+  const realLoad = window.api.repo.load;
+  const realIssues = window.api.issues;
+  const section = () => document.querySelector('[data-testid="issues-view"]');
+  const card = () => section()?.querySelector('[data-testid="issue-detail"]');
+  const message = (text) => [...document.querySelectorAll('[data-col="message"]')].find((el) => el.textContent.includes(text));
+  const selectedRow = () => document.querySelector('[role="row"][aria-selected="true"] [data-col="message"]')?.textContent ?? null;
+  const key = (init) => (document.activeElement ?? document.body).dispatchEvent(new KeyboardEvent('keydown', { bubbles: true, cancelable: true, ...init }));
+  const forge = {
+    kind: 'github', provider: 'github', label: 'GitHub', remote: 'origin', url: 'https://example.invalid/o/r.git', protocol: 'https', host: 'example.invalid',
+    base: 'https://example.invalid', path: 'o/r', webUrl: 'https://example.invalid/o/r', apiBase: null,
+    token: { configured: false, source: null, pending: null, user: null, scopes: null, expiresAt: null, savedAt: null, login: null, repoLogin: null, unreadable: null, repoKey: null },
+    capabilities: {}, settings: null, detectedKind: null,
+  };
+  const me = { id: '1', login: 'tester', name: 'Тестер', avatarUrl: null, webUrl: null };
+  const issue = (number, title) => ({
+    id: String(number), number, title, body: '', bodyHtml: '', state: 'open', stateReason: null, author: me, assignees: [], labels: [], milestone: null,
+    commentsCount: 0, createdAt: '2026-11-01T10:00:00Z', updatedAt: '2026-11-10T10:00:00Z', closedAt: null, dueDate: null, confidential: false, locked: false,
+    webUrl: `https://example.invalid/o/r/issues/${number}`,
+  });
+  const caps = { create: true, edit: true, comment: true, editComments: true, deleteComments: true, close: true, labels: true, createLabel: true, multipleAssignees: true, milestones: true, dueDate: false, confidential: false, lock: false, delete: false, events: true, textSearch: true, counts: true, closeReasons: [] };
+  const calls = [];
+  window.api.repo.load = async (...args) => {
+    const res = await realLoad(...args);
+    if (res?.ok) res.data.forge = forge;
+    return res;
+  };
+  window.api.issues = {
+    ...realIssues,
+    list: async () => (calls.push('list'), { ok: true, data: { list: { items: [issue(7, 'Вход через SSO'), issue(8, 'Другая')], page: 1, hasMore: false, counts: { open: 2, closed: 0 } }, caps, provider: 'github', label: 'GitHub', webUrl: 'https://example.invalid/o/r/issues' } }),
+    meta: async () => ({ ok: true, data: { labels: [], milestones: [], members: [me], me, templates: [] } }),
+    get: async (_dir, number) => (calls.push(`get ${number}`), { ok: true, data: { issue: issue(number, number === 7 ? 'Вход через SSO' : 'Другая'), timeline: [], timelineTruncated: false } }),
+  };
+  const out = {};
+  try {
+    // Коммит со ссылкой и ветка с номером; граф перечитывается — уже с сервером
+    await invoke('repo_action', { dir, action: { name: 'stage', payload: { paths: ['файл.txt'] } } });
+    await invoke('repo_action', { dir, action: { name: 'commit', payload: { summary: 'Починить вход #7' } } });
+    await invoke('repo_action', { dir, action: { name: 'createBranch', payload: { name: '7-vkhod', checkout: false } } });
+    out.forge = Boolean(await waitFor(() => document.querySelector('[data-testid="toolbar-issues"]') && message('Починить вход')?.querySelector('[data-issue-ref="7"]'), 8000));
+    const ref = () => message('Починить вход')?.querySelector('[data-issue-ref="7"]');
+    if (!ref()) return { ...out, text: message('Починить вход')?.innerHTML ?? null };
+    const callsBefore = calls.length;
+    ref().dispatchEvent(new MouseEvent('mouseover', { bubbles: true }));
+    out.tipBefore = ref().dataset.tip ?? null;
+    out.noRequests = calls.length - callsBefore;
+    const before = selectedRow();
+    ref().dispatchEvent(new MouseEvent('mousedown', { bubbles: true, button: 0 }));
+    ref().click();
+    out.selectionKept = selectedRow() === before;
+    out.opened = (await waitFor(() => card()?.dataset.number, 3000)) ?? null;
+    // Блок «Ветки и коммиты»
+    await waitFor(() => card()?.querySelector('[data-testid="git-commit"]'), 3000);
+    out.branches = [...(card()?.querySelectorAll('[data-testid="git-branch"]') ?? [])].map((b) => b.dataset.branch).join(',');
+    out.commits = [...(card()?.querySelectorAll('[data-testid="git-commit"]') ?? [])].map((c) => c.textContent.slice(7).replace(/\s+\S+\s+\S+$/, '').trim()).join(',') || null;
+    card().querySelector('[data-testid="git-commit"]').click();
+    out.locate = Boolean(await waitFor(() => !section() && selectedRow()?.includes('Починить вход'), 3000));
+    // Подсказка теперь из загруженного списка
+    ref().dispatchEvent(new MouseEvent('mouseover', { bubbles: true }));
+    out.tipAfter = ref().dataset.tip ?? null;
+    // Ветка из задачи: шаблон из настроек
+    localStorage.setItem('issues.branchTemplate', '{type}/{number}-{slug}');
+    ref().click();
+    await waitFor(() => card()?.dataset.number === '7', 3000);
+    card().querySelector('[data-testid="issue-create-branch"]').click();
+    const input = await waitFor(() => [...document.querySelectorAll('.bg-gk-scrim input')].find((i) => i.value.includes('7')), 3000);
+    out.branchName = input?.value ?? null;
+    document.querySelector('[data-testid="branch-create"]')?.click();
+    const show = await waitFor(() => [...document.querySelectorAll('[data-testid="toast-action"]')].find((b) => b.textContent === 'Показать в графе'), 5000);
+    out.sectionStays = Boolean(section());
+    show?.click();
+    out.shown = Boolean(await waitFor(() => !section(), 2000));
+    // Форма коммита на новой ветке
+    const wip = await waitFor(() => message('// WIP'), 5000);
+    wip?.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, button: 0 }));
+    const bar = await waitFor(() => document.querySelector('[data-testid="commit-issue-bar"]'), 5000);
+    out.bar = bar?.textContent.replace(/Упомянуть.*$/, '').trim() ?? null;
+    const desc = () => document.querySelector('textarea[aria-label="Описание"]');
+    bar?.querySelector('[data-testid="commit-issue-refs"]').click();
+    await sleep(50);
+    bar?.querySelector('[data-testid="commit-issue-refs"]').click();
+    await sleep(50);
+    document.querySelector('[data-testid="commit-issue-closes"]')?.click();
+    await sleep(50);
+    out.description = desc()?.value ?? null;
+    // Подсказка по `#` в заголовке коммита
+    const summary = document.querySelector('input[aria-label="Заголовок коммита"]');
+    if (summary) {
+      summary.focus();
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(summary, 'Правка #');
+      summary.setSelectionRange(8, 8);
+      summary.dispatchEvent(new Event('input', { bubbles: true }));
+      const list = await waitFor(() => document.querySelector('[data-testid="md-suggestions"]'), 2000);
+      out.suggest = list ? [...list.querySelectorAll('[role="option"]')].map((o) => o.textContent).join(',') : null;
+      summary.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', code: 'Enter', bubbles: true, cancelable: true }));
+      await sleep(80);
+      out.summary = summary.value;
+    }
+  } finally {
+    window.api.repo.load = realLoad;
+    window.api.issues = realIssues;
+    localStorage.removeItem('issues.branchTemplate');
+  }
   return out;
 }
 

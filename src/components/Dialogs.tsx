@@ -503,14 +503,16 @@ interface BranchDialogProps {
   onSubmit: (branch: { name: string; start: string; checkout: boolean }) => void;
   branches?: BranchRef[];
   flow?: GitFlowConfig | null;
+  /** Новое в 2.0: начальное имя (ветка из задачи); без него поле пустое, как раньше. */
+  initialName?: string;
 }
 
-export function BranchDialog({ startHash, startLabel, busy, error, onClose, onSubmit, branches = [], flow = null }: BranchDialogProps) {
+export function BranchDialog({ startHash, startLabel, busy, error, onClose, onSubmit, branches = [], flow = null, initialName = '' }: BranchDialogProps) {
   const [type, setTypeRaw] = useState(() => {
     const t = readPrefType();
     return t === NO_PREFIX || FLOW_TYPES.some((x) => x.id === t) ? t : 'feature';
   });
-  const [name, setName] = useState('');
+  const [name, setName] = useState(initialName);
   const [checkout, setCheckout] = useState(true);
   const [base, setBase] = useState<BranchRef | null>(null); // { name, hash } — выбранная основа вместо коммита из графа
   const inputRef = useRef<HTMLInputElement>(null);

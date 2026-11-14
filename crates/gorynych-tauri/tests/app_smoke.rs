@@ -237,6 +237,19 @@ fn real_interface_opens_repository_on_the_compatibility_layer() {
         }),
         "правка задачи: {report}"
     );
+    // Задачи и git (этап 6): `#7` в графе — ссылка, клик не выбирает строку и открывает задачу; в карточке ветка и коммит,
+    // клик по коммиту — к нему в графе; ветка из задачи по шаблону настроек, раздел остаётся, «Показать в графе»; в форме
+    // коммита на ветке задачи — строка задачи, «Упомянуть» без повтора, «Закрыть коммитом», подсказка по `#`
+    assert_eq!(
+        report["issueGit"],
+        json!({
+            "forge": true, "tipBefore": "Открыть задачу #7", "noRequests": 0, "selectionKept": true, "opened": "7", "branches": "7-vkhod",
+            "commits": "Починить вход", "locate": true, "tipAfter": "#7 Вход через SSO · Открыта", "branchName": "issue/7-vkhod-cherez-sso",
+            "sectionStays": true, "shown": true, "bar": "Задача #7: Вход через SSO", "description": "Refs #7\n\nCloses #7",
+            "suggest": "#7Вход через SSO,#8Другая", "summary": "Правка #7 "
+        }),
+        "задачи и git: {report}"
+    );
     // Две дорожки помещаются: шаг прежний, хвостов нет
     assert_eq!(report["lanes"], json!({ "before": { "laneW": 28, "forceDots": false, "hidden": 0 }, "badge": null, "tails": 0 }), "дорожки: {report}");
 

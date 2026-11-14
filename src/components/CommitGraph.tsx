@@ -15,6 +15,7 @@ import GraphViewMenu from './GraphViewMenu.tsx';
 import type { MainBranches } from '../lib/mainBranches.ts';
 import { readable } from '../lib/scheme.ts';
 import { markSegments, searchWords } from '../lib/searchMarks.ts';
+import IssueRefText from './issues/IssueRefText.tsx';
 import { t as tr, tj, locale } from '../i18n/index.ts';
 
 /** Ссылка на коммите (`CommitRef`): ветка, серверная ветка или тег */
@@ -92,6 +93,10 @@ interface CommitGraphProps {
   pipelineTips?: Record<string, PipelineTip> | null;
   onPipelineHover?: (pipeline: PipelineMark) => void;
   onPipelineClick?: (pipeline: PipelineMark) => void;
+  /** Новое в 2.0: клик по `#123` в сообщении — задача (только у репозитория с сервером; без — текст как раньше). */
+  onIssueRef?: (number: number) => void;
+  /** Путь репозитория для подсказки `#123` из `issuesStore`. */
+  issuesPath?: string | null;
   onCompare?: (hash: string) => void;
   compareMark?: string | null;
   dragSource?: RefDragPayload | null;
@@ -211,6 +216,8 @@ export default function CommitGraph({
   pipelineTips = null, // { [id]: { status, text } } — сводка по заданиям для подсказки
   onPipelineHover,
   onPipelineClick,
+  onIssueRef,
+  issuesPath = null,
   onCompare, // Ctrl+клик: сравнить выбранный коммит с этим
   compareMark = null, // коммит, отмеченный для сравнения
   dragSource = null, // что сейчас перетаскивают (коммит или ветку)
@@ -527,8 +534,8 @@ export default function CommitGraph({
 
   // Обработчики строк стабильны (строки — memo): свежие пропсы App и состояние перетаскивания читаются через ref,
   // строка передаёт себя аргументом. Обработчики App (onCompare, onCopySha…) создаются при каждом его рендере.
-  const live = useRef({ onSelect, onActivate, onContextMenu, onCompare, onCopySha, onPipelineClick, onPipelineHover, onDragSource, onDropOnBranch, dragSource, dropHash, refActions });
-  live.current = { onSelect, onActivate, onContextMenu, onCompare, onCopySha, onPipelineClick, onPipelineHover, onDragSource, onDropOnBranch, dragSource, dropHash, refActions };
+  const live = useRef({ onSelect, onActivate, onContextMenu, onCompare, onCopySha, onPipelineClick, onPipelineHover, onDragSource, onDropOnBranch, dragSource, dropHash, refActions, onIssueRef });
+  live.current = { onSelect, onActivate, onContextMenu, onCompare, onCopySha, onPipelineClick, onPipelineHover, onDragSource, onDropOnBranch, dragSource, dropHash, refActions, onIssueRef };
 
   const copySha = useCallback((hash: string) => {
     live.current.onCopySha?.(hash);
@@ -571,6 +578,7 @@ export default function CommitGraph({
     live.current.onDropOnBranch?.(locals.map((name) => ({ name, hash: node.hash })), e.clientX, e.clientY, payload);
   }, []);
   const pipelineClick = useCallback((pipeline: PipelineMark) => live.current.onPipelineClick?.(pipeline), []);
+  const issueRef = useCallback((number: number) => live.current.onIssueRef?.(number), []);
   const pipelineHover = useCallback((pipeline: PipelineMark) => live.current.onPipelineHover?.(pipeline), []);
   // Наведение на строку — увеличить её узел в SVG напрямую; узел вне окна прокрутки размонтирован, класс поставится
   // при следующем наведении
@@ -753,6 +761,8 @@ export default function CommitGraph({
             fileHit={fileHits?.get(node.hash) ?? null}
             onPipelineHover={onPipelineHover ? pipelineHover : undefined}
             onPipelineClick={pipelineClick}
+            onIssueRef={onIssueRef ? issueRef : undefined}
+            issuesPath={issuesPath}
             selected={node.hash === selectedHash}
             dim={Boolean(matchSet) && !matchSet!.has(node.hash)}
             intro={intro}
@@ -1122,7 +1132,19 @@ function Marked({ text, words }: { text: string; words: readonly string[] }) {
   );
 }
 
-function MessageText({ node, strong, marks }: { node: GraphItem; strong: boolean | undefined; marks: readonly string[] }) {
+function MessageText({
+  node,
+  strong,
+  marks,
+  onIssueRef,
+  issuesPath,
+}: {
+  node: GraphItem;
+  strong: boolean | undefined;
+  marks: readonly string[];
+  onIssueRef?: (number: number) => void;
+  issuesPath?: string | null;
+}) {
   const cc = useMemo(() => parseSummary(node.message), [node.message]);
   // Подсказка: заголовок и описание (пустые строки сжаты, длинное описание укорочено)
   const desc = (node.description ?? '').replace(/\n{3,}/g, '\n\n').trim();
@@ -1149,7 +1171,7 @@ function MessageText({ node, strong, marks }: { node: GraphItem; strong: boolean
         data-tip-wide=""
         className={`w-0 flex-1 truncate ${strong ? 'text-gk-strong' : ''} ${node.isHead ? 'font-medium' : ''}`}
       >
-        <Marked text={text} words={marks} />
+        {onIssueRef ? <IssueRefText text={text} repoPath={issuesPath} onOpen={onIssueRef} renderPart={(part) => <Marked text={part} words={marks} />} /> : <Marked text={text} words={marks} />}
       </span>
     </>
   );
@@ -1173,6 +1195,8 @@ const Row = memo(function Row({
   fileHit,
   onPipelineHover,
   onPipelineClick,
+  onIssueRef,
+  issuesPath,
   onHoverNode,
   onSelect,
   onDoubleClick,
@@ -1210,6 +1234,8 @@ const Row = memo(function Row({
   fileHit: FileHit | null;
   onPipelineHover?: (pipeline: PipelineMark) => void;
   onPipelineClick?: (pipeline: PipelineMark) => void;
+  onIssueRef?: (number: number) => void;
+  issuesPath?: string | null;
   onHoverNode: (hash: string, on: boolean) => void;
   onSelect: (node: GraphItem, e: MouseEvent<HTMLDivElement>) => void;
   onDoubleClick: (node: GraphItem) => void;
@@ -1309,7 +1335,7 @@ const Row = memo(function Row({
             ) : (
               <>
                 {node.isHead && <HeadPill compact={compact} />}
-                <MessageText node={node} strong={selected || node.isHead} marks={marks} />
+                <MessageText node={node} strong={selected || node.isHead} marks={marks} onIssueRef={onIssueRef} issuesPath={issuesPath} />
                 {fileHit && (
                   <span
                     data-testid="row-file-hits"

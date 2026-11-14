@@ -26,6 +26,8 @@ import { isMod, kb } from '../lib/platform.ts';
 import { plural } from '../lib/format.ts';
 import { readable } from '../lib/scheme.ts';
 import { t as tr, tj } from '../i18n/index.ts';
+import CommitIssueBar, { useOpenIssues, type IssueTracker } from './issues/CommitIssueBar.tsx';
+import { useIssueSuggest } from './issues/IssueSuggest.tsx';
 import type { ApiResult } from '../platform/tauri.ts';
 import type { CommitTemplate_Serialize } from '../../crates/gorynych-tauri/bindings/commands.ts';
 
@@ -76,9 +78,11 @@ interface CommitFormProps {
   onCommit: (summary: string, description: string) => Promise<boolean | undefined> | boolean | undefined;
   banner?: ReactNode;
   onOpenSettings?: () => void;
+  /** Новое в 2.0: сервер задач репозитория — подсказка `#` и строка «Задача #N» ветки. Нет — как раньше. */
+  issueTracker?: IssueTracker | null;
 }
 
-export default function CommitForm({ repoPath, branch, stagedFiles, busy, onCommit, banner, onOpenSettings }: CommitFormProps) {
+export default function CommitForm({ repoPath, branch, stagedFiles, busy, onCommit, banner, onOpenSettings, issueTracker = null }: CommitFormProps) {
   const prefs = useCommitPrefs();
   const [draft, setDraft] = useDraft(repoPath);
   const { summary, description } = draft;
@@ -86,6 +90,9 @@ export default function CommitForm({ repoPath, branch, stagedFiles, busy, onComm
   const [pop, setPop] = useState<{ kind: 'scope' | 'ticket' | 'templates'; anchor: HTMLElement } | null>(null); // { kind: 'scope'|'ticket'|'templates', anchor }
   const summaryRef = useRef<HTMLInputElement>(null);
   const descRef = useRef<HTMLTextAreaElement>(null);
+  // Задачи (новое в 2.0): подсказка по `#` в заголовке и описании
+  const openIssues = useOpenIssues(repoPath, issueTracker);
+  const suggest = useIssueSuggest(openIssues);
 
   const ticket = useMemo(() => extractTicket(branch, prefs.ticketPattern), [branch, prefs.ticketPattern]);
   const parts = parseSummary(summary);
@@ -128,6 +135,11 @@ export default function CommitForm({ repoPath, branch, stagedFiles, busy, onComm
   const applySummary = (res: { summary: string; caret: number; description?: string }) => {
     setDraft((d) => ({ ...d, summary: res.summary, description: res.description ?? d.description }));
     caretTo(summaryRef, res.caret);
+  };
+
+  const applyDescription = (next: string, caret: number) => {
+    setDraft((d) => ({ ...d, description: next }));
+    caretTo(descRef, caret);
   };
 
   const submit = async () => {
@@ -252,8 +264,16 @@ export default function CommitForm({ repoPath, branch, stagedFiles, busy, onComm
         <input
           ref={summaryRef}
           value={summary}
-          onChange={(e) => setDraft((d) => ({ ...d, summary: e.target.value }))}
-          onKeyDown={(e) => e.key === 'Enter' && isMod(e) && submit()}
+          onChange={(e) => {
+            setDraft((d) => ({ ...d, summary: e.target.value }));
+            suggest.track(e.target);
+          }}
+          onSelect={(e) => suggest.track(e.currentTarget)}
+          onBlur={suggest.close}
+          onKeyDown={(e) => {
+            if (suggest.onKeyDown(e, (summary, caret) => applySummary({ summary, caret }))) return;
+            if (e.key === 'Enter' && isMod(e)) submit();
+          }}
           onFocus={(e) => {
             // Курсор в конце, а номер стоит в конце — встаём перед « (PROJ-1)»
             const el = e.currentTarget;
@@ -280,17 +300,28 @@ export default function CommitForm({ repoPath, branch, stagedFiles, busy, onComm
             {len}
           </span>
         )}
+        {suggest.popup((summary, caret) => applySummary({ summary, caret }), summaryRef.current)}
       </div>
       <textarea
         ref={descRef}
         value={description}
-        onChange={(e) => setDraft((d) => ({ ...d, description: e.target.value }))}
-        onKeyDown={(e) => e.key === 'Enter' && isMod(e) && submit()}
+        onChange={(e) => {
+          setDraft((d) => ({ ...d, description: e.target.value }));
+          suggest.track(e.target);
+        }}
+        onSelect={(e) => suggest.track(e.currentTarget)}
+        onBlur={suggest.close}
+        onKeyDown={(e) => {
+          if (suggest.onKeyDown(e, applyDescription)) return;
+          if (e.key === 'Enter' && isMod(e)) submit();
+        }}
         rows={description.split('\n').length > 3 ? 6 : 3}
         placeholder={gitTpl?.hint && prefs.useGitTemplate ? gitTpl.hint : tr('description')}
         aria-label={tr('description')}
         className={`${inputCls} resize-y`}
       />
+      <div className="relative h-0">{suggest.popup(applyDescription, descRef.current)}</div>
+      {issueTracker && <CommitIssueBar branch={branch} issues={openIssues} description={description} onDescription={(next) => setDraft((d) => ({ ...d, description: next }))} />}
       <div className="flex items-center">
         <button
           onClick={toggleSkipCi}

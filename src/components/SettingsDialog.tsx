@@ -6,6 +6,7 @@ import { CommitSettings } from './CommitForm.tsx';
 import { BACKGROUND_SEC, BACKOFF_SEC, SYNC_MODES, useSyncStatus } from '../lib/syncStatus.ts';
 import { kindInfo, kindLabel } from '../lib/servers.ts';
 import { t as tr, tj, locale, LANGUAGES, getLanguage, setLanguage } from '../i18n/index.ts';
+import BranchTemplateSetting from './issues/BranchTemplateSetting.tsx';
 import type { GuardConfig } from '../lib/guardRules.ts';
 import type { ApiResult } from '../platform/tauri.ts';
 import type { RepoData } from '../state/repoStore.ts';
@@ -379,6 +380,7 @@ function BranchesTab({ workflow, onChange }: { workflow: Workflow; onChange: (wo
         <div className="mt-2 text-[11.5px] text-gk-dim">
           {tr('works-for-all-switches-from')}</div>
       </div>
+      <BranchTemplateSetting />
 
     </div>
   );

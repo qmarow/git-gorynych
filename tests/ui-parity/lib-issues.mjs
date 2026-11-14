@@ -367,4 +367,27 @@ eq(lib.isOverdue({ state: 'open', dueDate: '2026-11-13T00:00:00Z' }, '2026-11-14
   });
 }
 
+/* ---------- Связь с git ---------- */
+
+eq(lib.issueType([{ name: 'Feature' }, { name: 'bug' }]), 'bug', 'порядок bug, feature, fix');
+eq(lib.issueType([{ name: 'fix' }]), 'fix');
+eq(lib.issueType([]), 'issue');
+eq(lib.branchNameFor({ number: 12, title: 'Падает вход', labels: [{ name: 'bug' }] }, '{type}/{number}-{slug}'), 'bug/12-padaet-vkhod');
+eq(lib.branchNameFor({ number: 12, title: 'x' }, '{type}/{number}'), 'issue/12', 'без меток');
+eq(lib.branchMentions('feature/12-x', 12), true);
+eq(lib.branchMentions('12', 12), true);
+eq(lib.branchMentions('fix-123', 12), false, 'часть другого числа');
+eq(lib.branchMentions('v1.12.0', 12), true, 'отдельное число и между точками');
+eq(lib.branchMentions('412', 12), false);
+eq(lib.issueNumberInBranch('feature/123-login'), 123);
+eq(lib.issueNumberInBranch('main'), null);
+eq(lib.issueNumberInBranch('release-2'), 2);
+eq(lib.issueNumberInBranch('0-zero'), null, 'ноль — не номер');
+store.clear();
+eq(lib.readBranchTemplate(), lib.DEFAULT_BRANCH_TEMPLATE);
+lib.writeBranchTemplate('{type}/{number}');
+eq(lib.readBranchTemplate(), '{type}/{number}');
+lib.writeBranchTemplate(lib.DEFAULT_BRANCH_TEMPLATE);
+eq(store.has(lib.BRANCH_TEMPLATE_KEY), false, 'умолчание не хранится');
+
 console.log(`lib-issues: ${checks} проверок прошли`);

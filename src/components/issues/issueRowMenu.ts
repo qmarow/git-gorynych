@@ -1,8 +1,8 @@
 /**
  * Новое в 2.0: контекстное меню строки списка задач — открыть, закрыть или открыть заново, назначить мне, скопировать
- * ссылку и номер, открыть на сервере.
+ * ссылку и номер, открыть на сервере, создать ветку.
  */
-import { CheckCircle2, CircleDot, Copy, ExternalLink, RotateCcw, UserPlus } from 'lucide-react';
+import { CheckCircle2, CircleDot, Copy, ExternalLink, GitBranch, RotateCcw, UserPlus } from 'lucide-react';
 import type { MenuEntry } from '../ContextMenu.tsx';
 import type { Issue, IssuePatch } from '../../lib/issues.ts';
 import { t } from '../../i18n/index.ts';
@@ -13,6 +13,7 @@ interface RowMenuActions {
   change: (patch: IssuePatch) => void;
   onCopy: (text: string, what: string) => void;
   onOpenWeb: (url: string) => void;
+  createBranch?: () => void;
 }
 
 export function rowMenu(issue: Issue, caps: IssueCaps | null, me: IssueUser_Serialize | null, actions: RowMenuActions): MenuEntry[] {
@@ -30,6 +31,7 @@ export function rowMenu(issue: Issue, caps: IssueCaps | null, me: IssueUser_Seri
         actions.change({ assignees: [...others, { id: me.id, login: me.login }] });
       },
     },
+    actions.createBranch && { label: t('issues-create-branch'), icon: GitBranch, onClick: actions.createBranch },
     { separator: true },
     { label: t('issues-menu-copy-link'), icon: Copy, onClick: () => actions.onCopy(issue.webUrl, t('issues-what-link')) },
     { label: t('issues-menu-copy-number', issue.number), icon: Copy, onClick: () => actions.onCopy(`#${issue.number}`, t('issues-what-number')) },

@@ -13,26 +13,23 @@
  *   каждая правка — `saveDraft`. Удаляет черновик `issuesStore` после успешной отправки.
  * Правки текста — `lib/markdownEdit.ts`.
  */
-import { useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from 'react';
 import { Bold, Code, Italic, Link2, List, ListChecks, Loader2, Quote } from 'lucide-react';
 import { Button } from '../Dialogs.tsx';
 import { clearDraft, loadDraft, saveDraft, type DraftSlot } from '../../lib/issueDrafts.ts';
 import {
-  applyTrigger,
   continueList,
-  findTrigger,
   indentList,
   insertLink,
   prefixLines,
   wrapSelection,
   type TextEdit,
-  type Trigger,
 } from '../../lib/markdownEdit.ts';
 import type { ApiResult } from '../../platform/tauri.ts';
 import { t } from '../../i18n/index.ts';
 import type { IssueUser_Serialize } from '../../../crates/gorynych-tauri/bindings/commands.ts';
 import Markdown from './Markdown.tsx';
-import { buildSuggestions, type Suggestion } from './suggestions.tsx';
+import { useIssueSuggest } from './IssueSuggest.tsx';
 
 const PREVIEW_DELAY = 300;
 const LINE = 20;
@@ -99,8 +96,6 @@ export default function MarkdownEditor({
   const [preview, setPreview] = useState<string | null>(null);
   const [previewing, setPreviewing] = useState(false);
   const [restored, setRestored] = useState(false);
-  const [trigger, setTrigger] = useState<Trigger | null>(null);
-  const [active, setActive] = useState(0);
   const locked = Boolean(disabled || busy);
   const draftPath = draft?.path;
   const draftSlot = draft?.slot;
@@ -163,20 +158,8 @@ export default function MarkdownEditor({
     };
   }, [tab, value, render]);
 
-  const suggestions = useMemo(() => buildSuggestions(trigger, issues, members), [trigger, issues, members]);
-
-  const updateTrigger = (el: HTMLTextAreaElement) => {
-    const next = el.selectionStart === el.selectionEnd ? findTrigger(el.value, el.selectionStart) : null;
-    setTrigger((prev) => (prev?.at === next?.at && prev?.kind === next?.kind && prev?.query === next?.query ? prev : next));
-    if (next?.at !== trigger?.at) setActive(0);
-  };
-
-  const pick = (item: Suggestion) => {
-    const el = area.current;
-    if (!el || !trigger) return;
-    apply(applyTrigger(el.value, el.selectionStart, trigger, item.insert));
-    setTrigger(null);
-  };
+  const suggest = useIssueSuggest(issues, members);
+  const applyText = (next: string, caret: number) => apply({ value: next, start: caret, end: caret });
 
   const format = (kind: 'bold' | 'italic' | 'code' | 'link' | 'list' | 'task' | 'quote') => {
     const el = area.current;
@@ -203,23 +186,7 @@ export default function MarkdownEditor({
       e.preventDefault();
       e.stopPropagation();
     };
-    if (suggestions.length && trigger) {
-      if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
-        stop();
-        setActive((i) => (i + (e.key === 'ArrowDown' ? 1 : suggestions.length - 1)) % suggestions.length);
-        return;
-      }
-      if ((e.key === 'Enter' || e.key === 'Tab') && !mod && !e.shiftKey) {
-        stop();
-        pick(suggestions[Math.min(active, suggestions.length - 1)]);
-        return;
-      }
-      if (e.key === 'Escape') {
-        stop();
-        setTrigger(null);
-        return;
-      }
-    }
+    if (suggest.onKeyDown(e, applyText)) return;
     if (mod && !e.altKey && e.key === 'Enter') {
       stop();
       if ((value.trim() || allowEmpty) && !locked) (e.shiftKey && onSecondarySubmit ? onSecondarySubmit : onSubmit)();
@@ -318,10 +285,10 @@ export default function MarkdownEditor({
             spellCheck
             onChange={(e) => {
               change(e.target.value);
-              updateTrigger(e.target);
+              suggest.track(e.target);
             }}
-            onSelect={(e) => updateTrigger(e.currentTarget)}
-            onBlur={() => setTrigger(null)}
+            onSelect={(e) => suggest.track(e.currentTarget)}
+            onBlur={suggest.close}
             onKeyDown={onKeyDown}
             className="block w-full resize-none bg-transparent px-2.5 py-1.5 text-[13px] leading-5 text-gk-text outline-none placeholder:text-gk-dim disabled:opacity-60"
           />
@@ -336,25 +303,7 @@ export default function MarkdownEditor({
             )}
           </div>
         )}
-        {tab === 'text' && trigger && suggestions.length > 0 && (
-          <div role="listbox" data-testid="md-suggestions" className="absolute left-2 top-full z-30 mt-1 w-72 overflow-hidden rounded-md border border-gk-border bg-gk-panel-2 py-1 shadow-xl backdrop-blur">
-            {suggestions.map((item, i) => (
-              <div
-                key={item.key}
-                role="option"
-                aria-selected={i === active}
-                onMouseDown={(e) => {
-                  e.preventDefault();
-                  pick(item);
-                }}
-                onMouseEnter={() => setActive(i)}
-                className={`flex cursor-pointer items-center gap-2 px-2.5 py-1 text-xs ${i === active ? 'bg-gk-hover text-gk-strong' : 'text-gk-text'}`}
-              >
-                {item.label}
-              </div>
-            ))}
-          </div>
-        )}
+        {tab === 'text' && suggest.popup(applyText)}
       </div>
       <div className="flex items-center justify-end gap-2 border-t border-gk-border px-2 py-1.5">
         {footer ?? <span className="mr-auto text-[11px] text-gk-dim">{t('issues-md-hint')}</span>}

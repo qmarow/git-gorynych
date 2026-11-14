@@ -96,14 +96,57 @@ export function slugify(title: string): string {
   return latin.normalize('NFKD').replace(/[̀-ͯ]/g, '').replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
 }
 
+/** Тип задачи для `{type}`: первая из меток `bug`, `feature`, `fix` (без учёта регистра), иначе `issue`. */
+export function issueType(labels: readonly { name: string }[] | null | undefined): string {
+  const names = new Set((labels ?? []).map((l) => l.name.toLowerCase()));
+  return ['bug', 'feature', 'fix'].find((type) => names.has(type)) ?? 'issue';
+}
+
 /**
- * Имя ветки по шаблону (`{number}` — номер задачи, `{slug}` — заголовок, см. `slugify`): повторы `-` сжимаются, длина —
- * не больше 60 символов, `-` и `/` на краях убираются. Пустой заголовок даёт просто номер.
+ * Имя ветки по шаблону (`{number}` — номер задачи, `{slug}` — заголовок, см. `slugify`, `{type}` — `issueType`):
+ * повторы `-` сжимаются, длина — не больше 60 символов, `-` и `/` на краях убираются. Пустой заголовок даёт просто номер.
  */
-export function branchNameFor(issue: Pick<Issue, 'number' | 'title'>, template: string = DEFAULT_BRANCH_TEMPLATE): string {
-  const name = (template || DEFAULT_BRANCH_TEMPLATE).split('{number}').join(String(issue.number)).split('{slug}').join(slugify(issue.title ?? ''));
+export function branchNameFor(issue: Pick<Issue, 'number' | 'title'> & { labels?: readonly { name: string }[] }, template: string = DEFAULT_BRANCH_TEMPLATE): string {
+  const name = (template || DEFAULT_BRANCH_TEMPLATE)
+    .split('{number}')
+    .join(String(issue.number))
+    .split('{slug}')
+    .join(slugify(issue.title ?? ''))
+    .split('{type}')
+    .join(issueType(issue.labels));
   const clean = (text: string) => text.replace(/-{2,}/g, '-').replace(/^[-/]+|[-/]+$/g, '');
   return clean(clean(name).slice(0, MAX_BRANCH_NAME));
+}
+
+/** Шаблон имени ветки из задачи — настройка «Ветки» (`localStorage`, в 2.0 ещё и SQLite, как соседние настройки). */
+export const BRANCH_TEMPLATE_KEY = 'issues.branchTemplate';
+
+export function readBranchTemplate(): string {
+  try {
+    return localStorage.getItem(BRANCH_TEMPLATE_KEY) || DEFAULT_BRANCH_TEMPLATE;
+  } catch {
+    return DEFAULT_BRANCH_TEMPLATE;
+  }
+}
+
+export function writeBranchTemplate(template: string): void {
+  try {
+    if (!template.trim() || template === DEFAULT_BRANCH_TEMPLATE) localStorage.removeItem(BRANCH_TEMPLATE_KEY);
+    else localStorage.setItem(BRANCH_TEMPLATE_KEY, template);
+  } catch {
+    /* хранилище недоступно — шаблон не запомнится */
+  }
+}
+
+/** В имени ветки номер задачи стоит отдельным числом: `(^|[^0-9])N([^0-9]|$)`. */
+export function branchMentions(name: string, number: number): boolean {
+  return new RegExp(`(^|[^0-9])${number}([^0-9]|$)`).test(name);
+}
+
+/** Номер задачи в имени ветки: первое отдельное число, иначе `null`. */
+export function issueNumberInBranch(name: string | null | undefined): number | null {
+  const match = /(?:^|[^0-9])([1-9][0-9]{0,8})(?=[^0-9]|$)/.exec(name ?? '');
+  return match ? Number(match[1]) : null;
 }
 
 /* ---------- Ссылки #123 ---------- */

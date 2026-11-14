@@ -47,6 +47,8 @@ interface IssueMetaPanelProps {
   issue?: Issue;
   onOpenWeb?: (url: string) => void;
   compact?: boolean;
+  /** Блок «Ветки и коммиты» (`IssueGitPanel`) — после срока. */
+  git?: ReactNode;
 }
 
 const sameUser = (a: IssueUser_Serialize, b: IssueUser_Serialize) => (a.id && b.id ? a.id === b.id : a.login === b.login);
@@ -73,7 +75,7 @@ function Section({ title, onEdit, editRef, children, testId }: { title: ReactNod
 const None = ({ children }: { children: ReactNode }) => <span className="text-gk-dim">{children}</span>;
 
 const IssueMetaPanel = forwardRef<MetaPanelHandle, IssueMetaPanelProps>(function IssueMetaPanel(
-  { values, caps, meta, editable, onChange, onCreateLabel, issue, onOpenWeb, compact = false },
+  { values, caps, meta, editable, onChange, onCreateLabel, issue, onOpenWeb, compact = false, git },
   ref,
 ) {
   const [pending, setPending] = useState<MetaChange>({});
@@ -207,6 +209,7 @@ const IssueMetaPanel = forwardRef<MetaPanelHandle, IssueMetaPanelProps>(function
           )}
         </Section>
       )}
+      {git}
       {(caps?.confidential || shown.confidential || issue?.locked) && (
         <Section title={t('issues-meta-access')}>
           <div className="flex flex-col gap-1">

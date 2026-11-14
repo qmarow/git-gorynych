@@ -29,6 +29,7 @@ import CommitForm from './CommitForm.tsx';
 import { readable } from '../lib/scheme.ts';
 import { t, tj } from '../i18n/index.ts';
 import type { RepoData } from '../state/repoStore.ts';
+import IssueRefText from './issues/IssueRefText.tsx';
 import type {
   CommitFile_Serialize,
   Commit_Serialize,
@@ -93,6 +94,8 @@ interface CommitDetailsProps {
   onStage: (paths: 'all' | string[]) => void;
   onUnstage: (paths: 'all' | string[]) => void;
   onCommit: (summary: string, description: string) => Promise<boolean | undefined> | boolean | undefined;
+  /** Новое в 2.0: `#123` в заголовке и описании коммита — задача (только у репозитория с сервером). */
+  onIssueRef?: (number: number) => void;
   onRevertTo?: (commit: DetailsCommit) => void;
   onStashAction: (action: 'apply' | 'pop' | 'drop', stash: DetailsStash) => void;
   onOpenConflict?: (path: string) => void;
@@ -136,6 +139,7 @@ export default function CommitDetails({
   searchHits = null, // поиск по графу: где в изменениях этого коммита найден текст
   searchQuery = '',
   onOpenSearchHit,
+  onIssueRef,
 }: CommitDetailsProps) {
   return (
     <aside className="glass flex w-full min-w-0 flex-col border-l border-gk-border bg-gk-panel">
@@ -187,6 +191,8 @@ export default function CommitDetails({
           searchHits={searchHits}
           searchQuery={searchQuery}
           onOpenSearchHit={onOpenSearchHit}
+          onIssueRef={onIssueRef}
+          issuesPath={repo.path}
         />
       )}
     </aside>
@@ -207,9 +213,11 @@ interface CommitPanelProps {
   searchHits: CommitHits | null;
   searchQuery: string;
   onOpenSearchHit?: (hash: string, file: HitFile, line?: HitLine) => void;
+  onIssueRef?: (number: number) => void;
+  issuesPath: string;
 }
 
-function CommitPanel({ commit, files, activeFile, onOpenFile, onSelectCommit, onRevertTo, busy, onFileMenu, searchHits, searchQuery, onOpenSearchHit }: CommitPanelProps) {
+function CommitPanel({ commit, files, activeFile, onOpenFile, onSelectCommit, onRevertTo, busy, onFileMenu, searchHits, searchQuery, onOpenSearchHit, onIssueRef, issuesPath }: CommitPanelProps) {
   const [treeView, setTreeView] = useState(false);
   const list = Array.isArray(files) ? files : [];
   const hitByPath = new Map((searchHits?.files ?? []).map((f) => [f.path, f] as const));
@@ -245,10 +253,12 @@ function CommitPanel({ commit, files, activeFile, onOpenFile, onSelectCommit, on
 
       <div className="max-h-[45%] shrink-0 space-y-3 overflow-y-auto border-b border-gk-border p-3">
         <div>
-          <h2 className="select-text text-[14px] font-semibold leading-snug text-gk-strong">{commit.message}</h2>
+          <h2 className="select-text text-[14px] font-semibold leading-snug text-gk-strong">
+            <IssueRefText text={commit.message} repoPath={issuesPath} onOpen={onIssueRef} />
+          </h2>
           {commit.description && (
             <p className="mt-1.5 select-text whitespace-pre-wrap text-xs leading-relaxed text-gk-muted">
-              {commit.description}
+              <IssueRefText text={commit.description} repoPath={issuesPath} onOpen={onIssueRef} />
             </p>
           )}
         </div>
@@ -720,6 +730,7 @@ function WipPanel({ repo, busy, activeFile, onOpenFile, onStage, onUnstage, onCo
         busy={busy}
         onCommit={onCommit}
         onOpenSettings={onCommitSettings}
+        issueTracker={repo.forge?.provider ? { remote: repo.forge.remote ?? null } : null}
         banner={
           <GuardBanner result={stagedFiles.length ? guardResult : null} state={guardState ?? 'on'} onOpen={onGuardOpen} onToggleRepo={onGuardToggleRepo} onSettings={onGuardSettings} />
         }

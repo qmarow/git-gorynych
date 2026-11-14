@@ -10,12 +10,13 @@
  * работают в полях ввода. Уже 640 px видна одна панель: список или карточка с «Назад к списку».
  */
 import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from 'react';
-import { CircleDot, FilePen, Inbox, KeyRound, Keyboard, Plus, Plug, SearchX } from 'lucide-react';
+import { CircleDot, FilePen, GitBranch, Inbox, Keyboard, Plus, SearchX } from 'lucide-react';
 import { rowMenu } from './issueRowMenu.ts';
 import { Button } from '../Dialogs.tsx';
 import ContextMenu, { type MenuEntry } from '../ContextMenu.tsx';
 import { ResizeHandle, useStoredWidth } from '../Resizer.tsx';
-import { isDefaultQuery, type IssueQuery } from '../../lib/issues.ts';
+import { isDefaultQuery, type Issue, type IssueQuery } from '../../lib/issues.ts';
+import type { GitTarget } from './IssueGitPanel.tsx';
 import { issuesStore, useIssuesStore } from '../../state/issuesStore.ts';
 import { t } from '../../i18n/index.ts';
 import type { ForgeStatus_Serialize } from '../../../crates/gorynych-tauri/bindings/commands.ts';
@@ -27,6 +28,7 @@ import IssueForm from './IssueForm.tsx';
 import { loadDraft } from '../../lib/issueDrafts.ts';
 import { EmptyState, ErrorBar, Skeleton } from './IssueBits.tsx';
 import { KeyHelp, KeyList } from './IssueKeys.tsx';
+import FatalState, { isFatal } from './IssuesFatal.tsx';
 
 const REFRESH_EVERY = 120_000;
 const REFRESH_ON_FOCUS_AFTER = 60_000;
@@ -46,23 +48,19 @@ interface IssuesViewProps {
   onOpenWeb: (url: string) => void;
   onCopy: (text: string, what: string) => void;
   notify: Notify;
-  /** Этап 6: ветка из задачи. */
-  onCreateBranch?: (name: string) => void;
+  /** Ветка из задачи: диалог создания ветки с именем по шаблону. */
+  onCreateBranch?: (issue: Issue) => void;
+  /** Закрыть раздел и выбрать коммит в графе. */
+  onLocateCommit?: (hash: string) => void;
+  onCheckout?: (target: GitTarget) => void;
 }
 
 const isTyping = (el: EventTarget | null) =>
   el instanceof HTMLElement && (el.isContentEditable || el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.tagName === 'SELECT');
 const visible = () => document.visibilityState === 'visible';
-const LOGIN_CODES = new Set(['NO_TOKEN', 'AUTH']);
-const NO_SERVER_CODES = new Set(['NO_REMOTE', 'NO_PROVIDER']);
 
-/** Настройки задач на сервере: GitLab — «Общие», GitHub и Gitea — настройки репозитория. */
-function serverSettingsUrl(forge: ForgeStatus_Serialize | null): string | null {
-  if (!forge?.webUrl) return null;
-  return forge.provider === 'gitlab' ? `${forge.webUrl}/edit` : `${forge.webUrl}/settings`;
-}
 
-export default function IssuesView({ repoPath, remote, forge, onClose, onLogin, onServerSettings, onOpenWeb, onCopy, notify }: IssuesViewProps) {
+export default function IssuesView({ repoPath, remote, forge, onClose, onLogin, onServerSettings, onOpenWeb, onCopy, notify, onCreateBranch, onLocateCommit, onCheckout }: IssuesViewProps) {
   const repo = useIssuesStore((s) => s.byRepo[repoPath]);
   const store = issuesStore.getState;
   const rootRef = useRef<HTMLDivElement>(null);
@@ -175,10 +173,10 @@ export default function IssuesView({ repoPath, remote, forge, onClose, onLogin, 
       setMenu({
         x,
         y,
-        items: rowMenu(issue, cur.caps, cur.meta?.me ?? null, { open: () => selectNow(number), change: (patch) => void changeIssue(number, patch), onCopy, onOpenWeb }),
+        items: rowMenu(issue, cur.caps, cur.meta?.me ?? null, { open: () => selectNow(number), change: (patch) => void changeIssue(number, patch), onCopy, onOpenWeb, createBranch: onCreateBranch && (() => onCreateBranch(issue)) }),
       });
     },
-    [repoPath, selectNow, onCopy, onOpenWeb],
+    [repoPath, selectNow, onCopy, onOpenWeb, onCreateBranch],
   );
 
   const onKeyDown = (e: ReactKeyboardEvent<HTMLDivElement>) => {
@@ -217,6 +215,9 @@ export default function IssuesView({ repoPath, remote, forge, onClose, onLogin, 
     } else if (e.code === 'KeyE' && !e.shiftKey && cardEl.current) {
       e.preventDefault();
       cardEl.current.editTitle();
+    } else if (e.code === 'KeyB' && !e.shiftKey && shownIssue && onCreateBranch) {
+      e.preventDefault();
+      onCreateBranch(shownIssue);
     } else if ((e.code === 'KeyL' || e.code === 'KeyA' || e.code === 'KeyM') && !e.shiftKey && cardEl.current) {
       e.preventDefault();
       cardEl.current.openPicker(e.code === 'KeyL' ? 'labels' : e.code === 'KeyA' ? 'assignees' : 'milestone');
@@ -236,7 +237,7 @@ export default function IssuesView({ repoPath, remote, forge, onClose, onLogin, 
   };
 
   const code = repo?.listError?.code ?? null;
-  const fatal = repo?.listStatus === 'error' && code && (LOGIN_CODES.has(code) || NO_SERVER_CODES.has(code) || code === 'ISSUES_DISABLED') ? code : null;
+  const fatal = repo?.listStatus === 'error' && isFatal(code) ? code : null;
   const caps = repo?.caps ?? null;
   const readOnly = Boolean(caps && !caps.create && !caps.edit && !caps.close && !caps.comment);
   // Задача не из списка (ссылка #номер в тексте) — из загруженной карточки
@@ -246,25 +247,8 @@ export default function IssuesView({ repoPath, remote, forge, onClose, onLogin, 
   const showCard = !narrow || shown != null || formOpen;
 
   let body: ReactNode;
-  if (fatal && LOGIN_CODES.has(fatal)) {
-    body = (
-      <EmptyState state="login" icon={KeyRound} title={t('issues-login-needed', forge?.host ?? '')}>
-        <Button variant="primary" onClick={onLogin}>{t('issues-login')}</Button>
-      </EmptyState>
-    );
-  } else if (fatal && NO_SERVER_CODES.has(fatal)) {
-    body = (
-      <EmptyState state="no-server" icon={Plug} title={t('issues-no-server')}>
-        <button type="button" onClick={onServerSettings} className="text-xs text-gk-blue hover:underline">{t('issues-server-settings')}</button>
-      </EmptyState>
-    );
-  } else if (fatal === 'ISSUES_DISABLED') {
-    const url = serverSettingsUrl(forge);
-    body = (
-      <EmptyState state="disabled" icon={Inbox} title={t('issues-tracker-off')}>
-        {url && <Button onClick={() => onOpenWeb(url)}>{t('issues-open-server-settings')}</Button>}
-      </EmptyState>
-    );
+  if (fatal) {
+    body = <FatalState code={fatal} forge={forge} onLogin={onLogin} onServerSettings={onServerSettings} onOpenWeb={onOpenWeb} />;
   } else {
     const filtered = repo ? !isDefaultQuery(repo.query) || Boolean(localSearch.trim()) : false;
     const listBody =
@@ -329,7 +313,7 @@ export default function IssuesView({ repoPath, remote, forge, onClose, onLogin, 
             {help ? (
               <KeyHelp />
             ) : formOpen && repo ? (
-              <IssueForm key={repoPath} repoPath={repoPath} caps={repo.caps} meta={repo.meta} issues={repo.items} notify={notify} onCancel={() => selectNow(null)} />
+              <IssueForm key={repoPath} repoPath={repoPath} caps={repo.caps} meta={repo.meta} issues={repo.items} notify={notify} onCancel={() => selectNow(null)} createdAction={onCreateBranch && ((issue) => ({ label: t('issues-create-branch'), onClick: () => onCreateBranch(issue) }))} />
             ) : shownIssue && repo ? (
               <IssueDetail
                 ref={cardEl}
@@ -345,6 +329,17 @@ export default function IssuesView({ repoPath, remote, forge, onClose, onLogin, 
                 onOpenWeb={onOpenWeb}
                 onCopy={onCopy}
                 notify={notify}
+                onLocate={(hash) => onLocateCommit?.(hash)}
+                onCheckout={onCheckout}
+                onCreateBranch={onCreateBranch && (() => onCreateBranch(shownIssue))}
+                extra={
+                  onCreateBranch && (
+                    <button type="button" data-testid="issue-create-branch" onClick={() => onCreateBranch(shownIssue)} className="flex h-7 items-center gap-1.5 rounded border border-gk-border bg-gk-hover px-2.5 text-xs text-gk-text hover:bg-gk-fg/10">
+                      <GitBranch size={13} className="text-gk-green" />
+                      {t('issues-create-branch')}
+                    </button>
+                  )
+                }
               />
             ) : shown != null && shownEntry?.status === 'error' ? (
               <EmptyState state="card-error" icon={SearchX} title={`${t('issues-card-failed')}: ${shownEntry.error?.message ?? ''}`}>

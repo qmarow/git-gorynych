@@ -65,6 +65,7 @@ import ConflictView, { type RunAction } from './components/ConflictView.tsx';
 import CiView from './components/CiView.tsx';
 import IssuesView from './components/issues/IssuesView.tsx';
 import { issuesStore } from './state/issuesStore.ts';
+import { branchNameFor, readBranchTemplate } from './lib/issues.ts';
 import RebaseView, { type RebaseSession } from './components/RebaseView.tsx';
 import CompareView, { type CompareSearchJump } from './components/CompareView.tsx';
 import FileView, { type FileViewState } from './components/FileView.tsx';
@@ -292,7 +293,7 @@ type Dialog =
   | { type: 'error'; action: ReactNode; error: DialogError }
   | { type: 'rejected'; branch: string | null | undefined; remote: string }
   | { type: 'checkoutWip'; target: CheckoutTarget; wip: WipConflict; resolve: (res: UiResult<unknown>) => void }
-  | { type: 'branch'; startHash: string | null; startLabel: string; error: DialogError | null; flow: GitFlowConfig | null }
+  | { type: 'branch'; startHash: string | null; startLabel: string; error: DialogError | null; flow: GitFlowConfig | null; initialName?: string; fromIssue?: boolean }
   | { type: 'tag'; hash: string; label: string; error?: DialogError | null }
   | ({ type: 'confirm' } & ConfirmOptions)
   | { type: 'renameBranch'; from: string; upstream: string | null | undefined; busy: boolean; error: DialogError | null }
@@ -1250,9 +1251,11 @@ export default function App() {
 
   const createBranch = async (params: ActionPayload<'createBranch'>) => {
     setDialog((d) => ({ ...d, error: null }) as Dialog);
+    // Ветка из задачи: раздел задач остаётся открытым, в уведомлении — «Показать в графе»
+    const fromIssue = dialog?.type === 'branch' && dialog.fromIssue ? { start: params.start ?? dialog.startHash } : null;
     const res = await run('createBranch', params, {
       label: 'Branch',
-      success: (d) => tr('branch-created', d.name, d.checkedOut ? tr('and-checked-out') : ''),
+      success: fromIssue ? null : (d) => tr('branch-created', d.name, d.checkedOut ? tr('and-checked-out') : ''),
       onError: (error) => {
         if (!['INVALID_NAME', 'BRANCH_EXISTS'].includes(error.code)) return false;
         setDialog((d) => (d?.type === 'branch' ? { ...d, error } : d));
@@ -1260,6 +1263,19 @@ export default function App() {
       },
     });
     if (res.ok) setDialog(null);
+    if (res.ok && fromIssue) {
+      notify({
+        type: 'success',
+        title: tr('branch-created', res.data.name, res.data.checkedOut ? tr('and-checked-out') : ''),
+        action: {
+          label: tr('issues-show-in-graph'),
+          onClick: () => {
+            setIssuesView(null);
+            locateCommit(fromIssue.start);
+          },
+        },
+      });
+    }
   };
 
   // Создание ветки прямо из списка веток: от HEAD и сразу переключиться
@@ -1282,11 +1298,12 @@ export default function App() {
     setSelectedHash(hash);
   };
 
-  const openBranchDialog = (node?: GraphEntry) => {
+  // `initialName` и `fromIssue` — ветка из задачи (новое в 2.0)
+  const openBranchDialog = (node?: GraphEntry, opts: { initialName?: string; fromIssue?: boolean } = {}) => {
     const sel = node ?? allCommits.find((c) => c.hash === selectedHash);
     const startHash = sel && !sel.wip ? sel.hash : repo!.headHash;
     const label = sel && !sel.wip ? `${sel.hash.slice(0, 7)} — ${sel.message}` : `HEAD (${repo!.headHash?.slice(0, 7)})`;
-    setDialog({ type: 'branch', startHash, startLabel: label, error: null, flow: null });
+    setDialog({ type: 'branch', startHash, startLabel: label, error: null, flow: null, ...opts });
     // Приписки git flow из настроек репозитория (git flow init), если они есть
     const path = repo!.path;
     api?.repo?.gitflowConfig?.(path).then((res) => {
@@ -3098,6 +3115,16 @@ export default function App() {
   // Раздел «Задачи» — по той же формуле
   const issuesCentered = Boolean(issuesView) && !(conflictPath || diffTarget || compareView || rebaseView || fileView);
   const toggleIssues = () => setIssuesView(issuesView ? null : { n: Date.now() });
+  // `#123` в графе и панели коммита (новое в 2.0): раздел задач с этой задачей
+  const openIssueRef = (number: number) => {
+    const path = repoRef.current?.path;
+    if (!path) return;
+    const store = issuesStore.getState();
+    void store.open(path, repoRef.current?.forge?.remote ?? null);
+    void store.select(path, number);
+    setIssuesView({ n: Date.now() });
+  };
+  const issueRefs = forge?.provider ? openIssueRef : undefined;
 
   /* ---------- Разметка ---------- */
 
@@ -3446,11 +3473,19 @@ export default function App() {
                     onOpenWeb={(url) => void api.openExternal(url)}
                     onCopy={(text, what) => void copy(text, what)}
                     notify={notify}
+                    onCreateBranch={(issue) => openBranchDialog(undefined, { initialName: branchNameFor(issue, readBranchTemplate()), fromIssue: true })}
+                    onLocateCommit={(hash) => {
+                      setIssuesView(null);
+                      locateCommit(hash);
+                    }}
+                    onCheckout={(target) => void checkout(target)}
                   />
                 )}
                 {/* Граф под разделом задач не размонтируется: после закрытия раздела прокрутка на прежнем месте */}
                 <div className={issuesView ? 'pointer-events-none invisible absolute inset-0 flex flex-col' : 'contents'} inert={Boolean(issuesView)}>
                 <CommitGraph
+                  onIssueRef={issueRefs}
+                  issuesPath={repo!.path}
                   commits={graphCommits}
                   introKey={repo!.path}
                   focus={graphFocus}
@@ -3506,6 +3541,7 @@ export default function App() {
                 className="-left-1"
               />
               <CommitDetails
+                onIssueRef={issueRefs}
                 commit={selected as SelectedRow | null}
                 files={(selected && !selected.wip ? filesByHash[selectedKey!] : null) as PropsOf<typeof CommitDetails, 'files'>}
                 searchHits={(searchOpen && selected && !selected.wip ? fileHits?.get(selected.hash) ?? null : null) as CommitHits | null}
@@ -3797,6 +3833,7 @@ export default function App() {
           startLabel={dialog.startLabel}
           branches={branchBases}
           flow={dialog.flow}
+          initialName={dialog.initialName}
           busy={busyAction === 'createBranch'}
           error={dialog.error}
           onClose={() => setDialog(null)}

@@ -3085,3 +3085,19 @@ issues-key-title = изменить заголовок
 issues-key-pickers = метки / исполнители / веха
 issues-key-send = отправить комментарий или создать задачу
 issues-key-send-close = отправить и закрыть задачу
+
+# Задачи: связь с git (новое в 2.0)
+issues-create-branch = Создать ветку
+issues-show-in-graph = Показать в графе
+issues-git-title = Ветки и коммиты
+issues-git-empty = Веток и коммитов пока нет
+issues-git-checkout = Переключиться на ветку
+issues-git-more = Ещё { $a0 }
+issues-open-ref = Открыть задачу #{ $a0 }
+issues-branch-template = Шаблон имени ветки для задачи
+issues-branch-template-hint = Переменные: {"{"}number{"}"} — номер, {"{"}slug{"}"} — заголовок латиницей, {"{"}type{"}"} — bug, feature, fix или issue по меткам
+issues-branch-template-example = Пример:
+issues-branch-template-example-title = Падает вход через SSO
+issues-commit-issue = Задача #{ $a0 }: { $a1 }
+issues-commit-mention = Упомянуть
+issues-commit-close = Закрыть коммитом

@@ -3085,3 +3085,19 @@ issues-key-title = edit title
 issues-key-pickers = labels / assignees / milestone
 issues-key-send = send the comment or create the issue
 issues-key-send-close = comment and close the issue
+
+# Задачи: связь с git (новое в 2.0)
+issues-create-branch = Create branch
+issues-show-in-graph = Show in graph
+issues-git-title = Branches and commits
+issues-git-empty = No branches or commits yet
+issues-git-checkout = Check out the branch
+issues-git-more = { $a0 } more
+issues-open-ref = Open issue #{ $a0 }
+issues-branch-template = Branch name template for an issue
+issues-branch-template-hint = Variables: {"{"}number{"}"} — number, {"{"}slug{"}"} — title in Latin letters, {"{"}type{"}"} — bug, feature, fix or issue by labels
+issues-branch-template-example = Example:
+issues-branch-template-example-title = Login via SSO fails
+issues-commit-issue = Issue #{ $a0 }: { $a1 }
+issues-commit-mention = Mention
+issues-commit-close = Close with commit
