@@ -393,7 +393,13 @@ export function createIssuesStore(getApi: () => IssuesApi | undefined, options: 
         if (detailSeq.get(key) !== mine) return;
         patch(path, (cur) => {
           const prev = cur.details[number];
-          if (!res.ok) return { details: { ...cur.details, [number]: { detail: prev?.detail ?? null, status: 'error', error: res.error, loadedAt: prev?.loadedAt ?? 0 } } };
+          if (!res.ok) {
+            const gone = res.error.code === 'NOT_FOUND';
+            return {
+              ...(gone ? { items: cur.items.filter((i) => i.number !== number), ...(cur.board ? { board: { ...cur.board, items: cur.board.items.filter((i) => i.number !== number) } } : {}) } : {}),
+              details: { ...cur.details, [number]: { detail: gone ? null : (prev?.detail ?? null), status: 'error', error: res.error, loadedAt: prev?.loadedAt ?? 0 } },
+            };
+          }
           const busy = (cur.pending[number] ?? 0) > 0 && prev?.detail;
           const detail = busy ? { ...res.data, issue: prev.detail!.issue } : res.data;
           const items = busy ? cur.items : cur.items.map((issue) => (issue.number === number ? res.data.issue : issue));

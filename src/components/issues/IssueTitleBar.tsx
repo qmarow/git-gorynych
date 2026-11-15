@@ -13,7 +13,7 @@ import type { Issue } from '../../lib/issues.ts';
 import { t } from '../../i18n/index.ts';
 import type { IssueCaps } from '../../../crates/gorynych-tauri/bindings/commands.ts';
 import IssueStateButton from './IssueStateButton.tsx';
-import { StateIcon, stateTitle, userName } from './IssueBits.tsx';
+import { StateIcon, commentsText, stateTitle, userName } from './IssueBits.tsx';
 
 export interface TitleBarHandle {
   editTitle: () => void;
@@ -123,7 +123,7 @@ const IssueTitleBar = forwardRef<TitleBarHandle, IssueTitleBarProps>(function Is
         </span>
         {issue.author && <span className="font-medium text-gk-text">{userName(issue.author)}</span>}
         <span data-tip={shortDate(issue.createdAt)}>{t('issues-opened-ago', relativeTime(issue.createdAt))}</span>
-        <span className="flex items-center gap-1">
+        <span className="flex items-center gap-1" data-tip={commentsText(issue.commentsCount)} aria-label={commentsText(issue.commentsCount)}>
           <MessageSquare size={12} />
           {issue.commentsCount}
         </span>

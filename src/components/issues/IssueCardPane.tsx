@@ -1,5 +1,5 @@
 /**
- * Новое в 2.0: правая часть раздела «Задачи» — памятка клавиш, форма новой задачи, карточка (`IssueDetail`), заглушка
+ * Новое в 2.0: правая часть раздела «Задачи» — форма новой задачи, карточка (`IssueDetail`), заглушка
  * загрузки, ошибка или «Выберите задачу». Та же карточка — в выезжающей панели доски.
  */
 import type { ReactNode, Ref } from 'react';
@@ -10,7 +10,7 @@ import { t } from '../../i18n/index.ts';
 import IssueDetail, { type IssueDetailHandle } from './IssueDetail.tsx';
 import IssueForm from './IssueForm.tsx';
 import type { GitTarget } from './IssueGitPanel.tsx';
-import { KeyHelp, KeyList } from './IssueKeys.tsx';
+import { KeyList } from './IssueKeys.tsx';
 import { EmptyState, Skeleton } from './IssueBits.tsx';
 
 type Notify = (toast: { type: string; title: ReactNode; hint?: ReactNode; action?: { label: ReactNode; onClick: () => void } }) => void;
@@ -30,18 +30,16 @@ interface IssueCardPaneProps {
   repo: RepoIssues;
   number: number | null;
   formOpen?: boolean;
-  help?: boolean;
   /** «Назад к списку» (узкий раздел) или закрытие панели доски. */
   onBack?: () => void;
   cardRef?: Ref<IssueDetailHandle>;
   actions: CardPaneActions;
 }
 
-export default function IssueCardPane({ repoPath, repo, number, formOpen = false, help = false, onBack, cardRef, actions }: IssueCardPaneProps) {
+export default function IssueCardPane({ repoPath, repo, number, formOpen = false, onBack, cardRef, actions }: IssueCardPaneProps) {
   const { onSelect, onOpenWeb, onCopy, notify, onCreateBranch, onLocateCommit, onCheckout } = actions;
   const issue = number != null ? (repo.items.find((i) => i.number === number) ?? repo.board?.items.find((i) => i.number === number) ?? repo.details[number]?.detail?.issue ?? null) : null;
   const entry = number != null ? repo.details[number] : undefined;
-  if (help) return <KeyHelp />;
   if (formOpen) {
     return (
       <IssueForm
@@ -88,7 +86,7 @@ export default function IssueCardPane({ repoPath, repo, number, formOpen = false
   }
   if (number != null && entry?.status === 'error') {
     return (
-      <EmptyState state="card-error" icon={SearchX} title={`${t('issues-card-failed')}: ${entry.error?.message ?? ''}`}>
+      <EmptyState state={entry.error?.code === 'NOT_FOUND' ? 'not-found' : 'card-error'} icon={SearchX} title={entry.error?.code === 'NOT_FOUND' ? t('issues-card-not-found') : `${t('issues-card-failed')}: ${entry.error?.message ?? ''}`}>
         <button type="button" onClick={() => onSelect(number)} className="text-xs text-gk-blue hover:underline">{t('issues-retry')}</button>
       </EmptyState>
     );

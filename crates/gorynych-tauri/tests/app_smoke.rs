@@ -202,7 +202,7 @@ fn real_interface_opens_repository_on_the_compatibility_layer() {
     // прокрутка и выбор переживают закрытие раздела
     assert_eq!(
         report["issues"]["list"],
-        json!({ "loaded": true, "rendered": 21, "counts": "Открытые500", "searchEarly": 0, "search": "123", "mine": "@me", "loadMore": true, "keys": [496], "selected": "496", "card": true, "scrollKept": true, "selectedKept": true, "detail": report["issues"]["list"]["detail"], "edit": report["issues"]["list"]["edit"], "board": report["issues"]["list"]["board"] }),
+        json!({ "loaded": true, "rendered": 21, "counts": "Открытые500", "searchEarly": 0, "search": "123", "mine": "@me", "loadMore": true, "keys": [496], "selected": "496", "card": true, "scrollKept": true, "selectedKept": true, "detail": report["issues"]["list"]["detail"], "edit": report["issues"]["list"]["edit"], "board": report["issues"]["list"]["board"], "quality": report["issues"]["list"]["quality"] }),
         "список задач: {report}"
     );
     // Карточка (этап 4): HTML описания — настоящий `issues_render_markdown`; вредоносная разметка не исполняется, сломанная
@@ -250,6 +250,18 @@ fn real_interface_opens_repository_on_the_compatibility_layer() {
             "highlight": true, "dropped": "bug", "inColumn": true, "keyMove": "closed", "panel": "498", "panelClosed": true
         }),
         "доска и массовые действия: {report}"
+    );
+    // Ошибки и доступность (этап 8): нет прав — «Недостаточно прав» с подсказкой сервера, откат, список перечитан; задача
+    // удалена — строка убрана, «Задача не найдена»; лимит запросов — своя полоса; памятка клавиш — модальное окно, Esc
+    // закрывает только её; фокус после выбора меток — на кнопке; исключение — граница раздела, окно живо, перезагрузка
+    assert_eq!(
+        report["issues"]["list"]["quality"],
+        json!({
+            "forbidden": "Недостаточно правНужны права на запись", "rolledBack": true, "capsReread": true,
+            "notFound": "Задача не найдена — возможно, её удалили на сервереПовторить", "rowRemoved": true, "rateLimit": "bar",
+            "helpModal": true, "helpClosed": true, "focusBack": true, "crashed": true, "windowAlive": true, "reloaded": true
+        }),
+        "ошибки и доступность: {report}"
     );
     // Задачи и git (этап 6): `#7` в графе — ссылка, клик не выбирает строку и открывает задачу; в карточке ветка и коммит,
     // клик по коммиту — к нему в графе; ветка из задачи по шаблону настроек, раздел остаётся, «Показать в графе»; в форме

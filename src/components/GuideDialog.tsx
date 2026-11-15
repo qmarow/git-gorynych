@@ -3,6 +3,7 @@ import { installGitHint, kb, openFolderLabel } from '../lib/platform.ts';
 import {
   Archive,
   BookOpen,
+  CircleDot,
   Cloud,
   FileClock,
   GitBranch,
@@ -31,6 +32,7 @@ import {
   type LucideIcon,
 } from 'lucide-react';
 import { t, tj } from '../i18n/index.ts';
+import { KeyList } from './issues/IssueKeys.tsx';
 
 /** Группа горячих клавиш: название и пары «сочетание — что делает» */
 export type ShortcutGroup = [string, [string, string][]];
@@ -960,6 +962,20 @@ const SECTIONS: Section[] = [
               {tj('graph-didnt-update-after-working', [<B />])}</>,
           ]}
         />
+      </>
+    ),
+  },
+  // Новое в 2.0: раздел «Задачи»
+  {
+    id: 'issues',
+    title: t('issues-title'),
+    icon: CircleDot,
+    keywords: t('issues-guide-keywords'),
+    body: () => (
+      <>
+        <P>{t('issues-guide-intro')}</P>
+        <H>{t('issues-keys-title')}</H>
+        <KeyList />
       </>
     ),
   },

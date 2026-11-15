@@ -16,6 +16,7 @@ import { issuesStore, type RepoIssues } from '../../state/issuesStore.ts';
 import { t } from '../../i18n/index.ts';
 import type { IssueLabel_Serialize } from '../../../crates/gorynych-tauri/bindings/commands.ts';
 import IssueBoardColumn from './IssueBoardColumn.tsx';
+import { notifyWriteError } from './issueErrors.ts';
 import IssuePicker from './IssuePicker.tsx';
 import { ErrorBar, LabelChip, Skeleton } from './IssueBits.tsx';
 
@@ -64,7 +65,7 @@ export default function IssueBoard({ repoPath, repo, refreshKey, notify, renderD
       const patch = patchForMove(issue, columnOf(issue, labelColumns), to, labelColumns, cur.meta?.labels ?? []);
       if (!patch) return;
       const res = await store().update(repoPath, number, patch);
-      if (!res.ok) notify({ type: 'error', title: t('issues-update-failed'), hint: res.error.message, action: { label: t('issues-retry'), onClick: () => void move(number, to) } });
+      if (!res.ok) notifyWriteError(notify, repoPath, res.error, 'issues-update-failed', () => void move(number, to));
     },
     [repoPath, labelColumns, notify, store],
   );

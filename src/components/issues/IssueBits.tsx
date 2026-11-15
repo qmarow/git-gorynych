@@ -4,9 +4,9 @@
  */
 import { memo, type ReactNode } from 'react';
 import { AlertTriangle, CheckCircle2, CircleDot, CircleSlash, RefreshCw, type LucideIcon } from 'lucide-react';
-import { avatarColor, initials } from '../../lib/format.ts';
-import { DEFAULT_LABEL_COLOR, parseHex, type Issue } from '../../lib/issues.ts';
-import { readable } from '../../lib/scheme.ts';
+import { avatarColor, initials, plural, shortDate } from '../../lib/format.ts';
+import { DEFAULT_LABEL_COLOR, LABEL_BG_ALPHA, labelText, parseHex, type Issue } from '../../lib/issues.ts';
+import { isLight } from '../../lib/scheme.ts';
 import { t } from '../../i18n/index.ts';
 import type { IssueLabel_Serialize, IssueUser_Serialize } from '../../../crates/gorynych-tauri/bindings/commands.ts';
 
@@ -23,12 +23,12 @@ export function StateIcon({ issue, size = 16 }: { issue: Pick<Issue, 'state' | '
     issue.state === 'open' ? [CircleDot, 'text-gk-green'] : isNotPlanned(issue.stateReason) ? [CircleSlash, 'text-gk-muted'] : [CheckCircle2, 'text-gk-purple'];
   return (
     <span data-tip={stateTitle(issue)} className="flex shrink-0">
-      <Icon size={size} strokeWidth={2} className={color} aria-label={stateTitle(issue)} />
+      <Icon size={size} strokeWidth={2} className={color} role="img" aria-label={stateTitle(issue)} />
     </span>
   );
 }
 
-/** Цвет метки с прозрачностью: фон 0.2, рамка 0.5. */
+/** Цвет метки с прозрачностью: фон 0.2, рамка 0.5; текст — `labelText` (контраст не меньше 4.5:1 в обеих темах). */
 function rgba(hex: string, alpha: number): string {
   const rgb = parseHex(hex) ?? parseHex(DEFAULT_LABEL_COLOR)!;
   return `rgb(${rgb[0]} ${rgb[1]} ${rgb[2]} / ${alpha})`;
@@ -39,7 +39,7 @@ export const LabelChip = memo(function LabelChip({ label, onRemove }: { label: P
   return (
     <span
       data-tip={label.description || undefined}
-      style={{ background: rgba(color, 0.2), borderColor: rgba(color, 0.5), color: readable(color) }}
+      style={{ background: rgba(color, LABEL_BG_ALPHA), borderColor: rgba(color, 0.5), color: labelText(color, !isLight()) }}
       className="inline-flex h-[18px] max-w-[140px] shrink-0 items-center gap-1 rounded-full border px-1.5 text-[11px] leading-none font-medium"
     >
       <span className="truncate">{label.name}</span>
@@ -124,4 +124,14 @@ export function Skeleton({ rows = 1, height = 56 }: { rows?: number; height?: nu
       ))}
     </>
   );
+}
+
+/** «1 комментарий», «3 комментария», «5 комментариев». */
+export const commentsText = (n: number) => plural(n, t('issues-comments-one', n), t('issues-comments-few', n), t('issues-comments-many', n));
+
+/** Срок для показа — дата `shortDate` (без времени) по местному календарю: `2026-12-01` → `01.12.2026`. */
+export function dueText(due: string | null | undefined): string {
+  const m = due ? /^(\d{4})-(\d{2})-(\d{2})/.exec(due) : null;
+  if (!m) return due ?? '';
+  return shortDate(new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]))).slice(0, 10);
 }

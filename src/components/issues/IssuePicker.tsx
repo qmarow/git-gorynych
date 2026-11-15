@@ -47,6 +47,14 @@ export default function IssuePicker<T>({
   onClose,
 }: IssuePickerProps<T>) {
   const ref = useRef<HTMLDivElement>(null);
+  // Фокус после закрытия — на кнопку, которая открыла панель (если он был внутри панели или ушёл в никуда)
+  useEffect(
+    () => () => {
+      const active = document.activeElement;
+      if (!active || active === document.body || ref.current?.contains(active)) anchor.focus?.({ preventScroll: true });
+    },
+    [anchor],
+  );
   const listRef = useRef<HTMLDivElement>(null);
   const [text, setText] = useState('');
   const [active, setActive] = useState(0);

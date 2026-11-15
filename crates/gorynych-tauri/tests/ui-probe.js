@@ -472,6 +472,7 @@ async function issuesListScenario(waitFor, key, section) {
     out.detail = await issueCardScenario(waitFor, section, real, me, issue, calls).catch((e) => ({ probeError: String(e?.stack ?? e) }));
     out.edit = await issueEditScenario(waitFor, section, real, issue, calls).catch((e) => ({ probeError: String(e?.stack ?? e) }));
     out.board = await issueBoardScenario(waitFor, section, calls).catch((e) => ({ probeError: String(e?.stack ?? e) }));
+    out.quality = await issueQualityScenario(waitFor, section, issue).catch((e) => ({ probeError: String(e?.stack ?? e) }));
   } finally {
     window.api.issues = real;
     if (section()) key('i', { code: 'KeyI', ctrlKey: true });
@@ -957,8 +958,10 @@ async function issueBoardScenario(waitFor, section, calls) {
   // Клавиатура: Shift+→ — в «Закрытые»
   const focusCard = column('label:bug').querySelector(`[data-number="${moved}"]`);
   focusCard.focus();
-  await sleep(50);
-  focusCard.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', code: 'ArrowRight', shiftKey: true, bubbles: true, cancelable: true }));
+  // Окно может быть не в фокусе ОС (параллельные тесты) — тогда Chromium не шлёт focus; React слушает focusin
+  focusCard.dispatchEvent(new FocusEvent('focusin', { bubbles: true }));
+  await waitFor(() => column('label:bug')?.querySelector(`[data-number="${moved}"][data-active]`), 1000);
+  (column('label:bug')?.querySelector(`[data-number="${moved}"]`) ?? focusCard).dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', code: 'ArrowRight', shiftKey: true, bubbles: true, cancelable: true }));
   out.keyMove = (await waitFor(() => updates().at(-1)?.[1] === moved && updates().at(-1)[2].state, 2000)) ?? null;
   // Панель задачи: клик по карточке, Esc закрывает
   const any = column('open').querySelector('[data-testid="board-card"]');
@@ -970,6 +973,96 @@ async function issueBoardScenario(waitFor, section, calls) {
   await waitFor(() => listbox(), 3000);
   localStorage.removeItem(`issues.board.v1:${dir}`);
   api.update = update;
+  return out;
+}
+
+// Ошибки и доступность (этап 8): нет прав на запись — «Недостаточно прав», значение вернулось, список перечитан; задача
+// удалена на сервере — строка исчезла, карточка «Задача не найдена»; лимит запросов — своя полоса; `?` — модальная
+// памятка, Esc закрывает только её; выбор меток закрылся — фокус на кнопке, которая его открыла; исключение в разделе —
+// «Перезагрузить раздел», окно живо
+async function issueQualityScenario(waitFor, section, issue) {
+  const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+  const api = window.api.issues;
+  const saved = { update: api.update, get: api.get, list: api.list };
+  const row = (n) => section().querySelector(`[role="option"][data-number="${n}"]`);
+  const listbox = () => section().querySelector('[role="listbox"]:not([aria-multiselectable])');
+  const card = () => section().querySelector('[data-testid="issue-detail"]');
+  const toastText = (text) => [...document.querySelectorAll('.glass-strong')].map((el) => el.textContent).find((x) => x.includes(text)) ?? null;
+  const out = {};
+  let lists = 0;
+  try {
+    api.list = async (...args) => (lists++, saved.list(...args));
+    // Нет прав: правка откатывается, «Недостаточно прав», список перечитан (возможности)
+    api.update = async () => ({ ok: false, error: { code: 'FORBIDDEN', message: 'Forbidden', hint: 'Нужны права на запись', details: '' } });
+    listbox().scrollTop = 0;
+    await waitFor(() => row(500), 3000);
+    row(500).click();
+    await waitFor(() => card()?.dataset.number === '500' && card().querySelector('[data-testid="issue-state-button"]'), 3000);
+    const listsBefore = lists;
+    const stateBefore = card().querySelector('[data-testid="issue-state-button"]').textContent;
+    card().querySelector('[data-testid="issue-state-button"]').click();
+    out.forbidden = (await waitFor(() => toastText('Недостаточно прав'), 3000)) ?? null;
+    out.rolledBack = card()?.querySelector('[data-testid="issue-state-button"]')?.textContent === stateBefore;
+    out.capsReread = Boolean(await waitFor(() => lists > listsBefore, 3000));
+    // Задача удалена на сервере
+    api.get = async (dir, number) => (number === 499 ? { ok: false, error: { code: 'NOT_FOUND', message: 'Задача #499 не найдена', hint: null, details: '' } } : saved.get(dir, number));
+    row(499).click();
+    out.notFound = (await waitFor(() => section().querySelector('[data-testid="issues-state"][data-state="not-found"]')?.textContent, 3000)) ?? null;
+    out.rowRemoved = !row(499);
+    api.get = saved.get;
+    // Лимит запросов
+    api.list = async () => ({ ok: false, error: { code: 'RATE_LIMIT', message: 'rate limit', hint: null, details: '' } });
+    section().focus();
+    section().dispatchEvent(new KeyboardEvent('keydown', { key: 'F5', code: 'F5', bubbles: true, cancelable: true }));
+    out.rateLimit = (await waitFor(() => section().querySelector('[role="alert"]')?.textContent.includes('ограничил') && 'bar', 3000)) ?? section().querySelector('[role="alert"]')?.textContent ?? null;
+    api.list = saved.list;
+    section().dispatchEvent(new KeyboardEvent('keydown', { key: 'F5', code: 'F5', bubbles: true, cancelable: true }));
+    await waitFor(() => !section().querySelector('[role="alert"]'), 3000);
+    // Памятка клавиш — модальное окно; Esc закрывает только её
+    section().focus();
+    section().dispatchEvent(new KeyboardEvent('keydown', { key: '?', code: 'Slash', shiftKey: true, bubbles: true, cancelable: true }));
+    out.helpModal = Boolean(await waitFor(() => document.querySelector('.bg-gk-scrim [data-testid="issues-key-help"]'), 2000));
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', code: 'Escape', bubbles: true, cancelable: true }));
+    out.helpClosed = Boolean(await waitFor(() => !document.querySelector('[data-testid="issues-key-help"]'), 2000)) && Boolean(section());
+    // Фокус возвращается на кнопку, открывшую выбор
+    await waitFor(() => row(500), 3000);
+    row(500).click();
+    await waitFor(() => card()?.querySelector('[data-testid="meta-labels"] button'), 3000);
+    await sleep(150); // ширина карточки измерена: панель свойств на своём месте
+    const anchor = card().querySelector('[data-testid="meta-labels"] button');
+    anchor.click();
+    const picker = await waitFor(() => document.querySelector('[role="listbox"][aria-multiselectable]'), 2000);
+    picker?.parentElement.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', code: 'Escape', bubbles: true, cancelable: true }));
+    await sleep(100);
+    out.focusBack = document.activeElement === anchor;
+    // Исключение в разделе: граница ошибок
+    // Поле бросает исключение при первых чтениях (React повторяет рендер один раз — повтор тоже падает, и ошибку ловит
+    // граница раздела); после «Перезагрузить раздел» данные уже исправны
+    const brokenIssue = issue(488);
+    let broken = true;
+    Object.defineProperty(brokenIssue, 'labels', {
+      get() {
+        if (broken) {
+          throw new Error('проба сбоя');
+        }
+        return [];
+      },
+    });
+    api.get = async () => ({ ok: true, data: { issue: brokenIssue, timeline: [], timelineTruncated: false } });
+    if (!row(488)) {
+      listbox().scrollTop = 12 * 56;
+      await sleep(100);
+    }
+    row(488)?.click();
+    out.crashed = Boolean(await waitFor(() => document.querySelector('[data-testid="issues-crashed"]'), 3000));
+    out.windowAlive = Boolean(document.querySelector('[data-testid="graph-svg"]'));
+    broken = false;
+    api.get = saved.get;
+    [...(document.querySelector('[data-testid="issues-crashed"]')?.querySelectorAll('button') ?? [])][0]?.click();
+    out.reloaded = Boolean(await waitFor(() => section() && !document.querySelector('[data-testid="issues-crashed"]'), 3000));
+  } finally {
+    Object.assign(api, saved);
+  }
   return out;
 }
 

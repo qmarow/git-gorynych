@@ -586,3 +586,9 @@ html[data-scheme='light'] .glass-strong {
 .md-body img { max-width: 100%; height: auto; border-radius: 4px; }
 .md-body summary { cursor: pointer; }
 .md-body [data-user] { font-weight: 600; color: var(--color-gk-strong); }
+
+/* Новое в 2.0: длинная лента задачи (до 300 записей) — комментарии ниже видимой области рисуются отложенно */
+[data-testid='issue-comment'] {
+  content-visibility: auto;
+  contain-intrinsic-size: auto 120px;
+}

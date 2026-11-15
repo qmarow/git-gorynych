@@ -7,7 +7,7 @@ import { memo } from 'react';
 import { CalendarClock, MessageSquare } from 'lucide-react';
 import { isOverdue, localDate, type Issue } from '../../lib/issues.ts';
 import { t } from '../../i18n/index.ts';
-import { AvatarStack, LabelChip, StateIcon } from './IssueBits.tsx';
+import { AvatarStack, LabelChip, StateIcon, commentsText, dueText } from './IssueBits.tsx';
 
 export const ISSUE_DRAG_TYPE = 'application/x-gorynych-issue';
 
@@ -64,12 +64,12 @@ function IssueCard({ issue, columnLabel, active, draggable, pending, onOpen, onF
         {issue.dueDate && (
           <span className={`flex items-center gap-0.5 ${overdue ? 'text-gk-red' : ''}`} data-tip={t('issues-meta-due')}>
             <CalendarClock size={11} />
-            {issue.dueDate.slice(0, 10)}
+            {dueText(issue.dueDate)}
           </span>
         )}
         <span className="flex-1" />
         {issue.commentsCount > 0 && (
-          <span className="flex items-center gap-0.5">
+          <span className="flex items-center gap-0.5" data-tip={commentsText(issue.commentsCount)} aria-label={commentsText(issue.commentsCount)}>
             <MessageSquare size={11} />
             {issue.commentsCount}
           </span>

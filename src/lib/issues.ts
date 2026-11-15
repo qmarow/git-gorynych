@@ -403,6 +403,53 @@ export function issueInput(form: { title: string; body: string } & Required<Issu
   };
 }
 
+/* ---------- Контраст меток ---------- */
+
+/** Фон панели, на которой стоят метки: тёмная и светлая темы (приближение полупрозрачной панели). */
+export const PANEL_DARK = '#1b1e27';
+export const PANEL_LIGHT = '#f6f7f9';
+/** Метка: фон — её цвет с прозрачностью 0.2 поверх панели. */
+export const LABEL_BG_ALPHA = 0.2;
+export const MIN_LABEL_CONTRAST = 4.5;
+
+const lum = ([r, g, b]: [number, number, number]) => {
+  const ch = (v: number) => {
+    const c = v / 255;
+    return c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4;
+  };
+  return 0.2126 * ch(r) + 0.7152 * ch(g) + 0.0722 * ch(b);
+};
+const mix = (a: [number, number, number], b: [number, number, number], k: number): [number, number, number] => [0, 1, 2].map((i) => a[i] + (b[i] - a[i]) * k) as [number, number, number];
+const hex = (rgb: [number, number, number]) => `#${rgb.map((v) => Math.round(v).toString(16).padStart(2, '0')).join('')}`;
+
+/** Контраст двух цветов по WCAG. */
+export function contrast(a: string, b: string): number {
+  const x = lum(parseHex(a) ?? [0, 0, 0]);
+  const y = lum(parseHex(b) ?? [0, 0, 0]);
+  return (Math.max(x, y) + 0.05) / (Math.min(x, y) + 0.05);
+}
+
+/** Сплошной фон метки: её цвет с прозрачностью поверх панели темы. */
+export function labelBackground(color: string, dark: boolean): string {
+  const base = parseHex(dark ? PANEL_DARK : PANEL_LIGHT)!;
+  return hex(mix(base, parseHex(color) ?? parseHex(DEFAULT_LABEL_COLOR)!, LABEL_BG_ALPHA));
+}
+
+/**
+ * Цвет текста метки — её же цвет, осветлённый (тёмная тема) или затемнённый (светлая) ровно настолько, чтобы контраст с
+ * фоном метки был не меньше 4.5:1.
+ */
+export function labelText(color: string, dark: boolean): string {
+  const rgb = parseHex(color) ?? parseHex(DEFAULT_LABEL_COLOR)!;
+  const bg = labelBackground(color, dark);
+  const target: [number, number, number] = dark ? [255, 255, 255] : [0, 0, 0];
+  for (let k = 0; k <= 1.0001; k += 0.05) {
+    const out = hex(mix(rgb, target, Math.min(1, k)));
+    if (contrast(out, bg) >= MIN_LABEL_CONTRAST) return out;
+  }
+  return hex(target);
+}
+
 /* ---------- Прочее ---------- */
 
 /** Временный id комментария до ответа сервера: такой комментарий показывается полупрозрачным. */

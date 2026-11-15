@@ -32,9 +32,11 @@ import { loadDraft } from '../../lib/issueDrafts.ts';
 import { EmptyState, ErrorBar, Skeleton } from './IssueBits.tsx';
 import { useIssueSelection } from './useIssueSelection.ts';
 import FatalState, { isFatal } from './IssuesFatal.tsx';
+import IssuesBoundary from './IssuesBoundary.tsx';
+import { notifyWriteError } from './issueErrors.ts';
+import { KeyHelpDialog } from './IssueKeys.tsx';
+import { useIssuesRefresh } from './useIssuesRefresh.ts';
 
-const REFRESH_EVERY = 120_000;
-const REFRESH_ON_FOCUS_AFTER = 60_000;
 const SELECT_DELAY = 150;
 const NARROW = 640;
 
@@ -60,10 +62,14 @@ interface IssuesViewProps {
 
 const isTyping = (el: EventTarget | null) =>
   el instanceof HTMLElement && (el.isContentEditable || el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.tagName === 'SELECT');
-const visible = () => document.visibilityState === 'visible';
 
 
-export default function IssuesView({ repoPath, remote, forge, onClose, onLogin, onServerSettings, onOpenWeb, onCopy, notify, onCreateBranch, onLocateCommit, onCheckout }: IssuesViewProps) {
+/** Раздел в границе ошибок: сбой внутри не роняет окно, «Перезагрузить раздел» монтирует его заново. */
+export default function IssuesViewSafe(props: IssuesViewProps) {
+  return <IssuesBoundary>{(attempt) => <IssuesView key={attempt} {...props} />}</IssuesBoundary>;
+}
+
+function IssuesView({ repoPath, remote, forge, onClose, onLogin, onServerSettings, onOpenWeb, onCopy, notify, onCreateBranch, onLocateCommit, onCheckout }: IssuesViewProps) {
   const repo = useIssuesStore((s) => s.byRepo[repoPath]);
   const store = issuesStore.getState;
   const rootRef = useRef<HTMLDivElement>(null);
@@ -92,24 +98,8 @@ export default function IssuesView({ repoPath, remote, forge, onClose, onLogin, 
     return () => clearTimeout(selectTimer.current);
   }, []);
 
-  const refresh = useCallback(
-    (silent: boolean) => {
-      lastFetch.current = Date.now();
-      void store().refresh(repoPath, { silent });
-    },
-    [repoPath, store],
-  );
-
-  // Таймеры: каждые 120 с и при возврате фокуса, только в видимом окне
-  useEffect(() => {
-    const timer = setInterval(() => visible() && refresh(true), REFRESH_EVERY);
-    const onFocus = () => visible() && Date.now() - lastFetch.current > REFRESH_ON_FOCUS_AFTER && refresh(true);
-    window.addEventListener('focus', onFocus);
-    return () => {
-      clearInterval(timer);
-      window.removeEventListener('focus', onFocus);
-    };
-  }, [refresh]);
+  // Обновление: таймеры, фокус окна, пауза после RATE_LIMIT, перезагрузка после входа
+  const { refresh, limited } = useIssuesRefresh(repoPath, repo?.listError?.code ?? null, Boolean(forge?.token?.configured), lastFetch);
 
   useEffect(() => {
     const el = rootRef.current;
@@ -171,7 +161,7 @@ export default function IssuesView({ repoPath, remote, forge, onClose, onLogin, 
 
   const changeIssue = async (number: number, patch: Parameters<ReturnType<typeof store>['update']>[2]) => {
     const res = await store().update(repoPath, number, patch);
-    if (!res.ok) notify({ type: 'error', title: t('issues-update-failed'), hint: res.error.message, action: { label: t('issues-retry'), onClick: () => void changeIssue(number, patch) } });
+    if (!res.ok) notifyWriteError(notify, repoPath, res.error, 'issues-update-failed', () => void changeIssue(number, patch));
   };
 
   const openMenu = useCallback(
@@ -282,7 +272,7 @@ export default function IssuesView({ repoPath, remote, forge, onClose, onLogin, 
   let body: ReactNode;
   if (fatal) {
     body = <FatalState code={fatal} forge={forge} onLogin={onLogin} onServerSettings={onServerSettings} onOpenWeb={onOpenWeb} />;
-  } else if (repo?.view === 'board' && !formOpen && !help) {
+  } else if (repo?.view === 'board' && !formOpen) {
     body = (
       <div className="flex min-h-0 flex-1 flex-col">
         <IssueFilters key={repoPath} repo={repo} onQuery={onQuery} onOpenNumber={(n) => selectNow(n)} onLocalSearch={setLocalSearch} searchRef={(el) => (searchEl.current = el)} hideStateTabs leading={savedFilters} />
@@ -340,14 +330,14 @@ export default function IssuesView({ repoPath, remote, forge, onClose, onLogin, 
             ) : (
               repo && <IssueFilters key={repoPath} repo={repo} onQuery={onQuery} onOpenNumber={(n) => selectNow(n)} onLocalSearch={setLocalSearch} searchRef={(el) => (searchEl.current = el)} leading={savedFilters} />
             )}
-            {repo?.listStatus === 'error' && repo.listError && <ErrorBar message={repo.listError.message} onRetry={() => refresh(false)} />}
+            {repo?.listStatus === 'error' && repo.listError && <ErrorBar message={limited ? t('issues-rate-limited') : repo.listError.hint ? `${repo.listError.message} ${repo.listError.hint}` : repo.listError.message} onRetry={() => refresh(false)} />}
             {listBody}
             {!narrow && <ResizeHandle width={listW} onResize={setListW} onCommit={persistListW} onReset={() => persistListW(setListW(null))} className="-right-1" />}
           </div>
         )}
         {showCard && (
           <div className="relative flex min-w-0 flex-1 flex-col">
-            {repo && <IssueCardPane repoPath={repoPath} repo={repo} number={shown} formOpen={formOpen} help={help} onBack={narrow ? () => selectNow(null) : undefined} cardRef={cardEl} actions={paneActions} />}
+            {repo && <IssueCardPane repoPath={repoPath} repo={repo} number={shown} formOpen={formOpen} onBack={narrow ? () => selectNow(null) : undefined} cardRef={cardEl} actions={paneActions} />}
           </div>
         )}
       </div>
@@ -388,6 +378,7 @@ export default function IssuesView({ repoPath, remote, forge, onClose, onLogin, 
       {readOnly && !fatal && <div className="shrink-0 border-b border-gk-border bg-gk-yellow/10 px-3 py-1 text-xs text-gk-muted">{t('issues-read-only')}</div>}
       {body}
       {menu && <ContextMenu x={menu.x} y={menu.y} items={menu.items} onClose={() => setMenu(null)} />}
+      {help && <KeyHelpDialog onClose={() => setHelp(false)} />}
     </div>
   );
 }

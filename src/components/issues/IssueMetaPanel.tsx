@@ -17,7 +17,7 @@ import { t } from '../../i18n/index.ts';
 import type { IssueCaps, IssueLabel_Serialize, IssueMeta_Serialize, IssueMilestone_Serialize, IssueUser_Serialize } from '../../../crates/gorynych-tauri/bindings/commands.ts';
 import IssuePicker from './IssuePicker.tsx';
 import DatePopover from './DatePopover.tsx';
-import { LabelChip, UserAvatar, userName } from './IssueBits.tsx';
+import { LabelChip, UserAvatar, userName, dueText } from './IssueBits.tsx';
 
 const COMMIT_DELAY = 400;
 
@@ -189,7 +189,7 @@ const IssueMetaPanel = forwardRef<MetaPanelHandle, IssueMetaPanelProps>(function
             <span className="flex items-center gap-1.5">
               <Flag size={13} className="shrink-0 text-gk-muted" />
               <span className="truncate">{shown.milestone.title}</span>
-              {shown.milestone.dueDate && <span className="shrink-0 text-gk-dim">· {shown.milestone.dueDate.slice(0, 10)}</span>}
+              {shown.milestone.dueDate && <span className="shrink-0 text-gk-dim">· {dueText(shown.milestone.dueDate)}</span>}
             </span>
           ) : (
             <None>{t('issues-meta-no-milestone')}</None>
@@ -201,7 +201,7 @@ const IssueMetaPanel = forwardRef<MetaPanelHandle, IssueMetaPanelProps>(function
           {shown.dueDate ? (
             <span className={`flex items-center gap-1.5 ${overdue ? 'text-gk-red' : ''}`} data-overdue={overdue || undefined}>
               <CalendarClock size={13} className="shrink-0" />
-              {shown.dueDate.slice(0, 10)}
+              {dueText(shown.dueDate)}
               {overdue && <span>· {t('issues-meta-overdue')}</span>}
             </span>
           ) : (
@@ -324,7 +324,7 @@ const IssueMetaPanel = forwardRef<MetaPanelHandle, IssueMetaPanelProps>(function
           renderItem={(m) => (
             <span className="flex min-w-0 items-center gap-2">
               <span className="truncate">{m.title}</span>
-              {m.dueDate && <span className="shrink-0 text-gk-dim">{m.dueDate.slice(0, 10)}</span>}
+              {m.dueDate && <span className="shrink-0 text-gk-dim">{dueText(m.dueDate)}</span>}
             </span>
           )}
           noneLabel={t('issues-no-milestone')}

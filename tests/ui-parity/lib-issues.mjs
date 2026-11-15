@@ -390,4 +390,23 @@ eq(lib.readBranchTemplate(), '{type}/{number}');
 lib.writeBranchTemplate(lib.DEFAULT_BRANCH_TEMPLATE);
 eq(store.has(lib.BRANCH_TEMPLATE_KEY), false, 'умолчание не хранится');
 
+/* ---------- Контраст меток: не меньше 4.5:1 в обеих темах ---------- */
+
+const ok = (value, label) => eq(Boolean(value), true, label);
+
+for (const dark of [true, false]) {
+  for (const color of ['#ffff00', '#fbca04', '#ffffff', '#000000', '#8a92a2', '#d73a4a', '#0e8a16', '#1d76db', '#5319e7', '#e4e669', '#c2e0c6']) {
+    const text = lib.labelText(color, dark);
+    ok(lib.contrast(text, lib.labelBackground(color, dark)) >= 4.5, `${color} ${dark ? 'тёмная' : 'светлая'}: ${text}`);
+  }
+  let seed = 5;
+  for (let i = 0; i < 2000; i++) {
+    seed = (seed * 1103515245 + 12345) % 2 ** 31;
+    const color = `#${(seed % 0xffffff).toString(16).padStart(6, '0')}`;
+    ok(lib.contrast(lib.labelText(color, dark), lib.labelBackground(color, dark)) >= 4.5, color);
+  }
+}
+eq(lib.labelText('#ffffff', true), '#ffffff', 'белая в тёмной теме — как есть');
+eq(lib.labelText('#000000', false), '#000000', 'чёрная в светлой — как есть');
+
 console.log(`lib-issues: ${checks} проверок прошли`);

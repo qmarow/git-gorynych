@@ -9,6 +9,7 @@
 import { useRef, useState, type ReactNode } from 'react';
 import { CheckCircle2, Flag, RotateCcw, Square, Tag, User, X } from 'lucide-react';
 import { ConfirmDialog } from '../Dialogs.tsx';
+import { plural } from '../../lib/format.ts';
 import type { Issue, IssuePatch } from '../../lib/issues.ts';
 import { issuesStore, type RepoIssues } from '../../state/issuesStore.ts';
 import { t } from '../../i18n/index.ts';
@@ -17,6 +18,9 @@ import IssuePicker from './IssuePicker.tsx';
 import { LabelChip, UserAvatar, userName } from './IssueBits.tsx';
 
 const CONFIRM_CLOSE = 10;
+
+/** «21 задачу», «3 задачи», «5 задач». */
+const issuesCount = (n: number) => plural(n, t('issues-count-one', n), t('issues-count-few', n), t('issues-count-many', n));
 
 type Notify = (toast: { type: string; title: ReactNode; hint?: ReactNode; action?: { label: ReactNode; onClick: () => void } }) => void;
 
@@ -167,7 +171,7 @@ export default function IssueBulkBar({ repoPath, repo, selected, onSelection, no
         />
       )}
       {confirm && (
-        <ConfirmDialog title={t('issues-bulk-close-title', numbers.length)} confirmLabel={t('issues-bulk-close')} onConfirm={() => void run(numbers, (i) => (i.state === 'open' ? { state: 'closed' } : null))} onClose={() => setConfirm(false)}>
+        <ConfirmDialog title={t('issues-bulk-close-title', issuesCount(numbers.length))} confirmLabel={t('issues-bulk-close')} onConfirm={() => void run(numbers, (i) => (i.state === 'open' ? { state: 'closed' } : null))} onClose={() => setConfirm(false)}>
           {t('issues-bulk-close-text', numbers.length)}
         </ConfirmDialog>
       )}

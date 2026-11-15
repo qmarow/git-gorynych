@@ -11,7 +11,7 @@ import { Flag, Lock, MessageSquare } from 'lucide-react';
 import { relativeTime, shortDate } from '../../lib/format.ts';
 import type { Issue } from '../../lib/issues.ts';
 import { t } from '../../i18n/index.ts';
-import { AvatarStack, LabelChip, StateIcon, userName } from './IssueBits.tsx';
+import { AvatarStack, LabelChip, StateIcon, commentsText, userName } from './IssueBits.tsx';
 
 export const ROW_HEIGHT = 56;
 const MAX_LABELS = 3;
@@ -108,7 +108,7 @@ function IssueRow({ issue, top, selected, dimmed = false, checked = false, selec
       </div>
       <AvatarStack users={issue.assignees} />
       {issue.commentsCount > 0 && (
-        <span className="flex shrink-0 items-center gap-1 text-[11px] text-gk-muted" data-tip={t('issues-comments-count', issue.commentsCount)}>
+        <span className="flex shrink-0 items-center gap-1 text-[11px] text-gk-muted" data-tip={commentsText(issue.commentsCount)} aria-label={commentsText(issue.commentsCount)}>
           <MessageSquare size={12} />
           {issue.commentsCount}
         </span>

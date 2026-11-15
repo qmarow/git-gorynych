@@ -1,9 +1,10 @@
 /**
- * Новое в 2.0: клавиши раздела «Задачи» — список для пустой карточки и окно «?».
+ * Новое в 2.0: клавиши раздела «Задачи» — список для пустой карточки, окно «?» (`KeyHelpDialog`) и глава «Задачи» в
+ * справке (`GuideDialog`).
  */
 import { Keyboard } from 'lucide-react';
+import { Modal } from '../Dialogs.tsx';
 import { t } from '../../i18n/index.ts';
-import { EmptyState } from './IssueBits.tsx';
 
 const KEYS: [string, Parameters<typeof t>[0]][] = [
   ['Ctrl+I', 'issues-key-toggle'],
@@ -34,10 +35,13 @@ export function KeyList() {
   );
 }
 
-export function KeyHelp() {
+/** Памятка по клавишам — модальное окно (Esc закрывает только его). */
+export function KeyHelpDialog({ onClose }: { onClose: () => void }) {
   return (
-    <EmptyState icon={Keyboard} title={t('issues-keys-title')}>
-      <KeyList />
-    </EmptyState>
+    <Modal title={t('issues-keys-title')} icon={Keyboard} onClose={onClose}>
+      <div data-testid="issues-key-help">
+        <KeyList />
+      </div>
+    </Modal>
   );
 }
