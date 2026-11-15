@@ -218,6 +218,13 @@ function IssuesView({ repoPath, remote, forge, onClose, onLogin, onServerSetting
       else onClose();
       return;
     }
+    // ↓ из поиска — в список, запрос остаётся (Esc в поиске его стирает)
+    if (e.key === 'ArrowDown' && searchEl.current && e.target === searchEl.current && listEl.current) {
+      e.preventDefault();
+      listEl.current.focus();
+      if (!items.some((issue) => issue.number === shown)) move(1);
+      return;
+    }
     if (isTyping(e.target)) return;
     if (e.key === 'ArrowDown' || e.code === 'KeyJ') {
       e.preventDefault();

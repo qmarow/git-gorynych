@@ -280,9 +280,9 @@ const IssueDetail = forwardRef<IssueDetailHandle, IssueDetailProps>(function Iss
       {entry?.status === 'error' && entry.error && (
         <ErrorBar message={`${t('issues-card-failed')}: ${entry.error.message}`} onRetry={() => void store().select(repoPath, number)} />
       )}
-      <div className="flex min-h-0 flex-1">
-        <div className="flex min-w-0 flex-1 flex-col">
-          <div ref={scrollEl} data-testid="issue-scroll" className="min-h-0 flex-1 overflow-y-auto px-5 py-3">
+      {/* Порядок в разметке — порядок Tab: лента → панель свойств → поле комментария; на месте их держит сетка */}
+      <div className={compact ? 'flex min-h-0 flex-1 flex-col' : 'grid min-h-0 flex-1 grid-cols-[minmax(0,1fr)_260px] grid-rows-[minmax(0,1fr)_auto]'}>
+          <div ref={scrollEl} data-testid="issue-scroll" className="col-start-1 row-start-1 min-h-0 flex-1 overflow-y-auto px-5 py-3">
             {compact && <div className="-mx-5 -mt-3 mb-2">{metaPanelNode}</div>}
             <IssueTimeline
               issue={issue}
@@ -293,13 +293,14 @@ const IssueDetail = forwardRef<IssueDetailHandle, IssueDetailProps>(function Iss
               description={description}
             />
           </div>
+          {!compact && <div className="col-start-2 row-span-2 row-start-1 min-h-0 overflow-y-auto border-l border-gk-border">{metaPanelNode}</div>}
           {lockedOut ? (
-            <div data-testid="issue-locked" className="flex shrink-0 items-center gap-2 border-t border-gk-border px-5 py-2.5 text-xs text-gk-muted">
+            <div data-testid="issue-locked" className="col-start-1 row-start-2 flex shrink-0 items-center gap-2 border-t border-gk-border px-5 py-2.5 text-xs text-gk-muted">
               <Lock size={13} />
               {t('issues-discussion-locked')}
             </div>
           ) : canComment ? (
-            <div className="shrink-0 border-t border-gk-border px-5 py-2.5">
+            <div className="col-start-1 row-start-2 shrink-0 border-t border-gk-border px-5 py-2.5">
               <MarkdownEditor
                 value={comment}
                 onChange={setComment}
@@ -319,8 +320,6 @@ const IssueDetail = forwardRef<IssueDetailHandle, IssueDetailProps>(function Iss
               />
             </div>
           ) : null}
-        </div>
-        {!compact && <div className="w-[260px] shrink-0 overflow-y-auto border-l border-gk-border">{metaPanelNode}</div>}
       </div>
       {confirm && (
         <ConfirmDialog title={t('issues-comment-delete')} danger confirmLabel={t('issues-comment-delete')} onConfirm={() => void deleteComment(confirm)} onClose={() => setConfirm(null)}>

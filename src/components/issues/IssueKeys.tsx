@@ -14,6 +14,7 @@ const KEYS: [string, Parameters<typeof t>[0]][] = [
   ['C', 'issues-key-new'],
   ['R', 'issues-key-comment'],
   ['E', 'issues-key-title'],
+  ['B', 'issues-key-branch'],
   ['L · A · M', 'issues-key-pickers'],
   ['Ctrl+Enter', 'issues-key-send'],
   ['Ctrl+Shift+Enter', 'issues-key-send-close'],

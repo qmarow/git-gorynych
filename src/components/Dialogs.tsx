@@ -48,6 +48,18 @@ interface ModalProps {
 /* =================== Базовое модальное окно =================== */
 
 export function Modal({ title, icon: Icon, iconClass = 'text-gk-blue', onClose, children, footer, width = 460 }: ModalProps) {
+  // Новое в 2.0: после закрытия фокус возвращается туда, где был при открытии (иначе он оставался на body, и клавиши
+  // раздела под окном — графа, задач — не работали до щелчка мышью). Если фокус уже поставили намеренно — не трогаем.
+  const opener = useRef<Element | null | undefined>(undefined);
+  if (opener.current === undefined) opener.current = document.activeElement;
+  useEffect(
+    () => () => {
+      const el = opener.current as HTMLElement | null;
+      const active = document.activeElement;
+      if (el?.isConnected && el !== document.body && (!active || active === document.body || !active.isConnected)) el.focus?.({ preventScroll: true });
+    },
+    [],
+  );
   useEffect(() => {
     // Esc закрывает только это окно: помечаем событие, чтобы панели под окном (CI/CD, diff) не закрылись следом
     const onKey = (e: KeyboardEvent) => {

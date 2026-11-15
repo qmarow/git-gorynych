@@ -473,6 +473,7 @@ async function issuesListScenario(waitFor, key, section) {
     out.edit = await issueEditScenario(waitFor, section, real, issue, calls).catch((e) => ({ probeError: String(e?.stack ?? e) }));
     out.board = await issueBoardScenario(waitFor, section, calls).catch((e) => ({ probeError: String(e?.stack ?? e) }));
     out.quality = await issueQualityScenario(waitFor, section, issue).catch((e) => ({ probeError: String(e?.stack ?? e) }));
+    out.keyboard = await issueKeyboardScenario(waitFor, section, issue, me).catch((e) => ({ probeError: String(e?.stack ?? e) }));
   } finally {
     window.api.issues = real;
     if (section()) key('i', { code: 'KeyI', ctrlKey: true });
@@ -1062,6 +1063,121 @@ async function issueQualityScenario(waitFor, section, issue) {
     out.reloaded = Boolean(await waitFor(() => section() && !document.querySelector('[data-testid="issues-crashed"]'), 3000));
   } finally {
     Object.assign(api, saved);
+  }
+  return out;
+}
+
+// Только клавиатура (этап 8, чек-лист): «найти → прочитать → взять себе → ветка → комментарий → закрыть»; клавиши идут
+// в элемент с фокусом, как от настоящей клавиатуры. Затем порядок Tab: шапка → фильтры → список → карточка → лента →
+// панель свойств → поле комментария (элементы, доступные с Tab, в порядке разметки, по областям)
+async function issueKeyboardScenario(waitFor, section, issue, me) {
+  const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+  const api = window.api.issues;
+  const saved = { update: api.update, commentAdd: api.commentAdd };
+  const calls = [];
+  const press = (key, code, extra = {}) =>
+    (document.activeElement ?? document.body).dispatchEvent(new KeyboardEvent('keydown', { key, code, bubbles: true, cancelable: true, ...extra }));
+  const typeInto = (el, value) => {
+    const proto = el instanceof HTMLTextAreaElement ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype;
+    Object.getOwnPropertyDescriptor(proto, 'value').set.call(el, value);
+    el.dispatchEvent(new Event('input', { bubbles: true }));
+  };
+  const card = () => section().querySelector('[data-testid="issue-detail"]');
+  const inSection = () => Boolean(section()?.contains(document.activeElement));
+  const out = {};
+  let search = null;
+  try {
+    api.update = async (dir, number, patch) => {
+      calls.push(['update', number, patch]);
+      await sleep(30);
+      const next = { ...issue(number) };
+      if (patch.state) Object.assign(next, { state: patch.state, stateReason: patch.stateReason ?? null });
+      if (patch.assignees) next.assignees = [me];
+      return { ok: true, data: next };
+    };
+    api.commentAdd = async (dir, number, text) => {
+      calls.push(['comment', number, text]);
+      await sleep(30);
+      return { ok: true, data: { id: 'k1', body: text, bodyHtml: `<p>${text}</p>`, author: me, createdAt: new Date().toISOString(), updatedAt: null, canEdit: true, webUrl: null } };
+    };
+    await waitFor(() => section(), 3000);
+    section().focus();
+    // Найти: `/`, запрос, ↓ — в список
+    press('/', 'Slash');
+    search = document.activeElement;
+    out.searchFocused = search?.tagName === 'INPUT';
+    typeInto(search, '497');
+    await waitFor(() => section().querySelectorAll('[role="option"][data-number]').length === 1, 3000);
+    press('ArrowDown', 'ArrowDown');
+    out.listFocused = document.activeElement?.getAttribute('role') === 'listbox';
+    out.searchKept = search.value;
+    // Прочитать: Enter — фокус в карточке
+    await waitFor(() => card()?.dataset.number === '497', 3000);
+    press('Enter', 'Enter');
+    out.cardFocused = Boolean(card()?.contains(document.activeElement));
+    // Взять себе: A, имя, Enter, Esc
+    press('a', 'KeyA');
+    const picker = await waitFor(() => document.querySelector('[role="listbox"][aria-multiselectable]'), 2000);
+    const pickerInput = document.activeElement;
+    out.pickerFocused = Boolean(picker?.parentElement?.contains(pickerInput)) && pickerInput.tagName === 'INPUT';
+    typeInto(pickerInput, 'tester');
+    await sleep(50);
+    press('Enter', 'Enter');
+    await sleep(50);
+    press('Escape', 'Escape');
+    out.assigned = Boolean(await waitFor(() => calls.find((c) => c[0] === 'update' && c[2].assignees), 2000));
+    out.focusAfterPicker = inSection();
+    // Ветка: B — окно с именем по шаблону, фокус в поле; Esc — окно закрыто, фокус вернулся в раздел
+    press('b', 'KeyB');
+    const branchInput = await waitFor(() => [...document.querySelectorAll('input')].find((i) => !section().contains(i) && i.value.startsWith('497-')), 2000);
+    out.branchName = branchInput?.value ?? null;
+    out.branchFocused = document.activeElement === branchInput;
+    press('Escape', 'Escape');
+    await waitFor(() => !branchInput?.isConnected, 2000);
+    await sleep(100);
+    out.focusAfterDialog = inSection();
+    if (!inSection()) card()?.focus();
+    // Комментарий и закрытие: R, текст, Ctrl+Shift+Enter
+    press('r', 'KeyR');
+    const area = document.activeElement;
+    out.commentFocused = area?.tagName === 'TEXTAREA' && Boolean(card()?.contains(area));
+    if (out.commentFocused) {
+      typeInto(area, 'Готово');
+      press('Enter', 'Enter', { ctrlKey: true, shiftKey: true });
+    }
+    out.sent = (await waitFor(() => calls.find((c) => c[0] === 'comment')?.[2], 2000)) ?? null;
+    out.closed = (await waitFor(() => calls.find((c) => c[0] === 'update' && c[2].state)?.[2].state, 2000)) ?? null;
+    await sleep(100);
+    // Порядок Tab по областям (подряд идущие одинаковые склеены)
+    const tabOrder = () => {
+    const all = [...section().querySelectorAll('a[href], button, input, textarea, select, [tabindex]')].filter(
+      (el) => el.tabIndex >= 0 && !el.disabled && el.getClientRects().length && !el.closest('[inert]'),
+    );
+    const searchAt = all.indexOf(search);
+    const scroll = section().querySelector('[data-testid="issue-scroll"]');
+    const region = (el, i) => {
+      if (el.closest('[data-testid="issue-meta"]')) return 'meta';
+      if (el.closest('[data-testid="issue-scroll"]')) return 'timeline';
+      if (el.closest('[data-testid="issue-detail"]')) return scroll && scroll.compareDocumentPosition(el) & Node.DOCUMENT_POSITION_FOLLOWING ? 'comment' : 'card';
+      if (el.getAttribute('role') === 'listbox' || el.closest('[role="listbox"]')) return 'list';
+      return i < searchAt ? 'header' : 'filters';
+    };
+    return all.map(region).filter((r, i, a) => r !== a[i - 1]).join(',');
+    };
+    const compact = () => Boolean(section().querySelector('[data-testid="issue-scroll"] [data-testid="issue-meta"]'));
+    out.tabOrder = [compact() ? 'compact' : 'wide', tabOrder()];
+    // Широкая карточка: масштаб страницы 0.5 — ширина раскладки вдвое больше, панель свойств справа
+    document.documentElement.style.zoom = '0.5';
+    await waitFor(() => !compact(), 2000);
+    out.tabOrderWide = [compact() ? 'compact' : 'wide', tabOrder()];
+    document.documentElement.style.zoom = '';
+    await sleep(200);
+  } finally {
+    Object.assign(api, saved);
+    if (search?.isConnected) {
+      typeInto(search, '');
+      await sleep(400);
+    }
   }
   return out;
 }

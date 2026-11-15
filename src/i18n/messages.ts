@@ -1339,6 +1339,7 @@ export type MessageId =
   | 'issues-is-closed'
   | 'issues-is-not-planned'
   | 'issues-is-open'
+  | 'issues-key-branch'
   | 'issues-key-card'
   | 'issues-key-comment'
   | 'issues-key-escape'
