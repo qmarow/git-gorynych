@@ -51,16 +51,29 @@ function dag(n, mergeRate, gapRate) {
 
 const summary = (g) => JSON.stringify({ nodes: g.nodes, edges: g.edges.map((e) => ({ ...e, from: e.from.hash, to: e.to.hash })), laneCount: g.laneCount });
 
-// Цепочки, посчитанные независимо от раскладки: хэш → номер дорожки
+// Цепочки, посчитанные независимо от раскладки: хэш → номер дорожки. Каждая загруженная вершина — своя дорожка по порядку;
+// общие коммиты занимает раньше та ветка, чья вершина лежит на цепочке другой, иначе — левее
 function chains(commits, pinned) {
   const byHash = new Map(commits.filter((c) => !c.stash).map((c) => [c.hash, c]));
-  const lane = new Map();
-  let k = 0;
-  for (const tip of pinned) {
-    if (!byHash.has(tip) || lane.has(tip)) continue;
-    for (let h = tip; h !== undefined && byHash.has(h) && !lane.has(h); h = byHash.get(h).parents[0]) lane.set(h, k);
-    k++;
+  const tips = pinned.filter((h) => byHash.has(h));
+  const k = tips.length;
+  const path = (tip) => {
+    const out = [];
+    for (let h = tip; h !== undefined && byHash.has(h) && !out.includes(h); h = byHash.get(h).parents[0]) out.push(h);
+    return out;
+  };
+  const paths = tips.map(path);
+  // i раньше j, если вершина i — на цепочке j (и вершины разные); иначе по номеру
+  const before = (i, j) => tips[i] !== tips[j] && paths[j].includes(tips[i]);
+  const order = [];
+  const rest = tips.map((_, i) => i);
+  while (rest.length) {
+    const i = rest.find((x) => !rest.some((y) => y !== x && before(y, x)));
+    order.push(i);
+    rest.splice(rest.indexOf(i), 1);
   }
+  const lane = new Map();
+  for (const i of order) for (const h of paths[i]) if (!lane.has(h)) lane.set(h, i);
   return { lane, k };
 }
 
@@ -80,7 +93,28 @@ function invariants(what, commits, g, pinned) {
   }
   ok(`${what}: дорожек не меньше k`, g.laneCount >= k);
   tailInvariants(what, g);
+  railInvariants(what, g, k);
   count += 3;
+}
+
+// Рельсы (главные ветки не сливаются): у каждой закреплённой дорожки, чья цепочка ушла в общую историю, линия идёт
+// дальше вниз по своей дорожке — до корня или до края графа; на этом пути на её дорожке нет узлов
+function railInvariants(what, g, k) {
+  const rails = g.rails ?? [];
+  if (k === 0 && rails.length) fail(`${what}: рельсы без главных веток`);
+  const byHash = new Map(g.nodes.map((n) => [n.hash, n]));
+  const seen = new Set();
+  for (const r of rails) {
+    if (r.lane >= k) fail(`${what}: рельс не на закреплённой дорожке`, r.id);
+    if (seen.has(r.lane)) fail(`${what}: два рельса на дорожке`, r.id);
+    seen.add(r.lane);
+    if (r.from.lane === r.lane) fail(`${what}: рельс от своего узла`, r.id);
+    const bottom = r.to ? r.to.row : Infinity;
+    const hit = g.nodes.find((n) => n.lane === r.lane && n.row > r.from.row && n.row < bottom);
+    if (hit) fail(`${what}: рельс проходит через узел`, r.id, hit.hash);
+    if (r.to && r.to.parents.length && byHash.has(r.to.parents[0])) fail(`${what}: рельс кончается не в корне`, r.id);
+  }
+  count += 1;
 }
 
 // Хвосты (шаг 4.1): у каждого коммита столько хвостов, сколько незагруженных родителей; ниже начала хвоста на его дорожке
@@ -157,10 +191,42 @@ const tm = layoutGraph(twoMains, { pinned: ['M2', 'D2'] });
 eq('main и develop', lanesOf(tm), { D2: 1, M2: 0, D1: 1, M1: 0, M0: 0 });
 eq('develop → main по своей дорожке', tm.edges.find((e) => e.id === 'D1->M1').travel, 1);
 eq('дорожек 2', tm.laneCount, 2);
+// Дорожка develop не сливается с main: ниже M1 она продолжается до корня M0
+const railsOf = (g) => (g.rails ?? []).map((r) => [r.lane, r.from.hash, r.to?.hash ?? null]);
+eq('develop не сливается с main', railsOf(tm), [[1, 'M1', 'M0']]);
+eq('без главных веток рельсов нет', layoutGraph(twoMains).rails, undefined);
+// develop на один коммит впереди master (как на снимке): обе линии до низа
+const ahead = [{ hash: 'D3', parents: ['M2'] }, ...twoMains.filter((c) => c.hash !== 'D2' && c.hash !== 'D1')];
+eq('develop впереди master', railsOf(layoutGraph(ahead, { pinned: ['M2', 'D3'] })), [[1, 'M2', 'M0']]);
+eq('develop впереди master, develop левее', railsOf(layoutGraph(ahead, { pinned: ['D3', 'M2'] })), [[0, 'M2', 'M0']]);
+// История загружена не вся — рельс до края графа
+eq('рельс до края', railsOf(layoutGraph(ahead.slice(0, -1), { pinned: ['M2', 'D3'] })), [[1, 'M2', null]]);
 // Перестановка меняет дорожки местами: первой стала develop, общая история (M1, M0) теперь в её цепочке
 eq('перестановка', lanesOf(layoutGraph(twoMains, { pinned: ['D2', 'M2'] })), { D2: 0, M2: 1, D1: 0, M1: 0, M0: 0 });
-// Вершина, уже занятая более ранней цепочкой, дорожку не получает: следующие сдвигаются
-eq('занятая вершина', lanesOf(layoutGraph(twoMains, { pinned: ['M2', 'M1', 'D2'] })), { D2: 1, M2: 0, D1: 1, M1: 0, M0: 0 });
+// Вершина на цепочке другой главной ветки (M1 — предок M2) всё равно получает свою дорожку: общая история — её,
+// у M2 остаётся только M2, и линия M2 поворачивает к M1; develop ответвился от M1 и тоже идёт к дорожке 1
+const occupied = layoutGraph(twoMains, { pinned: ['M2', 'M1', 'D2'] });
+eq('вершина-предок', lanesOf(occupied), { D2: 2, M2: 0, D1: 2, M1: 1, M0: 1 });
+eq('вершина-предок: ребро M2 по своей дорожке', occupied.edges.find((e) => e.id === 'M2->M1').travel, 0);
+eq('вершина-предок: дорожки по порядку', occupied.pinnedLanes, [0, 1, 2]);
+// Ветка влита в main перемоткой (rust-migration — предок main): у каждой своя дорожка в любом порядке
+const ff = [
+  { hash: 'M2', parents: ['M1'] },
+  { hash: 'M1', parents: ['R2'] },
+  { hash: 'R2', parents: ['R1'] },
+  { hash: 'R1', parents: ['R0'] },
+  { hash: 'R0', parents: [] },
+];
+eq('перемотка: main левее', lanesOf(layoutGraph(ff, { pinned: ['M2', 'R2'] })), { M2: 0, M1: 0, R2: 1, R1: 1, R0: 1 });
+eq('перемотка: main правее', lanesOf(layoutGraph(ff, { pinned: ['R2', 'M2'] })), { M2: 1, M1: 1, R2: 0, R1: 0, R0: 0 });
+eq('перемотка: дорожек 2', layoutGraph(ff, { pinned: ['M2', 'R2'] }).laneCount, 2);
+// Одна вершина у двух веток (develop только что создан от main): дорожка второй остаётся за ней, чужие ветки её не берут
+const same = [{ hash: 'F1', parents: ['M1'] }, ...twoMains.slice(1)];
+const sg = layoutGraph(same, { pinned: ['M2', 'M2'] });
+eq('одна вершина', lanesOf(sg), { F1: 2, M2: 0, D1: 3, M1: 0, M0: 0 });
+eq('одна вершина: дорожки', sg.pinnedLanes, [0, 1]);
+eq('одна вершина: вторая дорожка не пустая', railsOf(sg), [[1, 'M2', 'M0']]);
+eq('незагруженная вершина', layoutGraph(twoMains, { pinned: ['X', 'D2'] }).pinnedLanes, [-1, 0]);
 // WIP на вершине main — над ней
 const wipOnMain = [{ hash: 'WIP', wip: true, parents: ['M2'] }, ...twoMains];
 eq('WIP над main', lanesOf(layoutGraph(wipOnMain, { pinned: ['M2', 'D2'] })).WIP, 0);

@@ -85,12 +85,30 @@ export interface GraphTail<T extends LayoutCommit> {
   dashed: boolean;
 }
 
+/**
+ * «Рельс» главной ветки: её дорожка продолжается ниже точки, где цепочка ветки ушла в общую историю с другой главной
+ * веткой (ветвление, перемотка или одна вершина у двух веток). От узла `from` (на чужой дорожке) линия уходит в дорожку
+ * `lane` и идёт вниз до корня `to` (поворачивает к нему) или, если история загружена не вся (`to` — null), до края графа.
+ * Так главные ветки не сливаются в одну линию: у каждой своя дорожка на всю высоту.
+ */
+export interface GraphRail<T extends LayoutCommit> {
+  id: string;
+  lane: number;
+  from: GraphNode<T>;
+  to: GraphNode<T> | null;
+  color: string;
+}
+
 export interface GraphLayout<T extends LayoutCommit> {
   nodes: GraphNode<T>[];
   edges: GraphEdge<T>[];
   /** Линии к незагруженным родителям (рёбер для них нет, дорожка занята до конца графа) */
   tails: GraphTail<T>[];
   laneCount: number;
+  /** Только при непустом `pinned`: дорожка каждой главной ветки по порядку `pinned` (-1 — вершина не загружена) */
+  pinnedLanes?: number[];
+  /** Только при непустом `pinned`: продолжения дорожек главных веток ниже общей истории (`GraphRail`) */
+  rails?: GraphRail<T>[];
 }
 
 interface PendingEdge {
@@ -113,24 +131,43 @@ function takeFreeLane(lanes: (string | null)[], from = 0): number {
 }
 
 /**
- * Цепочки главных веток: от каждой вершины по первым родителям, пока коммит загружен и не занят более ранней цепочкой.
- * Вершина не загружена или уже занята — ветка дорожку не получает, следующие сдвигаются. `tips` — вершины получивших.
+ * Цепочки главных веток. Каждая загруженная вершина получает свою дорожку — по порядку `pinned`, даже если у двух веток
+ * одна вершина или одна ветка — предок другой: главные ветки не сливаются в одну линию, место каждой задаёт пользователь.
+ * Незагруженная вершина дорожку не получает, следующие сдвигаются.
+ *
+ * Коммит, общий для нескольких цепочек первых родителей, стоит на одной дорожке. Цепочки занимают коммиты по очереди:
+ * ветка, чья вершина лежит на цепочке другой (отстала от неё или влита в неё перемоткой), идёт раньше этой другой, —
+ * тогда у неё остаётся своя история, а у ушедшей вперёд — только новые коммиты, и её линия поворачивает к вершине
+ * отставшей. В остальном очередь — порядок `pinned`: ниже точки ветвления общая история достаётся ветке левее.
+ *
+ * `tips[i]` — вершина дорожки i, `lanes[j]` — дорожка j-го элемента `pinned`.
  */
 function pinnedChains(commits: readonly LayoutCommit[], pinned: readonly string[] | undefined) {
   const chainLane = new Map<string, number>();
   const tips: string[] = [];
-  if (!pinned?.length) return { chainLane, tips };
+  const lanes: number[] = [];
+  if (!pinned?.length) return { chainLane, tips, lanes };
   const byHash = new Map(commits.map((c) => [c.hash, c]));
   for (const tip of pinned) {
-    if (!byHash.has(tip) || chainLane.has(tip)) continue;
-    let hash: string | undefined = tip;
-    while (hash !== undefined && byHash.has(hash) && !chainLane.has(hash)) {
-      chainLane.set(hash, tips.length);
-      hash = byHash.get(hash)!.parents[0];
-    }
-    tips.push(tip);
+    lanes.push(byHash.has(tip) ? tips.length : -1);
+    if (byHash.has(tip)) tips.push(tip);
   }
-  return { chainLane, tips };
+  // Полная цепочка каждой вершины — чтобы узнать, чья вершина лежит на чьей цепочке
+  const chainOf = tips.map((tip) => {
+    const set = new Set<string>();
+    for (let hash: string | undefined = tip; hash !== undefined && byHash.has(hash) && !set.has(hash); hash = byHash.get(hash)!.parents[0]) set.add(hash);
+    return set;
+  });
+  // Очередь: первая по порядку дорожка, на цепочке которой нет вершины другой ещё не вставшей в очередь дорожки
+  const waiting = tips.map((_, i) => i);
+  while (waiting.length) {
+    const at = waiting.findIndex((i) => !waiting.some((j) => j !== i && tips[j] !== tips[i] && chainOf[i].has(tips[j])));
+    const [lane] = waiting.splice(at === -1 ? 0 : at, 1);
+    for (let hash: string | undefined = tips[lane]; hash !== undefined && byHash.has(hash) && !chainLane.has(hash); hash = byHash.get(hash)!.parents[0]) {
+      chainLane.set(hash, lane);
+    }
+  }
+  return { chainLane, tips, lanes };
 }
 
 /**
@@ -144,13 +181,13 @@ function pinnedChains(commits: readonly LayoutCommit[], pinned: readonly string[
  * Порядок коммитов важен: git log --date-order (родители всегда ниже детей, параллельные ветки
  * перемежаются по времени) — тогда мерджи короткие и колонки быстро освобождаются.
  *
- * Главные ветки (`options.pinned`): дорожки 0…k-1 закреплены за цепочками первых родителей их вершин на всю высоту.
- * Коммит цепочки всегда стоит на своей дорожке, остальные ветки берут дорожки начиная с k. Строка WIP встаёт в дорожку,
+ * Главные ветки (`options.pinned`): дорожки 0…k-1 закреплены за цепочками первых родителей их вершин на всю высоту
+ * (`pinnedChains`: у каждой ветки своя дорожка, ветки не сливаются). Коммит цепочки всегда стоит на своей дорожке, остальные ветки берут дорожки начиная с k. Строка WIP встаёт в дорожку,
  * которая уже ждёт её родителя, — над вершиной главной ветки, а не сбоку.
  */
 export function layoutGraph<T extends LayoutCommit>(commits: readonly T[], options?: LayoutOptions): GraphLayout<T> {
   if (commits.some((c) => c.stash)) return layoutWithStashes(commits, options);
-  const { chainLane, tips } = pinnedChains(commits, options?.pinned);
+  const { chainLane, tips, lanes: pinnedLanes } = pinnedChains(commits, options?.pinned);
   const k = tips.length;
   // Закреплённые дорожки с самого верха ждут вершины своих веток
   const lanes: (string | null)[] = [...tips];
@@ -224,7 +261,35 @@ export function layoutGraph<T extends LayoutCommit>(commits: readonly T[], optio
     });
   }
 
-  return { nodes, edges, tails, laneCount };
+  if (!options?.pinned?.length) return { nodes, edges, tails, laneCount };
+  return { nodes, edges, tails, laneCount, pinnedLanes, rails: pinnedRails(tips, chainLane, byHash) };
+}
+
+/**
+ * Рельсы главных веток (`GraphRail`). Дорожка L занимает коммиты своей цепочки первых родителей, пока они её; первый
+ * же коммит цепочки, отданный другой главной ветке (общая история), — точка схода. Ниже неё дорожка L никем не занята
+ * (закреплённые дорожки ждут только свои цепочки), поэтому её линия продолжается вниз до корня или до края графа.
+ * Цепочка кончилась своим корнем или незагруженным родителем — рельс не нужен: линия и так идёт до конца.
+ */
+function pinnedRails<T extends LayoutCommit>(tips: readonly string[], chainLane: ReadonlyMap<string, number>, byHash: ReadonlyMap<string, GraphNode<T>>): GraphRail<T>[] {
+  const rails: GraphRail<T>[] = [];
+  tips.forEach((tip, lane) => {
+    let hash: string | undefined = tip;
+    while (hash !== undefined && byHash.has(hash) && chainLane.get(hash) === lane) hash = byHash.get(hash)!.parents[0];
+    const from = hash === undefined ? undefined : byHash.get(hash);
+    if (!from) return;
+    // Конец общей истории: корень (рельс поворачивает к нему) или незагруженный родитель (рельс до края графа)
+    let end = from;
+    const seen = new Set<string>();
+    while (end.parents[0] !== undefined && byHash.has(end.parents[0]) && !seen.has(end.hash)) {
+      seen.add(end.hash);
+      end = byHash.get(end.parents[0])!;
+    }
+    const to = end.parents[0] === undefined ? end : null;
+    if (to === from) return;
+    rails.push({ id: `rail:${lane}:${from.hash}`, lane, from, to, color: laneColor(lane) });
+  });
+  return rails;
 }
 
 /**
@@ -287,6 +352,7 @@ function layoutWithStashes<T extends LayoutCommit>(commits: readonly T[], option
     return { ...e, from, to, minRow: from.row, maxRow: to.row };
   });
   const tails: GraphTail<T>[] = base.tails.map((t) => ({ ...t, from: byHash.get(t.from.hash)! }));
+  const rails = base.rails?.map((r): GraphRail<T> => ({ ...r, from: byHash.get(r.from.hash)!, to: r.to && byHash.get(r.to.hash)! }));
   const nodes = [...byHash.values()];
   // Занятость дорожек строится один раз; размещённые stash (их единицы) проверяются перебором
   const taken = new LaneIntervals(
@@ -315,7 +381,7 @@ function layoutWithStashes<T extends LayoutCommit>(commits: readonly T[], option
     }
     return node;
   });
-  return { nodes: out, edges, tails, laneCount };
+  return { ...base, nodes: out, edges, tails, laneCount, ...(rails ? { rails } : null) };
 }
 
 /** Ребру для пути нужны только положения концов и дорожка. */

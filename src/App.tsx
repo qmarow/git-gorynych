@@ -27,6 +27,7 @@ import {
   Flag,
   GitCommitHorizontal,
   GitMerge,
+  GitPullRequestClosed,
   History,
   CloudDownload,
   Link2,
@@ -49,6 +50,8 @@ import {
   X,
   SquareTerminal,
   Star,
+  ArrowLeftToLine,
+  ArrowRightToLine,
   FolderSync,
   Pencil,
 } from 'lucide-react';
@@ -98,6 +101,8 @@ import CloneDialog from './components/CloneDialog.tsx';
 import AuthDialog, { type AuthSubmit, type AuthTarget } from './components/AuthDialog.tsx';
 import NewTabPage from './components/NewTabPage.tsx';
 import { describeStash } from './lib/stashName.ts';
+import { cleanArgs, readStashConflict, resolvedKeepsChanges, writeStashConflict } from './lib/stashConflict.ts';
+import { closeTargets, quoteArg, readBranchClose, writeBranchClose, type BranchClose } from './lib/branchClose.ts';
 import RevertToDialog from './components/RevertToDialog.tsx';
 import SearchBar, { EMPTY_FILTER, isFilterActive, matchCommit, type CommitFilter } from './components/SearchBar.tsx';
 import { GraphLoader, LoadingOverlay, Splash } from './components/Loader.tsx';
@@ -1250,7 +1255,26 @@ export default function App() {
       label: 'Stash',
       success: (d) => tr('stashed-changes-2', d.files, d.duplicates ? tr('older-copy-with-same-changes') : ''),
     });
-  const stashPop = () => run('stashPop', {}, { label: 'Pop', success: tr('stash-applied') });
+  // Stash применился с конфликтом: запомнить его — для «Отменить применение» и, у «Забрать», для удаления после решения
+  // (`lib/stashConflict.ts`). Ошибку показываем сами, с подсказкой, что будет со stash
+  const onStashConflict = (st: StashLike, drop: boolean) => (error: UiError) => {
+    if (error.code !== 'CONFLICT') return false;
+    const cur = repoRef.current;
+    const paths = [...new Set((cur?.wipFiles ?? []).filter((f) => f.status === 'U').map((f) => f.path))];
+    if (!cur || !paths.length) return false;
+    writeStashConflict(cur.path, { hash: st.hash, title: stashTitle(st), drop, paths });
+    notify({
+      type: 'error',
+      title: `${drop ? 'Pop' : 'Apply'}: ${error.message}`,
+      hint: drop ? tr('stash-pop-conflict-hint') : tr('stash-apply-conflict-hint'),
+      details: error.details,
+    });
+    return true;
+  };
+  const stashPop = () => {
+    const top = repoRef.current?.stashes[0];
+    return run('stashPop', {}, { label: 'Pop', success: tr('stash-applied'), onError: top ? onStashConflict(top, true) : undefined });
+  };
 
   const createBranch = async (params: ActionPayload<'createBranch'>) => {
     setDialog((d) => ({ ...d, error: null }) as Dialog);
@@ -1396,6 +1420,72 @@ export default function App() {
       },
     });
 
+  /* ---------- «Закрыть ветку в …»: слияние коммитом слияния (--no-ff) и удаление ветки (`lib/branchClose.ts`) ---------- */
+
+  // Удалить закрытую ветку; серверную копию — по кнопке в уведомлении (её удаление — отдельное окно с подтверждением)
+  const finishBranchClose = async (close: BranchClose) => {
+    const res = await run('deleteBranch', { name: close.branch, force: false }, { label: tr('close-branch') });
+    if (!res.ok) return;
+    const upstream = close.upstream && repoRef.current?.remotes.some((r) => r.branches.some((b) => b.fullName === close.upstream)) ? close.upstream : null;
+    notify({
+      type: 'success',
+      title: tr('branch-closed-into', close.branch, close.target),
+      hint: tr('branch-closed-hint'),
+      action: upstream ? { label: tr('close-branch-delete-remote', upstream), onClick: () => askDeleteRemote(upstream) } : undefined,
+    });
+  };
+
+  // Ветка уже влита в цель (её вершина — предок цели)? Отдельный вызов git, без уведомлений
+  const isMergedInto = async (path: string, branch: string, target: string) =>
+    (await api.repo.action(path, 'gitRaw', { command: `merge-base --is-ancestor ${quoteArg(`refs/heads/${branch}`)} ${quoteArg(`refs/heads/${target}`)}` })).ok;
+
+  const closeBranch = async (name: string, target: string) => {
+    const path = repoRef.current?.path;
+    if (!path) return;
+    const upstream = repoRef.current!.localBranches.find((b) => b.name === name && b.upstream && !b.gone)?.upstream ?? null;
+    const close: BranchClose = { branch: name, target, upstream };
+    if (repoRef.current!.currentBranch !== target) {
+      await checkout({ branch: target });
+      if (repoRef.current?.currentBranch !== target) return; // переключение не удалось или его отменили
+    }
+    // Ветка уже целиком в цели — сливать нечего, только удалить
+    if (await isMergedInto(path, name, target)) return finishBranchClose(close);
+    // --no-ff на одно слияние: через `branch.<цель>.mergeoptions` — так слияние идёт обычным действием `merge`
+    // (с Undo и обработкой конфликтов), а прежнее значение настройки возвращается сразу после него
+    const key = `branch.${target}.mergeoptions`;
+    const prev = await api.repo.action(path, 'gitRaw', { command: `config --get ${quoteArg(key)}` });
+    const prevValue = prev.ok ? prev.data.output : null;
+    const set = await api.repo.action(path, 'gitRaw', { command: `config ${quoteArg(key)} " --no-ff"` });
+    if (!set.ok) {
+      notify({ type: 'error', title: `${tr('close-branch')}: ${set.error.message}` });
+      return;
+    }
+    let res: ActionResult<'merge'>;
+    try {
+      res = await run('merge', { ref: name }, {
+        label: tr('close-branch'),
+        progress: tr('closing-branch-into', name, target),
+        onError: (error) => {
+          if (error.code !== 'CONFLICT') return false;
+          writeBranchClose(path, close);
+          notify({ type: 'error', title: `${tr('close-branch')}: ${error.message}`, hint: tr('close-branch-conflict-hint', name), details: error.details });
+          return true;
+        },
+      });
+    } finally {
+      await api.repo.action(path, 'gitRaw', { command: prevValue ? `config ${quoteArg(key)} ${quoteArg(prevValue)}` : `config --unset ${quoteArg(key)}` });
+    }
+    if (res.ok || res.error.code === 'UP_TO_DATE') await finishBranchClose(close);
+  };
+
+  const askCloseBranch = (name: string, target: string) =>
+    confirm({
+      title: tr('close-branch-into', name, target),
+      body: tr('close-branch-body', name, target),
+      confirmLabel: tr('close-branch'),
+      onConfirm: () => void closeBranch(name, target),
+    });
+
   const resetTo = (node: { hash: string; message: string }, mode: string) => {
     const doReset = () =>
       run('reset', { hash: node.hash, mode }, {
@@ -1450,17 +1540,25 @@ export default function App() {
     return groups;
   };
 
-  // «Сделать главной веткой» / «Убрать из главных веток» (`mainBranches.ts`): имя — короткое, origin/main → main
-  const mainBranchItem = (name: string): MenuItem => {
-    const isMain = mainBranches.names.includes(name);
-    const full = !isMain && mainBranches.names.length >= MAX_MAIN_BRANCHES;
-    return {
-      label: isMain ? tr('remove-from-main-branches') : tr('make-main-branch'),
+  // «Сделать главной веткой» / «Убрать из главных веток» (`mainBranches.ts`): имя — короткое, origin/main → main.
+  // У главной ветки ещё «Дорожка левее / правее» — место её дорожки среди главных (то же, что перетаскивание в меню вида)
+  const mainBranchItems = (name: string): MenuItem[] => {
+    const names = mainBranches.names;
+    const at = names.indexOf(name);
+    const full = at === -1 && names.length >= MAX_MAIN_BRANCHES;
+    const toggle: MenuItem = {
+      label: at !== -1 ? tr('remove-from-main-branches') : tr('make-main-branch'),
       icon: Star,
       disabled: full,
       title: full ? tr('main-branches-limit', MAX_MAIN_BRANCHES) : tr('main-branch-pinned'),
       onClick: () => mainBranches.toggle(name),
     };
+    if (at === -1 || names.length < 2) return [toggle];
+    return [
+      toggle,
+      { label: tr('main-branch-lane-left'), icon: ArrowLeftToLine, disabled: at === 0, onClick: () => mainBranches.move(name, names[at - 1]) },
+      { label: tr('main-branch-lane-right'), icon: ArrowRightToLine, disabled: at === names.length - 1, onClick: () => mainBranches.move(name, names[at + 1], true) },
+    ];
   };
 
   /**
@@ -1549,6 +1647,18 @@ export default function App() {
           });
         }
       }
+      if (!inCommit) {
+        const { main, other } = closeTargets(name, mainBranches.names, repo!.localBranches.map((b) => b.name));
+        const target = (t: string): MenuItem => ({ label: t, icon: mainBranches.names.includes(t) ? Star : GitBranch, onClick: () => askCloseBranch(name, t) });
+        items.push({
+          label: tr('close-branch-into-menu'),
+          icon: GitPullRequestClosed,
+          hint: 'Merge --no-ff',
+          disabled: op || (!main.length && !other.length),
+          title: tr('close-branch-menu-tip'),
+          submenu: [...main.map(target), main.length > 0 && other.length > 0 && { separator: true }, ...other.slice(0, 30).map(target)],
+        });
+      }
       items.push(
         { separator: true },
         {
@@ -1559,7 +1669,7 @@ export default function App() {
           onClick: () => setDialog({ type: 'renameBranch', from: name, upstream: g.upstream, busy: false, error: null }),
         },
         copyName(name),
-        mainBranchItem(name),
+        ...mainBranchItems(name),
         { separator: true },
         {
           label: tr('delete-branch-3', name),
@@ -1633,7 +1743,7 @@ export default function App() {
             },
           ]),
       copyName(full),
-      mainBranchItem(short),
+      ...mainBranchItems(short),
       { separator: true },
       {
         label: tr('delete-from-server-2', full),
@@ -2339,6 +2449,73 @@ export default function App() {
     setConflictPath(path);
   };
 
+  // Конфликты после применения stash решены: «Забрать» доводится до конца — stash удаляется (git этого не делает),
+  // у «Применить» запись просто забывается. Пока идёт действие или остались конфликты — ждём
+  useEffect(() => {
+    if (!repo || busyAction || conflictPaths.length || repo!.operation) return;
+    const pending = readStashConflict(repo!.path);
+    if (!pending) return;
+    writeStashConflict(repo!.path, null);
+    const st = repo!.stashes.find((x) => x.hash === pending.hash);
+    if (!pending.drop || !st) return;
+    if (!resolvedKeepsChanges(pending, repo!.wipFiles)) {
+      notify({ type: 'info', title: tr('stash-kept-changes-discarded', pending.title) });
+      return;
+    }
+    run('stashDrop', { id: st.id, hash: st.hash }, { label: 'Drop', success: tr('stash-dropped-conflicts-resolved', pending.title) });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [repo, conflictPaths, busyAction]);
+
+  // «Закрыть ветку» со слиянием, которое остановилось на конфликте: когда операция закончена — удалить ветку, если она
+  // влита (слияние завершили), иначе забыть (слияние прервали)
+  useEffect(() => {
+    if (!repo || busyAction || conflictPaths.length || repo!.operation) return;
+    const close = readBranchClose(repo!.path);
+    if (!close) return;
+    writeBranchClose(repo!.path, null);
+    const path = repo!.path;
+    if (!repo!.localBranches.some((b) => b.name === close.branch)) return;
+    void isMergedInto(path, close.branch, close.target).then((merged) => {
+      if (merged && repoRef.current?.path === path) void finishBranchClose(close);
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [repo, conflictPaths, busyAction]);
+
+  // «Отменить применение»: `git reset --merge` возвращает индекс и файлы, которые тронуло применение (и решённые, и
+  // нерешённые конфликты), не трогая прочие несохранённые правки; новые файлы stash (его третий родитель) убираются
+  // `git clean` — их копия есть в самом stash. Stash остаётся в списке
+  const cancelStashApply = () =>
+    confirm({
+      title: tr('cancel-stash-apply-title'),
+      body: tr('cancel-stash-apply-body'),
+      confirmLabel: tr('cancel-stash-apply'),
+      danger: true,
+      onConfirm: async () => {
+        const path = repoRef.current?.path;
+        if (!path) return;
+        const pending = readStashConflict(path);
+        writeStashConflict(path, null); // иначе эффект выше удалил бы stash, как только конфликты исчезнут
+        const res = await run('gitRaw', { command: 'reset --merge' }, { label: tr('cancel-stash-apply') });
+        if (!res.ok) {
+          if (pending) writeStashConflict(path, pending);
+          return;
+        }
+        setConflictPath(null);
+        let untrackedLeft = false;
+        if (pending && repoRef.current?.stashes.some((x) => x.hash === pending.hash)) {
+          const list = await api.repo.action(path, 'gitRaw', { command: `ls-tree -r -z --name-only ${pending.hash}^3` });
+          // Нет третьего родителя — новых файлов в stash не было; вывод обрезан (4000 символов) — список неполный, не трогаем
+          if (list.ok && list.data.output) {
+            const command = list.data.output.length < 3900 ? cleanArgs(list.data.output) : null;
+            const cleaned = command ? await api.repo.action(path, 'gitRaw', { command }) : null;
+            untrackedLeft = !cleaned?.ok;
+            await loadRepo(path, { silent: true });
+          }
+        }
+        notify({ type: 'success', title: tr('stash-apply-cancelled'), hint: untrackedLeft ? tr('stash-apply-cancelled-untracked-left') : undefined });
+      },
+    });
+
   // После merge/pull/rebase/cherry-pick с конфликтом — сразу открываем первый файл
   useEffect(() => {
     if (autoOpenConflict.current && conflictPaths.length) {
@@ -2893,6 +3070,7 @@ export default function App() {
     return run(pop ? 'stashPopAt' : 'stashApplyAt', { id: st.id, hash: st.hash }, {
       label: pop ? 'Pop' : 'Apply',
       success: pop ? tr('stash-applied-and-deleted', stashTitle(st)) : tr('stash-applied-2', stashTitle(st)),
+      onError: onStashConflict(st, pop),
     }).then((res) => {
       if (res.ok) setSelectedHash('WIP');
       return res;
@@ -3238,6 +3416,7 @@ export default function App() {
               operation={repo!.operation}
               conflicts={conflictPaths.length}
               onResolve={() => openConflict(conflictPaths[0])}
+              onCancelApply={cancelStashApply}
               busy={Boolean(busyAction)}
               onContinue={() =>
                 run('continueOperation', {}, {
@@ -3974,7 +4153,7 @@ export default function App() {
   );
 }
 
-function OperationBanner({ operation, conflicts, busy, onContinue, onAbort, onResolve }: { operation: string | null; conflicts: number; busy: boolean; onContinue: () => void; onAbort: () => void; onResolve: () => void }) {
+function OperationBanner({ operation, conflicts, busy, onContinue, onAbort, onResolve, onCancelApply }: { operation: string | null; conflicts: number; busy: boolean; onContinue: () => void; onAbort: () => void; onResolve: () => void; onCancelApply: () => void }) {
   return (
     <div className="glass flex shrink-0 animate-slide-up items-center gap-3 border-b border-gk-yellow/30 bg-gk-yellow/10 px-3 py-2 text-xs">
       <AlertTriangle size={14} className="shrink-0 text-gk-yellow" />
@@ -3992,6 +4171,10 @@ function OperationBanner({ operation, conflicts, busy, onContinue, onAbort, onRe
       {conflicts > 0 && (
         <Button variant="danger" onClick={onResolve} disabled={busy} className="py-1 text-xs">
           {tr('resolve-conflicts')}</Button>
+      )}
+      {!operation && conflicts > 0 && (
+        <Button onClick={onCancelApply} disabled={busy} className="py-1 text-xs" title={tr('cancel-stash-apply-tip')} data-testid="cancel-stash-apply">
+          {tr('cancel-stash-apply')}</Button>
       )}
       {operation && (
         <>

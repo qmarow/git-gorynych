@@ -113,17 +113,10 @@ function dag(n, mergeRate, gapRate) {
   }
   return out;
 }
-// Число закреплённых дорожек — как в layoutGraph: цепочки первых родителей вершин
+// Число закреплённых дорожек — как в layoutGraph: у каждой загруженной вершины своя дорожка (даже у общей или вершины-предка)
 function pinnedCount(real, pinned) {
-  const byHash = new Map(real.map((c) => [c.hash, c]));
-  const taken = new Set();
-  let k = 0;
-  for (const tip of pinned ?? []) {
-    if (!byHash.has(tip) || taken.has(tip)) continue;
-    for (let h = tip; h !== undefined && byHash.has(h) && !taken.has(h); h = byHash.get(h).parents[0]) taken.add(h);
-    k++;
-  }
-  return k;
+  const loaded = new Set(real.map((c) => c.hash));
+  return (pinned ?? []).filter((tip) => loaded.has(tip)).length;
 }
 // Прежняя реализация layoutWithStashes дословно (с хвостами из шага 4.1), busy — перебором
 function reference(commits, options) {
@@ -158,7 +151,7 @@ function reference(commits, options) {
     if (target) edges.push({ id: `${commit.hash}->${target.hash}`, from: node, to: target, travel: lane, minRow: row, maxRow: target.row, dashed: true, color: laneColor(lane) });
     return node;
   });
-  return { nodes: out, edges, tails, laneCount };
+  return { ...base, nodes: out, edges, tails, laneCount };
 }
 const summary = (g) =>
   JSON.stringify({

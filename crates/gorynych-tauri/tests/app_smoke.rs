@@ -361,9 +361,9 @@ fn long_history_shows_tails_and_squeezes_lanes() {
     assert_eq!(report["graph"], json!(true), "граф коммитов не появился: {report}");
     assert_eq!(report["errors"], json!([]), "ошибки интерфейса: {report}");
     let lanes = &report["lanes"];
-    // Стандартная плотность: минимальный шаг 2 × 5.5 + 4 = 15, точки вместо аватаров, часть дорожек всё равно скрыта
-    assert_eq!(lanes["before"]["laneW"], json!(15), "{report}");
-    assert_eq!(lanes["before"]["forceDots"], json!(true), "{report}");
+    // Узкая колонка, как в GitKraken: шаг стандартной плотности (28) и аватары остаются, лишние дорожки прижаты к краю
+    assert_eq!(lanes["before"]["laneW"], json!(28), "{report}");
+    assert_eq!(lanes["before"]["forceDots"], json!(false), "{report}");
     let hidden = lanes["before"]["hidden"].as_i64().unwrap();
     assert!(hidden > 0, "{report}");
     assert_eq!(lanes["badge"]["text"], json!(format!("+{hidden}")), "{report}");

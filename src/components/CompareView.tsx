@@ -1,15 +1,18 @@
-import { useEffect, useMemo, useRef, useState, type ButtonHTMLAttributes, type ReactNode } from 'react';
-import { ArrowLeftRight, CaseSensitive, ChevronDown, ChevronRight, Folder, GitCompareArrows, Loader2, Regex, Search, X } from 'lucide-react';
+import { memo, useCallback, useEffect, useMemo, useRef, useState, type ButtonHTMLAttributes, type ReactNode } from 'react';
+import { ArrowLeftRight, CaseSensitive, ChevronDown, ChevronRight, FileDiff, FileText, FoldVertical, Folder, GitCompareArrows, Loader2, Regex, Search, UnfoldVertical, X } from 'lucide-react';
 import { plural, relativeTime } from '../lib/format.ts';
-import { detectLanguage, highlightLines, layerLine } from '../lib/highlight.ts';
+import { detectLanguage, highlightHunks, highlightLines, layerLine } from '../lib/highlight.ts';
+import { inlineHighlights } from '../lib/inlineDiff.ts';
 import { isMod, kb } from '../lib/platform.ts';
 import { StatusBadge } from './RebaseView.tsx';
+import { UnifiedDiff } from './DiffView.tsx';
 import { t, tj } from '../i18n/index.ts';
 import type { ApiError, ApiResult } from '../platform/tauri.ts';
 import type {
   ChangeSearch_Serialize,
   CommitFile_Serialize,
   Comparison_Serialize,
+  FileDiff_Serialize,
   MatchFile_Serialize,
   MatchLine,
 } from '../../crates/gorynych-tauri/bindings/commands.ts';
@@ -58,10 +61,29 @@ interface CompareApi {
   repo: {
     compare: (dir: string, params: { a: string; b: string }) => Promise<ApiResult<Comparison>>;
     compareSearch: (dir: string, params: { a: string; b: string } & ContentQuery) => Promise<ApiResult<ChangeSearch>>;
+    fileDiff: (dir: string, params: Record<string, unknown>) => Promise<ApiResult<FileDiff_Serialize>>;
   };
 }
 
 const api = window.api as unknown as CompareApi;
+
+/** Вид списка файлов: строки (клик открывает окно изменений) или раскрывающиеся панели с diff прямо в сравнении */
+type Layout = 'list' | 'panels';
+const LAYOUT_KEY = 'compare.layout';
+const readLayout = (): Layout => {
+  try {
+    return localStorage.getItem(LAYOUT_KEY) === 'panels' ? 'panels' : 'list';
+  } catch {
+    return 'list';
+  }
+};
+const writeLayout = (layout: Layout) => {
+  try {
+    localStorage.setItem(LAYOUT_KEY, layout);
+  } catch {
+    /* выбор просто не запомнится */
+  }
+};
 
 interface CompareViewProps {
   repoPath: string;
@@ -92,6 +114,49 @@ export default function CompareView({ repoPath, a, b, hidden, activePath, onSwap
   const [found, setFound] = useState<Found>({ loading: false, data: null, error: null, key: null });
   const searchRef = useRef<HTMLInputElement>(null);
   const seq = useRef(0);
+  // Панели: какие файлы раскрыты; diff загружается при раскрытии (не больше 4 одновременно) и запоминается для этой пары коммитов
+  const [layout, setLayoutRaw] = useState<Layout>(readLayout);
+  const [openPaths, setOpenPaths] = useState(() => new Set<string>());
+  const diffCache = useRef(new Map<string, PanelDiff>());
+  const queue = useRef(limiter(4));
+  const setLayout = (next: Layout) => {
+    setLayoutRaw(next);
+    writeLayout(next);
+  };
+  const togglePanel = useCallback(
+    (path: string) =>
+      setOpenPaths((s) => {
+        const next = new Set(s);
+        if (next.has(path)) next.delete(path);
+        else next.add(path);
+        return next;
+      }),
+    [],
+  );
+  const loadDiff = useCallback(
+    (f: CompareFile, alive: () => boolean): Promise<PanelDiff | null> => {
+      const key = `${a}|${b}|${f.path}`;
+      const hit = diffCache.current.get(key);
+      if (hit) return Promise.resolve(hit);
+      return queue.current(async () => {
+        if (!alive()) return null; // панель свернули, пока ждали очереди
+        const res = await api.repo.fileDiff(repoPath, {
+          mode: 'commit',
+          hash: b,
+          parent: a,
+          path: f.path,
+          oldPath: f.oldPath,
+          conflicted: false,
+          ignoreWhitespace: false,
+          fullFile: false,
+        });
+        const d: PanelDiff = res.ok ? { data: res.data, error: null } : { data: null, error: res.error.message };
+        if (res.ok) diffCache.current.set(key, d);
+        return d;
+      });
+    },
+    [repoPath, a, b],
+  );
 
   useEffect(() => {
     let alive = true;
@@ -100,6 +165,8 @@ export default function CompareView({ repoPath, a, b, hidden, activePath, onSwap
       if (alive) setState(res.ok ? { loading: false, data: res.data, error: null } : { loading: false, data: null, error: res.error });
     });
     setDirFilter(null);
+    setOpenPaths(new Set());
+    diffCache.current.clear();
     return () => {
       alive = false;
     };
@@ -294,7 +361,7 @@ export default function CompareView({ repoPath, a, b, hidden, activePath, onSwap
           )}
 
           {/* Таблица файлов */}
-          <div className="mx-3 mb-4 overflow-hidden rounded-lg border border-gk-border">
+          <div className={`mx-3 mb-4 rounded-lg border border-gk-border ${mode === 'path' && layout === 'panels' ? '' : 'overflow-hidden'}`}>
             <div className="flex items-center gap-2 border-b border-gk-border bg-gk-fg/[0.03] px-2.5 py-1.5">
               <div className="flex shrink-0 overflow-hidden rounded text-[11.5px] ring-1 ring-gk-border" role="tablist">
                 <SortBtn active={mode === 'path'} onClick={() => setMode('path')} data-testid="compare-mode-path" title={t('filter-list-by-file-path')}>
@@ -355,6 +422,24 @@ export default function CompareView({ repoPath, a, b, hidden, activePath, onSwap
                   </>
                 )}
               </div>
+              {mode === 'path' && (
+                <div className="flex shrink-0 overflow-hidden rounded text-[11.5px] ring-1 ring-gk-border" data-testid="compare-layout">
+                  <SortBtn active={layout === 'list'} onClick={() => setLayout('list')} title={t('compare-layout-list-title')} data-testid="compare-layout-list">
+                    {t('compare-layout-list')}</SortBtn>
+                  <SortBtn active={layout === 'panels'} onClick={() => setLayout('panels')} title={t('compare-layout-panels-title')} data-testid="compare-layout-panels">
+                    {t('compare-layout-panels')}</SortBtn>
+                </div>
+              )}
+              {mode === 'path' && layout === 'panels' && (
+                <div className="flex shrink-0 items-center">
+                  <OptBtn on={false} onClick={() => setOpenPaths(new Set(shown.map((f) => f.path)))} title={t('compare-expand-all')} testid="compare-expand-all">
+                    <UnfoldVertical size={13} />
+                  </OptBtn>
+                  <OptBtn on={false} onClick={() => setOpenPaths(new Set())} title={t('compare-collapse-all')} testid="compare-collapse-all">
+                    <FoldVertical size={13} />
+                  </OptBtn>
+                </div>
+              )}
               <div className="flex shrink-0 overflow-hidden rounded text-[11.5px] ring-1 ring-gk-border">
                 <SortBtn active={sort === 'path'} onClick={() => setSort('path')}>
                   {t('by-path')}</SortBtn>
@@ -372,6 +457,26 @@ export default function CompareView({ repoPath, a, b, hidden, activePath, onSwap
               />
             ) : shown.length === 0 ? (
               <div className="px-3 py-6 text-center text-[12.5px] text-gk-dim">{files.length ? t('nothing-found') : t('files-in-these-commits-are')}</div>
+            ) : layout === 'panels' ? (
+              <div data-testid="compare-panels">
+                {shown.map((f) => {
+                  const key = `${a}|${b}|${f.path}`;
+                  return (
+                    <ComparePanel
+                      key={key}
+                      file={f}
+                      open={openPaths.has(f.path)}
+                      active={activePath === f.path}
+                      maxSize={maxSize}
+                      cached={diffCache.current.get(key)}
+                      load={loadDiff}
+                      onToggle={togglePanel}
+                      onOpen={(file) => onOpenFile(file, shown)}
+                      onMenu={onFileMenu && ((file, x, y) => onFileMenu(file, shown, x, y))}
+                    />
+                  );
+                })}
+              </div>
             ) : (
               shown.map((f, i) => {
                 const parts = f.path.split('/');
@@ -498,6 +603,193 @@ function OptBtn({ on, children, title, testid, ...props }: ButtonHTMLAttributes<
       {children}
     </button>
   );
+}
+
+/* ---------- Файлы панелями: шапка как строка списка, под ней diff файла ---------- */
+
+interface PanelDiff {
+  data: FileDiff_Serialize | null;
+  error: string | null;
+}
+
+/** Не больше `max` загрузок одновременно: «Развернуть все» на сотне файлов не запускает сотню процессов git сразу */
+function limiter(max: number) {
+  let active = 0;
+  const waiting: (() => void)[] = [];
+  const next = () => {
+    if (active >= max || !waiting.length) return;
+    active++;
+    waiting.shift()!();
+  };
+  return <T,>(job: () => Promise<T>): Promise<T> =>
+    new Promise<T>((resolve, reject) => {
+      waiting.push(() => {
+        job()
+          .then(resolve, reject)
+          .finally(() => {
+            active--;
+            next();
+          });
+      });
+      next();
+    });
+}
+
+interface ComparePanelProps {
+  file: CompareFile;
+  open: boolean;
+  active: boolean;
+  maxSize: number;
+  cached: PanelDiff | undefined;
+  load: (file: CompareFile, alive: () => boolean) => Promise<PanelDiff | null>;
+  onToggle: (path: string) => void;
+  onOpen: (file: CompareFile) => void;
+  onMenu?: (file: CompareFile, x: number, y: number) => void;
+}
+
+/**
+ * Раскрывающаяся панель файла. Шапка — та же строка, что в списке (статус, путь, полоска, +/−), с шевроном; клик раскрывает,
+ * значок справа открывает файл в окне изменений. Diff грузится, когда раскрытая панель подходит к видимой области.
+ */
+const ComparePanel = memo(function ComparePanel({ file, open, active, maxSize, cached, load, onToggle, onOpen, onMenu }: ComparePanelProps) {
+  const [diff, setDiff] = useState<PanelDiff | undefined>(cached);
+  const [near, setNear] = useState(false);
+  const bodyRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!open || diff || near) return undefined;
+    const el = bodyRef.current;
+    if (!el || typeof IntersectionObserver === 'undefined') {
+      setNear(true);
+      return undefined;
+    }
+    const io = new IntersectionObserver((entries) => entries.some((e) => e.isIntersecting) && setNear(true), { rootMargin: '600px 0px' });
+    io.observe(el);
+    return () => io.disconnect();
+  }, [open, diff, near]);
+  useEffect(() => {
+    if (!open || !near || diff) return undefined;
+    let alive = true;
+    load(file, () => alive).then((d) => {
+      if (alive && d) setDiff(d);
+    });
+    return () => {
+      alive = false;
+    };
+  }, [open, near, diff, file, load]);
+
+  const parts = file.path.split('/');
+  const name = parts.pop();
+  return (
+    <div className="border-b border-gk-border/60 last:border-0" data-testid="compare-panel" data-path={file.path} data-open={open ? '' : undefined}>
+      <div
+        role="button"
+        tabIndex={0}
+        aria-expanded={open}
+        onClick={() => onToggle(file.path)}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault();
+            onToggle(file.path);
+          }
+        }}
+        onContextMenu={(e) => {
+          if (!onMenu) return;
+          e.preventDefault();
+          onMenu(file, e.clientX, e.clientY);
+        }}
+        className={`grid w-full cursor-pointer select-none grid-cols-[auto_auto_minmax(0,1fr)_minmax(80px,200px)_92px_auto] items-center gap-3 px-2.5 py-1.5 text-left text-[12.5px] outline-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-gk-blue ${
+          open ? 'sticky top-0 z-10 border-b border-gk-border/60 bg-gk-panel' : ''
+        } ${active ? 'bg-gk-blue/15' : 'hover:bg-gk-hover'}`}
+        title={file.oldPath ? `${file.oldPath} → ${file.path}` : file.path}
+        data-testid="compare-panel-header"
+      >
+        {open ? <ChevronDown size={14} className="text-gk-dim" /> : <ChevronRight size={14} className="text-gk-dim" />}
+        <StatusBadge status={file.status} />
+        <span className="min-w-0 truncate">
+          {file.oldPath && file.oldPath !== file.path && <span className="text-gk-dim">{file.oldPath} → </span>}
+          {parts.length > 0 && <span className="text-gk-muted">{parts.join('/')}/</span>}
+          <span className="text-gk-text">{name}</span>
+        </span>
+        {file.additions !== null ? <Bar additions={file.additions} deletions={file.deletions!} max={maxSize} /> : <span className="text-[11px] text-gk-dim">{t('binary')}</span>}
+        <span className="text-right font-mono text-[11px]">
+          {file.additions !== null && (
+            <>
+              <span className="text-gk-green">+{file.additions}</span> <span className="text-gk-red">−{file.deletions}</span>
+            </>
+          )}
+        </span>
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            onOpen(file);
+          }}
+          onKeyDown={(e) => e.stopPropagation()}
+          title={t('compare-open-in-diff')}
+          aria-label={t('compare-open-in-diff')}
+          data-testid="compare-panel-open"
+          className="rounded p-1 text-gk-muted hover:bg-gk-fg/10 hover:text-gk-text"
+        >
+          <FileDiff size={13} />
+        </button>
+      </div>
+      {open && (
+        <div ref={bodyRef} className="bg-gk-bg" data-testid="compare-panel-body">
+          <PanelBody file={file} diff={diff} />
+        </div>
+      )}
+    </div>
+  );
+});
+
+const readPref = (key: string, def: boolean) => {
+  try {
+    const v = localStorage.getItem(key);
+    return v === null ? def : v === '1';
+  } catch {
+    return def;
+  }
+};
+
+// Тело панели: тот же построчный diff, что в окне изменений (Unified), с подсветкой изменений внутри строк и синтаксиса —
+// по тем же настройкам окна изменений (`diff.inline`, `diff.syntax`)
+function PanelBody({ file, diff }: { file: CompareFile; diff: PanelDiff | undefined }) {
+  const data = diff?.data ?? null;
+  const highlights = useMemo(() => (data?.hunks.length && readPref('diff.inline', true) ? data.hunks.map((h) => inlineHighlights(h.lines)) : null), [data]);
+  const [syntax, setSyntax] = useState<ReturnType<typeof highlightHunks>>(null);
+  useEffect(() => {
+    setSyntax(null);
+    const lang = detectLanguage(file.path);
+    if (!lang || !data?.hunks.length || !readPref('diff.syntax', true)) return undefined;
+    let alive = true;
+    const timer = setTimeout(() => alive && setSyntax(highlightHunks(data.hunks, lang)), 0);
+    return () => {
+      alive = false;
+      clearTimeout(timer);
+    };
+  }, [data, file.path]);
+
+  if (!diff) return <PanelNote>{tj('loading-diff', [<Loader2 size={13} className="animate-spin" />])}</PanelNote>;
+  if (diff.error || !data) return <PanelNote className="text-gk-red">{diff.error}</PanelNote>;
+  if (data.binary) return <PanelNote>{tj('binary-file-line-diff-unavailable', [<FileText size={13} />])}</PanelNote>;
+  if (data.tooLarge) return <PanelNote>{tj('file-is-too-large-kb-to', [Math.round((data.size ?? 0) / 1024)])}</PanelNote>;
+  if (!data.hunks.length) {
+    return (
+      <PanelNote>
+        {data.eolOnly ? t('only-line-endings-changed-crlf') : file.oldPath && file.oldPath !== file.path ? t('file-was-renamed-without-content') : t('no-content-changes')}
+      </PanelNote>
+    );
+  }
+  return (
+    <div className="overflow-x-auto font-mono text-[12px] leading-5 [tab-size:4]">
+      <UnifiedDiff hunks={data.hunks} highlights={highlights} syntax={syntax} />
+      {data.truncated && <div className="border-t border-gk-border px-4 py-2 font-sans text-xs text-gk-dim">{t('diff-is-too-large-only')}</div>}
+    </div>
+  );
+}
+
+function PanelNote({ children, className = '' }: { children?: ReactNode; className?: string }) {
+  return <div className={`flex items-center justify-center gap-2 px-3 py-4 text-[12.5px] text-gk-muted ${className}`}>{children}</div>;
 }
 
 /* ---------- Поиск по содержимому: файлы и найденные строки ---------- */

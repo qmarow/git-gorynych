@@ -2,7 +2,7 @@ import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useStat
 import { flushSync } from 'react-dom';
 import { Archive, Check, Copy, FileSearch, Pencil, SlidersHorizontal, Star } from 'lucide-react';
 import { RefKindIcon, RefsPopover, refKindLabel, useHoverPopover, type RefActions, type RefGroup, type RefItem } from './RefBadge.tsx';
-import { edgePath, fitMetrics, graphWidth, laneColor, laneX, layoutGraph, metricsFor, rowY, type GraphEdge, type GraphNode, type GraphTail, type LayoutCommit, type Metrics } from '../lib/graphLayout.ts';
+import { edgePath, fitMetrics, graphWidth, laneColor, laneX, layoutGraph, metricsFor, rowY, type GraphEdge, type GraphNode, type GraphRail, type GraphTail, type LayoutCommit, type Metrics } from '../lib/graphLayout.ts';
 import { StatusIcon, statusInfo } from './PipelineStatus.tsx';
 import { fullDate, initials, relativeTime, shortDate } from '../lib/format.ts';
 import { ResizeHandle, useStoredWidth } from './Resizer.tsx';
@@ -237,20 +237,20 @@ export default function CommitGraph({
   }, [dragSource]);
   // Вершины главных веток по порядку — закреплённые дорожки. Ключ — строка: раскладка не пересчитывается, пока вершины те же
   const pinnedKey = mainBranches?.tips.map((tip) => tip.hash).join(',') ?? '';
-  const { nodes, edges, tails, laneCount } = useMemo(() => layoutGraph(commits, pinnedKey ? { pinned: pinnedKey.split(',') } : undefined), [commits, pinnedKey]);
+  const { nodes, edges, tails, rails, laneCount, pinnedLanes } = useMemo(() => layoutGraph(commits, pinnedKey ? { pinned: pinnedKey.split(',') } : undefined), [commits, pinnedKey]);
   const mainKey = mainBranches?.names.join('\n') ?? '';
   const mainOrder = useMemo((): MainOrder => (mainKey ? new Map(mainKey.split('\n').map((name, i) => [name, i])) : NO_MAIN), [mainKey]);
   // Строка коммита по хэшу — для перехода к коммиту и стрелок без перебора всего списка
   const rowByHash = useMemo(() => new Map(nodes.map((n) => [n.hash, n.row])), [nodes]);
-  // Цвет дорожки каждой главной ветки для меню вида: дорожка узла её вершины
+  // Цвет дорожки каждой главной ветки для меню вида (у двух веток с одной вершиной дорожки разные)
   const mainColors = useMemo(() => {
     const out: Record<string, string> = {};
-    for (const tip of mainBranches?.tips ?? []) {
-      const row = rowByHash.get(tip.hash);
-      if (row !== undefined) out[tip.name] = laneColor(nodes[row].lane);
-    }
+    (mainBranches?.tips ?? []).forEach((tip, i) => {
+      const lane = pinnedLanes?.[i] ?? -1;
+      if (lane !== -1) out[tip.name] = laneColor(lane);
+    });
     return out;
-  }, [mainBranches?.tips, rowByHash, nodes]);
+  }, [mainBranches?.tips, pinnedLanes]);
 
   // Вид таблицы: колонки, порядок, плотность, формат даты, стиль узлов
   const [gv, setGv] = useGraphView();
@@ -335,9 +335,10 @@ export default function CommitGraph({
   const [graphBoxW, graphCellRef] = useElementWidth();
   // Пока колонку тянут, измерение может отстать на кадр — берём меньшее из двух, чтобы граф не вылез за край
   const graphW_ = has('graph') ? Math.min(graphBoxW || width, width) : 0;
-  // Узкая колонка: сначала ужимается шаг дорожек (аватары тогда — точками), к краю прижимаются, только если и этого мало
-  const gm = useMemo(() => fitMetrics(m, laneCount, graphW_, dots ? m.dotR : m.nodeR, { squeeze: true }), [m, laneCount, graphW_, dots]);
-  const dotsEff = dots || Boolean(gm.forceDots);
+  // Узкая колонка — как в GitKraken: шаг и вид узлов не меняются (вид выбирает только пользователь в меню вида),
+  // дорожки, которые не помещаются, прижимаются к правому краю и двигаются вместе с его границей
+  const gm = useMemo(() => fitMetrics(m, laneCount, graphW_, dots ? m.dotR : m.nodeR), [m, laneCount, graphW_, dots]);
+  const dotsEff = dots;
   // «+N» в заголовке графа: расширить колонку до всех дорожек, насколько позволяет место
   const showAllLanes = () => saveGraphW(setGraphW(Math.max(40, Math.min(graphWidth(laneCount, m), roomForGraph))));
 
@@ -446,6 +447,8 @@ export default function CommitGraph({
 
   // Хвост к незагруженному родителю идёт до нижнего края графа: виден, если его узел не ниже окна
   const visibleTails = useMemo(() => tails.filter((t) => t.from.row <= last), [tails, last]);
+  // Рельсы главных веток (`GraphRail`): от точки схода вниз до корня или до края графа
+  const visibleRails = useMemo(() => (rails ?? []).filter((r) => r.from.row <= last && (r.to === null || r.to.row >= first)), [rails, first, last]);
 
   // Контекстное меню выбранной строки с клавиатуры (Shift+F10, клавиша меню): у строки, а не там, где мышь
   const menuFromKeyboard = useRef(false);
@@ -807,6 +810,7 @@ export default function CommitGraph({
             visibleNodes={visibleNodes}
             visibleEdges={visibleEdges}
             visibleTails={visibleTails}
+            visibleRails={visibleRails}
             first={first}
             intro={intro}
             matchSet={matchSet}
@@ -911,6 +915,7 @@ interface GraphLayerProps {
   visibleNodes: GraphItem[];
   visibleEdges: GraphEdge<GraphRow>[];
   visibleTails: GraphTail<GraphRow>[];
+  visibleRails: GraphRail<GraphRow>[];
   first: number;
   intro: boolean;
   matchSet: Set<string> | null;
@@ -922,7 +927,7 @@ interface GraphLayerProps {
  * Узлы, рёбра и хвосты графа. Подсветка истории ветки (наведение на метку, `highlightApi`) — состояние только этого слоя:
  * цепочка первых родителей от вершины видна как есть, остальные узлы и рёбра приглушены до 0.35.
  */
-const GraphLayer = memo(function GraphLayer({ svgRef, highlightApi, left, width, height, graphW, gm, density, nodeStyle, refsSide, refFilter, nodes, visibleNodes, visibleEdges, visibleTails, first, intro, matchSet, dots, selectedHash }: GraphLayerProps) {
+const GraphLayer = memo(function GraphLayer({ svgRef, highlightApi, left, width, height, graphW, gm, density, nodeStyle, refsSide, refFilter, nodes, visibleNodes, visibleEdges, visibleTails, visibleRails, first, intro, matchSet, dots, selectedHash }: GraphLayerProps) {
   const [tip, setTip] = useState<string | null>(null);
   useEffect(() => {
     highlightApi.current = setTip;
@@ -1009,6 +1014,29 @@ const GraphLayer = memo(function GraphLayer({ svgRef, highlightApi, left, width,
           strokeDasharray={edge.dashed ? '4 4' : undefined}
         />
       ))}
+
+      {/* Главные ветки не сливаются: дорожка каждой продолжается ниже общей истории (до корня или до края, с затуханием) */}
+      {visibleRails.length > 0 && (
+        <g data-testid="graph-rails">
+          {visibleRails.map((rail) => (
+            <path
+              key={rail.id}
+              data-rail={rail.id}
+              d={edgePath({ from: rail.from, to: rail.to ?? { lane: rail.lane, row: nodes.length - 0.5 }, travel: rail.lane }, gm)}
+              mask={rail.to ? undefined : 'url(#graph-tail-mask)'}
+              pathLength={1}
+              className={`graph-edge ${intro ? 'is-intro' : ''}`}
+              style={intro ? { animationDelay: introDelay(rail.from.row) } : undefined}
+              fill="none"
+              stroke={laneColor(rail.lane)}
+              strokeOpacity={edgeOpacity(rail.from, rail.from.parents[0] ?? '', Boolean(matchSet))}
+              strokeWidth={density === 'compact' ? 2 : 2.5}
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
+          ))}
+        </g>
+      )}
 
       {visibleTails.length > 0 && (
         <g mask="url(#graph-tail-mask)" data-testid="graph-tails">
