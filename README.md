@@ -1,6 +1,6 @@
 # git-Горыныч
 
-Десктопный Git-клиент в стиле GitKraken. Версия 2.0: ядро на Rust (`crates/`, Cargo Workspace), окно — Tauri v2,
+Десктопный Git-клиент. Версия 2.0: ядро на Rust (`crates/`, Cargo Workspace), окно — Tauri v2,
 интерфейс — React 19 + TypeScript (Vite) + Tailwind CSS v4 + Lucide Icons, переводы — Fluent. Версия 1.x на Electron
 удалена из дерева; её код — в истории git (коммит `b63610b`).
 
